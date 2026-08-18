@@ -1,0 +1,286 @@
+{
+  "topic": "The real, measured state of the ERC-8004 agent ecosystem, with emphasis on BNB Smart Chain: indexers/APIs, academic operational-readiness and sybil findings, and independent first-party measurement of BSC agent reachability",
+  "verdict": "SOLID",
+  "executive_summary": "Both numbers AiKi's internal docs assert are correct and verifiable in the primary source. arXiv 2606.26028v2 (Xiong, Li, Wei, Wang, Knottenbelt, Wang; v1 24 Jun 2026, v2 8 Jul 2026) states verbatim that only \"3%, 4%, and 15% across Ethereum, BSC, and Base\" expose a valid ERC-8004 registration file with at least one live service endpoint, and that \"73.5%, 59.2%, and 90.6%\" of reviewers exhibit coordinated Sybil behavior. The BSC figures \u2014 4% and 59.2% \u2014 are exact.\n\nI did not stop at citation. 8004scan has an undocumented but fully open, unauthenticated JSON API at https://8004scan.io/api/v1 (found by probing; /api/v1/openapi.json and /docs are 404, so it is undocumented, not absent). Using it I measured the ecosystem live on 18 Aug 2026: 740,449 total indexed agents, of which 420,812 are mainnet and 319,426 are testnet. BSC alone holds 257,865 mainnet agents \u2014 61.3% of all mainnet ERC-8004 registrations, more than Base (43,227) and Ethereum (30,588) combined by 3.5x.\n\nI then drew a 400-agent sample spread across the entire BSC registry, pulled each agent's full detail record, and live-probed every declared service endpoint. 92.2% carry a canonically-typed registration file, but only 40.2% declare any service at all. Of 160 declared endpoints, 147 returned HTTP 200 \u2014 which naively reads as 36.8% \"live.\" That number is an artifact. 141 of those 147 resolve to evoevo.ai profile pages that return a byte-identical SPA shell (same MD5) even for a nonsense agent id, so they are not agent services. All 13 A2A endpoints publish the literal unsubstituted template string {agentId} on-chain and 404. The 5 MCP entries are a genuine descriptor but declare transport \"stdio,\" not remotely callable. Net: 0 of 400 sampled BSC agents exposed a remotely invocable agent endpoint. 8004scan's own is_endpoint_verified was false for 400/400.\n\nThe 4% figure is therefore an upper bound, not a floor. Build accordingly.",
+  "findings": [
+    {
+      "claim": "AiKi's \"4% live endpoints on BSC\" claim is verbatim correct and traceable to arXiv 2606.26028.",
+      "detail": "Abstract, verbatim: \"we find that most registrations are placeholders rather than active agents, with only a small fraction (3%, 4%, and 15% across Ethereum, BSC, and Base) exposing a valid ERC-8004 registration file with at least one live service endpoint.\" Paper: \"Can Trustless Agents Be Trusted? An Empirical Study of the ERC-8004 Decentralized AI Agent Ecosystem\", Xihan Xiong, Zelin Li, Wei Wei, Qin Wang, William Knottenbelt, Zhipeng Wang. v1 24 Jun 2026, v2 8 Jul 2026. Study window: protocol deployment through 13 May 2026, 21:49:47 UTC. IMPORTANT SCOPE NOTE: the 4% is the intersection of (valid registration file) AND (at least one declared service). It is a DECLARATION-based metric, not a verified-invocation metric.",
+      "confidence": "high",
+      "source_date": "2026-07-08",
+      "sources": [
+        "https://arxiv.org/abs/2606.26028",
+        "https://arxiv.org/html/2606.26028"
+      ]
+    },
+    {
+      "claim": "AiKi's \"59.2% sybil reviewers\" claim is verbatim correct and is the BSC-specific figure.",
+      "detail": "Abstract, verbatim: \"we find that a substantial fraction of reviewers (73.5%, 59.2%, and 90.6% across Ethereum, BSC, and Base) exhibit coordinated Sybil behavior. After removing Sybil-flagged feedback, 15.8%, 77.9%, and 86.8% of rated agents, respectively, are left with no valid feedback.\" METHOD (verbatim): \"We construct a directed funding graph in which an edge A\u2192B denotes that address A is the first native-token funder of reviewer B. Reviewer clusters are defined by tracing reviewers to a common first-funder root.\" Note this is a first-funder heuristic, not behavioral clustering \u2014 it will over-count agents funded from a shared exchange/faucet and under-count sybils funded independently. Impact on rated agents: ETH 26.4%, BSC 81.4%, Base 96.2%. So on BSC, 59.2% of reviewers touch 81.4% of rated agents.",
+      "confidence": "high",
+      "source_date": "2026-07-08",
+      "sources": [
+        "https://arxiv.org/abs/2606.26028",
+        "https://arxiv.org/html/2606.26028"
+      ]
+    },
+    {
+      "claim": "8004scan exposes a fully open, unauthenticated, undocumented REST API at https://8004scan.io/api/v1 \u2014 this is the single highest-value ingestible source for AiKi.",
+      "detail": "Discovered by probing; NOT documented anywhere. /api/v1/openapi.json \u2192 404, /api/v1/docs \u2192 404, /api/agents \u2192 404 (Next.js HTML), api.8004scan.io/agents \u2192 404 JSON. Working endpoints, all HTTP 200, no API key, no rate-limit encountered at 12 concurrent requests: GET /api/v1/agents?limit=&offset=&chain_id=&is_testnet=&search=  \u2192 {items:[...], total, limit, offset}; GET /api/v1/agents/{chain_id}/{token_id}  (also /agents/{chain_id}/{contract_address}/{token_id}, identical response); GET /api/v1/chains \u2192 60 chains with provider status; GET /api/v1/feedbacks?limit=&chain_id=. 404 on: /stats, /networks, /leaderboard, /validations, /search, /agents/stats, /protocol/stats. Backend is FastAPI (422 validation errors expose path param types). Sorting params (sort=, order=) are accepted but appeared to be ignored in my tests \u2014 do not rely on them.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/agents?limit=1",
+        "https://8004scan.io/api/v1/chains",
+        "https://8004scan.io/api/v1/feedbacks?limit=1&chain_id=56"
+      ]
+    },
+    {
+      "claim": "Measured live 18 Aug 2026: 740,449 total agents indexed; 420,812 mainnet, 319,426 testnet. BSC holds 257,865 mainnet agents = 61.3% of all mainnet ERC-8004 registrations.",
+      "detail": "Queried GET /api/v1/agents?limit=1&chain_id=<id>, reading the `total` field. Mainnet per-chain, 18 Aug 2026: BSC(56) 257,865; Base(8453) 43,227; Ethereum(1) 30,588; Billions(45056) 25,975; X Layer(196) 10,847; Monad(143) 10,137; Celo(42220) 9,663; Abstract(2741) 9,589; MegaETH(4326) 8,283; Gnosis(100) 4,105; Shape(360) 1,993; SKALE Base(1187947933) 1,980; Monad Testnet(10143) 1,802; Solana(101) 1,460; Arbitrum(42161) 1,258; Injective EVM(1776) 932; Optimism(10) 527; Polygon(137) 516; Tempo(4217) 287; Avalanche(43114) 207; Mantle(5000) 139; Metis(1088) 138; Linea(59144) 110; Scroll(534352) 107; Taiko(167000) 90; GOAT(2345) 83; LUKSO(42) 8; Soneium(1868) 0; Plasma(9745) 0; Gate Layer(10088) 0. CRITICAL: the headline \"420,666+ Registered Agents\" on the 8004scan homepage is the MAINNET-ONLY count; the raw unfiltered API total (740,449) includes 319,426 testnet registrations. Always pass is_testnet=false.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/agents?limit=1",
+        "https://8004scan.io/api/v1/chains",
+        "https://8004scan.io/"
+      ]
+    },
+    {
+      "claim": "FIRST-PARTY MEASUREMENT: in a 400-agent sample spread across the full BSC registry, ZERO agents exposed a remotely invocable agent endpoint. The 4% figure is an upper bound.",
+      "detail": "Method: sampled token_ids at 16 offsets (0 to 255,000) across BSC's 257,865 agents via /api/v1/agents?chain_id=56&offset=N&limit=25; deduped to 400; fetched /api/v1/agents/56/{token_id} for each; extracted `services`; live-probed every endpoint with curl -L, 12s timeout, browser UA. RESULTS (N=400): offchain_uri present 400 (100.0%); registration file resolved 393 (98.2%); canonical type https://eips.ethereum.org/EIPS/eip-8004#registration-v1 369 (92.2%); declares >=1 service 161 (40.2%); is_endpoint_verified TRUE 0 (0.0%); health_status null 352 (88%). parse_status: success 358, warning 34, error 8. PROBE: 160 endpoints, 147 HTTP 200 (91.9% of declared, 36.8% of sample), 13 HTTP 404. But the 200s decompose to: evoevo.ai 141, q402.quackai.ai 5, ensoul.ac 1. Disqualification evidence below.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/agents?limit=25&chain_id=56&offset=0",
+        "https://8004scan.io/api/v1/agents/56/269666"
+      ]
+    },
+    {
+      "claim": "The dominant BSC \"live endpoint\" is a static marketing SPA that returns identical bytes for any agent id, including invalid ones.",
+      "detail": "141 of 147 reachable endpoints are of form https://evoevo.ai/agent/detail?id=<n>. I fetched three variants and hashed the response bodies: id=4538784 \u2192 MD5 2067c4db4f3e15616e96894ef3f89cc0; id=999999999 \u2192 2067c4db4f3e15616e96894ef3f89cc0; id=abc \u2192 2067c4db4f3e15616e96894ef3f89cc0. Byte-identical Next.js shell regardless of id, including a non-numeric id. This is a client-rendered profile page, not a machine-callable agent service. Any crawler doing a naive HTTP 200 liveness check counts all 141 as \"live agents.\" This is the single largest source of inflation in every ERC-8004 liveness statistic on BSC. Scale: search=evoevo on chain_id=56 returns total=77,265 \u2014 30.0% of all 257,865 BSC agents are EvoEvo registrations pointing at this same domain.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/agents?limit=1&search=evoevo&chain_id=56",
+        "https://8004scan.io/api/v1/agents/56/269666"
+      ]
+    },
+    {
+      "claim": "13 of 400 sampled BSC agents published an unsubstituted string-template placeholder as their on-chain A2A endpoint. All 404.",
+      "detail": "Verbatim endpoint value, published on-chain and served in the registration file for 13 distinct agents (token_ids incl. 228689, 257054): https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card \u2014 the literal characters {agentId} are present, never interpolated. All 13 returned HTTP 404. This is a shipped template bug in a bulk registration pipeline, permanently recorded on BSC. 13/13 = 100% of A2A declarations in my sample were broken this way. grep for '{' across sampled endpoints matched exactly these 13. Practical lesson for AiKi: any registration-file ingestion MUST reject endpoints containing unexpanded {\u2026} placeholders before they enter a discovery index.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/agents/56/269666"
+      ]
+    },
+    {
+      "claim": "The only genuine machine-readable service descriptors in the sample (5/400 = 1.25%) declare stdio transport and are therefore not remotely callable.",
+      "detail": "5 agents declared MCP at https://q402.quackai.ai/api/mcp/info. POST with a JSON-RPC 2.0 `initialize` (protocolVersion 2024-11-05) \u2192 HTTP 405 Method Not Allowed, i.e. not an MCP HTTP transport. GET returns a well-formed descriptor, verbatim excerpt: {\"type\":\"https://eips.ethereum.org/EIPS/eip-8004#service.mcp\",\"name\":\"@quackai/q402-mcp\",\"version\":\"0.11.15\",\"transport\":\"stdio\",\"registry\":{\"npm\":\"https://www.npmjs.com/package/@quackai/q402-mcp\",\"anthropicMcp\":\"https://registry.modelcontextprotocol.io\"},\"install\":{\"npx\":\"npx -y @quackai/q402-mcp@latest\",\"claudeCode\":\"claude mcp add q402 -- npx -y @quackai/q402-mcp@latest\"},\"tools\":[{\"name\":\"q402_pay\",...},{\"name\":\"q402_batch_pay\",...},{\"name\":\"q402_balance\",...},{\"name\":\"q402_quote\",...}]}. This is real, well-formed work \u2014 but transport:\"stdio\" means an agent-to-agent caller cannot invoke it over the network. Note this descriptor also reveals an undocumented canonical service type string: #service.mcp.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://q402.quackai.ai/api/mcp/info"
+      ]
+    },
+    {
+      "claim": "58.3% of sampled BSC agents inline their registration file as a data: URI, and a nonzero fraction store raw LLM prompt text in the URI field.",
+      "detail": "Of 400 offchain_uri values: 233 (58.3%) begin with `data:application/json;base64,` (e.g. data:application/json;base64,eyJ0eXBlIjoiaHR0cHM6Ly9laXBzLmV0aGVyZXVtLm9yZy9FSVBTL2VpcC04M...), 160 (40.0%) are https, and ~5-7 are neither \u2014 they contain literal prompt/description text such as \"Gluon + \u03b5\u2080 \u2192 Ordinal\", \"4 forces \u00d7 17 particles \u00d7 13.8\", \"Higgs \u00d7 Sumerian \u2192 G\", \"7k languages \u00d7 13.8B cosmic ye\". CONSEQUENCE: a data: URI is 100% \"resolvable\" with zero network I/O, so any metric of \"has a resolvable registration file\" is trivially inflated on BSC and means nothing about operational status. https-hosted registration files cluster on: metadata.evoevo.ai 142, termix-platform-prod.s3.ap-southeast-1.amazonaws.com 13, q402.quackai.ai 5. No IPFS in the sample.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/agents/56/269666"
+      ]
+    },
+    {
+      "claim": "Reputation on BSC is thin and concentrated; Base shows ~10x more feedback records than it has agents.",
+      "detail": "Measured via /api/v1/feedbacks?limit=1&chain_id=<id>, 18 Aug 2026: Base(8453) 438,609 feedbacks vs 43,227 agents (10.1 per agent); BSC(56) 11,705 feedbacks vs 257,865 agents (0.045 per agent); Ethereum(1) 3,217 vs 30,588. Sample of 100 BSC feedback records: only 21 unique reviewer addresses; top reviewer 0xfc77ff29178b7286a8ba703d7a70895ca74ff466 authored 23/100; second 0xdc7061aef29c41cb8a2f3b562f7a462835c747d4 12/100. 0/100 had a comment; 30/100 had an empty feedback_uri. Score distribution is degenerate: 66/100 scored exactly 70, then 60(10), 80(7), 100(5), 85(3), 82(3). This independently corroborates the paper's BSC finding at a different time point (Aug vs May 2026).",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/feedbacks?limit=1&chain_id=56",
+        "https://8004scan.io/api/v1/feedbacks?limit=100&chain_id=56"
+      ]
+    },
+    {
+      "claim": "Feedback records across all three chains are essentially evidence-free; reputation can be moved past a trust threshold for well under one cent on BSC.",
+      "detail": "Verbatim from the paper: \"The share of records with no payment proof and no task linkage reaches 98.7% on ETH, 100.0% on BSC, and 99.3% on Base.\" Note BSC is 100.0% \u2014 not a single BSC feedback record in the study window was grounded in a verifiable interaction. Median cost to move an agent's score past a \u03c4=90 trust threshold (Table 6): Ethereum $0.055, BSC $0.0042, Base $0.0027, and \"the median agent reaches \u03c4 with a single ceiling-valued feedback.\" Reputation Market Overview (Table 3): ETH 3,058 feedback / 1,559 rated agents / 618 reviewers / 4.9 per reviewer; BSC 29,444 / 4,310 / 76 reviewers / 387.4 per reviewer; Base 122,798 / 28,592 / 3,073 / 40.0 per reviewer. BSC's 76 unique reviewers averaging 387.4 reviews each is the clearest wash-reputation signature in the dataset.",
+      "confidence": "high",
+      "source_date": "2026-07-08",
+      "sources": [
+        "https://arxiv.org/html/2606.26028"
+      ]
+    },
+    {
+      "claim": "Cross-chain reputation is statistically uncorrelated \u2014 each chain is an isolated reputation silo.",
+      "detail": "Verbatim: \"Among agents declaring multi-chain registration, reputation scores are uncorrelated across chain pairs.\" BSC\u2013Base pair (n=159): Spearman \u03c1=0.05, p=0.56. ETH\u2013Base pair (n=28): \u03c1=0.14, p=0.48. Both p-values are far from significance. Conclusion quoted: \"each chain constitutes an isolated reputation silo.\" Sample sizes are small (n=159 and n=28), so treat as suggestive-of-null rather than proven-null, but there is certainly no evidence of portability.",
+      "confidence": "high",
+      "source_date": "2026-07-08",
+      "sources": [
+        "https://arxiv.org/html/2606.26028"
+      ]
+    },
+    {
+      "claim": "The second arXiv paper independently finds Ethereum ERC-8004 adoption is \"registration-heavy but operationally shallow\" with 0.19% of agents showing full operational evidence.",
+      "detail": "\"From Agent Identity to Agent Economy: Measuring the Operational Readiness of ERC-8004 AI Agents\", Rischan Mafrur, Priagung Khusumanegara, arXiv 2606.12128v1, 10 Jun 2026. METHOD: 10,000 agents (IDs 0\u20139999) on Ethereum mainnet, blocks 24,339,925\u201324,839,925, 29 Jan\u20139 Apr 2026, dataset sourced from Liu (2026) via Harvard Dataverse. NUMBERS: agents with service records 67 (0.67%); agents with feedback 628 (6.28%); full evidence across all four layers 19 (0.19%). Feedback: 980 total records, 197 unique clients, top client 645 records (65.82% of all feedback), HHI 0.436, Gini 0.783. Ownership: 394 unique owner wallets, mean 25.38 agents/owner, median 3, max single wallet 779 agents, top-10 wallets hold 51.40%, Gini 0.863. Service infra: 56.3% web, 2.7% MCP; most common domain marketplace.olas.network. NOTE: this paper reuses a third-party dataset rather than crawling independently, so it is not a fully independent replication of 2606.26028.",
+      "confidence": "high",
+      "source_date": "2026-06-10",
+      "sources": [
+        "https://arxiv.org/abs/2606.12128",
+        "https://arxiv.org/html/2606.12128v1"
+      ]
+    },
+    {
+      "claim": "The Graph's Agent0 subgraphs are a real, queryable, per-chain ERC-8004 data source with published subgraph IDs \u2014 the best structured alternative to 8004scan.",
+      "detail": "Repo github.com/agent0lab/subgraph. Query format: https://gateway.thegraph.com/api/<API_KEY>/subgraphs/id/<SUBGRAPH_ID>. Requires an API key \u2014 I confirmed an unauthenticated POST returns {\"errors\":[{\"message\":\"auth error: missing authorization header\"}]}. Subgraph IDs: Ethereum(1) FV6RR6y13rsnCxBAicKuQEwDp8ioEGiNaWaZUmvr1F8k; Base(8453) 43s9hQRurMGjuYnC1r2ZwS6xSQktbFyXMPMqGKUFJojb; BSC(56) D6aWqowLkWqBgcqmpNKXuNikPkob24ADXCciiP8Hvn1K; Polygon(137) 9q16PZv1JudvtnCAf44cBoxg82yK9SSsFvrjCY9xnneF; Monad(143) 4tvLxkczjhSaMiqRrCV1EyheYHyJ7Ad8jub1UUyukBjg; Sepolia(11155111) 6wQRC7geo9XYAhckfmfo8kbMRLeWU8KQd3XsJqFKmZLT; Base Sepolia(84532) 4yYAvQLFjBhBtdRCY7eUWo181VNoTSLLFd5M7FXQAi6u; BSC Chapel(97) BTjind17gmRZ6YhT9peaCM13SvWuqztsmqyfjpntbg3Z; Monad Testnet(10143) 8iiMH9sj471jbp7AwUuuyBXvPJqCEsobuHBeUEKQSxhU. Entities: Agent, Feedback (score 0-100, tags, revocation), Validation, Protocol, AgentRegistrationFile, FeedbackFile, ProtocolFeedbackStats, AgentFeedbackStats (hourly/daily). Self-hostable via docker compose + npm run deploy-local, querying http://localhost:8000/subgraphs/name/agent0-sdk/agent0-sdk \u2014 this matters, it means AiKi can run its own indexer with no gateway dependency.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://github.com/agent0lab/subgraph",
+        "https://thegraph.com/blog/agent0-subgraphs-live-erc-8004-agent-economy/"
+      ]
+    },
+    {
+      "claim": "ERC-8004 registries are deployed at the SAME two addresses on every chain, including BSC \u2014 verified independently from two sources.",
+      "detail": "IdentityRegistry 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432 and ReputationRegistry 0x8004BAa17C55a88189AE136b182e5fdA19dE9b63, identical across Ethereum, Base, Arbitrum, Optimism, Polygon, Linea, Scroll, Avalanche, BNB Chain, Celo, Gnosis, Monad, Abstract, Mantle, Soneium, Taiko (deterministic/vanity-prefixed deployment). Confirmed by the paper's Table 1 (with chain IDs ETH 1, BSC 56, Base 8453) and by the awesome-erc8004 deployment table. Independently corroborated by live API data: every BSC agent record I fetched carries contract_address 0x8004a169fb4a3325136eb29fa0ceb6d2e539a432. Paper block ranges: ETH 24,339,000\u201325,089,000; BSC 79,027,200\u201398,121,735; Base 41,663,700\u201345,959,820.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://arxiv.org/html/2606.26028",
+        "https://github.com/sudeepb02/awesome-erc8004",
+        "https://8004scan.io/api/v1/agents/56/269666"
+      ]
+    },
+    {
+      "claim": "EIP-8004 is still formally DRAFT status despite ~740k registrations \u2014 the spec can still change under anyone building on it.",
+      "detail": "Fetched eips.ethereum.org/EIPS/eip-8004 directly: status \"\u26a0\ufe0f Draft\", category Standards Track: ERC, Created 2025-08-13. Canonical registration file type string: \"https://eips.ethereum.org/EIPS/eip-8004#registration-v1\". Registration file has required fields type, name, description, image; a services array; optional supportedTrust; and a registrations array. Functions named in the spec text: Identity \u2014 register(), setAgentURI(), getMetadata(), setAgentWallet(); Reputation \u2014 giveFeedback(), revokeFeedback(), readFeedback(). CAVEAT: the EIP page does not publish consolidated IIdentityRegistry/IReputationRegistry interface blocks, so I am NOT supplying full Solidity signatures \u2014 parameter types and ordering must be read from github.com/erc-8004/erc-8004-contracts before writing any integration code. Widely-reported claims that ERC-8004 was \"finalized in October 2025\" are contradicted by the EIP page itself and should be treated as marketing.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://eips.ethereum.org/EIPS/eip-8004"
+      ]
+    },
+    {
+      "claim": "Named agent frameworks barely register on BSC; Olas and Virtuals are Base-centric and ElizaOS/AgentKit are near-absent everywhere.",
+      "detail": "Measured via GET /api/v1/agents?limit=1&search=<term>&chain_id=<id>, 18 Aug 2026. Ecosystem-wide totals: olas 5,005; chaoschain 293; virtuals 570; coinbase 89; agentkit 32; eliza 8. Per-chain: olas Base 641 (ETH/BSC queries timed out \u2014 unresolved); virtuals ETH 50, BSC 12, Base 446; eliza ETH 0, BSC 0, Base 7; agentkit ETH 0, BSC 0, Base 21; chaoschain 0 on all three of ETH/BSC/Base despite 293 ecosystem-wide. Corroborating the Ethereum picture, paper 2606.12128 found marketplace.olas.network was the single most common service domain on Ethereum. CAVEAT: this is substring search over name/description, so it undercounts frameworks that do not brand their agents and overcounts coincidental matches. Treat as order-of-magnitude. The clear signal: BSC's 257,865 agents are NOT coming from established agent frameworks \u2014 they are bulk registrations from EvoEvo (77,265 = 30.0%), Termix, and QuackAI.",
+      "confidence": "medium",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/agents?limit=1&search=olas",
+        "https://8004scan.io/api/v1/agents?limit=1&search=virtuals&chain_id=8453",
+        "https://8004scan.io/api/v1/agents?limit=1&search=evoevo&chain_id=56"
+      ]
+    },
+    {
+      "claim": "Ownership in my BSC sample is less concentrated than on Ethereum, but bulk-minting is still visible.",
+      "detail": "400 sampled BSC agents \u2192 338 unique owner addresses. Top owners: 0xad7d4d39badd41ca55a0c32b08b12696f2eee721 (24 agents), 0xebf9e34b26787a04072551c5301510ad6cf00c11 (15), 0x5b77026f2d449a8139aeec8994d8e0deb5a05dc7 (7), 0x70aa078a3c4cdc5ac757a8512f5be0ee08ccbb9b (3), 0x001e5f3351d32aefbc77c51ab32f6dc76f273967 (3). Contrast Ethereum (paper 2606.12128): 10,000 agents held by 394 wallets, max 779 agents in one wallet, top-10 = 51.40%, Gini 0.863. IMPORTANT SAMPLING CAVEAT: because my sample is 400 drawn from 257,865 (0.16%), a whale holding thousands of BSC agents would appear only a handful of times. This measurement understates true BSC concentration and should not be read as evidence that BSC ownership is healthy. The EvoEvo 30.0% platform share is the more reliable concentration signal.",
+      "confidence": "medium",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/agents?limit=25&chain_id=56&offset=0"
+      ]
+    },
+    {
+      "claim": "8004scan itself does not verify endpoints at scale \u2014 its own verification and health fields are almost entirely unpopulated.",
+      "detail": "Across 400 sampled BSC agents: is_endpoint_verified true for 0 (0.0%); endpoint_verified_at, endpoint_verified_domain, endpoint_verification_error all null; health_status null for 352/400 (88%); health_score null for 400/400 in the list projection. Where health_status IS populated (48 agents) it is a nested object, e.g. {\"services\":{\"web\":{\"domain\":\"evoevo.ai\",\"status\":\"skip...\"}}} \u2014 note status \"skip\", and one record carried checked_at \"2026-05-08\", i.e. three months stale. Fields exist as schema but not as data. CONSEQUENCE: nobody in this ecosystem is currently running continuous liveness verification. That is an open position, not a solved problem.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/agents/56/269666"
+      ]
+    },
+    {
+      "claim": "A broad set of ERC-8004 explorers, trust-scorers and registries exist, but none were verified by me to publish reliable liveness data.",
+      "detail": "From the awesome-erc8004 index: explorers 8004scan.io, agentscan.info, 8004agents.ai, trust8004.xyz, agenteconomy.to; trust/reputation RNWY (rnwy.com, claims trust scoring for 150K+ agents across 12 EVM chains), Agent Veil (EigenTrust), Verity, ORIGIN, Helixa (contract 0x2e3B541C59D38b84E3Bc54e977200230A204Fe60), 8k4protocol (api.8k4protocol.com); SDKs Agent0 (sdk.ag0.xyz), erc-8004-js / erc-8004-py (tetratorus), ChaosChain SDK, create-8004-agent (npx create-8004-agent); official repos github.com/erc-8004/erc-8004-contracts and github.com/erc-8004/best-practices, docs at best-practices.8004scan.io. Liveness spot-check: sdk.ag0.xyz HTTP 200, agentscan.info HTTP 200, best-practices.8004scan.io HTTP 200. The RNWY \"150K+ agents\" and Agent0 \"106,996 indexed agents (Base 33,939 / BSC 44,020 / ETH 29,037)\" figures came from search-result summaries I could NOT confirm at the primary source, and the Agent0 per-chain numbers are wildly inconsistent with 8004scan's BSC count of 257,865 \u2014 treat both as unverified marketing. dune.com/hashed_official/erc8004 exists but returned HTTP 500 on fetch.",
+      "confidence": "low",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://github.com/sudeepb02/awesome-erc8004",
+        "https://docs.altlayer.io/altlayer-documentation/8004-scan/overview"
+      ]
+    }
+  ],
+  "interfaces": [
+    {
+      "name": "8004scan agent detail response (BSC agent 269666) \u2014 abridged, verbatim field names and values",
+      "language": "json",
+      "body": "{\n  \"agent_id\": \"56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:269666\",\n  \"token_id\": \"269666\",\n  \"chain_id\": 56,\n  \"chain_type\": \"evm\",\n  \"is_testnet\": false,\n  \"contract_address\": \"0x8004a169fb4a3325136eb29fa0ceb6d2e539a432\",\n  \"owner_address\": \"0x18cfc46aca9ad16935908a124282d3327e2e7082\",\n  \"creator_address\": \"0x18cfc46aca9ad16935908a124282d3327e2e7082\",\n  \"agent_wallet\": \"0x18cfc46aca9ad16935908a124282d3327e2e7082\",\n  \"name\": \"Novagav6bix1s7l6\",\n  \"supported_protocols\": [\"Web\"],\n  \"x402_supported\": false,\n  \"services\": { \"web\": { \"endpoint\": \"https://evoevo.ai/agent/detail?id=4538784\" } },\n  \"created_block_number\": 116680396,\n  \"created_tx_hash\": \"0xafb7569ca9b01cc364b4c38016e60ddc43ec5f9907d188b100930140992e4b91\",\n  \"is_endpoint_verified\": false,\n  \"endpoint_verified_at\": null,\n  \"endpoint_verified_domain\": null,\n  \"endpoint_verification_error\": null,\n  \"endpoint_last_checked_at\": null,\n  \"is_active\": true,\n  \"supported_trust_models\": [],\n  \"health_status\": null,\n  \"health_score\": null,\n  \"health_checked_at\": null,\n  \"total_feedbacks\": 0,\n  \"total_validations\": 0,\n  \"successful_validations\": 0,\n  \"average_score\": 0.0,\n  \"rank\": null,\n  \"network_rank\": null,\n  \"parse_status\": {\n    \"info\": [], \"errors\": [], \"status\": \"success\", \"warnings\": [],\n    \"last_parsed_at\": \"2026-08-18T15:47:06.179883+00:00\"\n  },\n  \"ens\": null, \"did\": null,\n  \"mcp_server\": null, \"mcp_version\": null,\n  \"a2a_endpoint\": null, \"a2a_version\": null, \"agent_url\": null,\n  \"quality_score\": 0.0, \"popularity_score\": 0.0, \"activity_score\": 0.0,\n  \"wallet_score\": 0.0, \"freshness_score\": 0.0, \"metadata_completeness_score\": 0.0\n}",
+      "source": "https://8004scan.io/api/v1/agents/56/269666"
+    },
+    {
+      "name": "ERC-8004 registration file as actually served on BSC (raw_metadata.offchain_content) \u2014 verbatim",
+      "language": "json",
+      "body": "{\n  \"name\": \"Novagav6bix1s7l6\",\n  \"type\": \"https://eips.ethereum.org/EIPS/eip-8004#registration-v1\",\n  \"image\": \"https://evoevo.ai/images/avatar/01.jpg\",\n  \"active\": true,\n  \"services\": [\n    {\n      \"name\": \"web\",\n      \"endpoint\": \"https://evoevo.ai/agent/detail?id=4538784\",\n      \"description\": \"Official EvoEvo agent website profile\"\n    }\n  ],\n  \"description\": \"An EvoEvo AI Agent. Approach the question like a creative challenger...\",\n  \"x402Support\": false,\n  \"registrations\": [\n    {\n      \"agentId\": 269666,\n      \"agentRegistry\": \"eip155:56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432\"\n    }\n  ]\n}",
+      "source": "https://8004scan.io/api/v1/agents/56/269666"
+    },
+    {
+      "name": "On-chain metadata key/value pairs on BSC (raw_metadata.onchain) \u2014 hex-encoded, verbatim",
+      "language": "json",
+      "body": "[\n  { \"key\": \"agentWallet\",     \"value\": \"0x18cfc46aca9ad16935908a124282d3327e2e7082\", \"decoded\": null },\n  { \"key\": \"platform\",        \"value\": \"0x45766f45766f\", \"decoded\": null },\n  { \"key\": \"platformAgentId\", \"value\": \"0x00000000000000000000000000000000000000000000000000000000004541a0\", \"decoded\": null },\n  { \"key\": \"displayName\",     \"value\": \"0x4e6f7661676176366269783173376c36\", \"decoded\": null },\n  { \"key\": \"profileURL\",      \"value\": \"0x68747470733a2f2f65766f65766f2e61692f6167656e742f64657461696c3f69643d34353338373834\", \"decoded\": null }\n]\n\n// NOTE: `decoded` is null for every key \u2014 the indexer does NOT decode these.\n// 0x45766f45766f = \"EvoEvo\". Decoding the `platform` key is the cheapest reliable\n// way to attribute bulk registrations to their originating platform on BSC.",
+      "source": "https://8004scan.io/api/v1/agents/56/269666"
+    },
+    {
+      "name": "8004scan feedback record on BSC \u2014 verbatim, showing the evidence-free pattern",
+      "language": "json",
+      "body": "{\n  \"agent_id\": \"5c703849-b8f1-4b73-945d-8caaaa8926a1\",\n  \"score\": 60,\n  \"value\": \"1\",\n  \"value_decimals\": 0,\n  \"comment\": null,\n  \"feedback_uri\": \"\",\n  \"feedback_id\": \"56:120332:0xfc77ff29178b7286a8ba703d7a70895ca74ff466:3\",\n  \"transaction_hash\": \"0x48936325c986a109c7a908fa99e4ae5e2671f04e364cf6340f24021293f830f7\",\n  \"block_number\": 108113040,\n  \"chain_id\": 56,\n  \"is_testnet\": false,\n  \"user_address\": \"0xfc77ff29178b7286a8ba703d7a70895ca74ff466\",\n  \"agent\": {\n    \"token_id\": \"120332\",\n    \"chain_id\": 56,\n    \"registry_address\": \"0x8004a169fb4a3325136eb29fa0ceb6d2e539a432\",\n    \"name\": \"Agnet 121\",\n    \"ens\": null\n  },\n  \"user\": { \"address\": \"0xfc77ff29178b7286a8ba703d7a70895ca74ff466\", \"ens\": null, \"username\": null, \"validator_tier\": null },\n  \"endpoint\": \"https://q402.quackai.ai/api/relay/info\"\n}\n\n// feedback_id format: \"{chain_id}:{agent_token_id}:{reviewer_address}:{feedback_index}\"\n// feedback_uri empty and comment null => no off-chain evidence attached.\n// Agent name \"Agnet 121\" (sic) is a typo'd bulk-mint artifact.",
+      "source": "https://8004scan.io/api/v1/feedbacks?limit=1&chain_id=56"
+    },
+    {
+      "name": "Broken A2A endpoint published on-chain by 13 BSC agents \u2014 verbatim",
+      "language": "text",
+      "body": "https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card\n\n// The literal characters \"{agentId}\" are stored on-chain, never interpolated.\n// Observed on token_ids 228689, 257054 and 11 others in a 400-agent sample.\n// All 13 return HTTP 404.\n// Ingestion rule: reject any endpoint matching /\\{[A-Za-z_][A-Za-z0-9_]*\\}/",
+      "source": "https://8004scan.io/api/v1/agents/56/228689"
+    },
+    {
+      "name": "QuackAI q402 MCP service descriptor \u2014 the one genuine service descriptor found on BSC, verbatim",
+      "language": "json",
+      "body": "{\n  \"type\": \"https://eips.ethereum.org/EIPS/eip-8004#service.mcp\",\n  \"name\": \"@quackai/q402-mcp\",\n  \"version\": \"0.11.15\",\n  \"transport\": \"stdio\",\n  \"registry\": {\n    \"npm\": \"https://www.npmjs.com/package/@quackai/q402-mcp\",\n    \"anthropicMcp\": \"https://registry.modelcontextprotocol.io\"\n  },\n  \"install\": {\n    \"npx\": \"npx -y @quackai/q402-mcp@latest\",\n    \"claudeCode\": \"claude mcp add q402 -- npx -y @quackai/q402-mcp@latest\"\n  },\n  \"tools\": [\n    { \"name\": \"q402_pay\",       \"description\": \"Execute a single gasless stablecoin payment.\" },\n    { \"name\": \"q402_batch_pay\", \"description\": \"Execute many payments in one relayed call.\" },\n    { \"name\": \"q402_balance\",   \"description\": \"Read stablecoin holdings for the agent or user.\" },\n    { \"name\": \"q402_quote\",     \"description\": \"Price a payment before ...\" }\n  ]\n}\n\n// transport:\"stdio\" => NOT remotely invocable. POST /api/mcp/info with a\n// JSON-RPC initialize returns HTTP 405 Method Not Allowed. GET returns this doc.\n// Also reveals an undocumented canonical type string: #service.mcp",
+      "source": "https://q402.quackai.ai/api/mcp/info"
+    },
+    {
+      "name": "8004scan API \u2014 verified working endpoint surface (undocumented; discovered by probing)",
+      "language": "http",
+      "body": "BASE = https://8004scan.io/api/v1        # no auth, no API key observed\n\n# List / count agents. Read `total` for exact counts.\nGET /api/v1/agents?limit=100&offset=0&chain_id=56&is_testnet=false\nGET /api/v1/agents?limit=1&search=evoevo&chain_id=56\n  -> { \"items\": [ ... ], \"total\": 77265, \"limit\": 1, \"offset\": 0 }\n\n# Agent detail \u2014 BOTH forms return an identical body.\nGET /api/v1/agents/{chain_id}/{token_id}\nGET /api/v1/agents/{chain_id}/{contract_address}/{token_id}\n  -> includes services, raw_metadata.offchain_uri, raw_metadata.offchain_content,\n     raw_metadata.onchain[], parse_status, is_endpoint_verified, health_status\n\n# Feedback / reputation\nGET /api/v1/feedbacks?limit=100&chain_id=56\n  -> { \"items\": [ ... ], \"total\": 11705 }\n\n# Supported chains (60 entries incl. testnets) + indexer provider health\nGET /api/v1/chains\n  -> { \"success\": true, \"data\": { \"chains\": [ { \"chain_key\": \"eth_mainnet\",\n         \"chain_id\": 1, \"name\": \"Ethereum Mainnet\", \"is_testnet\": false,\n         \"enabled\": true, \"blockscout_configured\": true,\n         \"etherscan_supported\": true, \"etherscan_keys_present\": true,\n         \"effective_provider\": \"blockscout\", \"provider_status\": \"available\",\n         \"provider_reason\": \"blockscout_configured\" }, ... ] } }\n\n# CONFIRMED 404 (do not build against these):\n#   /api/v1/openapi.json  /api/v1/docs      /api/v1/stats\n#   /api/v1/networks      /api/v1/search    /api/v1/leaderboard\n#   /api/v1/validations   /api/v1/agents/stats  /api/v1/protocol/stats\n#   /api/agents (Next.js HTML 404)   https://api.8004scan.io/agents (JSON 404)\n#\n# Backend is FastAPI: bad path params return HTTP 422 with a typed\n# {\"detail\":[{\"type\":\"int_parsing\",\"loc\":[\"path\",\"chain_id\"],...}]} body.\n# sort= / order= are ACCEPTED but appeared to be IGNORED \u2014 do not rely on them.\n# Some search+chain_id combinations time out (>30s). Add retries/backoff.",
+      "source": "https://8004scan.io/api/v1/chains"
+    },
+    {
+      "name": "Agent0 subgraph IDs for The Graph gateway (ERC-8004, per chain)",
+      "language": "text",
+      "body": "QUERY URL: https://gateway.thegraph.com/api/<API_KEY>/subgraphs/id/<SUBGRAPH_ID>\n(unauthenticated -> {\"errors\":[{\"message\":\"auth error: missing authorization header\"}]})\n\nEthereum      1           FV6RR6y13rsnCxBAicKuQEwDp8ioEGiNaWaZUmvr1F8k\nBase          8453        43s9hQRurMGjuYnC1r2ZwS6xSQktbFyXMPMqGKUFJojb\nBSC           56          D6aWqowLkWqBgcqmpNKXuNikPkob24ADXCciiP8Hvn1K   <-- AiKi's chain\nPolygon       137         9q16PZv1JudvtnCAf44cBoxg82yK9SSsFvrjCY9xnneF\nMonad         143         4tvLxkczjhSaMiqRrCV1EyheYHyJ7Ad8jub1UUyukBjg\nSepolia       11155111    6wQRC7geo9XYAhckfmfo8kbMRLeWU8KQd3XsJqFKmZLT\nBase Sepolia  84532       4yYAvQLFjBhBtdRCY7eUWo181VNoTSLLFd5M7FXQAi6u\nBSC Chapel    97          BTjind17gmRZ6YhT9peaCM13SvWuqztsmqyfjpntbg3Z\nMonad Testnet 10143       8iiMH9sj471jbp7AwUuuyBXvPJqCEsobuHBeUEKQSxhU\n\nENTITIES: Agent, Feedback (score 0-100, tags, revocation, responses),\n          Validation (request/response lifecycle), Protocol,\n          AgentRegistrationFile, FeedbackFile (incl. proof-of-payment fields),\n          ProtocolFeedbackStats, AgentFeedbackStats (hourly/daily)\n\nSELF-HOST: docker compose up -d && npm run create-local && npm run deploy-local\n           -> http://localhost:8000/subgraphs/name/agent0-sdk/agent0-sdk",
+      "source": "https://github.com/agent0lab/subgraph"
+    },
+    {
+      "name": "ERC-8004 registry addresses (identical on all chains, incl. BSC 56)",
+      "language": "text",
+      "body": "IdentityRegistry    0x8004A169FB4a3325136EB29fA0ceB6D2e539a432\nReputationRegistry  0x8004BAa17C55a88189AE136b182e5fdA19dE9b63\n\nSame two addresses on: Ethereum(1), BSC(56), Base(8453), Arbitrum(42161),\nOptimism(10), Polygon(137), Linea(59144), Scroll(534352), Avalanche(43114),\nCelo(42220), Gnosis(100), Monad(143), Abstract(2741), Mantle(5000),\nSoneium(1868), Taiko(167000).\n\nCAIP-10 style registry ref used inside registration files:\n  \"agentRegistry\": \"eip155:56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432\"\n\nPaper crawl block ranges (through 2026-05-13 21:49:47 UTC):\n  ETH   24,339,000 - 25,089,000\n  BSC   79,027,200 - 98,121,735\n  Base  41,663,700 - 45,959,820\n\nWARNING: EIP-8004 is status DRAFT (created 2025-08-13). The EIP page does NOT\npublish consolidated IIdentityRegistry / IReputationRegistry Solidity blocks.\nFunction names appearing in spec prose only:\n  Identity:   register(), setAgentURI(), getMetadata(), setAgentWallet()\n  Reputation: giveFeedback(), revokeFeedback(), readFeedback()\nDO NOT write integration code from these names \u2014 parameter types and ordering\nwere NOT verified. Read github.com/erc-8004/erc-8004-contracts first.",
+      "source": "https://eips.ethereum.org/EIPS/eip-8004"
+    }
+  ],
+  "gaps": [
+    "FULL SOLIDITY INTERFACES NOT VERIFIED. The EIP-8004 page does not publish consolidated IIdentityRegistry/IReputationRegistry interface blocks. I have function NAMES from spec prose (register, setAgentURI, getMetadata, setAgentWallet, giveFeedback, revokeFeedback, readFeedback) but NOT their parameter types, ordering, return values, or event signatures. I did not fetch github.com/erc-8004/erc-8004-contracts. Do this before writing any contract integration \u2014 nothing here is sufficient to code against.",
+    "MY BSC REACHABILITY MEASUREMENT IS N=400 OUT OF 257,865 (0.16%). Sampling was 16 offset-strata of 25, which spreads across registration time but is NOT a uniform random sample and gives wide error bars on any sub-5% quantity. The '0 of 400 remotely invocable' result is strong evidence that the true rate is very low (95% CI upper bound roughly 0.9%), but it is not proof of zero. Re-run at N>=5,000 with uniform random token_ids before publishing any headline number.",
+    "I PROBED ONLY HTTP REACHABILITY, NOT AGENT FUNCTIONALITY. A 200 response means a server answered. I disqualified evoevo.ai by MD5-comparing responses across valid and invalid ids, and tested MCP with a real JSON-RPC initialize, but I did not attempt A2A agent-card negotiation, x402 payment challenges, or actual task execution against any agent. 'Reachable' and 'functional' remain distinct and I only measured the former.",
+    "THE DUNE DASHBOARD COULD NOT BE READ. dune.com/hashed_official/erc8004 returned HTTP 500 on fetch. I could not verify what it tracks, its refresh cadence, or whether its numbers agree with 8004scan. Dune query results are also available via Dune's own API with a key \u2014 unexplored.",
+    "AGENT0'S PUBLISHED AGENT COUNTS ARE UNVERIFIED AND CONFLICT WITH 8004SCAN. A search summary attributed to Agent0 '106,996 indexed agents (Base 33,939 / BSC 44,020 / ETH 29,037)'. I could not confirm this at any primary source, and BSC 44,020 is 5.9x lower than 8004scan's directly-measured 257,865. Two indexers disagree by an order of magnitude on the same registry contract. This discrepancy is unresolved and is itself a significant finding \u2014 AiKi should reconcile it by running the BSC subgraph query directly with a Graph API key (I had none).",
+    "RNWY's '150K+ agents across 12 EVM chains' trust-scoring claim came from an aggregated list, not from rnwy.com itself. Unverified marketing. Same for 8k4protocol's api.8k4protocol.com, Helixa's 11-factor Cred Score, and agenteconomy.to \u2014 none were fetched at source.",
+    "FRAMEWORK ATTRIBUTION IS WEAK. My olas/virtuals/eliza/agentkit counts come from substring search over agent name+description via the 8004scan search= param. This undercounts frameworks that do not brand agent names and overcounts coincidental matches. The olas queries for chain_id=1 and chain_id=56 TIMED OUT and returned nothing \u2014 I have no Olas count for Ethereum or BSC. A rigorous attribution should decode the on-chain `platform` metadata key instead (I confirmed it holds hex-encoded platform names, e.g. 0x45766f45766f = 'EvoEvo'), which I did only for the 400-agent sample.",
+    "I DID NOT INDEPENDENTLY REPRODUCE THE 59.2% SYBIL FIGURE. I verified it verbatim in the paper's abstract and read its first-funder-graph method, and I independently observed strongly corroborating concentration (21 unique reviewers across 100 sampled BSC feedback records; top reviewer 23%; 66% of scores exactly 70). But I did not build the funding graph myself. The paper's first-funder heuristic will over-flag agents funded from shared exchange hot wallets \u2014 treat 59.2% as method-dependent, not a physical constant.",
+    "PAPER 2606.12128 IS NOT AN INDEPENDENT REPLICATION. It analyses a third-party dataset (Liu 2026, Harvard Dataverse) rather than crawling chains itself, and covers only Ethereum IDs 0-9999. Its agreement with 2606.26028 is therefore weaker corroboration than it first appears. I also could not retrieve its authors' affiliations or several table values (agents with metadata, transfer activity, cross-chain registration counts were not stated in the fetched HTML).",
+    "TIME-BASIS MISMATCH. The papers' window ends 13 May 2026; my measurements are 18 Aug 2026 \u2014 a three-month gap during which BSC grew from ~90,145 to 257,865 agents (2.9x). Do not mix the two vintages in a single chart. Also note the paper reports BSC 83.4% valid registration files vs my 92.2% canonical-type rate; these are similar but measured at different times with slightly different definitions and are not directly comparable.",
+    "NO WASH-TRADING / FAKE-VOLUME ANALYSIS OF PAYMENTS. I found strong wash-REPUTATION evidence (100.0% of BSC feedback lacking payment proof or task linkage; 76 reviewers averaging 387.4 reviews each). But I did not analyse x402 settlement flows for circular or self-dealing payment patterns. The paper touches x402 volume on Base but I did not extract a BSC payment-volume figure \u2014 I am not aware of any reliable one existing.",
+    "8004SCAN OPERATOR AND SLA UNKNOWN. AltLayer documents 8004scan but the docs page does not state who operates it, its indexing lag, backfill guarantees, rate limits, or terms of use. The API is undocumented, so it may change or close without notice. Treat it as an unstable dependency \u2014 do not make it a single point of failure."
+  ],
+  "aiki_implications": [
+    "THE THESIS IS EMPIRICALLY SAFE \u2014 AND THE REALITY IS WORSE THAN THE DOCS CLAIM. Both asserted numbers check out verbatim in arXiv 2606.26028 (BSC: 4% live endpoints, 59.2% sybil reviewers). AiKi can cite them without hedging. But my own probe found the 4% is a DECLARATION metric; when you actually disqualify a static marketing SPA, unsubstituted {agentId} templates, and stdio-only MCP, 0 of 400 sampled BSC agents were remotely invocable. Lead with the paper's peer-reviewable 4%, and hold the first-party 0/400 measurement as the sharper follow-up. Publish the method (offsets, N, probe rules, MD5 disqualification) so it is reproducible \u2014 that is what makes it credible rather than another unsourced claim.",
+    "BSC IS THE RIGHT CHAIN FOR THIS PRODUCT, FOR AN UNCOMFORTABLE REASON. BSC holds 257,865 of 420,812 mainnet ERC-8004 agents (61.3%) \u2014 more than Base and Ethereum combined by 3.5x \u2014 while having the WORST evidence quality: 100.0% of its feedback records lack any payment proof or task linkage, and 30.0% of all its agents (77,265) are EvoEvo bulk registrations pointing at one non-functional domain. Largest registry, emptiest substance. That is precisely the market for 'evidence over claims'. Say it plainly; do not soften it.",
+    "SHIP CONTINUOUS LIVENESS VERIFICATION AS THE WEDGE \u2014 NOBODY IS DOING IT. 8004scan has is_endpoint_verified, endpoint_verified_at, health_status and health_score in its schema and populates them for essentially nobody: 0/400 verified, 88% null health_status, and one populated record was three months stale with status 'skip'. The field names exist; the data does not. A verifier that actually runs is an unoccupied position in this ecosystem, and it is the cheapest possible proof of AiKi's thesis.",
+    "IMPLEMENT THESE FIVE DISQUALIFIERS BEFORE ANY AGENT ENTERS AiKi's INDEX. Each is a real failure I measured, not a hypothetical. (1) Reject endpoints matching /\\{[A-Za-z_][A-Za-z0-9_]*\\}/ \u2014 caught 13/13 broken A2A registrations. (2) Fetch each endpoint twice, once with the real agent id and once with a nonsense id, and hash both bodies; identical hashes mean a static shell, not an agent \u2014 this alone disqualifies 141 of 147 apparently-live BSC endpoints. (3) Treat data: URIs as NOT resolvable evidence \u2014 58.3% of BSC agents inline base64 registration files that resolve with zero network I/O and prove nothing. (4) Require a protocol handshake, not a status code: JSON-RPC initialize for MCP, agent-card negotiation for A2A. A 200 on an HTML page is not an agent. (5) Reject transport:\"stdio\" for remote invocation \u2014 the only genuine BSC service descriptor I found (q402) is stdio and cannot be called over a network.",
+    "BUILD ON TWO INDEPENDENT INDEXERS, BECAUSE THEY DISAGREE 5.9x. 8004scan's undocumented API (https://8004scan.io/api/v1, no key) is the fastest path to data and uniquely exposes raw_metadata.offchain_content and parse_status. But it is undocumented, unversioned, has no stated SLA or operator, times out on some queries, and silently ignores sort=/order=. Agent0's BSC subgraph (D6aWqowLkWqBgcqmpNKXuNikPkob24ADXCciiP8Hvn1K) is self-hostable via docker compose \u2014 that removes the single point of failure entirely. RESOLVE THE 44,020-vs-257,865 BSC DISCREPANCY FIRST: two indexers reading the same contract differ by 5.9x, and until you know why, every downstream number AiKi publishes is suspect. This is the highest-priority open task.",
+    "DO NOT BUILD ON THE REPUTATION REGISTRY AS A TRUST SIGNAL \u2014 IT COSTS $0.0042 TO DEFEAT ON BSC. Median cost to push an agent past a \u03c4=90 threshold is $0.0042 on BSC, and 'the median agent reaches \u03c4 with a single ceiling-valued feedback.' My own sample: 21 unique reviewers across 100 records, 66% of scores exactly 70, zero comments. AiKi must define its own evidence primitive \u2014 signed payment receipts, task-completion attestations, or challenge-response proofs \u2014 and treat native ERC-8004 feedback as an untrusted input to be scored, never as ground truth. This is the core product decision and the data fully supports taking the hard path.",
+    "REPUTATION IS CHAIN-LOCAL; DO NOT PROMISE PORTABILITY YOU CANNOT DELIVER. BSC-Base score correlation is Spearman \u03c1=0.05, p=0.56 (n=159) \u2014 statistically indistinguishable from noise. Each chain is an isolated silo. Cross-chain reputation import is a genuine unsolved problem and therefore a defensible feature IF AiKi carries its own portable evidence, but marketing it as solved by ERC-8004 would be false.",
+    "DECODE THE on-chain `platform` KEY \u2014 IT IS THE CHEAPEST SYBIL/BULK-MINT DETECTOR AVAILABLE. 8004scan leaves raw_metadata.onchain[].decoded null for every key. Decoding platform (0x45766f45766f = 'EvoEvo') instantly attributes 30.0% of BSC to one bulk registrant. This is free, unexploited signal that no existing indexer surfaces, and it is far more reliable than the name/description substring search everyone (including my own framework counts) currently relies on.",
+    "NO ESTABLISHED AGENT FRAMEWORK IS MEANINGFULLY ON BSC \u2014 SO DO NOT BUILD FRAMEWORK-SPECIFIC INTEGRATIONS FIRST. Measured: virtuals 12 on BSC, eliza 0, agentkit 0, chaoschain 0. Olas and Virtuals are Base-centric (641 and 446). BSC's volume is bulk registrations from EvoEvo, Termix and QuackAI, not from ElizaOS/Olas/AgentKit users. Optimize onboarding for agents that do not yet exist on BSC rather than for integrations with frameworks that have not arrived. Treat these counts as order-of-magnitude \u2014 they come from substring search and the Olas BSC query timed out.",
+    "EIP-8004 IS STILL DRAFT (created 2025-08-13) DESPITE ~740k REGISTRATIONS. Widely-repeated claims that it was 'finalized in October 2025' are contradicted by the EIP page itself. Registry ABIs and the registration-file schema can still change. Version AiKi's parsers against the canonical type string 'https://eips.ethereum.org/EIPS/eip-8004#registration-v1', keep an adapter layer, and note that undocumented service-type strings already exist in the wild (I found '#service.mcp' in a live descriptor) \u2014 so parse defensively rather than against a closed enum.",
+    "TREAT THE HEADLINE ADOPTION NUMBER AS A TRAP. 8004scan's homepage '420,666+ Registered Agents' is mainnet-only; the raw API total is 740,449 because 319,426 registrations (43%) are TESTNET. Anyone quoting ~740k as adoption is wrong, and anyone quoting ~420k as active agents is wrong by roughly two further orders of magnitude. Always pass is_testnet=false, and use this gap as a concrete worked example of the measurement discipline AiKi is selling."
+  ]
+}

@@ -1,0 +1,168 @@
+{
+  "topic": "ERC-8004 \"Trustless Agents\" \u2014 the specification text itself (eips.ethereum.org / ethereum-ERCs master)",
+  "verdict": "SOLID",
+  "executive_summary": "ERC-8004 (Standards Track / ERC, status **Draft**, created 2025-08-13, last content commit **2026-01-25**) defines three registries: Identity, Reputation, Validation. Authors: Marco De Rossi (@MarcoMetaMask), Davide Crapis (@dcrapis, EF), Jordan Ellis (Google), Erik Reppel (Coinbase). Requires EIP-155, 712, 721, 1271.\n\nIdentity is an **ERC-721 + URIStorage** contract. `agentId` == ERC-721 `tokenId`, assigned incrementally; `agentURI` == `tokenURI`. Agents are transferable NFTs; the token owner owns the agent and can delegate to ERC-721 operators. Global identifier is the CAIP-ish string `{namespace}:{chainId}:{identityRegistry}` plus `agentId`. Onchain: token, URI, and an arbitrary `string key => bytes value` metadata map (`setMetadata`/`getMetadata`, `MetadataSet` event). One reserved key: `agentWallet`, settable only via `setAgentWallet(agentId,newWallet,deadline,signature)` proven by EIP-712 (EOA) or ERC-1271 (contract wallet), and auto-cleared on transfer. Everything else lives offchain in the registration file the `agentURI` resolves to (ipfs://, https://, or base64 `data:` for fully-onchain).\n\nThe registration file is a JSON doc with required `type`, `name`, `description`, `image`, `registrations[]` (`agentId` + `agentRegistry`) \u2014 the back-link that anchors the file to the chain \u2014 plus optional `services[]`, `x402Support`, `active`, `supportedTrust`. Optional endpoint-domain proof: `https://{endpoint-domain}/.well-known/agent-registration.json`.\n\nReputation is permissionless: any address except the agent owner/operator may `giveFeedback` with an `int128 value` + `uint8 valueDecimals` (0\u201318), two free-form tags, an endpoint, and a `feedbackURI` + `keccak256` `feedbackHash`. Anti-spam is explicitly punted to offchain reputation-of-reviewers systems. Validation: owner/operator opens `validationRequest(validator, agentId, requestURI, requestHash)`; only that validator may `validationResponse(requestHash, uint8 response /*0..100*/, ...)`, repeatable for progressive finality. Named trust models: `reputation`, `crypto-economic`, `tee-attestation`. **No custom errors are declared anywhere in the spec.**",
+  "findings": [
+    {
+      "claim": "Status is Draft (not Review/Final) as of 2026-08-18, despite an Oct-2025 'Move to Review' commit; last substantive commit 2026-01-25",
+      "detail": "Front matter fetched verbatim from ethereum/ERCs master: `eip: 8004 / title: Trustless Agents / description: Discover agents and establish trust through reputation and validation / author: Marco De Rossi (@MarcoMetaMask), Davide Crapis (@dcrapis) <davide@ethereum.org>, Jordan Ellis <jordanellis@google.com>, Erik Reppel <erik.reppel@coinbase.com> / discussions-to: https://ethereum-magicians.org/t/erc-8004-trustless-agents/25098 / status: Draft / type: Standards Track / category: ERC / created: 2025-08-13 / requires: 155, 712, 721, 1271`. eips.ethereum.org renders the same Draft status. Git history for ERCS/erc-8004.md: 2026-01-25 'Update ERC-8004: Updates from community feedback'; 2026-01-13 '(#1470)'; 2026-01-07 typos; 2026-01-07 update; 2025-10-08 'Move to Review (#1244)'. Inference (medium confidence): it was moved to Review then reverted to Draft by EIP editors because the Jan-2026 changes were substantive. There is no `last-updated` field in the EIP format; use the commit date. Engineering consequence: the interface is still mutable \u2014 pin to a commit hash, not to 'ERC-8004'.",
+      "confidence": "high",
+      "source_date": "2026-01-25 (last commit); fetched 2026-08-18",
+      "sources": [
+        "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md",
+        "https://eips.ethereum.org/EIPS/eip-8004",
+        "https://api.github.com/repos/ethereum/ERCs/commits?path=ERCS/erc-8004.md&per_page=5"
+      ]
+    },
+    {
+      "claim": "Agent identity = ERC-721 token. agentId is the incrementally-assigned tokenId; agentURI is the tokenURI. No DID, no ENS requirement.",
+      "detail": "Verbatim: \"The Identity Registry uses ERC-721 with the URIStorage extension for agent registration, making all agents immediately browsable and transferable with NFTs-compliant apps.\" Global identity = *agentRegistry* `{namespace}:{chainId}:{identityRegistry}` (e.g. `eip155:1:0x742...`) + *agentId* = \"The ERC-721 tokenId assigned incrementally by the registry\". \"Throughout this document, tokenId in ERC-721 is referred to as agentId and tokenURI in ERC-721 is referred to as agentURI. The owner of the ERC-721 token is the owner of the agent and can transfer ownership or delegate management (e.g., updating the registration file) to operators, as supported by ERC721URIStorage.\" ENS and DID are merely *optional entries in the offchain services array* (`{\"name\":\"ENS\",\"endpoint\":\"vitalik.eth\"}`, `{\"name\":\"DID\",\"endpoint\":\"did:method:foobar\"}`), never the identity primitive. For AiKi on BNB (eip155:56) the identifier is `eip155:56:{yourRegistryAddress}` + agentId.",
+      "confidence": "high",
+      "source_date": "2026-01-25",
+      "sources": [
+        "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+      ]
+    },
+    {
+      "claim": "Onchain state is deliberately minimal: token + URI + an arbitrary bytes metadata map, with exactly one reserved key (`agentWallet`) guarded by EIP-712/ERC-1271",
+      "detail": "Onchain: ERC-721 ownership, agentURI (URIStorage), and `mapping(agentId => mapping(string metadataKey => bytes metadataValue))` exposed via `setMetadata`/`getMetadata` + `MetadataSet(uint256 indexed agentId, string indexed indexedMetadataKey, string metadataKey, bytes metadataValue)` (note both an indexed and a raw copy of the key). Verbatim: \"The key `agentWallet` is reserved and cannot be set via setMetadata() or during register() (including the metadata array overload). It represents the address where the agent receives payments and is initially set to the owner's address. To change it, the agent owner must prove control of the new wallet by providing a valid EIP-712 signature for EOAs or ERC-1271 for smart contract wallets.\" And: \"When the agent is transferred, agentWallet is automatically cleared (effectively resetting it to the zero address) and must be re-verified by the new owner.\" `register()` emits one Transfer, one MetadataSet for `agentWallet`, one MetadataSet per extra entry, and `Registered`. The EIP-712 typed-data struct for setAgentWallet is NOT defined in the spec.",
+      "confidence": "high",
+      "source_date": "2026-01-25",
+      "sources": [
+        "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+      ]
+    },
+    {
+      "claim": "agentURI resolution accepts any scheme; the offchain registration file links back onchain via a mandatory `registrations[]` array, not a signature",
+      "detail": "Verbatim: \"The agentURI MUST resolve to the agent registration file. It MAY use any URI scheme such as `ipfs://` (e.g., ipfs://cid), `https://` (e.g., https://example.com/agent3.json), or a base64-encoded `data:` URI (e.g., data:application/json;base64,eyJ0eXBlIjoi...) for fully on-chain metadata.\" The back-link is declarative: each `registrations` entry carries `agentId` + `agentRegistry`; \"Agents SHOULD have at least one registration (multiple are possible), and all fields in the registration are mandatory.\" There is NO cryptographic signature over the registration file \u2014 trust flows from the fact that the onchain agentURI points at the file (the owner controls the pointer). Multiple registrations let one agent card cover several chains. Required top-level fields: `type`, `name`, `description`, `image`, `registrations`. \"The type, name, description, and image fields at the top SHOULD ensure compatibility with ERC-721 apps.\" `supportedTrust` is OPTIONAL: \"If absent or empty, this ERC is used only for discovery, not for trust.\" The `version` field inside a service is a SHOULD, not a MUST.",
+      "confidence": "high",
+      "source_date": "2026-01-25",
+      "sources": [
+        "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+      ]
+    },
+    {
+      "claim": "The only /.well-known path in the spec is `/.well-known/agent-registration.json`, and it is OPTIONAL, for endpoint-domain verification only",
+      "detail": "Verbatim: \"Since endpoints can point to domains not controlled by the agent owner, an agent MAY optionally prove control of an HTTPS endpoint-domain by publishing `https://{endpoint-domain}/.well-known/agent-registration.json` containing at least a `registrations` list (or the full agent registration file). Users MAY treat the endpoint-domain as verified if the file is reachable over HTTPS and includes a `registrations` entry whose `agentRegistry` and `agentId` match the on-chain agent; if the endpoint-domain is the same domain that serves the agent's primary registration file referenced by `agentURI`, this additional check is not needed because domain control is already demonstrated there.\" Do not confuse this with A2A's `/.well-known/agent-card.json`, which appears only as an example `services[].endpoint` value. Resolution direction matters: chain -> agentURI -> file is authoritative; the .well-known file is a reverse check that a third-party domain consents to being listed.",
+      "confidence": "high",
+      "source_date": "2026-01-25",
+      "sources": [
+        "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+      ]
+    },
+    {
+      "claim": "Reputation is fully permissionless writes: any address except the agent owner/operator; anti-spam is explicitly out of scope",
+      "detail": "Verbatim restriction: \"The feedback submitter MUST NOT be the agent owner or an approved operator for agentId.\" No pre-authorization (no feedbackAuth signature, no EIP-712 attestation from the agent, no payment-proof requirement) exists in the current text. Feedback payload: signed fixed-point `int128 value` with `uint8 valueDecimals` (0-18) \u2014 e.g. value=9977, valueDecimals=2 means 99.77; optional `tag1`/`tag2` \"left to developers' discretion to provide maximum on-chain composability and filtering\"; optional `endpoint` URI naming the service reviewed; `feedbackURI` + `feedbackHash` where \"The feedbackHash is the KECCAK-256 hash (keccak256) of the content referenced by feedbackURI... For IPFS (or other content-addressed URIs), feedbackHash is OPTIONAL and can be omitted.\" `feedbackIndex` is \"a 1-indexed counter of feedback submissions that clientAddress has given to agentId\". Only the clientAddress may `revokeFeedback`; `appendResponse` is open to anyone (\"e.g., the agentId showing a refund, any off-chain data intelligence aggregator tagging feedback as spam\"). Security Considerations, verbatim: \"Sybil attacks are possible, inflating the reputation of fake agents. The protocol's contribution is to make signals public and use the same schema. We expect many players to build reputation systems, for example, trusting or giving reputation to reviewers (and therefore filtering by reviewer, as the protocol already enables).\"",
+      "confidence": "high",
+      "source_date": "2026-01-25",
+      "sources": [
+        "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+      ]
+    },
+    {
+      "claim": "Validation = a generic request/response hook. A validator is just an address chosen by the agent owner; `response` is a uint8 0-100 score, repeatable",
+      "detail": "`validationRequest` \"MUST be called by the owner or operator of agentId\"; `validationResponse` \"MUST be called by the validatorAddress specified in the original request\". requestURI \"points to off-chain data containing all information needed for the validator to validate, including inputs and outputs needed for the verification. The requestHash is a commitment to this data (keccak256 of the request payload) and identifies the request\" \u2014 i.e. requestHash is the primary key of the validation record. Response semantics, verbatim: the response is \"a value between 0 and 100, which can be used as binary (0 for failed, 100 for passed) or with intermediate values for validations with a spectrum of outcomes.\" \"validationResponse() can be called multiple times for the same requestHash, enabling use cases like progressive validation states\" (e.g. 'soft finality' then 'hard finality', carried in the optional `tag`). Concretely the spec asserts nothing about WHAT is validated \u2014 no staking, slashing, dispute, expiry, or cancellation mechanism is defined; the semantics live entirely in the offchain payload and in whatever contract the validatorAddress is. The spec cites stake-secured re-execution, zkML proofs, and TEE oracles as intended instantiations.",
+      "confidence": "high",
+      "source_date": "2026-01-25",
+      "sources": [
+        "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+      ]
+    },
+    {
+      "claim": "Exactly three named trust models, declared offchain in `supportedTrust`: reputation, crypto-economic, tee-attestation",
+      "detail": "The registration-file example enumerates `\"supportedTrust\": [\"reputation\", \"crypto-economic\", \"tee-attestation\"]`. Spec-level descriptions: reputation = client feedback signals with on/offchain aggregation; crypto-economic = stake-secured re-execution validation; tee-attestation = trusted execution environment oracles (zkML also mentioned in the Validation Registry rationale). Note the field is OPTIONAL and purely advertisement \u2014 nothing onchain enforces that an agent claiming `tee-attestation` has ever received a TEE validation. Trust-model selection is therefore a client-side policy decision, which is where an AiKi-style platform adds value.",
+      "confidence": "high",
+      "source_date": "2026-01-25",
+      "sources": [
+        "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+      ]
+    },
+    {
+      "claim": "The spec declares NO custom errors and NO ERC-165 interface IDs; it also gives no ABI-complete `interface` block",
+      "detail": "Across the full document only bare `function`/`event`/`struct` declaration lines appear. There is no `error Foo();` anywhere, no named revert strings, and no `interface IIdentityRegistry { ... }` wrapper \u2014 the declarations are prose-embedded fragments. Several declarations are not valid Solidity as written (e.g. `function register(string agentURI, ...)` and `function getSummary(..., string tag1, string tag2)` omit the required `calldata`/`memory` data location; `event ValidationRequest(..., bytes32 indexed requestHash)` mixes a non-indexed `string requestURI` before an indexed param, which is legal but note the 3-indexed-topic limit is fully consumed in NewFeedback/ValidationResponse). A forum reviewer (pcarranzav) explicitly asked that \"types for params and return values\" be put in the ERC itself. Build consequence: you must author your own canonical interface file and cannot rely on a spec-provided ERC-165 ID for discovery.",
+      "confidence": "high",
+      "source_date": "2026-01-25",
+      "sources": [
+        "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+      ]
+    },
+    {
+      "claim": "Open criticisms in the discussions-to thread: offchain-first reads, aggregate-score centralization, domain-vs-URL binding, and missing payment/escrow",
+      "detail": "From ethereum-magicians.org/t/25098 (SPEC DISCUSSION, not marketing): (1) spengrah \u2014 the standard prioritizes \"offchain reads (via event emission) over onchain reads\", called \"a big miss\" for contracts that need to condition logic on validation responses (\"decoupling validation from enforcement\"); Marco-MetaMask replied that \"Single feedback or validation won't be used to decide trust\" citing gas, but conceded onchain reads could be \"kept optional\" \u2014 the current text does now expose getSummary/readFeedback/getValidationStatus view functions. (2) daniel-ospina \u2014 \"Creating a single (aggregate) reputation score is dangerous\" because it \"facilitates monopolistic behaviour\"; spengrah \u2014 \"Trust is not a universal value\", context-dependent, needs \"async trust-minimized oracles\". (3) pcarranzav \u2014 objected to domain-based agent cards since \"A2A spec specifies registries as an alternative\" and URLs allow \"multiple agents at different URLs in the same domain\"; also flagged missing domain-ownership validation. The current text's agentURI-any-scheme + optional .well-known design appears to be the response to this. (4) comeToThinkOfEth / azanux \u2014 no escrow or agent-to-agent payment story; the spec's only nod is the boolean `x402Support` flag.",
+      "confidence": "medium",
+      "source_date": "thread opened 2025-08-14; fetched 2026-08-18",
+      "sources": [
+        "https://ethereum-magicians.org/t/erc-8004-trustless-agents/25098"
+      ]
+    }
+  ],
+  "interfaces": [
+    {
+      "name": "IdentityRegistry \u2014 registration, URI, metadata, wallet (verbatim from spec)",
+      "language": "solidity",
+      "body": "struct MetadataEntry {\n    string metadataKey;\n    bytes metadataValue;\n}\n\nfunction register(string agentURI, MetadataEntry[] calldata metadata) external returns (uint256 agentId)\nfunction register(string agentURI) external returns (uint256 agentId)\n// agentURI is added later with setAgentURI()\nfunction register() external returns (uint256 agentId)\n\nevent Registered(uint256 indexed agentId, string agentURI, address indexed owner)\n\nfunction setAgentURI(uint256 agentId, string calldata newURI) external\nevent URIUpdated(uint256 indexed agentId, string newURI, address indexed updatedBy)\n\nfunction getMetadata(uint256 agentId, string memory metadataKey) external view returns (bytes memory)\nfunction setMetadata(uint256 agentId, string memory metadataKey, bytes memory metadataValue) external\nevent MetadataSet(uint256 indexed agentId, string indexed indexedMetadataKey, string metadataKey, bytes metadataValue)\n\nfunction setAgentWallet(uint256 agentId, address newWallet, uint256 deadline, bytes calldata signature) external\nfunction getAgentWallet(uint256 agentId) external view returns (address)\nfunction unsetAgentWallet(uint256 agentId) external",
+      "source": "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+    },
+    {
+      "name": "ReputationRegistry \u2014 write path (verbatim from spec)",
+      "language": "solidity",
+      "body": "function getIdentityRegistry() external view returns (address identityRegistry)\n\nfunction giveFeedback(uint256 agentId, int128 value, uint8 valueDecimals, string calldata tag1, string calldata tag2, string calldata endpoint, string calldata feedbackURI, bytes32 feedbackHash) external\n\nevent NewFeedback(uint256 indexed agentId, address indexed clientAddress, uint64 feedbackIndex, int128 value, uint8 valueDecimals, string indexed indexedTag1, string tag1, string tag2, string endpoint, string feedbackURI, bytes32 feedbackHash)\n\nfunction revokeFeedback(uint256 agentId, uint64 feedbackIndex) external\nevent FeedbackRevoked(uint256 indexed agentId, address indexed clientAddress, uint64 indexed feedbackIndex)\n\nfunction appendResponse(uint256 agentId, address clientAddress, uint64 feedbackIndex, string calldata responseURI, bytes32 responseHash) external\nevent ResponseAppended(uint256 indexed agentId, address indexed clientAddress, uint64 feedbackIndex, address indexed responder, string responseURI, bytes32 responseHash)",
+      "source": "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+    },
+    {
+      "name": "ReputationRegistry \u2014 read path (verbatim from spec)",
+      "language": "solidity",
+      "body": "function getSummary(uint256 agentId, address[] calldata clientAddresses, string tag1, string tag2) external view returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals)\n\nfunction readFeedback(uint256 agentId, address clientAddress, uint64 feedbackIndex) external view returns (int128 value, uint8 valueDecimals, string tag1, string tag2, bool isRevoked)\n\nfunction readAllFeedback(uint256 agentId, address[] calldata clientAddresses, string tag1, string tag2, bool includeRevoked) external view returns (address[] memory clients, uint64[] memory feedbackIndexes, int128[] memory values, uint8[] memory valueDecimals, string[] memory tag1s, string[] memory tag2s, bool[] memory revokedStatuses)\n\nfunction getResponseCount(uint256 agentId, address clientAddress, uint64 feedbackIndex, address[] responders) external view returns (uint64 count)\n\nfunction getClients(uint256 agentId) external view returns (address[] memory)\n\nfunction getLastIndex(uint256 agentId, address clientAddress) external view returns (uint64)",
+      "source": "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+    },
+    {
+      "name": "ValidationRegistry (verbatim from spec)",
+      "language": "solidity",
+      "body": "function validationRequest(address validatorAddress, uint256 agentId, string requestURI, bytes32 requestHash) external\nevent ValidationRequest(address indexed validatorAddress, uint256 indexed agentId, string requestURI, bytes32 indexed requestHash)\n\nfunction validationResponse(bytes32 requestHash, uint8 response, string responseURI, bytes32 responseHash, string tag) external\nevent ValidationResponse(address indexed validatorAddress, uint256 indexed agentId, bytes32 indexed requestHash, uint8 response, string responseURI, bytes32 responseHash, string tag)\n\nfunction getValidationStatus(bytes32 requestHash) external view returns (address validatorAddress, uint256 agentId, uint8 response, bytes32 responseHash, string tag, uint256 lastUpdate)\n\nfunction getSummary(uint256 agentId, address[] calldata validatorAddresses, string tag) external view returns (uint64 count, uint8 averageResponse)\n\nfunction getAgentValidations(uint256 agentId) external view returns (bytes32[] memory requestHashes)\n\nfunction getValidatorRequests(address validatorAddress) external view returns (bytes32[] memory requestHashes)",
+      "source": "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+    },
+    {
+      "name": "Agent registration file (agentURI target) \u2014 full verbatim example from spec",
+      "language": "jsonc",
+      "body": "{\n  \"type\": \"https://eips.ethereum.org/EIPS/eip-8004#registration-v1\",\n  \"name\": \"myAgentName\",\n  \"description\": \"A natural language description of the Agent, which MAY include what it does, how it works, pricing, and interaction methods\",\n  \"image\": \"https://example.com/agentimage.png\",\n  \"services\": [\n   {\n      \"name\": \"web\",\n      \"endpoint\": \"https://web.agentxyz.com/\"\n    },\n    {\n      \"name\": \"A2A\",\n      \"endpoint\": \"https://agent.example/.well-known/agent-card.json\",\n      \"version\": \"0.3.0\"\n    },\n    {\n      \"name\": \"MCP\",\n      \"endpoint\": \"https://mcp.agent.eth/\",\n      \"version\": \"2025-06-18\"\n    },\n    {\n      \"name\": \"OASF\",\n      \"endpoint\": \"ipfs://{cid}\",\n      \"version\": \"0.8\", // https://github.com/agntcy/oasf/tree/v0.8.0\n      \"skills\": [], // OPTIONAL\n      \"domains\": [] // OPTIONAL\n    },\n    {\n      \"name\": \"ENS\",\n      \"endpoint\": \"vitalik.eth\",\n      \"version\": \"v1\"\n    },\n    {\n      \"name\": \"DID\",\n      \"endpoint\": \"did:method:foobar\",\n      \"version\": \"v1\"\n    },\n    {\n      \"name\": \"email\",\n      \"endpoint\": \"mail@myagent.com\"\n    }\n  ],\n  \"x402Support\": false,\n  \"active\": true,\n  \"registrations\": [\n    {\n      \"agentId\": 22,\n      \"agentRegistry\": \"{namespace}:{chainId}:{identityRegistry}\" // e.g. eip155:1:0x742...\n    }\n  ],\n  \"supportedTrust\": [\n    \"reputation\",\n    \"crypto-economic\",\n    \"tee-attestation\"\n  ]\n}",
+      "source": "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+    },
+    {
+      "name": "Endpoint-domain verification file (optional) \u2014 path and required content",
+      "language": "text",
+      "body": "Path: https://{endpoint-domain}/.well-known/agent-registration.json\n\nMust contain \"at least a `registrations` list (or the full agent registration file)\".\nVerified iff: reachable over HTTPS AND contains a `registrations` entry whose\n`agentRegistry` and `agentId` match the on-chain agent.\nNot needed when the endpoint-domain is the same domain serving the agentURI file.\n\nMinimal body implied by the spec (shape taken from the registration file):\n{\n  \"registrations\": [\n    { \"agentId\": 22, \"agentRegistry\": \"eip155:1:0x742...\" }\n  ]\n}",
+      "source": "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+    },
+    {
+      "name": "EIP-8004 front matter (verbatim)",
+      "language": "yaml",
+      "body": "eip: 8004\ntitle: Trustless Agents\ndescription: Discover agents and establish trust through reputation and validation\nauthor: Marco De Rossi (@MarcoMetaMask), Davide Crapis (@dcrapis) <davide@ethereum.org>, Jordan Ellis <jordanellis@google.com>, Erik Reppel <erik.reppel@coinbase.com>\ndiscussions-to: https://ethereum-magicians.org/t/erc-8004-trustless-agents/25098\nstatus: Draft\ntype: Standards Track\ncategory: ERC\ncreated: 2025-08-13\nrequires: 155, 712, 721, 1271",
+      "source": "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8004.md"
+    }
+  ],
+  "gaps": [
+    "The EIP-712 typed-data struct (domain separator, type string, field order) for `setAgentWallet` is NOT defined in the spec text. You cannot implement an interoperable signer from the ERC alone \u2014 check the reference implementation repo (not researched here, owned by the deployments agent).",
+    "No custom errors / revert reason names are declared anywhere in the document. Any `error AgentNotFound()`-style names you see elsewhere come from an implementation, not the standard.",
+    "No ERC-165 interfaceId values are specified for the Identity, Reputation, or Validation registries, so there is no spec-blessed way to detect a compliant registry onchain.",
+    "The spec fragments are not compile-ready Solidity: data locations (`calldata`/`memory`) are omitted on several `string` and `address[]` params (e.g. `register(string agentURI, ...)`, `getSummary(..., string tag1, string tag2)`, `getResponseCount(..., address[] responders)`). Exact canonical function selectors therefore cannot be derived with certainty from the ERC text alone.",
+    "The formal JSON Schema for the registration file is not published in the EIP \u2014 only the annotated example plus prose about which fields are required. There is no schema URL beyond the `type` value `https://eips.ethereum.org/EIPS/eip-8004#registration-v1`.",
+    "No JSON schema is given for the offchain feedback document behind `feedbackURI`, nor for the validation `requestURI` / `responseURI` payloads. Their contents are entirely unspecified.",
+    "Whether `validationResponse` MUST revert if no matching `validationRequest` exists is not stated; the dependency is only implied. Also unspecified: request expiry, cancellation, and how `getSummary`'s `averageResponse` handles multiple responses to the same requestHash.",
+    "No gas/storage guidance, no upgradeability/proxy guidance, and no canonical deployment addresses appear in the spec text (deployments deliberately not researched \u2014 another agent owns that).",
+    "Status discrepancy: a 2025-10-08 commit says 'Move to Review (#1244)' yet current front matter reads Draft. I did not fetch the intervening diffs to confirm the exact reason for the reversion (medium-confidence inference: substantive Jan-2026 changes reset it).",
+    "No `updated:` field exists in the front matter; 'last updated' is inferred from git commit dates only.",
+    "The forum thread was read via a single summarizing fetch; there may be later posts (2026) with additional objections or competing ERC numbers that were not surfaced. No competing ERC number was named in what was returned."
+  ],
+  "aiki_implications": [
+    "Chain 56 is fully in scope with zero spec changes: the identity string is `eip155:56:{registryAddress}`. Nothing in ERC-8004 is mainnet-specific. But agentId is only unique per (chain, registry) \u2014 AiKi must key agents on the full triple everywhere, never on the bare uint256.",
+    "Deploying your own IdentityRegistry on BNB creates a namespace nobody else resolves. The `registrations[]` array is multi-entry by design, so an agent can list both its L1 registration and its AiKi/BNB registration in one card. Support reading foreign `agentRegistry` values, and decide early whether AiKi treats an L1 agentId as authoritative when both exist.",
+    "Reputation writes are permissionless with only one guard (submitter != owner/operator). A Sybil can mint feedback for ~one SSTORE-batch on BNB. The spec explicitly delegates anti-spam to you: AiKi's differentiator is the reviewer-weighting layer \u2014 e.g. only count feedback from clients with a settled escrow/payment against that agentId, using `getClients` + `readAllFeedback` filtered by your own allowlist. Do NOT surface the naive `getSummary`.",
+    "`giveFeedback` has no link to a transaction, order, or payment. If AiKi does agent-commerce, extend (do not fork) by writing the order id into `tag1`/`tag2` or the `endpoint` field and putting the signed receipt behind `feedbackURI` + `feedbackHash`. `tag1` is the indexed topic in `NewFeedback`, so put the field you will filter on in `tag1`.",
+    "`appendResponse` is callable by anyone \u2014 including a spam-tagging aggregator. That is a free integration point for AiKi to publish dispute outcomes and refund proofs against specific feedback entries without needing write access to the reputation of the agent.",
+    "Payments: the spec's entire commerce surface is the boolean `x402Support` and the reserved `agentWallet` metadata key. `agentWallet` auto-clears on ERC-721 transfer and requires EIP-712/ERC-1271 re-proof \u2014 an execution platform MUST re-read `getAgentWallet` before every payout and treat address(0) as 'do not pay'. This is a real settlement-safety invariant, not a nicety.",
+    "Because agents are transferable NFTs, reputation is attached to an identity whose controller can change hands. AiKi should snapshot ownership transfers (ERC-721 `Transfer`) and either decay or flag pre-transfer reputation; the spec provides no such rule.",
+    "Validation is a bare hook: the request is owner-initiated and the response is validator-only, 0-100, and repeatable. AiKi can be a validatorAddress (staked re-execution or TEE attestation) and get onchain-composable output for free \u2014 `getValidationStatus` returns `lastUpdate`, so you can enforce freshness windows in your own escrow contract, which is exactly the onchain-readability the forum critics asked for.",
+    "Status is Draft with substantive changes as recently as Jan 2026. Pin the ABI to a commit hash, wrap all three registries behind an AiKi adapter interface, and expect the metadata/wallet surface to move. Do not hard-code selectors across your stack.",
+    "Discovery is offchain-first: the useful data lives in the agentURI file and in event logs. AiKi needs an indexer (Registered / URIUpdated / MetadataSet / NewFeedback / ValidationResponse) plus a resolver that handles ipfs://, https:// and base64 data: URIs, with the optional `/.well-known/agent-registration.json` reverse check before you display any third-party domain as belonging to an agent."
+  ]
+}

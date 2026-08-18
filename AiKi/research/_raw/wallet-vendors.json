@@ -1,0 +1,190 @@
+{
+  "topic": "Agentic wallet products on BNB Chain \u2014 Altana Network and Trust Wallet Agent Kit (TWAK): SDK surface, session/delegation model, and enforcement tier",
+  "verdict": "PARTIAL",
+  "executive_summary": "Altana and TWAK are not comparable products and should not share a tier. Altana is a non-custodial ERC-4337 smart-account stack (`@altananetwork/sdk`, `createClient({chains:[BNB]})`) with a real, deployed onchain permission registry on BSC: KeyStore `0x6572427ED530BadcF7375Cf9A4709D8d2b0E7E0a` and KeyStoreController `0x0834Ee2C9BdC3E3efF0a2dC34393D4B0e546A555`. I independently confirmed via BSC public RPC `eth_getCode` that both addresses hold bytecode on chain 56 \u2014 DEPLOYED, not marketing. Session grants carry `permissions.calls` (contract allowlist by `to`), `permissions.spend` (`{limit, period, token}`) and `expiry`; revocation is a single userOp that atomically removes the key from KeyStore and strips authority from the smart account, gated by `onlyKeyOwnerOrValidator`, \"effective immediately on that chain\", \"no off-chain coordination is required\". The admin key never leaves the operator (\"Altana never sees it\"). CertiK audited `KeyStore.sol` / `KeyStoreCacheOPStack.sol` (15 Jul 2026). Two honest gaps: BscScan is behind Cloudflare and returned 403 to both my WebFetch and a UA-spoofed curl, and the Etherscan v2 API requires a key, so I could NOT independently confirm source-verification \u2014 that claim rests on Altana's own audits page. And I never read the validator-module source that would prove the *spend cap* reverts in the EVM; \"enforced onchain\" for spend is documented, not verified by me. Function-selector allowlists, asset-scope beyond a single token address, and approval thresholds are NOT documented \u2014 do not promise them. TWAK is a different animal entirely: `@trustwallet/cli`, a local CLI + MCP server that generates a mnemonic, AES-256-GCM encrypts it under a PBKDF2 password to `~/.twak/wallet.json`, and signs locally. Self-custody, zero vendor custody \u2014 and zero constraint surface. No session key, no spend cap, no allowlist, no onchain policy contract appears in any Trust Wallet doc I fetched. Tier: Altana T0 (with the spend-cap asterisk); TWAK T3.",
+  "findings": [
+    {
+      "claim": "Altana's KeyStore and KeyStoreController are live on BSC mainnet (chain 56) with bytecode at published addresses \u2014 independently confirmed via public RPC, not vendor marketing.",
+      "detail": "docs.altana.network/concepts/networks lists exactly two BSC-mainnet addresses: KeyStore `0x6572427ED530BadcF7375Cf9A4709D8d2b0E7E0a` and KeyStoreController `0x0834Ee2C9BdC3E3efF0a2dC34393D4B0e546A555`. I called `eth_getCode` against https://bsc-dataseed.bnbchain.org for both; both returned non-empty runtime bytecode (KeyStore begins `0x6080806040526004361015610012575f80fd5b5f3560e01c9081631364c24d14611a33...`). DEPLOYED. Dispatcher selectors visible in the KeyStore prefix: 1364c24d, 2aa8eaa0, 314f5c11, 34e80c34, 3b49ad47, 3cf26a01, 5921c26e, 79ba5097, 7cefdd5d, 8da5cb5b. Controller prefix: 2ed6b75d, 61d027b3, 724e78da, 741bef1a, 79ba5097, 878c6d97, 8da5cb5b, 8fbc9811, c08eadaa. Both contracts expose `owner()` (0x8da5cb5b) and `acceptOwnership()` (0x79ba5097) \u2014 an Ownable2Step-style privileged role exists on the permission registry itself. Altana publishes no address for the ERC-8183 kernel (AgenticCommerce), EvaluatorRouter, OptimisticPolicy, ERC-8004 registry or $U token on that page; the SDK exports them via `ERC8183_ADDRESSES` but the docs page did not print the hex.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://docs.altana.network/concepts/networks",
+        "https://bsc-dataseed.bnbchain.org (eth_getCode, chain 56, 2026-08-18)"
+      ]
+    },
+    {
+      "claim": "I could NOT independently verify source-verification of the Altana contracts on BscScan. Treat 'verified on BscScan' as a vendor claim.",
+      "detail": "BscScan returned HTTP 403 to WebFetch on https://bscscan.com/address/0x6572427ED530BadcF7375Cf9A4709D8d2b0E7E0a#code, and a UA-spoofed curl hit the Cloudflare interstitial (`<title>Just a moment...`). The Etherscan v2 multichain API (`chainid=56&module=contract&action=getsourcecode`) returned `{\"status\":\"0\",\"message\":\"NOTOK\",\"result\":\"Missing/Invalid API Key\"}`; the legacy api.bscscan.com endpoint returned a V1-deprecation error. The only assertion of verification is Altana's own /security/audits page: \"All audited source code is deployed and source-verified\" on Etherscan, BscScan and Basescan. AiKi should re-check this with an Etherscan API key before rendering any 'verified source' badge. Bytecode presence is proven; source correspondence is not.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://bscscan.com/address/0x6572427ED530BadcF7375Cf9A4709D8d2b0E7E0a",
+        "https://api.etherscan.io/v2/api?chainid=56&module=contract&action=getsourcecode&address=0x6572427ED530BadcF7375Cf9A4709D8d2b0E7E0a",
+        "https://docs.altana.network/security/audits"
+      ]
+    },
+    {
+      "claim": "Altana wallets are non-custodial ERC-4337 smart accounts; the admin private key never reaches Altana.",
+      "detail": "docs.altana.network/sdk/create-wallet: the product is a \"smart-account wallet\"; \"The signer's key lives wherever you keep it (env var, OS keychain, hardware wallet). Altana never sees it.\" The wallet address is counterfactual \u2014 deterministic, not deployed until first transaction. The revoke-session page explicitly speaks of \"executing inside its own userOp\", confirming ERC-4337 account-abstraction semantics rather than a plain EOA or a 7702-delegated EOA. Press coverage describing Altana as \"EIP-7702-compatible session keys\" is MARKETING and is not what the primary docs say; I found no 7702 language in the docs I fetched. Worst-case custody: whoever holds the admin signer key can do anything the account can do; Altana cannot move funds with a key it does not hold. Residual vendor dependencies I did not resolve: who runs the ERC-4337 bundler and paymaster, and whether a \"designated validator\" role (named in the revocation access control, `onlyKeyOwnerOrValidator`) is an Altana-operated address.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://docs.altana.network/sdk/create-wallet",
+        "https://docs.altana.network/sdk/revoke-session"
+      ]
+    },
+    {
+      "claim": "Altana's expressible session constraints are exactly three: contract allowlist (`calls[].to`), token spend cap with period (`spend[].{limit,period,token}`), and `expiry`. No selector allowlist, no approval threshold.",
+      "detail": "From the verbatim grantSession example: `permissions: { calls: [{ to: \"0xUniswapRouter...\" }], spend: [{ limit: 50n * 10n ** 18n, period: \"day\", token: \"0xUSDT...\" }] }, expiry: <unix seconds>`. Asset scope is expressed only as a per-token cap inside `spend`. The docs I fetched contain NO field for 4-byte function selectors, NO multi-sig / approval threshold, NO per-call value cap distinct from the periodic spend cap, and NO calldata-argument constraints. The /sdk/execute page adds one operationally critical detail: session execution is \"byte-exact\" (strict parameter matching), which implies the allowed call shape is pinned more tightly than a bare `to` address \u2014 but the docs excerpt did not define what is hashed or matched. Do not tell AiKi users that Altana supports selector allowlists or m-of-n approval until a primary doc or contract source shows the field.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://docs.altana.network/sdk/grant-session",
+        "https://docs.altana.network/sdk/execute"
+      ]
+    },
+    {
+      "claim": "Altana revocation is genuinely user-sovereign: one onchain userOp, immediate on that chain, monotonic, and does not require Altana's servers.",
+      "detail": "`client.revokeSession(opts: ClientRevokeSessionOptions): Promise<ExecuteResult>` \u2014 example `await client.revokeSession({ wallet, signer: admin, session })`. The docs describe a single userOp containing two atomic operations: revocation in the KeyStore contract (called directly, not via the Controller) and removal of the session's authority from the smart account. Access control: \"Only the wallet itself (executing inside its own userOp) or a designated validator can revoke a key\"; other callers revert at the modifier. Latency: \"On the chain where the key is registered the effect is immediate, and no off-chain coordination is required\" \u2014 no intermediate window after userOp confirmation. The Keystore concept page adds: \"Pulling a key from Keystore is a single transaction, effective immediately on that chain\" and \"Revocation is monotonic: a revoked key cannot be reactivated.\" Reads (`isValidKey()`, `getKeys()`) are free `eth_call`. Caveat: revocation is per-chain; Ethereum (1) is described as the source of truth with Base (8453) holding an L2 cache, so cross-chain propagation latency exists and I did not measure it.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://docs.altana.network/sdk/revoke-session",
+        "https://docs.altana.network/concepts/keystore"
+      ]
+    },
+    {
+      "claim": "Altana asserts onchain enforcement of session permissions, but I did not read the contract source that performs the check \u2014 the spend-cap claim is documented, not verified.",
+      "detail": "Primary-source phrasing: grant-session says \"from that point forward the session can act on the wallet within its permissions, enforced onchain\"; the ERC-8183 page says \"a scoped key with an on-chain spend limit caps what an autonomous agent can ever escrow\". The Keystore page describes the registry's job as answering `isValidKey()` / `getKeys()` \u2014 i.e. the KeyStore is an authorization *registry*, and the actual per-call spend-accounting and allowlist check must live in a validator/module inside the ERC-4337 account (or in the account's `validateUserOp`). I never located or read that module's address or source, and BscScan was inaccessible. So: key validity and revocation are provably onchain (registry deployed, revocation is a tx). Spend cap and allowlist enforcement is HIGH-PLAUSIBILITY but UNVERIFIED at the bytecode level. CertiK audited `KeyStore.sol` and `KeyStoreCacheOPStack.sol` \"plus six additional files\" on 15 Jul 2026, report on CertiK Skynet \u2014 I did not open the report, so I cannot say whether the enforcing module was in scope.",
+      "confidence": "medium",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://docs.altana.network/sdk/grant-session",
+        "https://docs.altana.network/sdk/erc8183",
+        "https://docs.altana.network/concepts/keystore",
+        "https://docs.altana.network/security/audits"
+      ]
+    },
+    {
+      "claim": "The prior research's Altana ERC-8183 SDK surface is CONFIRMED against the primary doc, with one correction and one gap.",
+      "detail": "docs.altana.network/sdk/erc8183 shows `hireErc8183Agent(wallet, signer, params, opts)`, `getErc8183Job(network, jobId)`, `getErc8183DeliverableUrl(network, jobId)`, `settleErc8183Job(wallet, signer, params, opts)`, `buildClaimRefundCall(chainId, jobId)`. Package is `@altananetwork/sdk`; NO version string appears anywhere I fetched \u2014 pin it yourself, do not assume semver stability. CORRECTION to prior notes: the session-key path is documented as `hireErc8183Agent(session, params, opts)` \u2014 a 3-arg form where the session object replaces the `(wallet, signer)` pair \u2014 not `(wallet, session, ...)`. `ERC8183_ADDRESSES` is documented as exporting kernel (AgenticCommerce), EvaluatorRouter, OptimisticPolicy, ERC-8004 registry and $U token for chains 56 and 97, but the page prints no hex values and /concepts/networks lists only the two KeyStore addresses \u2014 so the ERC-8183 kernel address on BSC mainnet is an open gap.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://docs.altana.network/sdk/erc8183",
+        "https://docs.altana.network/concepts/networks"
+      ]
+    },
+    {
+      "claim": "TWAK is a local CLI + MCP server, `@trustwallet/cli`, with keys encrypted at rest on the developer's own machine \u2014 self-custody, and no vendor ability to move funds.",
+      "detail": "developer.trustwallet.com/developer/agent-sdk: \"programmatic access to Trust Wallet's multichain infrastructure \u2014 balance queries, token prices, swaps, transaction history\" via CLI and an MCP server. Install: `npm install -g @trustwallet/cli` / `npx @trustwallet/cli --version`; no version pinned in docs. Key management doc: keys are \"generated and stored locally on the host machine. Keys never leave the device \u2014 not to Trust Wallet servers, not to the AI model provider, not anywhere.\" Mnemonic is AES-256-GCM encrypted under a PBKDF2-derived password key, written to `~/.twak/wallet.json` (ciphertext, IV, auth tag, salt; never plaintext). Derivation uses Trust Wallet Core (BIP39 HD, BIP-44), 25+ chains including EVM, Bitcoin, Solana, Cosmos, TON, SUI, NEAR, Aptos, Tron. Trust Wallet's backend is in the loop for *data*, not signing: `twak init` stores an API access ID and HMAC secret in `~/.twak/credentials.json` (0600), and API requests are authenticated with HMAC-SHA256. So Trust Wallet can deny service or return bad quote data, but cannot sign.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://developer.trustwallet.com/developer/agent-sdk",
+        "https://github.com/trustwallet/developer/blob/master/agent-sdk/key-management.md"
+      ]
+    },
+    {
+      "claim": "TWAK has NO session-key, spend-cap, allowlist or onchain policy layer that I could substantiate from primary sources. Its security model is 'the key is on your disk behind a password'.",
+      "detail": "I fetched the agent-sdk overview and the key-management page. Neither mentions transaction limits, spending caps, contract allowlists, session keys, expiry, approval thresholds, or any policy contract. There is no Trust Wallet contract address published for anything policy-related. The practical failure mode for AiKi: an agent process that has the decrypted key (or the password in its environment) has unbounded authority over every asset on 25+ chains, and the only recovery is moving the funds \u2014 there is nothing to revoke, because nothing was delegated. This is the opposite of Altana's model. NOT-SEEN caveat: I did not fetch the CLI reference (`/developer/agent-sdk/cli-reference`), the authentication page, or the TWAK announcement blog, so a policy feature could exist there; but a security control that does not appear on the security-relevant pages should not be assumed. Absence of evidence is recorded here as a gap, and TWAK's tier reflects what is substantiated today.",
+      "confidence": "medium",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://developer.trustwallet.com/developer/agent-sdk",
+        "https://github.com/trustwallet/developer/blob/master/agent-sdk/key-management.md"
+      ]
+    },
+    {
+      "claim": "ENFORCEMENT TIER: Altana = T0 (cryptographic) for key validity, delegation and revocation; T0-provisional for spend caps. TWAK = T3 (observational).",
+      "detail": "Altana T0 rationale, each leg backed by a primary artifact: (a) a permission registry contract exists and holds bytecode on BSC 56 at `0x6572427ED530BadcF7375Cf9A4709D8d2b0E7E0a` \u2014 RPC-confirmed by me; (b) revocation is an onchain transaction gated by `onlyKeyOwnerOrValidator`, immediate and monotonic, with \"no off-chain coordination\" \u2014 so the user can kill an agent without Altana; (c) the admin key is never held by the vendor, so there is no custodial override; (d) CertiK audited the KeyStore sources 15 Jul 2026. The asterisk: I did not read the module that meters `spend[].limit`, and I could not confirm BscScan source-verification (Cloudflare 403), so AiKi's UI should render Altana as T0 with a visible 'spend-cap enforcement not independently verified' footnote until someone reads the validator source. Also disclose the `owner()`/`acceptOwnership()` privileged role present in KeyStore bytecode \u2014 an owner that can, in principle, change registry behaviour is a governance risk I did not scope. TWAK T3 rationale: no constraint is expressible, therefore none can be enforced anywhere. Note the tier measures *constraint enforcement*, not custody quality \u2014 TWAK's custody is self-custody (better than a custodian) while its constraint enforcement is nil. Do not average the two into T1.",
+      "confidence": "medium",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://docs.altana.network/concepts/keystore",
+        "https://docs.altana.network/sdk/revoke-session",
+        "https://docs.altana.network/security/audits",
+        "https://bsc-dataseed.bnbchain.org (eth_getCode, chain 56)",
+        "https://github.com/trustwallet/developer/blob/master/agent-sdk/key-management.md"
+      ]
+    },
+    {
+      "claim": "Peer: BNB Agent Studio's `bnbagent-sdk` exposes a WalletProvider seam naming both `TWAKProvider` and `AltanaWalletProvider` \u2014 the two products are already positioned as swappable execution backends under one SDK.",
+      "detail": "Carried from this project's own prior fetched research (research/_raw/agent-studio.json), which records that the bnbagent-sdk README references \"delegated x402\" with a TWAKProvider wallet and a \"session-key x402 payer\" with AltanaWalletProvider. I did NOT re-fetch the README in this run \u2014 this is second-hand within the project and should be re-verified before it drives code. Its architectural implication is nonetheless the useful one for AiKi: the ecosystem already treats wallet authority as a pluggable provider interface, so AiKi's tier badge is best attached to the *provider* in use at execution time, not to the marketplace listing. Same file records that ERC-8183 settlement uses EIP-3009 `TransferWithAuthorization`/`ReceiveWithAuthorization`, the same primitive x402 uses \u2014 relevant because an EIP-3009 authorization is itself a scoped, expiring, single-use grant that is verified onchain by the token contract, i.e. a T0 primitive independent of either vendor.",
+      "confidence": "low",
+      "source_date": "2026-08-18",
+      "sources": [
+        "/Users/mac/Documents/codes/bnb/AiKi/research/_raw/agent-studio.json"
+      ]
+    }
+  ],
+  "interfaces": [
+    {
+      "name": "Altana grantSession \u2014 full verbatim example (contract allowlist + spend cap + expiry)",
+      "language": "typescript",
+      "body": "import { createClient, BNB, signerFromPrivateKey } from \"@altananetwork/sdk\";\n\nconst client = createClient({ chains: [BNB] });\nconst admin  = signerFromPrivateKey(\"0x...\");\nconst wallet = await client.createWallet({ signer: admin });\n\nconst session = await client.grantSession({\n  wallet,\n  signer: admin,\n  permissions: {\n    calls: [{ to: \"0xUniswapRouter...\" }],\n    spend: [{\n      limit: 50n * 10n ** 18n,\n      period: \"day\",\n      token: \"0xUSDT...\",\n    }],\n  },\n  expiry: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,\n});\n\n// Documented constraint surface is EXACTLY these three axes:\n//   calls[].to   -> contract allowlist (no 4-byte selector field documented)\n//   spend[]      -> { limit, period, token }  (asset scope == token address)\n//   expiry       -> unix seconds\n// NOT documented anywhere I fetched: selector allowlist, approval threshold,\n// per-call value cap, calldata-argument constraints.",
+      "source": "https://docs.altana.network/sdk/grant-session"
+    },
+    {
+      "name": "Altana execute + revokeSession signatures",
+      "language": "typescript",
+      "body": "client.execute(opts: ClientExecuteOptions): Promise<ExecuteResult>;\n\nconst result = await client.execute({\n  wallet,\n  signer,\n  calls: { to: \"0xRecipient...\", value: 1_000_000_000_000_000n }\n});\n// docs: admin execute \"auto-registers the admin key in Keystore\";\n// session execute is \"byte-exact\" (strict parameter matching).\n// Who broadcasts (self-bundled vs Altana bundler) is NOT stated on this page.\n\nclient.revokeSession(opts: ClientRevokeSessionOptions): Promise<ExecuteResult>;\n\nawait client.revokeSession({ wallet, signer: admin, session });\n// One userOp, two atomic ops: revoke in the KeyStore contract (direct, not the\n// Controller) + strip the session's authority from the smart account.\n// Access control: \"Only the wallet itself (executing inside its own userOp) or a\n// designated validator can revoke a key.\" Other callers revert at the modifier.\n// \"On the chain where the key is registered the effect is immediate, and no\n//  off-chain coordination is required.\"",
+      "source": "https://docs.altana.network/sdk/execute + https://docs.altana.network/sdk/revoke-session"
+    },
+    {
+      "name": "Altana ERC-8183 SDK surface (confirmed against primary doc)",
+      "language": "typescript",
+      "body": "// package: @altananetwork/sdk   (NO version string published anywhere I fetched)\nhireErc8183Agent(wallet, signer, params, opts)\nhireErc8183Agent(session, params, opts)      // <- session-key path is 3-arg\ngetErc8183Job(network, jobId)\ngetErc8183DeliverableUrl(network, jobId)\nsettleErc8183Job(wallet, signer, params, opts)\nbuildClaimRefundCall(chainId, jobId)\n\n// ERC8183_ADDRESSES: documented as exporting kernel (AgenticCommerce),\n// EvaluatorRouter, OptimisticPolicy, ERC-8004 registry and $U token for\n// chain 56 and 97 -- but the page prints NO hex values, and\n// /concepts/networks lists only the two KeyStore addresses.\n// => the ERC-8183 kernel address on BSC mainnet is an OPEN GAP.\n\n// Doc quote on the session path:\n// \"The session-key path works too (hireErc8183Agent(session, params, opts)),\n//  so a scoped key with an on-chain spend limit caps what an autonomous agent\n//  can ever escrow.\"",
+      "source": "https://docs.altana.network/sdk/erc8183"
+    },
+    {
+      "name": "Altana BSC mainnet (chain 56) addresses + independent eth_getCode proof",
+      "language": "text",
+      "body": "KeyStore            0x6572427ED530BadcF7375Cf9A4709D8d2b0E7E0a\nKeyStoreController  0x0834Ee2C9BdC3E3efF0a2dC34393D4B0e546A555\n\n$ curl -s -X POST https://bsc-dataseed.bnbchain.org \\\n    -H 'content-type: application/json' \\\n    -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getCode\",\n         \"params\":[\"0x6572427ED530BadcF7375Cf9A4709D8d2b0E7E0a\",\"latest\"]}'\n\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x6080806040526004361015610012575f80fd5b5f3560e01c\n 9081631364c24d14611a33575080632aa8eaa014611952578063314f5c11146117d357806334e80c34\n 1461171f5780633b49ad47146116ce5780633cf26a01146114965780635921c26e1461144f57806379\n ba50971461138b5780637cefdd5d146113305780638da5cb5b14...\"}\n\nKeyStoreController result prefix:\n\"0x6080806040526004361015610012575f80fd5b5f905f3560e01c9081632ed6b75d146108b2575080\n 6361d027b31461088a578063724e78da146107c2578063741bef1a1461079b57806379ba5097146106\n d6578063878c6d97146106b45780638da5cb5b1461068c5780638fbc981114610648578063c08eadaa\n 1461056d578063c320c7...\"\n\nBOTH DEPLOYED (non-empty bytecode) on chain 56, verified 2026-08-18.\nBoth dispatchers contain 0x8da5cb5b = owner() and 0x79ba5097 = acceptOwnership()\n  -> an Ownable2Step-style privileged role exists on the permission registry.\nSource-verification on BscScan NOT independently confirmed (Cloudflare 403).",
+      "source": "https://docs.altana.network/concepts/networks + https://bsc-dataseed.bnbchain.org"
+    },
+    {
+      "name": "Altana KeyStore semantics (concepts page, verbatim claims)",
+      "language": "text",
+      "body": "\"a public onchain registry\"\nRead surface (free, unlimited, via eth_call):  isValidKey()   getKeys()\nWrite surface: smart-contract transactions.\n\n\"Pulling a key from Keystore is a single transaction, effective immediately on\n that chain.\"\n\"Revoking a key removes it from the getKeys list in the same transaction.\"\n\"Revocation is monotonic: a revoked key cannot be reactivated.\"\nAccess control on revoke: onlyKeyOwnerOrValidator\n  -> \"only the wallet itself or a designated validator can revoke\"\n\nTopology:\n  Ethereum (1)  = L1 Keystore, source of truth\n  BNB (56)      = BNB.keyStore\n  Base (8453)   = L2 cache contract (KeyStoreCacheOPStack)\n\nOPEN: the KeyStore answers \"is this key valid\" -- it is an AUTHORIZATION\nREGISTRY. The per-call spend accounting and allowlist check must live in a\nvalidator module inside the ERC-4337 account. I did not locate or read that\nmodule's address or source. Spend-cap enforcement = documented, not verified.",
+      "source": "https://docs.altana.network/concepts/keystore"
+    },
+    {
+      "name": "Altana audit scope (CertiK)",
+      "language": "text",
+      "body": "Firm: CertiK.   Date: 15 July 2026.   Report: CertiK Skynet.\nScope: KeyStore.sol and KeyStoreCacheOPStack.sol, \"plus six additional files\"\n       (the six are not enumerated on the page).\nVendor claim: \"All audited source code is deployed and source-verified\" on\n       Etherscan, BscScan and Basescan.\n\nNot stated on the page: unaudited components, upgrade mechanism, admin controls,\ncustody arrangements. I did not open the Skynet report, so I cannot say whether\nthe module that meters spend[].limit was in scope.",
+      "source": "https://docs.altana.network/security/audits"
+    },
+    {
+      "name": "TWAK \u2014 package, key custody, and the absent policy layer",
+      "language": "text",
+      "body": "Package / install:\n  npm install -g @trustwallet/cli\n  npx @trustwallet/cli --version        # no version pinned in the docs\nForm factors: CLI + MCP server.\n\nKey custody (verbatim):\n  \"generated and stored locally on the host machine. Keys never leave the device\n   -- not to Trust Wallet servers, not to the AI model provider, not anywhere.\"\n  mnemonic -> AES-256-GCM, key from password via PBKDF2\n  -> ~/.twak/wallet.json  {ciphertext, iv, authTag, salt}   (no plaintext)\n  derivation: Trust Wallet Core, BIP39 HD, BIP-44 paths, 25+ chains\n\nBackend coupling (data plane only, NOT signing):\n  twak init -> ~/.twak/credentials.json (0600), API access ID + HMAC secret\n  all API requests authenticated with HMAC-SHA256\n\nCONSTRAINT SURFACE: none found.\n  no session key, no spend cap, no contract allowlist, no expiry,\n  no approval threshold, no policy contract address, no onchain enforcement\n  in either the agent-sdk overview or the key-management page.\n=> nothing is delegated, therefore nothing can be revoked; recovery = move funds.",
+      "source": "https://developer.trustwallet.com/developer/agent-sdk + https://github.com/trustwallet/developer/blob/master/agent-sdk/key-management.md"
+    }
+  ],
+  "gaps": [
+    "BscScan source-verification of Altana's KeyStore (0x6572427ED530BadcF7375Cf9A4709D8d2b0E7E0a) and KeyStoreController (0x0834Ee2C9BdC3E3efF0a2dC34393D4B0e546A555) is UNVERIFIED. bscscan.com returned 403 to WebFetch and served a Cloudflare interstitial to curl; the Etherscan v2 API needs a key. NEXT STEP: get an Etherscan API key and call api.etherscan.io/v2/api?chainid=56&module=contract&action=getsourcecode. Until then, 'verified' is Altana's word, not an observation.",
+    "The contract that actually METERS spend[].limit and checks calls[].to was never located. The KeyStore is a key-validity registry (isValidKey/getKeys); the enforcing validator module inside the ERC-4337 account has no published address and no source I read. Altana's 'enforced onchain' for spend caps is documented, not proven. This is the single most load-bearing unverified claim in the report.",
+    "Whether Altana's session permission model supports a 4-byte function-SELECTOR allowlist. Only calls[].to is documented. The /sdk/execute page says session execution is 'byte-exact' with 'strict parameter matching', which hints at something tighter than address-level scoping, but the docs never define what is matched or hashed. Do not build AiKi UI affordances for selector scoping on this hint.",
+    "Who operates the ERC-4337 bundler and paymaster for Altana userOps, and whether the 'designated validator' named in onlyKeyOwnerOrValidator is an Altana-controlled address. If Altana runs the only bundler, revocation is censorable in practice even though it is user-authorized in principle. Not addressed in any page I fetched.",
+    "Both KeyStore and KeyStoreController expose owner()/acceptOwnership(). The powers of that owner (upgradeability, registry mutation, validator designation, pause) are entirely unscoped. A T0 badge is only honest if this owner cannot retroactively widen a session.",
+    "The hex addresses behind ERC8183_ADDRESSES on chain 56 \u2014 kernel/AgenticCommerce, EvaluatorRouter, OptimisticPolicy, ERC-8004 registry, $U token. Documented as exported by the SDK but printed nowhere; /concepts/networks lists only the two KeyStore contracts. Recover these by reading the published npm tarball of @altananetwork/sdk rather than the docs site.",
+    "No version number exists for either @altananetwork/sdk or @trustwallet/cli in any fetched page. Both are unpinned in docs; resolve versions from the npm registry before writing integration code.",
+    "TWAK's CLI reference (/developer/agent-sdk/cli-reference), authentication page, and the TWAK launch blog were NOT fetched. A policy/limit feature could exist there. TWAK's T3 tier reflects what is substantiated on the security-relevant pages I did read, and should be revisited if those three pages show a constraint surface.",
+    "No third-party integration TERMS were found for either product \u2014 no pricing, rate limits, ToS, licence, or partner-access gate for Altana; for TWAK, the twak init API-access-ID/HMAC-secret flow implies a credential issuance process whose terms I never saw. Both are unresolved for AiKi's commercial planning.",
+    "The bnbagent-sdk WalletProvider seam (TWAKProvider / AltanaWalletProvider) is carried second-hand from this project's own earlier research file and was not re-fetched in this run. Re-read the bnbagent-sdk README before depending on those provider names.",
+    "No CertiK Skynet report was opened; the 'six additional files' in the audit scope are unenumerated. Whether the enforcing validator module was audited is unknown.",
+    "Cross-chain revocation latency. Altana's topology puts the source of truth on Ethereum (1) with a Base (8453) cache and a BNB (56) keyStore. Revocation is 'immediate on that chain' \u2014 the propagation delay between chains, and whether a key revoked on BSC stays live elsewhere, was not measured or documented."
+  ],
+  "aiki_implications": [
+    "Render Altana as T0 but with the badge earning its asterisk: show 'key validity + revocation: cryptographic, contract 0x6572\u20267E0a on BSC 56' as the proven claim, and 'spend cap: vendor-documented onchain, enforcing module unread' as a separate, visibly weaker line. AiKi's credibility comes from being the platform that distinguishes these two, since no vendor page does.",
+    "Render TWAK as T3, and put a one-line explainer next to it so the tier is not misread as an accusation of custody risk: TWAK is self-custody (better than a custodian) with zero constraint surface (nothing to enforce, nothing to revoke). Tier measures enforceability, not trustworthiness. Averaging custody and enforcement into a single T1 would be the wrong call and would mislead users in both directions.",
+    "Attach the tier to the WALLET PROVIDER active at execution time, not to the agent listing or the marketplace entry. The bnbagent-sdk already models wallet authority as a swappable provider (TWAKProvider vs AltanaWalletProvider); the same agent hired through TWAK and through Altana carries materially different enforcement. A per-listing badge would be structurally wrong.",
+    "AiKi can verify Altana tier claims independently and continuously, and should: eth_call isValidKey()/getKeys() against 0x6572427ED530BadcF7375Cf9A4709D8d2b0E7E0a is free and unlimited per Altana's own docs. Build a poller that (a) confirms a claimed session key is still live onchain before showing an agent as 'authorized', and (b) flips the badge the instant a key is revoked. This turns AiKi's tier from a static label into a live attestation \u2014 a genuine differentiator, and cheap.",
+    "Do NOT promise selector allowlists, approval thresholds, or multi-asset scope for Altana in AiKi's UI or docs. Only three axes are substantiated: contract allowlist by address, per-token periodic spend cap, and expiry. Model AiKi's internal policy schema as a superset, but mark unsupported axes as 'not enforceable by this provider' rather than silently dropping them \u2014 silent degradation of a security constraint is the worst failure mode available here.",
+    "Treat EIP-3009 TransferWithAuthorization as AiKi's own vendor-independent T0 primitive for settlement. It is verified by the token contract itself, is scoped/expiring/single-use, and per this project's earlier research is what both ERC-8183 settlement and x402 already use. It gives AiKi a cryptographic floor that holds even when the counterparty wallet is a T3 provider like TWAK.",
+    "Before shipping any 'audited and verified' claim, spend the ten minutes to get an Etherscan API key and resolve the two open verification gaps (source verification, and the owner() powers on KeyStore/KeyStoreController). Shipping a T0 badge that rests on a vendor's own audits page \u2014 when the underlying registry has an unexamined owner role \u2014 is exactly the marketing-phrasing failure AiKi exists to correct.",
+    "Design AiKi's revocation UX around Altana's actual guarantee and its actual limit: one userOp, immediate, monotonic, no vendor cooperation needed \u2014 but PER-CHAIN. If AiKi ever shows a multi-chain agent, a 'revoke everywhere' button must fan out per chain and must not report success until each chain confirms, or it will lie to the user during the propagation window."
+  ]
+}

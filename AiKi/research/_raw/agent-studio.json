@@ -1,0 +1,245 @@
+{
+  "topic": "BNB Agent Studio \u2014 technical surface for third-party agent enumeration and integration (AiKi, BSC chain 56)",
+  "verdict": "PARTIAL",
+  "executive_summary": "ANSWER FIRST: **No. BNB Chain does not operate a public API, registry service, index or export that enumerates agents created with Agent Studio.** Nothing in docs.bnbchain.org/developer-kit/bnbchain-studio/ (quickstart, demo, architecture, configuration, cli-reference, deployment, security) describes a hosted directory, a REST/GraphQL discovery service, an auth model for one, or a response shape. The launch blog explicitly frames discovery as standards-based, not centralised: \"Other agents can discover and call the one you've built.\" The `bag agents list/show/forget/register` command group exists, but `forget` semantics and the absence of any network endpoint in the docs indicate a **local address book**, not a queryable network registry (unverified \u2014 logged as a gap).\n\nThe only enumeration substrate is **on-chain**: Agent Studio's `bag erc8004 register` mints into an ERC-8004 IdentityRegistry, an upgradeable ERC-721 with `totalSupply()`, `exists(uint256)`, `getAgentWallet(uint256)` and a per-token `agentURI`. AiKi can therefore enumerate by walking token IDs 1..totalSupply() and resolving each `agentURI` (base64 data-URI JSON carrying `name`, `description`, `protocol`, `endpoint`). The BRC8004 IdentityRegistry on chain 56 is `0xfA09B3397fAC75424422C4D28b1729E3D4f659D7`; I could not verify from a primary source that bnbagent-sdk targets exactly this address, so **verify before building on it**. A third-party alternative exists: The Graph's Agent0 subgraphs index ERC-8004 on BNB Chain (API-key gateway, GraphQL), but the BNB subgraph ID is not published in the announcement.\n\nArchitecture is two artifacts: Layer A agent on AWS Bedrock AgentCore (invoke-only, **no public HTTP routes**), Layer B keyless service on EC2/Fargate exposing `POST /apex/negotiate` and `/apex/health`. No `/.well-known`, no A2A AgentCard. Signing policy (price clamp, EIP-712 allowlist) is enforced **in-process, off-chain**.",
+  "findings": [
+    {
+      "claim": "There is NO BNB-operated public API, registry service, index, or export to enumerate Agent Studio agents.",
+      "detail": "Across all eight Agent Studio doc pages fetched (index, quickstart, demo, architecture, configuration, cli-reference, deployment, security) no hosted discovery endpoint, base URL, auth scheme or response schema is documented. The demo page states discovery works the other way: a buyer must already hold an `agent_id`, then reads the on-chain ERC-8004 registry for that ID's `agent_uri` to obtain the service endpoint. The launch blog (2026.7.1) says only \"Other agents can find it and call it\" and attributes discovery to ERC-8004/ERC-8183 standards, never to a BNB-hosted directory. The networks doc declines even to publish contract addresses, deferring to upstream repos \u2014 behaviour inconsistent with an operated index service. DEPLOYED status: not observed. MARKETING status: no marketplace claim made. Practical consequence for AiKi: launch supply cannot be seeded by calling a BNB endpoint; it must be derived from chain state (see next finding) or from a third-party indexer.",
+      "confidence": "high",
+      "source_date": "2026-08-18 (fetched); blog dated 2026.7.1",
+      "sources": [
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/demo/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/architecture/",
+        "https://www.bnbchain.org/en/blog/bnb-agent-studio-is-live-on-bnb-chain-ai-agents-from-one-prompt"
+      ]
+    },
+    {
+      "claim": "The viable enumeration path is the ERC-8004 IdentityRegistry ERC-721 on BSC: totalSupply() + per-ID agentURI resolution.",
+      "detail": "BRC8004 (\"Trustless Agents on BNB Chain\", ERC-8004 implementation) publishes an upgradeable ERC-721 IdentityRegistry with `register(string agentURI) returns (uint256 agentId)`, `setAgentURI`, `setAgentWallet`, `totalSupply()`, `exists(uint256)`, `getAgentWallet(uint256)`. BSC mainnet (chain 56): IdentityRegistry `0xfA09B3397fAC75424422C4D28b1729E3D4f659D7`, ReputationRegistry `0x17860530385Bdde7992c4Da71B9ec7791E474C08`. Testnet (97) addresses not in that README. AiKi can enumerate by scanning 1..totalSupply() (IDs are sequential from `register`) or by indexing ERC-721 Transfer-from-zero mint events, then resolving each `agentURI`. CAVEAT \u2014 the README did not expose `tokenByIndex` or a registration event signature, and I could NOT confirm from a primary bnb-chain source that `bag erc8004 register` writes to this exact address. The official networks page says addresses live in the bnbagent-sdk and apex-contracts repos, not in docs. Treat the address as SPEC-adjacent, verify on BscScan before wiring.",
+      "confidence": "medium",
+      "source_date": "2026-08-18 (fetched)",
+      "sources": [
+        "https://raw.githubusercontent.com/BRC8004/brc8004-contracts/main/README.md",
+        "https://docs.bnbchain.org/developer-kit/bnbagent-sdk/networks/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/demo/"
+      ]
+    },
+    {
+      "claim": "Third-party alternative: The Graph's Agent0 subgraphs index ERC-8004 agents on BNB Chain via GraphQL.",
+      "detail": "Announced 2026-04-14. Multi-chain ERC-8004 indexing across Ethereum, Base, Polygon, BNB Chain and Monad. Queried through the standard decentralised gateway `https://gateway.thegraph.com/api/<API_KEY>/subgraphs/id/<SUBGRAPH_ID>`. Auth = Subgraph Studio API key in the path. Entities/fields named in the announcement: `agentRegistrationFiles`, `agentId`, `name`, `description`, `mcpEndpoint`, `mcpTools`, `supportedTrusts`. It also claims coverage of reputation scores with full feedback history, validation records and protocol-wide statistics. The BNB-specific SUBGRAPH_ID is NOT published \u2014 the post directs readers to search \"agent0\" on Graph Explorer per network. This is the closest thing to a callable enumeration API for AiKi's launch supply, but it is operated by The Graph/agent0lab, not BNB Chain, and indexes the ERC-8004 registry generally (not \"agents made with Studio\" specifically). Source repo: github.com/agent0lab/subgraph.",
+      "confidence": "medium",
+      "source_date": "2026-04-14 (published)",
+      "sources": [
+        "https://thegraph.com/blog/agent0-subgraphs-live-erc-8004-agent-economy/",
+        "https://github.com/agent0lab/subgraph"
+      ]
+    },
+    {
+      "claim": "Developer workflow: pip-installed `bag` CLI scaffolds a two-layer project; agent runs on AWS Bedrock AgentCore, service on EC2/Fargate.",
+      "detail": "Sequence verbatim: `pip install bnbagent-studio` \u2192 `bag --version` \u2192 `bag skills install` \u2192 `bag init weather-seller` \u2192 `cd weather-seller` \u2192 `bag dev` \u2192 `bag deploy prepare` \u2192 `bag deploy agent` \u2192 `bag deploy verify --endpoint <service-url>`. `bag init` flags: `--framework adk --runtime agentcore --llm-provider pieverse-llm --network bsc-testnet --no-onboard --ide claude-code|cursor|both`. Default framework is Google ADK; default runtime AgentCore; default network bsc-testnet. Local dev mirrors production: Agent on :8080, Service on :8003. Production split \u2014 Layer A (agent) thin-wraps `agentcore deploy` onto AWS Bedrock AgentCore; Layer B (service) ships as a zip with `service.py` at top level to EC2 or Fargate. Layer B calls Layer A via AWS `InvokeAgentRuntime` for signing. Critically: \"AgentCore is invoke-only \u2014 no public HTTP routes, no background poll loop.\" The public-facing surface is entirely Layer B, which YOU host. First AgentCore deploy ~4\u20136 minutes; later deploys use cached resources. Other deploy verbs: `package`, `status`, `destroy`, `logs`.",
+      "confidence": "high",
+      "source_date": "2026-08-18 (fetched)",
+      "sources": [
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/quickstart/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/architecture/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/deployment/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/cli-reference/"
+      ]
+    },
+    {
+      "claim": "The HTTP contract is CUSTOM (`/apex/*`), not A2A AgentCard, not /.well-known.",
+      "detail": "The deployed Layer B service exposes `POST /apex/negotiate` and a health route (`/apex/health`, with `/apex/status` also referenced). Negotiate request: `{\"task_description\": str, \"terms\": {\"deliverables\": str, \"quality_standards\": str}}`. Response: `{\"accepted\": bool, \"price\": \"<raw uint256 string>\", \"currency\": \"<settlement-asset>\", \"provider_sig\": \"<EIP-191-signature>\", \"chain_id\": 97, \"quote_expires_at\": \"<5-min-ttl>\", \"verifying_contract\": \"<address>\"}\". Health returns `{\"status\":\"ok\",\"service\":\"erc8183-service (keyless)\",\"keyless\":true}`. The registered ERC-8004 endpoint is the `/apex/` base path, e.g. `bag erc8004 register --endpoint https://my-service.example.com/apex/`. NO `.well-known` JSON is mentioned anywhere in the docs; no A2A AgentCard schema is defined. ERC-8183 is invoked by name (\"ERC-8183 Client\", \"ERC-8183 workflows\", `[payments.erc8183]`) but the docs do not publish its wire schema \u2014 the `/apex/*` shape above is the observable contract. AiKi should treat `/apex/negotiate` as the integration point and must obtain the base URL from the on-chain `agentURI`.",
+      "confidence": "high",
+      "source_date": "2026-08-18 (fetched)",
+      "sources": [
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/demo/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/deployment/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/architecture/"
+      ]
+    },
+    {
+      "claim": "Agent wallet: user-custodied keystore; spend caps and EIP-712 allowlists are enforced OFF-CHAIN, in-process.",
+      "detail": "\"Private keys live only in user-controlled environments \u2014 the keystore never leaves your Agent via public channels.\" Keystore at workspace root `.studio/wallets/`, deliberately outside the AgentCore code dir so it is not packaged into deploy artifacts; injected at runtime from AWS Secrets Manager as `WALLET_KEYSTORE_JSON`. `WALLET_PASSWORD` is never persisted to config. Policy enforcement lives in `app/agent/signing.py` (fixed, non-LLM code): it clamps prices to `[min_price, max_price]` from `studio.toml` `[payments.erc8183]` before submission and re-validates chain state before every submission. Default EIP-712 allowlist: EIP-3009 `TransferWithAuthorization` and `ReceiveWithAuthorization` PERMITTED; ERC-2612 `Permit` and Permit2 variants DENIED by default. Extend via `[wallet.signing]` `extra_domains` / `extra_primary_types`. This is entirely off-chain/in-process \u2014 there is no smart-account, session-key contract, or on-chain spend-cap module described. Security implication for AiKi: a compromised Studio agent process has unbounded on-chain authority; the caps are advisory to that process only, not enforceable by a counterparty.",
+      "confidence": "high",
+      "source_date": "2026-08-18 (fetched)",
+      "sources": [
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/security/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/configuration/"
+      ]
+    },
+    {
+      "claim": "Trust boundaries: MCP server is read-only (15 tools), Layer B service is keyless, only Layer A can sign.",
+      "detail": "Documented boundaries: (1) the bundled MCP server for Cursor/Claude Code exposes 15 chain tools and \"all 15 tools are read-only \u2014 no signing, no on-chain state change\"; (2) the Layer B service is keyless \u2014 it \"can only *request* signatures, never sign directly\", via AWS `InvokeAgentRuntime` into Layer A; (3) the keystore is kept outside the AgentCore codebase to prevent accidental packaging. The signing policy lives in fixed code rather than in LLM-reachable surface. Notably ABSENT from the security page: any API-key model, authentication scheme for `/apex/negotiate`, or rate limiting. The negotiate endpoint as documented appears unauthenticated, with replay/abuse control resting on the 5-minute `quote_expires_at` TTL and the `provider_sig`. AiKi should assume it must supply its own authN/rate limiting when calling or when accepting calls from Studio agents.",
+      "confidence": "high",
+      "source_date": "2026-08-18 (fetched)",
+      "sources": [
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/security/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/architecture/"
+      ]
+    },
+    {
+      "claim": "LLM access is via a gateway ('pieverse-llm') with agent-wallet-funded billing topped up over x402.",
+      "detail": "`bag init --llm-provider pieverse-llm` is the documented default; quickstart says it \"Activates the Pieverse LLM with a $0 deposit (default provider)\". Config section is `[llm.pieverse]` holding a `key_hash` and provider config \u2014 i.e. a hashed key reference, consistent with a gateway rather than direct provider SDK calls. The `bag llm` command group is `test | activate | status [--full] | topup | allocate | rotate | list-models | usage` \u2014 `topup`, `allocate`, `rotate` and `usage` are gateway/credit-accounting verbs, not direct-API verbs. The launch blog states: \"Agents pay their own LLM bills from a wallet you fund. They top up automatically via the x402 protocol.\" No concrete model IDs, context windows, per-token prices, or provider identities are published in any page I fetched \u2014 `bag llm list-models` is the runtime source of truth. AWS Free Tier gives limited-time free deployment (48 hours max), which is deploy credit, not LLM credit.",
+      "confidence": "medium",
+      "source_date": "2026-08-18 (fetched); blog 2026.7.1",
+      "sources": [
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/configuration/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/cli-reference/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/quickstart/",
+        "https://www.bnbchain.org/en/blog/bnb-agent-studio-is-live-on-bnb-chain-ai-agents-from-one-prompt"
+      ]
+    },
+    {
+      "claim": "x402 is first-class: `bag x402 quote|buy` CLI verbs plus automatic LLM top-up. No 'b402' term appears anywhere.",
+      "detail": "The CLI exposes an `x402` command group with `quote` and `buy`. The launch blog states agents \"top up automatically via the x402 protocol\" for LLM bills. The bnbagent-sdk README references \"delegated x402\" with a TWAKProvider wallet and a \"session-key x402 payer\" with AltanaWalletProvider \u2014 i.e. the SDK has a WalletProvider seam letting x402 payment authority be delegated or scoped to a session key, with details deferred to wallet-specific READMEs I did not fetch. I saw NO occurrence of the term 'b402' in any fetched BNB source; do not assume Agent Studio speaks a b402 variant. Settlement inside ERC-8183 flows uses EIP-3009 `TransferWithAuthorization`/`ReceiveWithAuthorization` (the default signing allowlist), which is the same primitive x402 uses for stablecoin pulls \u2014 so an AiKi facilitator built on EIP-3009 should be wire-compatible with the Studio agent's permitted signing surface.",
+      "confidence": "medium",
+      "source_date": "2026-08-18 (fetched)",
+      "sources": [
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/cli-reference/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/security/",
+        "https://github.com/bnb-chain/bnbagent-sdk",
+        "https://www.bnbchain.org/en/blog/bnb-agent-studio-is-live-on-bnb-chain-ai-agents-from-one-prompt"
+      ]
+    },
+    {
+      "claim": "ERC-8004 registration is OPT-IN and manual, via an explicit CLI step \u2014 not automatic on deploy.",
+      "detail": "Identity is written by running `bag erc8004 register --endpoint https://my-service.example.com/apex/` as a discrete step in the deployment guide, after Layer B is reachable. Because the EC2 IP is not known at scaffold time, the docs show registering a placeholder then correcting it: `bag erc8004 update --new-uri <real-url>` (the CLI reference lists the verb as `update-endpoint`; `show` and `resolve` also exist). This means a meaningful fraction of Studio agents will exist WITHOUT an on-chain record, and some registered records will point at stale or private URLs (the demo literally shows `http://<ec2-ip>:8003/apex`). Registration is described elsewhere as gas-free on BSC Testnet via MegaFuel paymaster sponsorship (low confidence \u2014 search snippet, not a fetched primary page). Consequence for AiKi: on-chain enumeration undercounts the true Studio population and will contain dead endpoints; liveness probing `/apex/health` is mandatory before listing an agent.",
+      "confidence": "high",
+      "source_date": "2026-08-18 (fetched)",
+      "sources": [
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/deployment/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/demo/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/cli-reference/"
+      ]
+    },
+    {
+      "claim": "Package names and install: `bnbagent-studio` (CLI/runtime), `bnbagent-studio-core` (runtime lib), `bnbagent` (SDK). No version numbers published.",
+      "detail": "PyPI: `bnbagent-studio` provides the `bag` CLI and runtime; `bnbagent-studio-core` is the runtime library supplying wallet, ERC-8004/8183, x402 and signing-policy functionality; `bnbagent` is the standalone BNB Agent SDK (`pip install bnbagent`), with an npm counterpart named `@bnbagent/sdk`. Install: `pip install bnbagent-studio` or `uv tool install bnbagent-studio`. Repos: github.com/bnb-chain/bnbagent-studio and github.com/bnb-chain/bnbagent-sdk. NO version string appeared on any page I fetched \u2014 neither the docs index nor the SDK README surfaced one, and `bag --version` is the documented way to check. The SDK README describes ERC-8004 (Agent Identity) and ERC-8183 (Agentic Commerce, \"a three-layer stack: AgenticCommerce kernel + EvaluatorRouter + OptimisticPolicy\") plus a WalletProvider seam over `sign.message` / `sign.transaction` / `sign.typed_data`. Concrete Python class names were not enumerated in the README excerpt returned.",
+      "confidence": "high",
+      "source_date": "2026-08-18 (fetched)",
+      "sources": [
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/",
+        "https://github.com/bnb-chain/bnbagent-sdk",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/quickstart/"
+      ]
+    },
+    {
+      "claim": "`bag agents list|show|forget|register` is almost certainly a LOCAL address book, not a network registry query.",
+      "detail": "The CLI reference groups these under \"agents (registry)\". The presence of `forget` \u2014 a verb that only makes sense against local persisted state, since you cannot un-know a public registry entry \u2014 plus the total absence of any network endpoint, base URL or auth for it across every doc page, indicates a client-side cache of counterparty agents the developer has interacted with. It is separate from the `erc8004` group, which is the on-chain identity group. I did NOT fetch a page documenting `bag agents` semantics directly, so this is inference from naming and from the negative evidence of no documented service. AiKi MUST NOT plan launch supply around `bag agents list` returning a global population. Verify by running `bag agents list --help` and inspecting the workspace/`~/.studio` state directory.",
+      "confidence": "low",
+      "source_date": "2026-08-18 (fetched)",
+      "sources": [
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/cli-reference/"
+      ]
+    },
+    {
+      "claim": "Chain IDs: BSC Mainnet 56 and BSC Testnet 97 are both supported; Studio defaults to testnet and demo payloads carry chain_id 97.",
+      "detail": "The bnbagent-sdk networks page lists exactly two networks: BSC Testnet (97) and BSC Mainnet (56). `bag init` defaults to `--network bsc-testnet`, and agent `studio.toml` carries `[network] default = \"bsc-testnet\"`. The demo's negotiate response hardcodes `\"chain_id\": 97`. The BNBAgent SDK is announced as live on BNB Chain mainnet. The networks page explicitly declines to publish deployed contract addresses: \"Deployed contract addresses are not listed in this documentation. Use the upstream repositories as the source of truth\" \u2014 pointing at github.com/bnb-chain/apex-contracts#deployments for ERC-8183/APEX and github.com/bnb-chain/bnbagent-sdk for the ERC-8004 Identity Registry. For AiKi on chain 56, the ERC-8183/APEX settlement contract addresses remain UNVERIFIED and must be read from apex-contracts before any escrow integration.",
+      "confidence": "high",
+      "source_date": "2026-08-18 (fetched)",
+      "sources": [
+        "https://docs.bnbchain.org/developer-kit/bnbagent-sdk/networks/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/configuration/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/demo/"
+      ]
+    }
+  ],
+  "gaps": [
+    "EXACT ERC-8004 IdentityRegistry address that `bag erc8004 register` writes to. I have BRC8004's chain-56 address 0xfA09B3397fAC75424422C4D28b1729E3D4f659D7 from the BRC8004 repo README, but NOT confirmation from a bnb-chain primary source that bnbagent-sdk targets it. Resolve by reading constants/config in github.com/bnb-chain/bnbagent-sdk and cross-checking on BscScan.",
+    "BSC testnet (97) IdentityRegistry address \u2014 not in the BRC8004 README section returned.",
+    "ERC-8183 / APEX contract addresses on chain 56. Docs explicitly defer to github.com/bnb-chain/apex-contracts#deployments, which I did not fetch. Required before building escrow/settlement.",
+    "The registration event signature and whether IdentityRegistry exposes ERC-721 Enumerable `tokenByIndex`. Only `totalSupply`, `exists`, `getAgentWallet` were confirmed. If IDs are non-sequential or tokens are burnable, a 1..totalSupply() scan breaks \u2014 read the ABI directly.",
+    "The BNB Chain Agent0 SUBGRAPH_ID on The Graph. The announcement gives only the gateway URL template and says to search 'agent0' in Graph Explorer.",
+    "`bag agents list` semantics \u2014 local cache vs network call \u2014 never documented. Confirm empirically.",
+    "The full ERC-8183 wire protocol beyond /apex/negotiate: the paths and payloads for buy / submit / fetch / settle (CLI verbs exist: `bag erc8183 publish|list|status|buy|submit|fetch|settle`) were not published on any page fetched.",
+    "The exact JSON schema of the ERC-8004 agent registration file. Field NAMES seen (agent_id, address, name, description, protocol, endpoint, agent_uri) but no verbatim document, no versioning, no confirmation of base64 data-URI vs HTTP vs IPFS hosting in the general case.",
+    "Concrete LLM model IDs, per-token pricing, context limits, and the identity of the Pieverse gateway operator. `bag llm list-models` is the only stated source.",
+    "AgentCore runtime limits: memory ceiling, request timeout, payload size, cold-start behaviour, concurrency. Docs give only 'first deploy 4\u20136 minutes'.",
+    "Any authentication or rate limiting on POST /apex/negotiate. The security page is silent; the endpoint appears unauthenticated.",
+    "Whether 'b402' exists at all in the BNB stack. The term appeared in no fetched source.",
+    "Exact package versions for bnbagent-studio / bnbagent-studio-core / bnbagent, and PyPI release dates.",
+    "Python class and method names in bnbagent-sdk beyond the sign.message / sign.transaction / sign.typed_data seam and the WalletProvider abstraction.",
+    "MegaFuel paymaster gas sponsorship for testnet ERC-8004 registration \u2014 seen only in a search snippet, never in a fetched primary page.",
+    "Whether ERC-8183 job/offer state itself is enumerable on-chain (would be a second, higher-signal supply source than the identity registry, since it implies an agent is actually selling)."
+  ],
+  "aiki_implications": [
+    "LAUNCH SUPPLY IS AN INDEXING PROBLEM, NOT AN API-INTEGRATION PROBLEM. Budget for building an ERC-8004 indexer against chain 56 as a launch blocker. There is no BNB endpoint to call. Two implementations: (a) own indexer \u2014 poll IdentityRegistry.totalSupply(), fill gaps by scanning ERC-721 Transfer(0x0 -> owner) logs, resolve tokenURI/agentURI per ID; (b) rent The Graph's Agent0 BNB subgraph via gateway API key. Do (b) for week-one supply, ship (a) for control and to avoid a single point of failure.",
+    "VERIFY 0xfA09B3397fAC75424422C4D28b1729E3D4f659D7 ON BSCSCAN BEFORE WRITING A LINE OF INDEXER CODE. Read the deployed ABI, confirm it is what bnbagent-sdk writes to, and confirm agent IDs are sequential and non-burnable. If a different registry is in play you will index an empty or wrong set. This is the single highest-leverage unknown in this report.",
+    "ENUMERATION GIVES YOU CANDIDATES, NOT INVENTORY. Registration is a manual opt-in step run after deployment, and the docs themselves demo registering a raw `http://<ec2-ip>:8003/apex` URL. Expect stale, private, and plain-HTTP endpoints in the registry. Make a `GET {base}/apex/health` liveness probe (expect `{\"status\":\"ok\",\"keyless\":true}`) a hard gate for listing, with periodic re-probing and automatic delisting. This health route is a free, unauthenticated, cheap Studio-agent fingerprint \u2014 use it to tag which registry entries are Studio-built.",
+    "THE SUPPLY GAP IS AIKI'S OPENING. Studio ships no directory; BNB explicitly leaves discovery to standards. A working directory with liveness, pricing and reputation over chain-56 ERC-8004 is unclaimed surface, not a me-too build. Corollary risk: BNB could ship one, so speed matters and differentiation should sit in trust/execution, not in the listing itself.",
+    "BUILD THE /apex/ ADAPTER AS A FIRST-CLASS CONNECTOR. `POST /apex/negotiate` with {task_description, terms{deliverables, quality_standards}} returning {accepted, price, currency, provider_sig, chain_id, quote_expires_at, verifying_contract} is a concrete, implementable contract you can code against today. Treat `provider_sig` (EIP-191) as a verifiable price commitment \u2014 recover the signer and check it equals IdentityRegistry.getAgentWallet(agentId). That single check ties an HTTP quote to an on-chain identity and is the cheapest real trust primitive available.",
+    "HONOUR THE 5-MINUTE QUOTE TTL IN YOUR STATE MACHINE. `quote_expires_at` is a 5-minute window. Any AiKi flow that caches quotes, batches, or inserts human approval must re-quote rather than replay. Design for quote-refresh, not quote-storage.",
+    "DO NOT BUILD FOR AN A2A AGENTCARD OR /.well-known ON THIS STACK. Neither exists in Agent Studio. If AiKi wants AgentCard-shaped metadata, AiKi must synthesise it from the on-chain agentURI JSON (name, description, protocol, endpoint) and publish it itself. That synthesis is a differentiator \u2014 position AiKi as the layer that makes BNB agents A2A-legible.",
+    "TREAT STUDIO SPEND CAPS AS ZERO ASSURANCE. min_price/max_price clamping lives in `app/agent/signing.py` inside the agent's own process; there is no on-chain smart-account, session key contract, or spend module. A counterparty cannot rely on them. AiKi's escrow/settlement must assume the agent wallet has unbounded authority and must derive safety from the contract side (escrow, optimistic dispute windows) \u2014 which is precisely the gap AiKi's trust layer fills.",
+    "EIP-3009 IS THE INTEROP KEY. Studio's default signing allowlist permits TransferWithAuthorization and ReceiveWithAuthorization and DENIES ERC-2612 Permit and Permit2. If AiKi's payment rail uses Permit/Permit2, a stock Studio agent will refuse to sign and integration silently fails. Build settlement on EIP-3009, or document the exact `[wallet.signing] extra_domains` / `extra_primary_types` entries an operator must add.",
+    "INHERIT THE TWO-LAYER TRUST MODEL RATHER THAN FIGHTING IT. Layer A (AgentCore) is invoke-only with the keys; Layer B is keyless and public-facing. Any AiKi execution component intended to run alongside a Studio agent should sit at Layer B and request signatures, never hold the keystore. This matches the documented boundary and keeps AiKi out of the custody blast radius.",
+    "THE NEGOTIATE ENDPOINT IS UNAUTHENTICATED AND UNRATE-LIMITED AS DOCUMENTED. AiKi's crawler will be probing endpoints that have no abuse controls \u2014 throttle aggressively and self-identify, or you will be the DoS. Conversely, offering a managed rate-limit/auth shim in front of Studio services is a natural AiKi product wedge.",
+    "AGENTS ARE PRICE-QUOTING IN RAW 18-DECIMAL UINT256 STRINGS (e.g. \"100000000000000000\"). Never parse these as JS numbers. Also note the demo returns `\"currency\": \"<settlement-asset>\"` \u2014 the settlement token is per-agent and unresolved in docs, so AiKi must handle heterogeneous settlement assets on chain 56 from day one rather than assuming a single stablecoin.",
+    "PLAN FOR A TESTNET-HEAVY POPULATION AT LAUNCH. Studio defaults to `--network bsc-testnet` and the demo payloads carry chain_id 97. Real chain-56 supply may be thin initially. Index both 56 and 97, but surface only 56 in production listings \u2014 and use the 97 population as an early leading indicator of who is about to go live."
+  ],
+  "interfaces": [
+    {
+      "name": "POST /apex/negotiate \u2014 request and response (deployed Studio Service, Layer B)",
+      "language": "json",
+      "body": "// Request\n{\n  \"task_description\": \"3-day forecast for Singapore\",\n  \"terms\": {\n    \"deliverables\": \"text forecast\",\n    \"quality_standards\": \"detailed daily breakdown\"\n  }\n}\n\n// Response\n{\n  \"accepted\": true,\n  \"price\": \"100000000000000000\",\n  \"currency\": \"<settlement-asset>\",\n  \"provider_sig\": \"<EIP-191-signature>\",\n  \"chain_id\": 97,\n  \"quote_expires_at\": \"<5-min-ttl>\",\n  \"verifying_contract\": \"<contract-address>\"\n}",
+      "source": "https://docs.bnbchain.org/developer-kit/bnbchain-studio/demo/"
+    },
+    {
+      "name": "GET /apex/health \u2014 Studio Service liveness fingerprint",
+      "language": "json",
+      "body": "{\"status\":\"ok\",\"service\":\"erc8183-service (keyless)\",\"keyless\":true}\n\n// Also referenced as GET /apex/status\n// Registered ERC-8004 endpoint is the BASE path, e.g.\n//   https://my-service.example.com/apex/\n// so health probe = <agentURI.endpoint> + \"health\"",
+      "source": "https://docs.bnbchain.org/developer-kit/bnbchain-studio/demo/ and .../deployment/"
+    },
+    {
+      "name": "IdentityRegistry (BRC8004 / ERC-8004) \u2014 upgradeable ERC-721",
+      "language": "solidity",
+      "body": "function register(string calldata agentURI) external returns (uint256 agentId);\nfunction setAgentURI(uint256 agentId, string calldata agentURI) external;\nfunction setAgentWallet(\n    uint256 agentId,\n    address newWallet,\n    uint256 deadline,\n    bytes calldata signature\n) external;\nfunction totalSupply() external view returns (uint256);\nfunction exists(uint256 agentId) external view returns (bool);\nfunction getAgentWallet(uint256 agentId) external view returns (address);\n\n// BSC Mainnet, chain 56:\n//   IdentityRegistry   0xfA09B3397fAC75424422C4D28b1729E3D4f659D7\n//   ReputationRegistry 0x17860530385Bdde7992c4Da71B9ec7791E474C08\n// Testnet (97) addresses not published in this README.\n// NOTE: no tokenByIndex or registration event confirmed \u2014 verify ABI on BscScan.",
+      "source": "https://raw.githubusercontent.com/BRC8004/brc8004-contracts/main/README.md"
+    },
+    {
+      "name": "app/agent/studio.toml \u2014 agent-side configuration",
+      "language": "toml",
+      "body": "[stack]\nframework = \"adk\"\nruntime   = \"agentcore\"\n\n[wallet]\n# address derived from keystore\n\n[llm.pieverse]\n# key_hash, provider config (default provider)\n\n[payments.erc8183]\nmin_price = \"100000000000000000\"    # raw units (18 decimals)\nmax_price = \"1000000000000000000\"\n\n[network]\ndefault = \"bsc-testnet\"\n\n# [wallet.signing] also exists, with fields:\n#   extra_domains, extra_primary_types",
+      "source": "https://docs.bnbchain.org/developer-kit/bnbchain-studio/configuration/ and .../security/"
+    },
+    {
+      "name": "app/service/studio.toml \u2014 service-side configuration",
+      "language": "toml",
+      "body": "[agent]\nruntime_arn = \"\"   # filled after Layer A deploy\n\n[payments.erc8183]\npoll_interval_seconds = 30\nauto_settle = true\n\n[provider]\n# address synced from wallet via bag wallet new",
+      "source": "https://docs.bnbchain.org/developer-kit/bnbchain-studio/configuration/"
+    },
+    {
+      "name": "Quickstart \u2192 deploy command sequence",
+      "language": "bash",
+      "body": "pip install bnbagent-studio        # or: uv tool install bnbagent-studio\nbag --version\nbag skills install\nbag init weather-seller\ncd weather-seller\nbag dev                            # Agent :8080, Service :8003\nbag deploy prepare\nbag deploy agent                   # ~4-6 min first time (AWS Bedrock AgentCore)\nbag deploy package                 # zip with service.py at top level -> EC2/Fargate\nbag deploy verify --endpoint <public-url>\nbag deploy status\n\n# On-chain identity is a SEPARATE, MANUAL, OPT-IN step:\nbag erc8004 register --endpoint https://my-service.example.com/apex/\nbag erc8004 update --new-uri <real-url>   # CLI ref lists verb as: update-endpoint",
+      "source": "https://docs.bnbchain.org/developer-kit/bnbchain-studio/quickstart/ and .../deployment/"
+    },
+    {
+      "name": "bag CLI \u2014 command groups and flags (19 groups total)",
+      "language": "text",
+      "body": "init     bag init <name> [--framework adk] [--runtime agentcore]\n                        [--llm-provider pieverse-llm] [--network bsc-testnet]\n                        [--no-onboard] [--ide claude-code|cursor|both]\nwallet   new | show | list | sign\nerc8004  register | show | resolve | update-endpoint\nerc8183  publish | list | status | buy | submit | fetch | settle\nx402     quote | buy\nagents   list | show | forget | register        # (\"registry\" \u2014 likely LOCAL)\ndev      bag dev [--agent-only] [--service-only] [--port N] [--service-port N]\ndeploy   prepare | agent | package | verify | status | destroy | logs\nmcp      serve | tools                          # 15 tools, ALL read-only\nllm      test | activate | status [--full] | topup | allocate | rotate\n         | list-models | usage",
+      "source": "https://docs.bnbchain.org/developer-kit/bnbchain-studio/cli-reference/"
+    },
+    {
+      "name": "ERC-8004 agent registration file \u2014 field names observed (schema NOT published verbatim)",
+      "language": "text",
+      "body": "Fields named in the demo page:\n  agent_id, address, name, description, protocol, endpoint, agent_uri\n\nStorage: the registry stores agent_uri as base64-encoded JSON (data URI)\ncontaining the Service endpoint, e.g.  http://<ec2-ip>:8003/apex\n\nNO .well-known route. NO A2A AgentCard schema. This is a paraphrase of field\nnames from prose, NOT a verbatim schema document \u2014 treat as unverified until\nan on-chain tokenURI is decoded directly.",
+      "source": "https://docs.bnbchain.org/developer-kit/bnbchain-studio/demo/"
+    },
+    {
+      "name": "Signing policy defaults (enforced in-process, app/agent/signing.py)",
+      "language": "text",
+      "body": "ALLOWED by default (EIP-712 primary types):\n  EIP-3009  TransferWithAuthorization\n  EIP-3009  ReceiveWithAuthorization\n\nDENIED by default:\n  ERC-2612  Permit\n  Permit2   (all variants)\n\nExtend via studio.toml:\n  [wallet.signing]\n  extra_domains       = [...]\n  extra_primary_types = [...]\n\nPrice clamp: transaction price forced into [min_price, max_price] from\n[payments.erc8183] before submission; chain state re-validated before every\nsubmission. ENFORCEMENT IS OFF-CHAIN / IN-PROCESS ONLY.\n\nKey custody: keystore at .studio/wallets/ (workspace root, outside AgentCore\ncode dir); injected in prod from AWS Secrets Manager as WALLET_KEYSTORE_JSON.\nWALLET_PASSWORD never persisted to config.",
+      "source": "https://docs.bnbchain.org/developer-kit/bnbchain-studio/security/"
+    },
+    {
+      "name": "The Graph Agent0 subgraph \u2014 gateway template and entity fields (BNB subgraph ID NOT published)",
+      "language": "text",
+      "body": "Gateway URL template (generic, from the announcement):\n  https://gateway.thegraph.com/api/<API_KEY>/subgraphs/id/<SUBGRAPH_ID>\n\nAuth: Subgraph Studio API key embedded in the path.\n\nEntity / field names cited:\n  agentRegistrationFiles\n  agentId, name, description, mcpEndpoint, mcpTools, supportedTrusts\n\nChains indexed: Ethereum, Base, Polygon, BNB Chain, Monad.\nPublished 2026-04-14. The BNB Chain SUBGRAPH_ID is not given \u2014 the post says\nto search \"agent0\" on Graph Explorer and pick the network.\nSource repo: github.com/agent0lab/subgraph",
+      "source": "https://thegraph.com/blog/agent0-subgraphs-live-erc-8004-agent-economy/"
+    }
+  ]
+}

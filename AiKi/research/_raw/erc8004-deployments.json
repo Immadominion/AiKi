@@ -1,0 +1,184 @@
+{
+  "topic": "ERC-8004 registries on BNB Smart Chain (chain 56): resolving the 0x8004\u2026 vs BRC8004 address contradiction",
+  "verdict": "SOLID",
+  "executive_summary": "Both researchers were right about the bytes and wrong about the exclusivity. BSC mainnet hosts TWO independent ERC-8004-shaped registry pairs. I verified all four addresses directly against BSC RPC (eth_getCode, eth_call) \u2014 not from an explorer page, not from memory.\n\n(A) 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432 / 0x8004BAa17C55a88189AE136b182e5fdA19dE9b63 is the CANONICAL deployment. ERC-1967 proxies; name()=\"AgentIdentity\", symbol()=\"AGENT\"; getVersion()=\"2.0.0\" on both; the Reputation proxy's getIdentityRegistry() returns the Identity proxy, so the pair is wired. Implementations (0x7274e874\u2026, 0x16e0fa7f\u2026) are source-verified on Sourcify as IdentityRegistryUpgradeable / ReputationRegistryUpgradeable and the ABI matches ERC-8004 v1 exactly \u2014 register()/register(string)/register(string,tuple[]), setAgentURI, setMetadata, getMetadata, setAgentWallet(agentId,newWallet,deadline,signature), getAgentWallet, unsetAgentWallet, ERC-721 + EIP-712. Highest existing tokenId = 269,718 (binary search on ownerOf). 4 Registered events in a 1,000-block window \u2248 460 registrations/day. This is where the 257,865 live \u2014 that figure is a stale/filtered snapshot of this contract.\n\n(B) 0xfA09B3397fAC75424422C4D28b1729E3D4f659D7 / 0x17860530385Bdde7992c4Da71B9ec7791E474C08 is BRC8004: name()=\"BRC8004 Identity Registry\", symbol()=\"BRC8004\", totalSupply() = 26, zero Registered events in the same window, agent #1 is literally named \"Test\". Its repo (github.com/BRC8004, not bnb-chain) was created and last pushed 2026-02-02, 1 star. It is a community re-deployment, effectively dead.\n\nbnb-chain/bnbagent-sdk pins chain 56 \u2192 0x8004A169\u2026. AiKi should index (A) only.",
+  "findings": [
+    {
+      "claim": "All four addresses hold live contracts on BSC mainnet \u2014 they are two distinct registry pairs, not a contradiction. DEPLOYED.",
+      "detail": "eth_getCode against https://bsc-dataseed.bnbchain.org returned non-empty bytecode for all four. All four are ERC-1967 proxies (implementation slot 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc is read by the runtime code). Implementation addresses read from that slot:\n- 0x8004A169\u2026a432 \u2192 0x7274e874ca62410a93bd8bf61c69d8045e399c02\n- 0x8004BAa1\u20269b63 \u2192 0x16e0fa7f7c56b9a767e34b192b51f921be31da34\n- 0xfA09B339\u202659D7 \u2192 0x7d7bb7f296a8f1c6d83161852f90d3dc48348ed2\n- 0x17860530\u20264C08 \u2192 0xe3b9577bd42a5bd8c24eba9076562c8f32719db8\nThe 0x8004\u2026 pair uses a minimal (Solady-style) ERC-1967 proxy; the BRC8004 pair uses an OpenZeppelin-style ERC1967Proxy. Different proxy bytecode, different implementations, different owners \u2014 genuinely two deployments.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org (eth_getCode, eth_getStorageAt)"
+      ]
+    },
+    {
+      "claim": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432 is the canonical ERC-8004 IdentityRegistry: name \"AgentIdentity\", symbol \"AGENT\", getVersion \"2.0.0\", ERC-721. DEPLOYED.",
+      "detail": "eth_call results: name() = \"AgentIdentity\"; symbol() = \"AGENT\"; getVersion() = \"2.0.0\"; supportsInterface(0x80ac58cd) = true (ERC-721); owner() = 0xF223968Dd0c66472E31043acAcCcF5D1464D644b.\ntotalSupply() REVERTS \u2014 it is not ERC721Enumerable. Do not plan an indexer around totalSupply on this contract.\ntokenURI(1) returns an inline data:application/json;base64 blob whose decoded JSON begins {\"type\":\"https://eips.ethereum.org/EIPS/eip-8004#registration-v1\",\"name\":\"ClawNews\",\u2026}. tokenURI(269718) decodes to the same spec type with \"name\":\"Ave.ai Trading Agent\". Real production agents at both ends of the id range.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org (eth_call name/symbol/getVersion/owner/supportsInterface/tokenURI)"
+      ]
+    },
+    {
+      "claim": "The canonical Identity registry holds ~269,718 agents and is growing ~460/day. The 257,865 figure from 8004scan belongs to THIS contract, as a lagging or filtered snapshot. DEPLOYED.",
+      "detail": "Binary search on ownerOf(uint256) (reverts for non-existent ids, ids are sequential from 1): ownerOf(1) succeeds, ownerOf(269718) succeeds, ownerOf(269719) reverts, ownerOf(269800) and ownerOf(270500) revert. Highest minted agentId = 269,718.\nLiveness: eth_getLogs on topic0 = keccak(\"Registered(uint256,string,address)\") = 0xca52e62c367d81bb2e328eb795f7c7ba24afb478408a26c0e201d155c449bc4a over blocks 116727041\u2013116728040 (1,000 blocks \u2248 12.5 min at 0.75s) returned 4 events \u2192 \u2248460 registrations/day.\n269,718 minted vs 8004scan's 257,865 is an ~4.4% gap consistent with a snapshot taken earlier, or with 8004scan filtering (e.g. excluding agents with unresolvable URIs). It is NOT reconcilable with BRC8004's 26. Caveat: I did not verify 8004scan's number by fetching 8004scan itself this run.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://bsc-rpc.publicnode.com (eth_getLogs, eth_call ownerOf)",
+        "https://bsc-dataseed.bnbchain.org (eth_call ownerOf)"
+      ]
+    },
+    {
+      "claim": "The canonical implementations are source-verified on Sourcify and their ABI matches the ERC-8004 spec surface with NO divergences from the register/setAgentURI/setMetadata/setAgentWallet/getAgentWallet shape. SPEC+DEPLOYED.",
+      "detail": "Sourcify full match, chain 56:\n- 0x7274e874ca62410a93bd8bf61c69d8045e399c02 = IdentityRegistryUpgradeable (project/contracts/IdentityRegistryUpgradeable.sol), solc 0.8.24, viaIR, optimizer 200, shanghai, OZ contracts-upgradeable 5.4.0.\n- 0x16e0fa7f7c56b9a767e34b192b51f921be31da34 = ReputationRegistryUpgradeable.\nIdentity exposes all three register overloads \u2014 register(), register(string), register(string,tuple[]) \u2014 plus setAgentURI, setMetadata, getMetadata, setAgentWallet(uint256,address,uint256,bytes), getAgentWallet, unsetAgentWallet, isAuthorizedOrOwner, getVersion, full ERC-721, eip712Domain, and UUPS upgradeToAndCall.\nEvents to index: Registered(uint256 agentId,string agentURI,address owner), URIUpdated(uint256,string,address), MetadataSet(uint256,string indexed,string,bytes), plus ERC-721 Transfer and MetadataUpdate/BatchMetadataUpdate (ERC-4906).\nNote: no event parameters are indexed on Registered/URIUpdated \u2014 you cannot filter by agentId at the log level; filter by topic0 + address and decode.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://sourcify.dev/server/v2/contract/56/0x7274e874ca62410a93bd8bf61c69d8045e399c02?fields=abi,compilation",
+        "https://sourcify.dev/server/v2/contract/56/0x16e0fa7f7c56b9a767e34b192b51f921be31da34?fields=abi,compilation"
+      ]
+    },
+    {
+      "claim": "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63 is the matching ReputationRegistry and is cryptographically wired to the canonical Identity registry. DEPLOYED.",
+      "detail": "getIdentityRegistry() on 0x8004BAa1\u20269b63 returns 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432. getVersion() = \"2.0.0\". name()/symbol()/totalSupply() revert \u2014 it is not a token, which is correct per spec.\nWrite surface: giveFeedback(uint256 agentId,int128 value,uint8 valueDecimals,string tag1,string tag2,string endpoint,string feedbackURI,bytes32 feedbackHash); revokeFeedback(uint256,uint64); appendResponse(uint256,address,uint64,string,bytes32).\nRead surface: getSummary(uint256,address[],string,string) -> (uint64 count,int128 sum,uint8 decimals); readFeedback; readAllFeedback; getClients; getLastIndex; getResponseCount.\nKey event for indexing: NewFeedback, topic0 = 0x6a4a61743519c9d648a14e6493f47dbe3ff1aa29e7785c96c8326a205e58febc. Only tag1 is indexed (as indexedTag1); agentId and clientAddress are NOT indexed, so per-agent log filters are impossible \u2014 index everything and shard downstream.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org (eth_call getIdentityRegistry/getVersion)",
+        "https://sourcify.dev/server/v2/contract/56/0x16e0fa7f7c56b9a767e34b192b51f921be31da34?fields=abi,compilation"
+      ]
+    },
+    {
+      "claim": "BRC8004 (0xfA09B3397\u202659D7) is a real but effectively abandoned parallel registry holding 26 agents. DEPLOYED but dormant.",
+      "detail": "eth_call: name() = \"BRC8004 Identity Registry\"; symbol() = \"BRC8004\"; totalSupply() = 26 (it IS ERC721Enumerable, unlike the canonical one); supportsInterface(0x80ac58cd) = true; owner() = 0x350ddeE488F2080568F2fb68CBb9Aa8CA33fA24F, which is also ownerOf(1) and getAgentWallet(1).\ntokenURI(1) decodes to {\"type\":\"brc8004-agent-registration\",\"version\":\"1.0\",\"name\":\"Test\",\"description\":\"A test agent for BRC8004 protocol demonstration\u2026\"} \u2014 a NON-STANDARD type string, not the eip-8004#registration-v1 URI the canonical registry emits.\nZero Registered events in the same 1,000-block window where the canonical registry had 4.\nIts reputation contract 0x17860530\u20264C08 links back via identityRegistry() -> 0xfA09B339\u202659D7 (note: getIdentityRegistry() REVERTS on it \u2014 a real ABI divergence from the spec, which names getIdentityRegistry).",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org (eth_call name/symbol/totalSupply/owner/ownerOf/tokenURI/getAgentWallet/identityRegistry)",
+        "https://bsc-rpc.publicnode.com (eth_getLogs Registered)"
+      ]
+    },
+    {
+      "claim": "BRC8004 is a third-party community project, not an official BNB Chain deployment. Its repo was created and abandoned on the same day.",
+      "detail": "github.com/BRC8004/brc8004-contracts \u2014 org is \"BRC8004\", not \"bnb-chain\". GitHub API metadata: created_at 2026-02-02T12:56:27Z, pushed_at 2026-02-02T12:56:31Z (four seconds later \u2014 one initial push, never touched again), stargazers_count = 1.\nIts README does name exactly the pair researcher (B) reported: IdentityRegistry 0xfA09B3397fAC75424422C4D28b1729E3D4f659D7, ReputationRegistry 0x17860530385Bdde7992c4Da71B9ec7791E474C08, and documents agentRegistry as eip155:56:0xfA09B3397fAC75424422C4D28b1729E3D4f659D7. So researcher (B) read a real, accurate document \u2014 it simply describes an unofficial deployment. The README itself points at github.com/erc-8004/erc-8004-contracts as the upstream standard.",
+      "confidence": "high",
+      "source_date": "2026-02-02",
+      "sources": [
+        "https://api.github.com/repos/BRC8004/brc8004-contracts",
+        "https://api.github.com/repos/BRC8004/brc8004-contracts/contents/README.md"
+      ]
+    },
+    {
+      "claim": "The official bnb-chain/bnbagent-sdk hardcodes chain 56 \u2192 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432. BRC8004 appears nowhere in it. DECISIVE.",
+      "detail": "gh code search on repo:bnb-chain/bnbagent-sdk for \"0x8004\" hits typescript/src/config.ts, python/bnbagent/config.py, .env.example, python/bnbagent/erc8004/README.md, and the erc8004 test files.\ntypescript/src/config.ts NETWORKS[\"bsc-mainnet\"] = { chainId: 56, registryContract: \"0x8004A169FB4a3325136EB29fA0ceB6D2e539a432\", \u2026 }; NETWORKS[\"bsc-testnet\"] = { chainId: 97, registryContract: \"0x8004A818BFB912233c491871b3d84c89A494BD9e\", \u2026 }. python/bnbagent/config.py carries byte-identical values.\npython/bnbagent/erc8004/README.md has a network table: \"BSC Mainnet | Active | 56 | 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432\" and \"BSC Testnet | Active | 97 | 0x8004A818BFB912233c491871b3d84c89A494BD9e\". The same doc states get_all_agents(limit, offset) does \"Paginated listing via 8004scan API\" \u2014 the official SDK itself treats 8004scan as the indexer for this contract, which independently confirms the 257,865 count belongs to 0x8004A169\u2026.\nRepo last pushed 2026-08-18 (today) \u2014 actively maintained.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://api.github.com/repos/bnb-chain/bnbagent-sdk/contents/typescript/src/config.ts",
+        "https://api.github.com/repos/bnb-chain/bnbagent-sdk/contents/python/bnbagent/config.py",
+        "https://api.github.com/repos/bnb-chain/bnbagent-sdk/contents/python/bnbagent/erc8004/README.md",
+        "https://api.github.com/search/code?q=repo:bnb-chain/bnbagent-sdk+0x8004"
+      ]
+    },
+    {
+      "claim": "The 0x8004\u2026 addresses are deterministic across chains via a CREATE2 vanity scheme, which is why the same address appears on Ethereum, Base, Arbitrum, Avalanche, BSC, Celo, Gnosis, Linea, Mantle, Abstract and GOAT. SPEC.",
+      "detail": "erc-8004/erc-8004-contracts VANITY_DEPLOYMENT_GUIDE.md states the strategy verbatim: (1) deploy a MinimalUUPS placeholder via CREATE2, (2) deploy proxies at vanity addresses pointing at MinimalUUPS, (3) deploy real implementations via CREATE2, (4) upgrade proxies to real implementations via PRE-SIGNED transactions. Deterministic addresses listed: CREATE2 Factory 0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7 (SAFE Singleton Factory), MinimalUUPS 0xd53dE688e0b0ad436FBdbDa00036832FF6499234, and the testnet-salt set IdentityRegistry 0x8004A818BFB912233c491871b3d84c89A494BD9e / ReputationRegistry 0x8004B663056A597Dffe9eCcC1965A193B7388713 / ValidationRegistry 0x8004Cb1BF31DAf7788923b405b754f57acEB4272, Owner 0x547289319C3e6aedB179C0b8e8aF0B5ACd062603.\nThe repo README lists the SAME mainnet pair (0x8004A169\u2026/0x8004BAa1\u2026) for every mainnet including \"#### BSC Mainnet\", and the same testnet pair for every testnet. Implication for AiKi: one address constant works cross-chain; chain-id is the only variable. Second implication: these are UUPS proxies whose owner can upgrade the implementation \u2014 the ABI you index is mutable. Watch the Upgraded(address) event.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://api.github.com/repos/erc-8004/erc-8004-contracts/contents/VANITY_DEPLOYMENT_GUIDE.md",
+        "https://api.github.com/repos/erc-8004/erc-8004-contracts/contents/README.md"
+      ]
+    },
+    {
+      "claim": "Bonus, directly load-bearing for AiKi: the SDK also pins a live ERC-8183 agentic-commerce stack on BSC mainnet, and all three contracts exist onchain.",
+      "detail": "From typescript/src/config.ts NETWORKS[\"bsc-mainnet\"], alongside the registry:\ncommerceContract 0xea4daa3100a767e86fded867729ae7446476eba6 (AgenticCommerce kernel / escrow), routerContract 0x51895229e12f9876011789b04f8698af06ccd6da (EvaluatorRouter), policyContract 0x9c01845705b3078aa2e8cff7520a6376fd766de5 (OptimisticPolicy \u2014 \"silence-approves, vote-rejects\"). Testnet 97 set: 0xa206c0517b6371c6638cd9e4a42cc9f02a33b0de / 0xd7d36d66d2f1b608a0f943f722d27e3744f66f25 / 0xd6a4217588f6b1f5657a92a3e94e6422ad771cea.\nVerified onchain: eth_getCode non-empty for all three mainnet addresses (commerce and router are 262-hex-char proxies, policy is 8,828 hex chars of direct implementation).\nI called paymentToken() on the commerce kernel: 0xcE24439F2D9C6a2289F741120FE202248B666666, whose symbol() returns \"U\" and decimals() returns 18. The SDK comment says the payment token is immutable on the kernel and must be read at runtime, not configured.\nThe config also pins a MegaFuel paymaster (https://bsc-megafuel.nodereal.io/) with usePaymaster: true \u2014 gasless agent registration is the default path.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://api.github.com/repos/bnb-chain/bnbagent-sdk/contents/typescript/src/config.ts",
+        "https://bsc-rpc.publicnode.com (eth_getCode, eth_call paymentToken/symbol/decimals)"
+      ]
+    },
+    {
+      "claim": "BRC8004's implementations are NOT source-verified on Sourcify, so its full ABI could not be read \u2014 but targeted probes prove partial spec compliance with at least one confirmed divergence.",
+      "detail": "Sourcify v2 returns {\"match\":null,\"creationMatch\":null,\"runtimeMatch\":null} for both 0x7d7BB7f296A8F1c6D83161852F90D3dc48348eD2 and 0xE3B9577Bd42A5bD8c24EBA9076562c8f32719Db8. BscScan returns HTTP 403 to WebFetch and its API now requires a key (V1 endpoints return \"deprecated V1 endpoint\", V2 returns \"Missing/Invalid API Key\"), so BscScan verification status is UNCONFIRMED.\nWhat responds on 0xfA09B339\u202659D7: ownerOf, tokenURI, getAgentWallet(uint256), getMetadata(uint256,string) (returns empty 0x), totalSupply, supportsInterface.\nWhat REVERTS: getVersion() \u2014 present on the canonical registry, absent here. On the reputation side, getIdentityRegistry() reverts while identityRegistry() works \u2014 the inverse of the spec. Treat BRC8004 as a spec-adjacent fork, not a drop-in.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://sourcify.dev/server/v2/contract/56/0x7d7bb7f296a8f1c6d83161852f90d3dc48348ed2",
+        "https://sourcify.dev/server/v2/contract/56/0xe3b9577bd42a5bd8c24eba9076562c8f32719db8",
+        "https://bsc-dataseed.bnbchain.org (eth_call probes)"
+      ]
+    },
+    {
+      "claim": "No repo named bnb-chain/bnbagent-studio exists. The only sibling is bnb-chain/bnbagent-studio-evals.",
+      "detail": "GET /repos/bnb-chain/bnbagent-studio returns 404 Not Found. A repo search for org:bnb-chain + bnbagent returns exactly two public repos: bnb-chain/bnbagent-sdk (pushed 2026-08-18) and bnb-chain/bnbagent-studio-evals (pushed 2026-07-20). A code search for \"0x8004\" inside bnbagent-studio-evals returned no hits, so I could NOT read a registry address out of Agent Studio's own source.\nThe answer to \"which address does Agent Studio write to\" therefore rests on the SDK it is built on \u2014 bnbagent-sdk \u2014 which pins 0x8004A169\u2026a432 for chain 56. That is strong but one step removed from the Studio product itself. If Agent Studio is closed-source or in a private repo, confirm empirically: register one agent through the Studio UI and watch which contract emits Registered.",
+      "confidence": "medium",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://api.github.com/repos/bnb-chain/bnbagent-studio",
+        "https://api.github.com/search/repositories?q=org:bnb-chain+bnbagent",
+        "https://api.github.com/search/code?q=repo:bnb-chain/bnbagent-studio-evals+0x8004"
+      ]
+    }
+  ],
+  "interfaces": [
+    {
+      "name": "Canonical BSC mainnet addresses \u2014 copy these exactly",
+      "language": "text",
+      "body": "chain 56 (BSC mainnet) \u2014 CANONICAL ERC-8004, use these\n  IdentityRegistry    0x8004A169FB4a3325136EB29fA0ceB6D2e539a432   \"AgentIdentity\" / AGENT, v2.0.0\n  ReputationRegistry  0x8004BAa17C55a88189AE136b182e5fdA19dE9b63   v2.0.0, getIdentityRegistry() -> the above\n  impl (identity)     0x7274e874ca62410a93bd8bf61c69d8045e399c02   IdentityRegistryUpgradeable, Sourcify-verified\n  impl (reputation)   0x16e0fa7f7c56b9a767e34b192b51f921be31da34   ReputationRegistryUpgradeable, Sourcify-verified\n  owner (identity)    0xF223968Dd0c66472E31043acAcCcF5D1464D644b   <- can UUPS-upgrade the impl\n\nchain 97 (BSC testnet) \u2014 CANONICAL\n  IdentityRegistry    0x8004A818BFB912233c491871b3d84c89A494BD9e\n  ReputationRegistry  0x8004B663056A597Dffe9eCcC1965A193B7388713\n\nchain 56 \u2014 BRC8004 (community fork, 26 agents, dormant, DO NOT use as primary)\n  IdentityRegistry    0xfA09B3397fAC75424422C4D28b1729E3D4f659D7   \"BRC8004 Identity Registry\" / BRC8004\n  ReputationRegistry  0x17860530385Bdde7992c4Da71B9ec7791E474C08   identityRegistry() (NOT getIdentityRegistry)\n\nchain 56 \u2014 ERC-8183 agentic commerce stack (from bnbagent-sdk, all verified to exist onchain)\n  AgenticCommerce     0xea4daa3100a767e86fded867729ae7446476eba6   paymentToken() -> 0xcE24439F2D9C6a2289F741120FE202248B666666 (symbol \"U\", 18 dec)\n  EvaluatorRouter     0x51895229e12f9876011789b04f8698af06ccd6da\n  OptimisticPolicy    0x9c01845705b3078aa2e8cff7520a6376fd766de5",
+      "source": "BSC RPC eth_call/eth_getCode + https://api.github.com/repos/bnb-chain/bnbagent-sdk/contents/typescript/src/config.ts"
+    },
+    {
+      "name": "IdentityRegistryUpgradeable \u2014 spec surface (verbatim from Sourcify ABI)",
+      "language": "solidity",
+      "body": "// 0x7274e874ca62410a93bd8bf61c69d8045e399c02 (impl behind 0x8004A169...a432)\n// solc 0.8.24, viaIR, optimizer 200, shanghai, @openzeppelin/contracts-upgradeable 5.4.0\n\n// --- events to index ---\nevent Registered(uint256 agentId, string agentURI, address owner);          // NO indexed params\nevent URIUpdated(uint256 agentId, string newURI, address updatedBy);        // NO indexed params\nevent MetadataSet(uint256 agentId, string indexed indexedMetadataKey, string metadataKey, bytes metadataValue);\nevent Transfer(address from, address to, uint256 tokenId);                  // ERC-721\nevent MetadataUpdate(uint256 _tokenId);                                     // ERC-4906\nevent BatchMetadataUpdate(uint256 _fromTokenId, uint256 _toTokenId);\nevent Upgraded(address implementation);                                     // WATCH THIS: UUPS\n\n// --- writes ---\nfunction register() external returns (uint256);\nfunction register(string agentURI) external returns (uint256);\nfunction register(string agentURI, tuple[] metadata) external returns (uint256);\nfunction setAgentURI(uint256 agentId, string newURI) external;\nfunction setMetadata(uint256 agentId, string metadataKey, bytes metadataValue) external;\nfunction setAgentWallet(uint256 agentId, address newWallet, uint256 deadline, bytes signature) external;\nfunction unsetAgentWallet(uint256 agentId) external;\n\n// --- reads ---\nfunction getAgentWallet(uint256 agentId) external view returns (address);\nfunction getMetadata(uint256 agentId, string metadataKey) external view returns (bytes);\nfunction isAuthorizedOrOwner(address spender, uint256 agentId) external view returns (bool);\nfunction getVersion() external pure returns (string);   // returns \"2.0.0\"\nfunction tokenURI(uint256 tokenId) external view returns (string);\nfunction ownerOf(uint256 tokenId) external view returns (address);\nfunction eip712Domain() external view returns (bytes1,string,string,uint256,address,bytes32,uint256[]);\n\n// NOTE: NO totalSupply(). Not ERC721Enumerable. Calling it REVERTS.",
+      "source": "https://sourcify.dev/server/v2/contract/56/0x7274e874ca62410a93bd8bf61c69d8045e399c02?fields=abi,compilation"
+    },
+    {
+      "name": "ReputationRegistryUpgradeable \u2014 spec surface (verbatim from Sourcify ABI)",
+      "language": "solidity",
+      "body": "// 0x16e0fa7f7c56b9a767e34b192b51f921be31da34 (impl behind 0x8004BAa1...9b63)\n\nevent NewFeedback(\n  uint256 agentId, address clientAddress, uint64 feedbackIndex,\n  int128 value, uint8 valueDecimals,\n  string indexed indexedTag1, string tag1, string tag2,\n  string endpoint, string feedbackURI, bytes32 feedbackHash\n);  // topic0 = 0x6a4a61743519c9d648a14e6493f47dbe3ff1aa29e7785c96c8326a205e58febc\n    // ONLY tag1 is indexed -- agentId is NOT filterable at the log level\nevent FeedbackRevoked(uint256 agentId, address clientAddress, uint64 feedbackIndex);\nevent ResponseAppended(uint256 agentId, address clientAddress, uint64 feedbackIndex,\n                       address responder, string responseURI, bytes32 responseHash);\n\nfunction giveFeedback(uint256 agentId, int128 value, uint8 valueDecimals,\n                      string tag1, string tag2, string endpoint,\n                      string feedbackURI, bytes32 feedbackHash) external;\nfunction revokeFeedback(uint256 agentId, uint64 feedbackIndex) external;\nfunction appendResponse(uint256 agentId, address clientAddress, uint64 feedbackIndex,\n                        string responseURI, bytes32 responseHash) external;\n\nfunction getSummary(uint256 agentId, address[] clientAddresses, string tag1, string tag2)\n  external view returns (uint64 count, int128 sum, uint8 decimals);\nfunction readFeedback(uint256 agentId, address clientAddress, uint64 feedbackIndex)\n  external view returns (int128, uint8, string, string, bool);\nfunction readAllFeedback(uint256 agentId, address[] clientAddresses, string tag1, string tag2, bool includeRevoked)\n  external view returns (address[], uint64[], int128[], uint8[], string[], string[], bool[]);\nfunction getClients(uint256 agentId) external view returns (address[]);\nfunction getLastIndex(uint256 agentId, address clientAddress) external view returns (uint64);\nfunction getIdentityRegistry() external view returns (address);  // -> 0x8004A169...a432\nfunction getVersion() external pure returns (string);            // \"2.0.0\"",
+      "source": "https://sourcify.dev/server/v2/contract/56/0x16e0fa7f7c56b9a767e34b192b51f921be31da34?fields=abi,compilation"
+    },
+    {
+      "name": "bnbagent-sdk typescript/src/config.ts \u2014 mainnet preset (verbatim)",
+      "language": "typescript",
+      "body": "export const NETWORKS: Record<string, NetworkConfig> = {\n  \"bsc-testnet\": {\n    name: \"bsc-testnet\",\n    chainId: 97,\n    rpcUrl: \"https://data-seed-prebsc-2-s2.binance.org:8545\",\n    paymasterUrl: \"https://bsc-megafuel-testnet.nodereal.io\",\n    usePaymaster: true,\n    registryContract: \"0x8004A818BFB912233c491871b3d84c89A494BD9e\",\n    commerceContract: \"0xa206c0517b6371c6638cd9e4a42cc9f02a33b0de\",\n    routerContract: \"0xd7d36d66d2f1b608a0f943f722d27e3744f66f25\",\n    policyContract: \"0xd6a4217588f6b1f5657a92a3e94e6422ad771cea\",\n  },\n  \"bsc-mainnet\": {\n    name: \"bsc-mainnet\",\n    chainId: 56,\n    rpcUrl: \"https://bsc-dataseed.binance.org\",\n    paymasterUrl: \"https://bsc-megafuel.nodereal.io/\",\n    usePaymaster: true,\n    registryContract: \"0x8004A169FB4a3325136EB29fA0ceB6D2e539a432\",\n    commerceContract: \"0xea4daa3100a767e86fded867729ae7446476eba6\",\n    routerContract: \"0x51895229e12f9876011789b04f8698af06ccd6da\",\n    policyContract: \"0x9c01845705b3078aa2e8cff7520a6376fd766de5\",\n  },\n};\n\n// interface NetworkConfig {\n//   name: string; chainId: number; rpcUrl: string;\n//   paymasterUrl?: string; usePaymaster: boolean;\n//   registryContract: string;   /** ERC-8004 Identity Registry */\n//   commerceContract: string; routerContract: string; policyContract: string;  /** ERC-8183 stack */\n// }",
+      "source": "https://api.github.com/repos/bnb-chain/bnbagent-sdk/contents/typescript/src/config.ts"
+    },
+    {
+      "name": "Reproduce every claim in this report (runnable)",
+      "language": "bash",
+      "body": "export ETH_RPC_URL=https://bsc-rpc.publicnode.com\nID=0x8004A169FB4a3325136EB29fA0ceB6D2e539a432\nREP=0x8004BAa17C55a88189AE136b182e5fdA19dE9b63\nBRC=0xfA09B3397fAC75424422C4D28b1729E3D4f659D7\n\n# identity: which contract is this?\ncast call $ID  \"name()(string)\"        # -> \"AgentIdentity\"\ncast call $ID  \"symbol()(string)\"      # -> \"AGENT\"\ncast call $ID  \"getVersion()(string)\"  # -> \"2.0.0\"\ncast call $ID  \"totalSupply()(uint256)\"  # REVERTS -- not enumerable\n\n# reputation is wired to identity\ncast call $REP \"getIdentityRegistry()(address)\"  # -> 0x8004A169...a432\n\n# BRC8004 is a different, tiny registry\ncast call $BRC \"name()(string)\"          # -> \"BRC8004 Identity Registry\"\ncast call $BRC \"totalSupply()(uint256)\"  # -> 26\ncast call $BRC \"getVersion()(string)\"    # REVERTS -- divergence\ncast call $BRC \"tokenURI(uint256)(string)\" 1 | cut -d, -f2 | base64 -d\n  # -> {\"type\":\"brc8004-agent-registration\",\"version\":\"1.0\",\"name\":\"Test\",...}\n\n# agent count on the canonical registry: binary search ownerOf (ids are sequential from 1)\ncast call $ID \"ownerOf(uint256)(address)\" 269718   # succeeds\ncast call $ID \"ownerOf(uint256)(address)\" 269719   # reverts  => 269,718 agents\n\n# liveness: Registered events, <=1000 block window (public RPCs cap the range)\nH=$(cast block-number); F=$((H-999))\ncast logs --from-block $F --to-block $H --address $ID \\\n  0xca52e62c367d81bb2e328eb795f7c7ba24afb478408a26c0e201d155c449bc4a\n# canonical: ~4 per 1000 blocks (~460/day).  BRC8004: 0.",
+      "source": "commands executed against https://bsc-rpc.publicnode.com and https://bsc-dataseed.bnbchain.org on 2026-08-18"
+    }
+  ],
+  "gaps": [
+    "Contract CREATION DATE and DEPLOYER for all four addresses: NOT ESTABLISHED. BscScan HTML returns HTTP 403 to WebFetch; the BscScan V1 API is decommissioned (\"deprecated V1 endpoint\") and Etherscan V2 requires an API key I do not have; Routescan returned nulls for chain 56. My binary search over eth_getCode by block failed because public BSC dataseeds are non-archive (historical eth_getCode returns empty, not an error), which silently converges to head \u2014 do not trust any creation date derived that way. Get a free Etherscan V2 key and call api.etherscan.io/v2/api?chainid=56&module=contract&action=getcontractcreation.",
+    "BscScan source-VERIFICATION status for all four: unknown (403). I established Sourcify verification for the two canonical implementations and Sourcify NON-verification for the two BRC8004 implementations, which is a different claim.",
+    "The BRC8004 implementations' full ABI was never read (unverified on Sourcify, BscScan unreachable). My divergence list for BRC8004 is from selector probing only and is therefore a lower bound \u2014 there may be more divergences, and there may be extra non-spec functions I did not discover.",
+    "I did not fetch 8004scan itself this run, so the 257,865 figure is taken on the orchestrator's word. The 269,718 minted ids I measured is the number I stand behind. Someone should hit the 8004scan API directly and confirm both the number and that its BSC endpoint points at 0x8004A169...a432.",
+    "bnb-chain/bnbagent-studio does not exist as a public repo (404). I inferred Agent Studio's registry from the SDK it builds on. Confirm empirically by registering one agent via the Studio UI and observing which contract emits Registered.",
+    "Whether a canonical ERC-8004 ValidationRegistry (the 0x8004C... vanity slot) is deployed on BSC MAINNET: unknown. The upstream README lists only Identity and Reputation per mainnet; 0x8004Cb1BF31DAf7788923b405b754f57acEB4272 appears only in the vanity guide's testnet-salt address set. The upstream README also states the Validation Registry portion of the spec is \"still under active update and discussion with the TEE community\" and will be revised later this year -- so do not build against it yet.",
+    "The ERC-8183 payment token 0xcE24439F2D9C6a2289F741120FE202248B666666 returns symbol() == \"U\" (single character, 18 decimals). Reported verbatim; I did not identify what token this actually is. Verify before wiring any settlement path to it.",
+    "I did not diff the canonical BSC deployment's implementation bytecode against the same implementation on Ethereum/Base. The proxies share an address by CREATE2 but each chain's proxy owner can upgrade independently, so cross-chain ABI identity is an assumption, not a verified fact."
+  ],
+  "aiki_implications": [
+    "ANSWER: TWO registries exist on BSC. Index ONE. Point AiKi at IdentityRegistry 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432 and ReputationRegistry 0x8004BAa17C55a88189AE136b182e5fdA19dE9b63. That pair holds the ~269,718 agents (of which 8004scan reports 257,865) and is what bnb-chain/bnbagent-sdk writes to on chain 56.",
+    "Do NOT index BRC8004 (0xfA09B339.../0x1786053...) as a primary source. 26 agents, agent #1 is named \"Test\", zero registrations in the window I sampled, repo abandoned four seconds after creation. The correct treatment is a one-time backfill of its 26 tokens into a `legacy_registry` table (it IS ERC721Enumerable, so totalSupply + tokenByIndex makes this trivial) plus a weekly totalSupply poll to detect if it ever wakes up. Cost: near zero. Benefit: you can answer \"why isn't my agent showing up\" for the handful of people who registered there.",
+    "totalSupply() REVERTS on the canonical registry -- it is not ERC721Enumerable. Any indexer sketch that calls totalSupply to get an agent count is already broken. Two working approaches: (a) accumulate Registered events from the deployment block, or (b) binary-search ownerOf() to find the high-water mark for a fast sanity check. Use (a) as the source of truth and (b) as the reconciliation probe.",
+    "Log filtering is worse than you expect. Registered(uint256,string,address) and URIUpdated have ZERO indexed parameters, and NewFeedback indexes only tag1. You cannot do per-agent eth_getLogs filters. Architecture consequence: AiKi must ingest the full event stream for these two addresses and shard by agentId AFTER decoding. Budget for that -- it is a firehose at ~460 registrations/day plus feedback volume.",
+    "Public BSC RPCs cap eth_getLogs hard. bsc-dataseed.bnbchain.org returned -32005 \"limit exceeded\" even at a 500-block range; bsc-rpc.publicnode.com served 1,000 blocks fine. At 0.75s blocks that is ~12.5 min per request, so a full backfill needs a paid archive provider or a self-hosted node. Do not design the backfill against free dataseeds.",
+    "These are UUPS proxies and the identity registry's owner (0xF223968Dd0c66472E31043acAcCcF5D1464D644b) can swap the implementation at any time. The ABI you index today is not guaranteed tomorrow. Subscribe to Upgraded(address) on both proxies and alert on it -- treat an upgrade as a schema-migration event, and re-pull the implementation address from ERC-1967 slot 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc rather than hardcoding 0x7274e874... .",
+    "Same address on every chain. The mainnet pair 0x8004A169.../0x8004BAa1... is byte-identical across Ethereum, Base, Arbitrum, Avalanche, BSC, Celo, Gnosis, Linea, Mantle, Abstract and GOAT; the testnet pair 0x8004A818.../0x8004B663... likewise. Model AiKi's registry config as a single address constant plus a chainId, not a per-chain address map. Cross-chain agent identity resolution becomes nearly free.",
+    "tokenURI returns an inline data:application/json;base64 blob -- no IPFS gateway, no HTTP fetch, no availability risk. You can hydrate agent metadata entirely from the chain. Trust the `type` field to discriminate registries: canonical agents carry \"https://eips.ethereum.org/EIPS/eip-8004#registration-v1\", BRC8004 agents carry \"brc8004-agent-registration\". That string is a reliable provenance tag if you ever do merge the two datasets.",
+    "Free lead for AiKi's execution/commerce layer: bnbagent-sdk pins a live ERC-8183 stack on chain 56 -- AgenticCommerce escrow kernel 0xea4daa3100a767e86fded867729ae7446476eba6, EvaluatorRouter 0x51895229e12f9876011789b04f8698af06ccd6da, OptimisticPolicy 0x9c01845705b3078aa2e8cff7520a6376fd766de5 (silence-approves, vote-rejects). All three exist onchain. If AiKi is building agent-commerce settlement on BSC, this is the incumbent rail to integrate with or deliberately displace -- decide which before writing your own escrow.",
+    "Gasless onboarding is the default on BNB Chain's own stack: the SDK sets usePaymaster: true with MegaFuel (https://bsc-megafuel.nodereal.io/). If AiKi asks users to pay gas to register an agent while the official path is free, that is a conversion cliff. Plan for paymaster-sponsored registration from day one.",
+    "Reputation scores are int128 with an explicit uint8 valueDecimals per feedback entry. Do NOT normalize on ingest and do NOT store as a float. Persist (value, valueDecimals) as a pair and defer scaling to query time, or you will silently corrupt any agent whose client used a different decimals convention. getSummary returns (count, sum, decimals) with the same caveat."
+  ]
+}

@@ -1,0 +1,220 @@
+{
+  "topic": "ERC-8183 \"Agentic Commerce\" \u2014 specification text and verification of the APEX deployment on BNB Smart Chain (chain 56)",
+  "verdict": "SOLID",
+  "executive_summary": "ERC-8183 exists and is real. eips.ethereum.org/EIPS/eip-8183 serves it as Draft, Standards Track / ERC, created 2026-02-25, Requires: EIP-20, authors Davide Crapis, Bryan Lim, Tay Weixiong, Chooi Zuhwa, discussion at ethereum-magicians.org/t/erc-8183-agentic-commerce/27902. The prior research is confirmed on every point checked (JobStatus enum, lifecycle verbs, IACPHook.beforeAction/afterAction) and extended: Requires EIP-20, a `Job` struct with an `expiredAt` field and an optional per-job `hook`, nine custom errors, ERC-2771 meta-tx support, optional platform+evaluator fees deducted only on completion, and a RECOMMENDED (not required) integration with ERC-8004 for reputation.\n\nThe deployment is REAL and BUSY, verified by direct eth_call against BSC public RPC \u2014 not by trusting the README. All four addresses hold code. 0xEa4DAa31\u2026 is an ERC-1967/UUPS proxy (impl 0xd5f9b570c96b5d67702d508c0bfb8b3b09209787) whose runtime bytecode contains the exact ERC-8183 selectors for createJob, setBudget, submit, complete, reject, claimRefund, getJob. `paymentToken()` returns 0xcE2443\u2026666666, which is a transparent proxy for an ERC-20 named \"United Stables\", symbol \"U\", 18 decimals, ~1.0198e9 total supply. Job IDs are sequential; binary search puts the highest live job at **56610**, and job 56610 was submitted 2026-08-18T11:54:17Z \u2014 i.e. hours before this report. Most jobs carry evaluator = 0x51895229\u2026 (the EvaluatorRouter), so the router is the on-chain evaluator of record and also implements beforeAction/afterAction \u2014 it *is* the IACPHook.\n\nTwo divergences matter for AiKi: deployed `fund(uint256,uint256,bytes)` and `setProvider(uint256,address,bytes)` differ from the spec's `fund(uint256,bytes)` / `setProvider(uint256,address)`. Build against the deployed ABI, not the EIP text. BscScan source-verification status could not be established (Cloudflare 403 on WebFetch and on headless Chrome; no free explorer API) \u2014 that is the main open gap.",
+  "findings": [
+    {
+      "claim": "SPEC: ERC-8183 'Agentic Commerce' is a real EIP \u2014 Status Draft, Standards Track/ERC, Created 2026-02-25, Requires EIP-20.",
+      "detail": "Fetched from eips.ethereum.org/EIPS/eip-8183. Front matter: Title 'Agentic Commerce'; Description 'Job escrow with evaluator attestation for agent commerce.'; Authors Davide Crapis, Bryan Lim, Tay Weixiong, Chooi Zuhwa; discussions-to https://ethereum-magicians.org/t/erc-8183-agentic-commerce/27902; Status Draft; Type Standards Track; Category ERC; Created 2026-02-25; Requires: EIP-20. The file is also present in the ethereum/ERCs repo at ERCS/erc-8183.md (fetched successfully). NOTE: the exact last-commit date on the ERCs repo was NOT retrieved (GitHub raw does not expose it) \u2014 see gaps. 'Requires: EIP-20' is new relative to the prior research and confirms the escrow is ERC-20-denominated at the spec level, not native-coin.",
+      "confidence": "high",
+      "sources": [
+        "https://eips.ethereum.org/EIPS/eip-8183",
+        "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8183.md"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "SPEC: the lifecycle is createJob \u2192 setProvider/setBudget \u2192 fund \u2192 submit \u2192 complete|reject, plus claimRefund on expiry; three roles (client, provider, evaluator); terminal states are Completed, Rejected, Expired.",
+      "detail": "Role gating per the spec's transition table: Open\u2192Funded by the client (provider must be set, budget matches expected); Open\u2192Rejected by the client only while Open (this is the client's only unilateral exit); Funded\u2192Submitted by the provider; Funded/Submitted\u2192Completed by the evaluator; Funded/Submitted\u2192Rejected by the evaluator; Funded/Submitted\u2192Expired by anyone once block.timestamp >= expiredAt. Key asymmetry the spec calls out explicitly: 'Once Funded, only the evaluator may reject; clients cannot withdraw' \u2014 this protects a provider who has already started work. Completed, Rejected and Expired are terminal. Fees (platform + evaluator) are configurable and deducted only on completion.",
+      "confidence": "medium",
+      "sources": [
+        "https://eips.ethereum.org/EIPS/eip-8183",
+        "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8183.md"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "SPEC: escrow is a single ERC-20 token; refund after expiry is permissionless and deliberately not hookable.",
+      "detail": "Quoted from the spec: 'Payment SHALL use a single ERC-20 token (global for the contract or specified at creation).' On expiry: 'When block.timestamp >= job.expiredAt, anyone (or client) may call claimRefund(jobId); contract sets state to Expired and refunds client.' The spec notes refunds after expiry are deliberately NOT hookable, so a malicious or reverting hook cannot trap escrowed funds \u2014 this is the single most important safety property to preserve in any fork. Errors defined include ExpiryTooShort() (there is a minimum expiry) and HookNotWhitelisted() (hooks are an allowlist, not arbitrary). Hooks are optional per job and run beforeAction/afterAction around the mutating calls.",
+      "confidence": "medium",
+      "sources": [
+        "https://eips.ethereum.org/EIPS/eip-8183"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "SPEC: the evaluator is a single address fixed at job creation \u2014 it is NOT elected, staked, or sampled \u2014 and settlement depends entirely on it.",
+      "detail": "'Single address per job, set at creation. When status is Submitted, only the evaluator MAY call complete or reject.' The evaluator may be the client itself (self-evaluation) or an external contract performing automated checks. What it attests is a bytes32 `reason` passed to complete()/reject() \u2014 an opaque evidence pointer (hash/CID), not structured data; there is no on-chain scoring. The spec is candid that 'evaluator trust is paramount' and pushes reputation out of scope: implementations SHOULD use reputation systems for high-value jobs. There is no on-chain dispute or appeal path in the standard \u2014 expiry is the only non-evaluator escape, and it always refunds the client. Any arbitration layer (e.g. APEX's OptimisticPolicy) sits behind the evaluator address, not inside the standard.",
+      "confidence": "medium",
+      "sources": [
+        "https://eips.ethereum.org/EIPS/eip-8183"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "SPEC: ERC-8004 is RECOMMENDED, not required \u2014 8183 has no hard dependency on 8004 identity.",
+      "detail": "'For on-chain reputation and trust relationships between agents, implementations are RECOMMENDED to integrate with ERC-8004 (Trustless Agents)', with reputation signals tied to job outcomes (Completed, Rejected, Expired). Requires: is EIP-20 only \u2014 ERC-8004 is NOT in the requires list. Job participants are plain `address` fields (client, provider, evaluator); there is no agentId, no registry lookup, and no identity resolution in the interface. So 8183 composes with 8004 by convention (map an address to an 8004 agent off-chain or in a hook) rather than by type. ERC-2771 meta-transactions are also supported: implementations should use _msgSender() rather than msg.sender for role checks, which is what makes gasless agent-initiated jobs possible.",
+      "confidence": "medium",
+      "sources": [
+        "https://eips.ethereum.org/EIPS/eip-8183"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "DEPLOYED: all four README addresses hold code on BSC mainnet (chain 56). Verified by eth_getCode against https://bsc-dataseed.binance.org.",
+      "detail": "0xEa4DAa3100A767e86FDed867729ae7446476EBA6 and 0x51895229E12F9876011789B04f8698af06cCD6DA are both ERC-1967 proxies (bytecode begins with the 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc implementation slot). eth_getStorageAt on that slot gives implementations: AgenticCommerce \u2192 0xd5f9b570c96b5d67702d508c0bfb8b3b09209787; EvaluatorRouter \u2192 0xf0cf8f47e5c035f16247ff16e9f367e477ee5007. 0x9C01845705b3078Aa2e8cfF7520a6376FD766dE5 (OptimisticPolicy) is a plain non-proxy contract, 4414 bytes. 0xcE24439F2D9C6a2289F741120FE202248B666666 is a *transparent* proxy (exposes 0x5c60da1b implementation() and 0xf851a440 admin()), implementation 0xbef21313c69c009fd7d9510a8d3a481a32473dfc. Read at block 0x6f51571 (116,913,521).",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-dataseed.binance.org (eth_getCode, eth_getStorageAt)"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "DEPLOYED: the payment token is 'United Stables', symbol 'U', 18 decimals, ~1,019,798,608 total supply \u2014 confirming the '$U' belief.",
+      "detail": "eth_call to 0xcE24439F2D9C6a2289F741120FE202248B666666: name() \u2192 'United Stables'; symbol() \u2192 'U'; decimals() \u2192 18 (0x12); totalSupply() \u2192 0x034b8ec14f421eb4fdb88c00 = 1,019,798,607.908467 U. It is upgradeable behind a transparent proxy \u2014 the admin can swap token logic, which is a real counterparty risk to note for an escrow denomination. Sourcify reports this address as verified with BOTH creationMatch and runtimeMatch = exact_match, verifiedAt 2026-03-18T13:17:31Z (matchId 23841599). The AgenticCommerce contract's paymentToken() returns exactly this address, so the escrow asset is U and nothing else \u2014 there is no per-job token selection in this deployment.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-dataseed.binance.org (eth_call name/symbol/decimals/totalSupply)",
+        "https://sourcify.dev/server/v2/contract/56/0xcE24439F2D9C6a2289F741120FE202248B666666"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "DEPLOYED: AgenticCommerceUpgradeable really implements ERC-8183 \u2014 its runtime bytecode contains the exact keccak selectors for createJob, setBudget, submit, complete, reject, claimRefund, getJob.",
+      "detail": "Selectors extracted from the implementation runtime code at 0xd5f9b570\u2026 and matched against locally computed keccak256: 0x41528812 createJob(address,address,uint256,string,address); 0xdd4ae9d4 setBudget(uint256,uint256,bytes); 0x9e63798d submit(uint256,bytes32,bytes); 0xd75bbdf3 complete(uint256,bytes32,bytes); 0x41dd26f5 reject(uint256,bytes32,bytes); 0x5b7baf64 claimRefund(uint256); 0xbf22c457 getJob(uint256); 0x180aedf3 jobs(uint256); 0x3013ce29 paymentToken(); 0x50355d76 jobCounter(); 0xe138818c platformTreasury(); 0xabe685cd BP_DENOMINATOR(). Ops surface: Ownable2Step (owner/pendingOwner/acceptOwnership/transferOwnership), Pausable (pause/unpause/paused) and UUPS (proxiableUUID, upgradeToAndCall, UPGRADE_INTERFACE_VERSION), initialize(address,address,address). owner() = 0x5057b09a4b510ccaf7e3fb3038ba60713e62b1fc. So a single owner can pause the escrow and upgrade the logic.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-dataseed.binance.org (eth_getCode of 0xd5f9b570c96b5d67702d508c0bfb8b3b09209787; eth_call owner/paymentToken)",
+        "https://www.4byte.directory/api/v1/signatures/"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "DEPLOYED \u2260 SPEC: the live fund() and setProvider() signatures differ from the EIP text. Build against the deployed ABI.",
+      "detail": "The spec lists `fund(uint256 jobId, bytes calldata optParams)` and `setProvider(uint256 jobId, address provider_)`. The deployed implementation instead carries 0xd2e13f50 = fund(uint256,uint256,bytes) \u2014 an explicit amount argument \u2014 and 0xc9a84bb9 = setProvider(uint256,address,bytes). Neither spec-form selector (0xe25ba707 fund(uint256,bytes), 0xd0fae591 setProvider(uint256,address)) appears in the bytecode. Practical consequence: an integrator generating a client from the EIP's Solidity will get a 'function does not exist' fallback revert on fund. Six ac_impl selectors remain unresolved (0x4fe11c8b, 0x963913a7, 0xb4d884f6, 0xfabc3329, 0xff54740f, 0x4f4a1777-class) \u2014 likely fee setters/getters, since fee logic is in the spec but I could not confirm platformFeeBps()/evaluatorFeeBps() (0x22dcd13e / 0x29bc2981) in the code.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-dataseed.binance.org (eth_getCode)",
+        "https://eips.ethereum.org/EIPS/eip-8183"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "DEPLOYED: the system is live and heavily used \u2014 56,610 jobs created, with a job submitted 2026-08-18T11:54:17Z, the same day as this report.",
+      "detail": "Job IDs are sequential from 1. Binary search over getJob(uint256) (empty struct = not yet created) puts the highest existing job at 56610; getJob(56611) returns an all-zero struct. Job 56610: client 0x7545e5c647880bf16558fdfcda892487dfffe522, provider 0xfaf0ffd121947b9ee3920fa0cfbf9eeeb0acbf7f, evaluator 0x51895229\u2026 (the EvaluatorRouter), budget 0.1 U, expiredAt 2026-08-27T11:53:41Z, status 2 (Submitted), submitted-at 2026-08-18T11:54:17Z, deliverable hash 0xb3cad69bd348fab4657d\u2026. Job 56609 is status 1 (Funded). Earliest observed on-chain timestamp is job 5's submit at 2026-05-19T13:58:25Z, so the system has been in production since at least mid-May 2026. Typical budgets seen: 0.1 U, 1e6 wei (dust test), 0.01 U, 9.8 U \u2014 i.e. micro-payments.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-dataseed.binance.org (eth_call getJob(uint256), binary search 1..200000)"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "DEPLOYED: EvaluatorRouterUpgradeable is simultaneously the named evaluator on nearly every job AND the ERC-8183 hook \u2014 it implements beforeAction/afterAction and routes to per-job policy contracts.",
+      "detail": "Selectors in impl 0xf0cf8f47\u2026: 0xdc08fb1d beforeAction(uint256,bytes4,bytes); 0xa3fe4783 afterAction(uint256,bytes4,bytes); 0xa35634b9 jobPolicy(uint256); 0x912955fd commerce(); 0x2761a48b setCommerce(address); 0x01ffc9a7 supportsInterface(bytes4) \u2014 matching the spec's `interface IACPHook is IERC165`. Plus Ownable2Step + Pausable + UUPS + initialize(address,address). On the job structs read from chain, the evaluator field equals 0x51895229\u2026 for jobs 1,2,10,20,50,100,500,56609,56610; job 5 instead used 0x7e66aebb2f1db6040bd7a931d31b734406aaeb13, so per-job evaluators are possible. Architecturally: ERC-8183 keeps 'one trusted evaluator address'; APEX satisfies that with a router that then delegates the actual accept/reject decision to a swappable policy contract per job.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-dataseed.binance.org (eth_getCode 0xf0cf8f47e5c035f16247ff16e9f367e477ee5007; eth_call getJob)",
+        "https://www.4byte.directory/api/v1/signatures/"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "DEPLOYED: OptimisticPolicy at 0x9C0184\u2026 is an optimistic-acceptance + voter-dispute module, not an escrow.",
+      "detail": "Resolved selectors: 0xe57deb39 check(uint256,bytes) \u2014 the policy hook the router calls; 0x117f5f92 disputeWindow(); 0x86d6282c dispute(uint256); 0x43859632 hasVoted(uint256,address); 0xa7771ee3 isVoter(address); 0xf4ab9adf addVoter(address); 0x86c1ff68 removeVoter(address); 0xf887ea40 router(); 0x912955fd commerce(); plus an admin path (0xf851a440 admin(), 0x26782247 pendingAdmin(), 0x75829def transferAdmin(address), 0x0e18b681 acceptAdmin()). Semantics implied by the shape: a submission is optimistically accepted once disputeWindow elapses unless a permissioned voter calls dispute(). Note the voter set is admin-curated (addVoter/removeVoter) \u2014 this is a permissioned committee, not open staking, so trust collapses to the policy admin plus the router owner. Ten policy selectors remain unresolved; treat the exact dispute-resolution and payout path as unconfirmed.",
+      "confidence": "medium",
+      "sources": [
+        "https://bsc-dataseed.binance.org (eth_getCode 0x9C01845705b3078Aa2e8cfF7520a6376FD766dE5)",
+        "https://www.4byte.directory/api/v1/signatures/"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "DEPLOYED: the live Job struct has more fields than the ERC-8183 struct \u2014 a hook/settler address, an extra timestamp, and a bytes32 deliverable are all returned by getJob.",
+      "detail": "Decoding the raw getJob(uint256) return (a single dynamic tuple), the field order observed is: uint256 id; address client; address provider; address evaluator; string description (head offset 0x160); uint256 budget; uint256 expiredAt; uint8 status; address hook-or-settler; uint256 timestamp (0 until submit \u2014 reads as submittedAt); bytes32 deliverable. The spec's `Job` has only id/client/provider/evaluator/description/budget/expiredAt/status/hook. Status values observed in the wild: 0 Open, 1 Funded, 2 Submitted, 3 Completed \u2014 matching the spec enum ordering. The 9th field equals the router address on router-evaluated jobs and equals the evaluator on job 5, so 'hook' vs 'settledBy' is not distinguishable from bytecode alone \u2014 do not rely on my field name for slot 8/9 without the verified source.",
+      "confidence": "medium",
+      "sources": [
+        "https://bsc-dataseed.binance.org (eth_call getJob(1), getJob(5), getJob(10), getJob(56610))"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "UNVERIFIED: BscScan source-verification status, contract names as displayed, creator address and creation dates could NOT be obtained. The README's claims on those points remain unchecked.",
+      "detail": "bscscan.com returned HTTP 403 to WebFetch, and a headless Chrome session sat on the Cloudflare 'Just a moment\u2026' interstitial through ~40s of polling. api.bscscan.com V1 is retired ('use Etherscan API V2'), Etherscan V2 needs a key not present in this repo, api.routescan.io answers 'chain not supported' for 56, and no Blockscout instance for BSC responded. Sourcify has NO record for 0xEa4DAa31\u2026, 0xd5f9b570\u2026 or 0x9C0184\u2026 (match:null) \u2014 that is NOT evidence they are unverified on BscScan, only that they were never pushed to Sourcify. Historical eth_getCode is also unavailable: every free BSC RPC tried is pruned ('missing trie node') or gated, so creation blocks could not be binary-searched either. The earliest hard on-chain evidence of life is 2026-05-19.",
+      "confidence": "high",
+      "sources": [
+        "https://bscscan.com/address/0xEa4DAa3100A767e86FDed867729ae7446476EBA6 (403)",
+        "https://sourcify.dev/server/v2/contract/56/0xEa4DAa3100A767e86FDed867729ae7446476EBA6",
+        "https://api.routescan.io/v2/network/mainnet/evm/56/etherscan/api"
+      ],
+      "source_date": "2026-08-18"
+    }
+  ],
+  "interfaces": [
+    {
+      "name": "ERC-8183 core interface (SPEC, verbatim from eips.ethereum.org)",
+      "language": "solidity",
+      "body": "enum JobStatus {\n    Open,\n    Funded,\n    Submitted,\n    Completed,\n    Rejected,\n    Expired\n}\n\nstruct Job {\n    uint256 id;\n    address client;\n    address provider;\n    address evaluator;\n    string description;\n    uint256 budget;\n    uint256 expiredAt;\n    JobStatus status;\n    address hook;\n}\n\nfunction createJob(address provider, address evaluator, uint256 expiredAt,\n    string calldata description, address hook) external returns (uint256);\nfunction setProvider(uint256 jobId, address provider_) external;\nfunction setBudget(uint256 jobId, uint256 amount, bytes calldata optParams) external;\nfunction fund(uint256 jobId, bytes calldata optParams) external;\nfunction submit(uint256 jobId, bytes32 deliverable, bytes calldata optParams) external;\nfunction complete(uint256 jobId, bytes32 reason, bytes calldata optParams) external;\nfunction reject(uint256 jobId, bytes32 reason, bytes calldata optParams) external;\nfunction claimRefund(uint256 jobId) external;\nfunction getJob(uint256 jobId) external view returns (Job memory);",
+      "source": "https://eips.ethereum.org/EIPS/eip-8183"
+    },
+    {
+      "name": "ERC-8183 events and errors (SPEC)",
+      "language": "solidity",
+      "body": "event JobCreated(uint256 indexed jobId, address indexed client, address indexed provider,\n    address evaluator, uint256 expiredAt, address hook);\nevent ProviderSet(uint256 indexed jobId, address indexed provider);\nevent BudgetSet(uint256 indexed jobId, uint256 amount);\nevent JobFunded(uint256 indexed jobId, address indexed client, uint256 amount);\nevent JobSubmitted(uint256 indexed jobId, address indexed provider, bytes32 deliverable);\nevent JobCompleted(uint256 indexed jobId, address indexed evaluator, bytes32 reason);\nevent JobRejected(uint256 indexed jobId, address indexed rejector, bytes32 reason);\nevent JobExpired(uint256 indexed jobId);\nevent PaymentReleased(uint256 indexed jobId, address indexed provider, uint256 amount);\nevent Refunded(uint256 indexed jobId, address indexed client, uint256 amount);\n\nerror InvalidJob();\nerror WrongStatus();\nerror Unauthorized();\nerror ZeroAddress();\nerror ExpiryTooShort();\nerror ZeroBudget();\nerror ProviderNotSet();\nerror FeesTooHigh();\nerror HookNotWhitelisted();",
+      "source": "https://eips.ethereum.org/EIPS/eip-8183 and https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8183.md"
+    },
+    {
+      "name": "IACPHook (SPEC, verbatim)",
+      "language": "solidity",
+      "body": "interface IACPHook is IERC165 {\n    function beforeAction(uint256 jobId, bytes4 selector, bytes calldata data) external;\n    function afterAction(uint256 jobId, bytes4 selector, bytes calldata data) external;\n}",
+      "source": "https://eips.ethereum.org/EIPS/eip-8183"
+    },
+    {
+      "name": "ERC-8183 state machine \u2014 transition / caller / condition (SPEC)",
+      "language": "text",
+      "body": "| Transition                    | Caller    | Condition                                   |\n|-------------------------------|-----------|---------------------------------------------|\n| Open -> Funded                | Client    | Provider must be set; budget matches expected|\n| Open -> Rejected              | Client    | Only while in Open                          |\n| Funded -> Submitted           | Provider  | Job is Funded                               |\n| Funded/Submitted -> Completed | Evaluator | Job is Submitted                            |\n| Funded/Submitted -> Rejected  | Evaluator | Before or after submission                  |\n| Funded/Submitted -> Expired   | Anyone    | block.timestamp >= expiredAt                |\n\nTerminal states: Completed, Rejected, Expired.\nExpiry path (claimRefund) is deliberately NOT hookable, so a hook cannot\nblock recovery of escrowed funds.\nFees (platform + evaluator) are deducted only on Completed.",
+      "source": "https://raw.githubusercontent.com/ethereum/ERCs/master/ERCS/erc-8183.md"
+    },
+    {
+      "name": "AgenticCommerceUpgradeable \u2014 DEPLOYED selector map (BSC 56)",
+      "language": "text",
+      "body": "Proxy   0xEa4DAa3100A767e86FDed867729ae7446476EBA6   (ERC-1967 / UUPS)\nImpl    0xd5f9b570c96b5d67702d508c0bfb8b3b09209787   (10,893 bytes runtime)\nowner() 0x5057b09a4b510ccaf7e3fb3038ba60713e62b1fc\npaymentToken() 0xcE24439F2D9C6a2289F741120FE202248B666666  (U)\n\nERC-8183 surface, selectors matched to computed keccak256:\n  0x41528812  createJob(address,address,uint256,string,address)\n  0xc9a84bb9  setProvider(uint256,address,bytes)      <-- spec says (uint256,address)\n  0xdd4ae9d4  setBudget(uint256,uint256,bytes)\n  0xd2e13f50  fund(uint256,uint256,bytes)             <-- spec says (uint256,bytes)\n  0x9e63798d  submit(uint256,bytes32,bytes)\n  0xd75bbdf3  complete(uint256,bytes32,bytes)\n  0x41dd26f5  reject(uint256,bytes32,bytes)\n  0x5b7baf64  claimRefund(uint256)\n  0xbf22c457  getJob(uint256)\n  0x180aedf3  jobs(uint256)\n  0x50355d76  jobCounter()\n  0x3013ce29  paymentToken()\n  0xe138818c  platformTreasury()\n  0xabe685cd  BP_DENOMINATOR()\nOps: pause/unpause/paused, Ownable2Step (owner, pendingOwner,\n     acceptOwnership, transferOwnership, renounceOwnership),\n     UUPS (proxiableUUID, upgradeToAndCall, UPGRADE_INTERFACE_VERSION),\n     initialize(address,address,address)\nUnresolved: 0x4fe11c8b 0x963913a7 0xb4d884f6 0xfabc3329 0xff54740f",
+      "source": "eth_getCode / eth_call via https://bsc-dataseed.binance.org, selectors resolved with local keccak256 + https://www.4byte.directory"
+    },
+    {
+      "name": "EvaluatorRouterUpgradeable \u2014 DEPLOYED selector map (BSC 56)",
+      "language": "text",
+      "body": "Proxy  0x51895229E12F9876011789B04f8698af06cCD6DA   (ERC-1967 / UUPS)\nImpl   0xf0cf8f47e5c035f16247ff16e9f367e477ee5007   (6,686 bytes runtime)\n\nIt is the ERC-8183 hook AND the evaluator-of-record on nearly every job:\n  0xdc08fb1d  beforeAction(uint256,bytes4,bytes)\n  0xa3fe4783  afterAction(uint256,bytes4,bytes)\n  0x01ffc9a7  supportsInterface(bytes4)        (IACPHook is IERC165)\n  0xa35634b9  jobPolicy(uint256)               per-job policy contract\n  0x912955fd  commerce()\n  0x2761a48b  setCommerce(address)\nOps: pause/unpause/paused, Ownable2Step, UUPS, initialize(address,address)\nUnresolved: 0x1892241d 0x39c2ebb9 0x4f4a1777 0x51d5456d 0x70be56b9 0x77fd00c5",
+      "source": "eth_getCode via https://bsc-dataseed.binance.org, selectors resolved with local keccak256 + https://www.4byte.directory"
+    },
+    {
+      "name": "OptimisticPolicy \u2014 DEPLOYED selector map (BSC 56)",
+      "language": "text",
+      "body": "Address 0x9C01845705b3078Aa2e8cfF7520a6376FD766dE5  (NOT a proxy, 4,414 bytes)\n\n  0xe57deb39  check(uint256,bytes)        <- entry point called by the router\n  0x117f5f92  disputeWindow()\n  0x86d6282c  dispute(uint256)\n  0x43859632  hasVoted(uint256,address)\n  0xa7771ee3  isVoter(address)\n  0xf4ab9adf  addVoter(address)\n  0x86c1ff68  removeVoter(address)\n  0xf887ea40  router()\n  0x912955fd  commerce()\n  0xf851a440  admin()\n  0x26782247  pendingAdmin()\n  0x75829def  transferAdmin(address)\n  0x0e18b681  acceptAdmin()\nUnresolved: 0x16979b04 0x1d60bfa1 0x4d421401 0x5adcd749 0x8da44692\n            0xc08731ba 0xcf77a61e 0xd966f6af 0xe23523c0 0xe60211dc\n\nShape: admin-curated voter committee + a dispute window => optimistic\nacceptance unless a whitelisted voter disputes. Permissioned, not staked.",
+      "source": "eth_getCode via https://bsc-dataseed.binance.org, selectors resolved with local keccak256 + https://www.4byte.directory"
+    },
+    {
+      "name": "Live job read \u2014 reproducible verification commands",
+      "language": "bash",
+      "body": "R=https://bsc-dataseed.binance.org\nAC=0xEa4DAa3100A767e86FDed867729ae7446476EBA6\n\n# paymentToken() -> 0x...cE24439F2D9C6a2289F741120FE202248B666666\ncurl -s -X POST $R -H 'Content-Type: application/json' -d \\\n '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[{\"to\":\"'$AC'\",\"data\":\"0x3013ce29\"},\"latest\"]}'\n\n# getJob(56610)  (0xbf22c457 + uint256)\ncurl -s -X POST $R -H 'Content-Type: application/json' -d \\\n '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[{\"to\":\"'$AC'\",\"data\":\"0xbf22c457000000000000000000000000000000000000000000000000000000000000dd22\"},\"latest\"]}'\n\n# ERC-1967 impl slot of a proxy\ncurl -s -X POST $R -H 'Content-Type: application/json' -d \\\n '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getStorageAt\",\"params\":[\"'$AC'\",\"0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc\",\"latest\"]}'",
+      "source": "https://bsc-dataseed.binance.org \u2014 run at block 0x6f51571 (116,913,521), 2026-08-18"
+    },
+    {
+      "name": "Decoded getJob(56610) \u2014 live job, 2026-08-18",
+      "language": "text",
+      "body": "id          56610\nclient      0x7545e5c647880bf16558fdfcda892487dfffe522\nprovider    0xfaf0ffd121947b9ee3920fa0cfbf9eeeb0acbf7f\nevaluator   0x51895229e12f9876011789b04f8698af06ccd6da   (EvaluatorRouter)\nbudget      0.1 U            (1e17, 18 decimals)\nexpiredAt   2026-08-27T11:53:41Z\nstatus      2  == Submitted\nslot8       0x51895229e12f9876011789b04f8698af06ccd6da   (hook / settler)\nslot9       2026-08-18T11:54:17Z                          (submittedAt)\ndeliverable 0xb3cad69bd348fab4657d...                     (bytes32)\n\ngetJob(56611) returns an all-zero struct  =>  56610 is the highest job id.\nJob 56609 is status 1 (Funded). Earliest observed submit: job 5 at\n2026-05-19T13:58:25Z.  Observed statuses in the wild: 0,1,2,3.",
+      "source": "eth_call getJob(uint256) via https://bsc-dataseed.binance.org"
+    }
+  ],
+  "gaps": [
+    "BscScan source-verification status for AgenticCommerceUpgradeable, EvaluatorRouterUpgradeable and OptimisticPolicy is UNKNOWN. bscscan.com returns HTTP 403 to WebFetch and shows a persistent Cloudflare interstitial in headless Chrome; api.bscscan.com V1 is retired; Etherscan V2 requires an API key not present in this environment. Resolve with an Etherscan V2 key: https://api.etherscan.io/v2/api?chainid=56&module=contract&action=getsourcecode&address=0xEa4DAa3100A767e86FDed867729ae7446476EBA6",
+    "Contract creation transactions, creator addresses and deployment dates for all four addresses are UNKNOWN. Free BSC RPCs are pruned ('missing trie node' on historical eth_getCode), so a creation-block binary search was impossible. Needs an archive node or an explorer getcontractcreation call.",
+    "The exact 'last commit date' of ERCS/erc-8183.md in the ethereum/ERCs repo was not retrieved \u2014 raw.githubusercontent.com does not expose commit metadata. Query https://api.github.com/repos/ethereum/ERCs/commits?path=ERCS/erc-8183.md&per_page=1 to get it.",
+    "Fee mechanics in the deployed contract are unconfirmed: neither platformFeeBps() (0x22dcd13e) nor evaluatorFeeBps() (0x29bc2981) matched the bytecode, though platformTreasury() and BP_DENOMINATOR() are present. Five AgenticCommerce selectors remain unresolved (0x4fe11c8b, 0x963913a7, 0xb4d884f6, 0xfabc3329, 0xff54740f) and likely cover fee config.",
+    "Ten of OptimisticPolicy's selectors and six of EvaluatorRouter's are unresolved, so the precise dispute-resolution and settlement path (how check() returns, what quorum applies, who pays out on a successful dispute) is inferred from the resolved names only, not read from source.",
+    "The spec quotes on escrow asset, timeout semantics, evaluator role and ERC-8004 were returned by a summarizing fetch and are reported as quotes; a byte-exact re-read of the Specification and Rationale sections is advisable before quoting them in a public document.",
+    "The two extra Job struct fields observed on-chain (slot 8 address, slot 9 timestamp) are named 'hook/settler' and 'submittedAt' by inference from behaviour across jobs 1/5/10/20/100/500/56609/56610, not from verified source.",
+    "No ERC-8004 registry interaction was observed on-chain in this deployment: job participants are plain addresses and no 8004 registry address surfaced in the selector maps. Whether APEX resolves 8004 identities off-chain is unknown.",
+    "The U token (0xcE2443...666666) is behind a transparent upgradeable proxy; its admin address was not read (call admin() from a non-admin caller reverts on OZ TransparentUpgradeableProxy \u2014 read EIP-1967 admin slot 0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103 instead)."
+  ],
+  "aiki_implications": [
+    "ERC-8183 is a legitimate, live standard on BSC with 56,610 jobs and same-day activity \u2014 not a paper spec. If AiKi is doing agent commerce on chain 56, implementing the ERC-8183 job interface is the interoperability path of least resistance, and APEX is the incumbent to interop with or differentiate from.",
+    "Integrate against the DEPLOYED ABI, not the EIP text. fund is fund(uint256,uint256,bytes) and setProvider is setProvider(uint256,address,bytes) on chain; codegen from the published Solidity will revert. Pin selectors 0xd2e13f50 and 0xc9a84bb9 in any integration test.",
+    "The escrow asset is U (United Stables, 0xcE24439F2D9C6a2289F741120FE202248B666666, 18 decimals) and it is itself upgradeable behind a transparent proxy. Denominating AiKi escrow in U inherits that upgrade authority as counterparty risk; a stablecoin choice with immutable logic, or a per-job token parameter, is a defensible differentiator.",
+    "ERC-8183's trust model collapses to one address per job. APEX papers over this with EvaluatorRouter -> per-job policy, but the OptimisticPolicy voter set is admin-curated (addVoter/removeVoter behind admin()). If AiKi's pitch is trust, the credible wedge is a policy contract with staked/slashable or sampled evaluators that still presents as a single evaluator address to 8183 \u2014 the standard permits exactly that substitution with no fork.",
+    "The hook interface is the real extension point. IACPHook.beforeAction/afterAction with the calling selector gives AiKi a place to write reputation, ERC-8004 attestations, or risk checks without touching escrow. Note hooks are allowlisted (HookNotWhitelisted) and the expiry/refund path is intentionally non-hookable \u2014 preserve that property or you reintroduce fund-trapping.",
+    "ERC-8004 is only RECOMMENDED by 8183 and there is no identity type in the interface (participants are raw addresses). AiKi has open ground to define the address -> agent-identity binding \u2014 doing it inside a hook, emitting on completion, is the composable way and does not require a new ERC.",
+    "Only two terminal outcomes move money: Completed pays the provider, Expired refunds the client. Rejected has no payout path defined in the transition table beyond leaving escrow untouched \u2014 clarify refund-on-reject semantics against the verified source before designing any AiKi settlement that assumes rejection returns funds.",
+    "Operational reality to match: the live escrow is Ownable2Step + Pausable + UUPS under a single EOA-looking owner (0x5057b09a...). A pause halts all commerce and an upgrade can rewrite settlement. If AiKi wants to claim stronger execution guarantees, a timelock or multisig on the upgrade path is a concrete, verifiable differentiator a reviewer can check on-chain.",
+    "Observed budgets are micro (0.1 U, 0.01 U, dust). Design AiKi's fee and gas model for sub-dollar jobs on BSC; a per-job on-chain arbitration round would exceed the job value at these sizes, which is precisely why APEX chose optimistic acceptance."
+  ]
+}

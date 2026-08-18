@@ -1,0 +1,5 @@
+# This workspace is scratch. Only AiKi/ is the real project.
+*
+!AiKi/
+!AiKi/**
+!.gitignore

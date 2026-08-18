@@ -1,0 +1,230 @@
+{
+  "topic": "Yield optimisation and grid trading on BSC (chain 56) \u2014 venue landscape, APY data plumbing, and honest outcome metrics for AiKi agents",
+  "verdict": "PARTIAL",
+  "executive_summary": "Yield side is SOLID and buildable today. Live BSC TVL is ~$4.9B (DefiLlama /v2/chains, DEPLOYED). The material yield venues, by DefiLlama chainTvls[\"BSC\"] on 18 Aug 2026: PancakeSwap AMM $1.72B (+ AMM V3 $223M, Infinity $68M), Venus Core Pool $1.08B, Lista (Lending $728M + Liquid Staking $567M + CDP $238M) \u2248 $1.53B aggregate, Aster (Bridge $228M, USDF $112M, asBNB $112M). Kernel ($1.2M), StakeStone SBTC (~$0), and THENA (all versions <$3M combined) are NOT material \u2014 do not ship them as launch venues. Circle USYC ($2.9B) is the single largest BSC line item but is RWA, not an agent-addressable yield pool.\n\nThe APY source is `https://yields.llama.fi/pools` \u2014 verified live: 10.7MB, 15,650 pools, 506 on BSC totalling $6.29B. Schema captured verbatim below. Pools are keyed by an opaque UUID (`pool`), stable across snapshots, and `https://yields.llama.fi/chart/{pool}` returns 1,539 hourly-to-daily points with `apy/apyBase/apyReward/tvlUsd/pricePerShare`. That gives you quoted-vs-realized directly.\n\nCRITICAL COVERAGE DEFECT: DefiLlama yields carries **zero** PancakeSwap v3 BSC pools (`pancakeswap-amm-v3` exists only on Ethereum/opBNB), and `pancakeswap-amm` on BSC covers only $14.1M of a $1.72B protocol. If AiKi's oracle is DefiLlama alone, the largest BSC venue is invisible. You need a direct subgraph/RPC path for PancakeSwap.\n\nGrid side is THIN by absence, which is itself the finding: there is no material onchain grid protocol on BSC. Gridex has $59k total TVL and is not deployed on BSC per DefiLlama. A grid agent must be built as an agent-driven swap loop, or \u2014 better \u2014 as v3 concentrated-liquidity single-range orders. I verified the PancakeSwap v3 factory onchain: `0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865` returns live WBNB/USDT pools at fee tiers 100/500/2500/10000; the 500 pool is `0x36696169c63e42cd08ce11f5deebbcebae652050`, `fee()=500`, `tickSpacing()=10`, nonzero liquidity. Gas is a non-issue: `eth_gasPrice` = 0.05 gwei, BNB $602.11 \u2192 a 150k-gas swap costs ~$0.0045. Fee drag, not gas, is what kills a grid on BSC.",
+  "findings": [
+    {
+      "claim": "BSC chain TVL is $4.90B; DefiLlama yields covers 506 BSC pools totalling $6.29B across 47 distinct projects (the two numbers differ because yields includes double-counted/derivative positions).",
+      "detail": "DEPLOYED. `GET https://api.llama.fi/v2/chains` returned verbatim: {\"gecko_id\":\"binancecoin\",\"tvl\":4897748393.337237,\"tokenSymbol\":\"BNB\",\"cmcId\":\"1839\",\"name\":\"BSC\",\"chainId\":56}. Separately `GET https://yields.llama.fi/pools` (HTTP 200, content-length 10,731,074, cf-cache-status HIT) yields 15,650 pools total; filtering chain=='BSC' gives 506 pools, sum(tvlUsd)=$6.294B, 47 unique `project` values. The gap between $4.9B chain TVL and $6.29B pool TVL is a real accounting hazard: AiKi must not sum pool TVL and call it chain TVL, and must not treat two pools sharing an underlying (e.g. Lista liquid staking + a Venus market collateralised by it) as independent capacity.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://api.llama.fi/v2/chains",
+        "https://yields.llama.fi/pools"
+      ]
+    },
+    {
+      "claim": "Material BSC yield venues, ranked by DefiLlama chainTvls: PancakeSwap AMM $1.72B, Venus Core Pool $1.08B, Lista ~$1.53B aggregate, Aster ~$452M across three products. Kernel, StakeStone and Thena are immaterial.",
+      "detail": "DEPLOYED. From `GET https://api.llama.fi/lite/protocols2` (7,913 protocols; 830 report a BSC entry summing $11.51B), chainTvls[\"BSC\"].tvl on 18 Aug 2026: Circle USYC $2,908.6M (RWA); PancakeSwap AMM $1,719.3M, AMM V3 $223.3M, Infinity $67.8M, StableSwap $3.2M; Venus Core Pool $1,075.1M, Venus Flux $3.0M, Venus Isolated Pools $0.8M; Lista Lending $727.9M, Lista Liquid Staking $567.3M, Lista CDP $238.4M, Lista DEX $17.4M; Gauntlet $485.3M (Risk Curators); Binance staked ETH $403.1M; Aster Bridge $228.3M, Aster USDF $112.4M, Aster asBNB $111.8M, lisAster $0.7M; Aave V3 $160.0M; Solv Basis Trading $159.6M; Uniswap V3 $46.9M, V4 $34.6M. Immaterial: Kernel $1.2M (Restaking), StakeStone SBTC $0.0M, THENA V1 $1.3M / INTEGRAL $0.9M / FUSION $0.6M. Verdict for launch: Venus, Lista, PancakeSwap, Aster are real; Kernel/StakeStone/Thena are not.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://api.llama.fi/lite/protocols2"
+      ]
+    },
+    {
+      "claim": "DefiLlama yields has ZERO PancakeSwap v3 pools on BSC, and covers only $14.1M of PancakeSwap AMM's $1.72B BSC TVL. A DefiLlama-only APY oracle is blind to the largest BSC venue.",
+      "detail": "DEPLOYED, and this is the single most important engineering finding for the yield agent. In the 15,650-pool snapshot: project `pancakeswap-amm-v3` has 37 pools, distributed Ethereum 36 / Opbnb 1 \u2014 zero on BSC. Project `pancakeswap-amm` has 64 pools, of which 37 are BSC, summing $14.1M (largest: CAKE-WBNB $7.70M apy 1.74%, WBNB-BUSD $1.15M apy 0.377%, BTCB-WBNB $0.778M apy 1.456%). Against $1.72B protocol TVL that is 0.8% coverage. Consequences: (1) AiKi cannot quote PancakeSwap BSC APY from DefiLlama; it needs a direct source (v3 subgraph or onchain fee-growth accounting per position). (2) Any 'best pool on BSC' ranking built on yields.llama.fi silently excludes the biggest venue, which is a correctness bug an auditor will find. (3) Coverage must be a monitored invariant, not an assumption \u2014 alert when a protocol's yields-pool TVL diverges >10x from its /protocols chainTvls.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://yields.llama.fi/pools",
+        "https://api.llama.fi/lite/protocols2"
+      ]
+    },
+    {
+      "claim": "Pool identity in the DefiLlama yields API is an opaque UUID in the `pool` field; time series is `https://yields.llama.fi/chart/{pool}`, returning ~1,500 dated points with apy/apyBase/apyReward/tvlUsd/pricePerShare.",
+      "detail": "DEPLOYED. Keying: `pool` is a UUID (e.g. Venus BSC USDT = `9f3a6015-5045-4471-ba65-ad3dc7c38269`; Venus BSC WBNB = `747b58ab-aefd-42e1-a312-01ad5a0ab7f5`; Venus BSC BTCB = `87c8ee0d-b812-47c1-803f-f91a3907079e`). It is NOT a contract address \u2014 there is no onchain join key except via `underlyingTokens` (checksummed addresses, e.g. Venus USDT \u2192 0x55d398326f99059fF775485246999027B3197955). AiKi must persist its own mapping {llamaPoolId \u2192 BSC contract address(es) it actually transacts with}, because a realized-APY claim must be anchored to the position the agent holds, not to a UUID. `GET https://yields.llama.fi/chart/747c1d2a-c668-4682-b9f9-296708a3dd90` returned status:success with 1,539 entries, last = {\"timestamp\":\"2026-08-18T21:01:14.411Z\",\"tvlUsd\":18220048031,\"apy\":2.18,\"apyBase\":2.18,\"apyReward\":null,\"il7d\":null,\"apyBase7d\":null,\"pricePerShare\":null}. `pricePerShare` is null for most pools \u2014 do not build realized APY on it.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://yields.llama.fi/chart/747c1d2a-c668-4682-b9f9-296708a3dd90",
+        "https://yields.llama.fi/pools"
+      ]
+    },
+    {
+      "claim": "The yields API is a single 10.7MB whole-corpus GET with no pagination and no chain filter; it is Cloudflare-cached with ~20-minute expiry, and returned no rate-limit headers.",
+      "detail": "DEPLOYED, with a caveat. Response headers observed: `content-length: 10731074`, `cf-cache-status: HIT`, `age: 2210`, `date: Tue, 18 Aug 2026 21:59:54 GMT`, `expires: Tue, 18 Aug 2026 22:22:04 GMT`, `etag: W/\"a3be42-...\"`, `access-control-allow-origin: *`. No X-RateLimit-* headers were present, so the documented limit is unknown to me (see gaps) \u2014 but the practical design constraint is clear: you cannot query one pool, you download all 15,650 and filter locally. Engineering implications: (1) honour the ETag with If-None-Match and the ~22-minute `expires` \u2014 polling faster than ~15 min gains nothing but cache hits; (2) 10.7MB per poll is real bandwidth, so run one fetcher process that fans out internally rather than one per agent; (3) the `expires` window means quoted APY is up to ~20 min stale, which must be recorded as the quote timestamp on any AiKi attestation, not the fetch timestamp. Note this endpoint exceeded a 10MB fetch limit in one client \u2014 plan for growth past 16MB.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://yields.llama.fi/pools"
+      ]
+    },
+    {
+      "claim": "apyReward is materially non-null on only 46 of 506 BSC pools and volumeUsd1d on only 220 \u2014 so reward decay and fee-derived APY must be measured onchain, not read from the API.",
+      "detail": "DEPLOYED. Counted on the live snapshot: BSC pools with truthy `apyReward` = 46/506; BSC pools with non-null `volumeUsd1d` = 220/506. Also note Venus BSC pools report `rewardTokens: [\"0xcf6bb5389c92bdda8a3747ddb454cb7a64626c63\"]` while `apyReward: 0` \u2014 i.e. a reward token is configured but the emission is currently valued at zero, exactly the state where quoted APY and realized APY diverge. This is the reward-decay trap: an agent that allocates on quoted `apy` at t0 earns `apyBase` plus whatever the emission is actually worth at t1, and emissions are the fastest-decaying component. AiKi must independently record, per epoch: reward tokens claimed (amount, token), the price used to value them, and the price at the moment of actual sale. Never let quoted apyReward enter a realized-performance number.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://yields.llama.fi/pools"
+      ]
+    },
+    {
+      "claim": "Honest realized net APY: value-per-share on a token-quantity basis, net of gas, swap cost, reward realization slippage and unclaimed accruals, annualized by time-weighted capital \u2014 not by simple end/start.",
+      "detail": "Definition AiKi should adopt. Let the vault hold capital in a numeraire N (USDT is the honest default on BSC). Define V(t) = mark-to-market of all positions in N using a single pinned price snapshot. Realized net return over [t0,t1] = (V(t1) + \u03a3 withdrawals \u2212 \u03a3 deposits \u2212 V(t0)) / TWC, where TWC is time-weighted capital = \u03a3_i C_i\u00b7\u0394t_i / (t1\u2212t0), which is the only correct denominator when deposits/withdrawals occur mid-period. Costs that MUST be inside V(t1), not footnoted: (a) gas \u2014 sum of gasUsed \u00d7 effectiveGasPrice per tx, converted at the BNB price at that tx's block, not at period end; (b) reallocation cost \u2014 swap fee + realized price impact + any deposit/withdraw fee, measured as executed-out minus quoted-out at the pre-trade pool state; (c) reward realization \u2014 rewards valued at actual sale proceeds, with unsold rewards marked at a haircut or excluded; (d) accrued-but-unclaimed interest, included only if it is claimable at that block. Annualize as (1+r)^(365d/\u0394d)\u22121 and ALWAYS publish the raw period return and \u0394d alongside \u2014 a 3-day return annualized to a headline APY is the standard way these systems lie. Publish net APY only; gross APY is a marketing number.",
+      "confidence": "medium",
+      "sources": [
+        "https://yields.llama.fi/pools",
+        "https://yields.llama.fi/chart/747c1d2a-c668-4682-b9f9-296708a3dd90"
+      ]
+    },
+    {
+      "claim": "The yield attribution problem: almost all of a yield agent's return is the venue's rate, which the agent did not create. Skill is the excess over a fixed-allocation baseline replayed on the same rate history.",
+      "detail": "Decomposition AiKi should compute and publish. r_agent = r_baseline + r_selection + r_timing \u2212 r_cost. Baseline: freeze the allocation the agent held at t0 (or a naive 'largest eligible pool' / 'best quoted APY at t0, never rebalance' policy) and replay it forward on the SAME `chart/{pool}` series the agent saw. r_selection = return of the agent's average weights vs baseline weights at baseline rates. r_timing = the interaction term, i.e. did weight changes precede rate moves. r_cost = all gas + reallocation drag. Every rebalance must be logged with the counterfactual: what the un-rebalanced portfolio would have earned. The dishonest pattern to design against is claiming a rate regime as alpha \u2014 when Venus USDT base APY moves 2.03%\u21922.15% (BSC USDT pool `9f3a6015`, apyPct7D +0.12), every passive holder captured that. A defensible AiKi claim is narrow: 'net of all costs, this agent beat a same-snapshot passive baseline by X bps over N days across M rebalances', with N and M stated. Below ~30 days and ~10 rebalances the excess is noise and should be labelled as such rather than annualized.",
+      "confidence": "medium",
+      "sources": [
+        "https://yields.llama.fi/chart/747c1d2a-c668-4682-b9f9-296708a3dd90",
+        "https://yields.llama.fi/pools"
+      ]
+    },
+    {
+      "claim": "No material onchain grid-trading protocol exists on BSC. Gridex has $59.3k total TVL and is not deployed on BSC.",
+      "detail": "DEPLOYED (by absence). Scanning all 7,913 protocols in /lite/protocols2 for grid/bot-related names: Gridex \u2014 tvl $59,313, chains ['Arbitrum','Linea','Polygon','Base','OP Mainnet'], NO BSC entry, category Dexs. Apex Omni \u2014 $28.4M total, BSC $2.72M, category Derivatives (perps venue, not a grid protocol). ApeX Pro \u2014 BSC TVL effectively 0 (6.8e-09). SuperBots \u2014 BSC $829, Yield Aggregator. EarnGrid \u2014 $220, Base only. Nothing else registers. Vendor pages surfaced by search (goodcryptoX, 3Commas, ApeX 'grid bots') are MARKETING and describe off-chain bots signing user transactions, not onchain grid contracts. Conclusion for AiKi: there is no grid protocol to integrate. The grid agent is an agent-driven sequence of swaps (or LP range orders) against PancakeSwap v3, and AiKi owns the entire accounting surface \u2014 which is actually better for honest metrics, because every fill is one of your own transactions.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://api.llama.fi/lite/protocols2",
+        "https://slashdot.org/software/decentralized-exchanges-dex/for-bnb-smart-chain-bsc/",
+        "https://goodcrypto.app/binance-smart-chain-bsc-bot/"
+      ]
+    },
+    {
+      "claim": "PancakeSwap v3 on BSC is the venue: factory 0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865 serves live WBNB/USDT pools at fee tiers 100, 500, 2500 and 10000; the 500 pool is 0x36696169c63e42cd08ce11f5deebbcebae652050 with tickSpacing 10.",
+      "detail": "DEPLOYED, verified by direct eth_call against https://bsc-dataseed.bnbchain.org (eth_chainId = 0x38 = 56). eth_getCode at the factory returns bytecode. getPool(WBNB=0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c, USDT=0x55d398326f99059fF775485246999027B3197955, fee) resolved: fee=100 \u2192 0x172fcd41e0913e95784454622d1c3724f546f849; fee=500 \u2192 0x36696169c63e42cd08ce11f5deebbcebae652050; fee=2500 \u2192 0x1401ff943d08a7e098328c1d3a9d388923b115d2; fee=10000 \u2192 0x6805e0e5333c5c3accf2930be4734e2b98f4ce06. On the 500 pool: fee() = 0x1f4 = 500, tickSpacing() = 0x0a = 10, liquidity() = 0x1922cb17942354656964f (nonzero, live). The four confirmed tiers are 0.01% / 0.05% / 0.25% / 1%. Design consequence: with tickSpacing 10 on the 0.05% tier, the minimum v3 range width is 10 ticks \u2248 1.0001^10 \u2212 1 \u2248 0.1001% \u2014 numerically almost exactly the 0.10% round-trip fee. That is the natural grid quantum, and it means a single-tick-spacing grid on the 0.05% pool earns roughly zero after fees.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org (eth_call getPool/fee/tickSpacing/liquidity, block 116,749,825)"
+      ]
+    },
+    {
+      "claim": "On BSC, gas is negligible for grid trading and fee drag dominates: gas price is 0.05 gwei and BNB is $602.11, so a ~150k-gas swap costs about $0.0045, while a 0.05%-tier round trip costs 0.10% in LP fees alone.",
+      "detail": "DEPLOYED for the inputs, modelled for the swap-gas figure. eth_gasPrice returned 0x2faf080 = 50,000,000 wei = 0.05 gwei; eth_maxPriorityFeePerGas returned the same. BNB price $602.10671211735 and BSC USDT $0.999419163370589 from https://coins.llama.fi/prices/current (confidence 0.99, timestamp 1787090510). Sampling 5 consecutive blocks (116,733,139\u2013116,733,143) via eth_getBlockReceipts: 309 txs, median gasUsed 87,481; 11 txs touched the sampled WBNB/USDT v3 pools with gasUsed 306,136\u20131,039,362 and effectiveGasPrice 0.0\u201310 gwei \u2014 those are multi-hop/MEV routes (11\u201352 logs), not simple swaps. Cost model to implement: cost_per_fill = fee_tier\u00b7notional + price_impact\u00b7notional + gasUsed\u00b7effectiveGasPrice\u00b7BNB_px. At 0.05 gwei a fill is sub-cent, so on a $10k grid the fee term (0.05% = $5) is ~1000x the gas term. Therefore grid step width must be set by fee tier and volatility, and the honest breakeven is: step > 2\u00b7fee_tier + 2\u00b7expected_slippage. Do NOT hardcode 0.05 gwei \u2014 BSC priority gas spikes (10 gwei observed in the same sample), so charge each fill its actual effectiveGasPrice from the receipt.",
+      "confidence": "medium",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org (eth_gasPrice, eth_maxPriorityFeePerGas, eth_getBlockReceipts)",
+        "https://coins.llama.fi/prices/current/coingecko:binancecoin,bsc:0x55d398326f99059fF775485246999027B3197955"
+      ]
+    },
+    {
+      "claim": "Two viable onchain grid implementations on BSC, with opposite metric surfaces: taker-swap grids (pay fees, simple accounting) vs v3 single-range LP orders (earn fees, but PnL is inseparable from IL without explicit decomposition).",
+      "detail": "Design finding, grounded in the verified v3 parameters. (A) Taker grid: agent places market swaps at price levels via the v3 pools above. Every fill pays fee_tier + impact. Accounting is clean \u2014 each fill is one tx with a known amountIn/amountOut. (B) Maker grid: mint narrow single-sided v3 positions (a range order); as price crosses, the position converts token0\u2192token1 and collects fees instead of paying them. This is the strictly better grid on BSC and is what a serious implementation should do, but it changes the metric: your 'fill' is a passive conversion at an average price across the range, not a point price, and unfilled positions carry inventory risk. If AiKi supports (B), it MUST decompose PnL into fees_collected + inventory_pnl + rebalance_cost, because reporting a range order's total return as 'grid profit' conflates LP fee income with directional exposure. Note also PancakeSwap Infinity ($67.8M BSC) is a newer PancakeSwap version whose hook/pool-manager mechanics I did not verify \u2014 treat v3 as the launch target.",
+      "confidence": "medium",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org (getPool/fee/tickSpacing)",
+        "https://api.llama.fi/lite/protocols2"
+      ]
+    },
+    {
+      "claim": "The grid attribution problem: a grid bot in a trending market is a disguised directional position, and its headline PnL is mostly market beta. Skill is only visible against a same-snapshot buy-and-hold and a fixed-parameter grid.",
+      "detail": "A grid that buys the dip accumulates inventory as price falls; its mark-to-market PnL then tracks the asset, not the strategy. Three baselines must be replayed over the identical price series (same block range, same pool, same starting capital split): (1) buy-and-hold the same initial token split \u2014 isolates market beta; (2) a naive fixed grid (fixed step = 2\u00b7fee_tier, fixed bounds, no parameter updates) \u2014 isolates whether adaptive parameter choice added anything; (3) hold 100% numeraire \u2014 the do-nothing floor. Then: agent_alpha = realized_net_pnl \u2212 buyandhold_pnl, and grid_skill = realized_net_pnl \u2212 naive_grid_pnl. Publish both, plus regime classification for the window, because a grid's expected edge is regime-conditional by construction: it earns in mean-reverting chop and loses to buy-and-hold in trends. Reporting a grid's return without the regime label and without baseline (1) is the canonical dishonest presentation. Minimum honesty bar: no annualization, and no performance claim from a window containing fewer than ~30 completed cycles.",
+      "confidence": "medium",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org (eth_getBlockReceipts gas/price observation)"
+      ]
+    },
+    {
+      "claim": "Exact data AiKi must capture per fill and per epoch for both categories, so that every published metric is recomputable from raw records by a third party.",
+      "detail": "Per transaction (both categories): txHash, blockNumber, blockTimestamp, gasUsed, effectiveGasPrice, BNB/USD price at that block, contract called, tokenIn/tokenOut addresses + raw amounts + decimals, quoted amountOut at pre-trade pool state, executed amountOut (\u2192 realized slippage = the difference), pool address and fee tier, and pre/post sqrtPriceX96 (\u2192 realized price impact). Per grid epoch additionally: grid params in force (lower, upper, step, levels, notional per level), each level's fill timestamps, completed cycles (a buy fill matched to its paired sell fill \u2014 count matched pairs, not fills; report unmatched open inventory separately), realized PnL per closed cycle in numeraire, turnover = \u03a3|notional traded| / avg capital, fee_drag = \u03a3 fee_tier\u00b7notional, gas_drag, max drawdown computed on the mark-to-market equity curve sampled at fixed block intervals (never on fill events only \u2014 event-sampled drawdown understates), inventory exposure over time, and a regime label per window (realized volatility, and a trend measure such as |net price change| / \u03a3|price changes| over the window). Per yield epoch additionally: llamaPoolId \u2194 contract mapping, quoted apy/apyBase/apyReward with the API's `expires`-derived quote timestamp, position token balance and share price at epoch boundaries, rewards claimed (token, amount, valuation price, actual sale proceeds), deposits/withdrawals with timestamps for TWC, and the replayed baseline series. Every published number should carry its input block range so it can be independently reproduced from an archive node.",
+      "confidence": "medium",
+      "sources": [
+        "https://yields.llama.fi/pools",
+        "https://bsc-dataseed.bnbchain.org (eth_getBlockReceipts, eth_call)"
+      ]
+    }
+  ],
+  "interfaces": [
+    {
+      "name": "DefiLlama yields \u2014 GET https://yields.llama.fi/pools, element schema (verified live)",
+      "language": "json",
+      "body": "// Top-level: {\"status\":\"success\",\"data\":[...]}  \u2014 15,650 elements, 10,731,074 bytes\n// Field types observed on element[0]:\n{\n  \"chain\": \"str\",              // \"BSC\" for chain 56\n  \"project\": \"str\",            // slug, e.g. \"venus-core-pool\", \"lista-lending\"\n  \"symbol\": \"str\",\n  \"tvlUsd\": \"int\",\n  \"apyBase\": \"float|null\",\n  \"apyReward\": \"float|null\",\n  \"apy\": \"float|null\",         // percent, i.e. 2.18 means 2.18%\n  \"rewardTokens\": \"list|null\", // lowercase addresses\n  \"pool\": \"str\",               // UUID \u2014 the primary key, NOT an address\n  \"apyPct1D\": \"float|null\",\n  \"apyPct7D\": \"float|null\",\n  \"apyPct30D\": \"float|null\",\n  \"stablecoin\": \"bool\",\n  \"ilRisk\": \"str\",             // \"no\" | \"yes\"\n  \"exposure\": \"str\",           // \"single\" | \"multi\"\n  \"predictions\": {\"predictedClass\":\"str|null\",\"predictedProbability\":\"int|null\",\"binnedConfidence\":\"int|null\"},\n  \"poolMeta\": \"str|null\",\n  \"mu\": \"float\", \"sigma\": \"float\", \"count\": \"int\", \"outlier\": \"bool\",\n  \"underlyingTokens\": \"list|null\", // checksummed addresses \u2014 the only onchain join key\n  \"il7d\": \"float|null\",\n  \"apyBase7d\": \"float|null\",\n  \"apyMean30d\": \"float|null\",\n  \"volumeUsd1d\": \"float|null\",     // null on 286/506 BSC pools\n  \"volumeUsd7d\": \"float|null\",\n  \"apyBaseInception\": \"float|null\"\n}",
+      "source": "https://yields.llama.fi/pools"
+    },
+    {
+      "name": "Live BSC pool record \u2014 Venus Core Pool USDT (verbatim)",
+      "language": "json",
+      "body": "{\"chain\": \"BSC\", \"project\": \"venus-core-pool\", \"symbol\": \"USDT\",\n \"tvlUsd\": 84517819, \"apyBase\": 2.03517, \"apyReward\": 0, \"apy\": 2.03517,\n \"rewardTokens\": [\"0xcf6bb5389c92bdda8a3747ddb454cb7a64626c63\"],\n \"pool\": \"9f3a6015-5045-4471-ba65-ad3dc7c38269\",\n \"apyPct1D\": 0.03691, \"apyPct7D\": 0.12088, \"apyPct30D\": -0.20468,\n \"stablecoin\": true, \"ilRisk\": \"no\", \"exposure\": \"single\",\n \"predictions\": {\"predictedClass\": \"Stable/Up\", \"predictedProbability\": 90, \"binnedConfidence\": 3},\n \"poolMeta\": null, \"mu\": 4.38749, \"sigma\": 0.17146, \"count\": 1502, \"outlier\": false,\n \"underlyingTokens\": [\"0x55d398326f99059fF775485246999027B3197955\"],\n \"il7d\": null, \"apyBase7d\": null, \"apyMean30d\": 2.1483,\n \"volumeUsd1d\": null, \"volumeUsd7d\": null, \"apyBaseInception\": null}\n\n// Note: rewardTokens is populated but apyReward == 0 \u2014 a configured emission\n// currently valued at zero. Exactly the quoted-vs-realized divergence case.",
+      "source": "https://yields.llama.fi/pools"
+    },
+    {
+      "name": "DefiLlama yields time series \u2014 GET https://yields.llama.fi/chart/{poolId}",
+      "language": "json",
+      "body": "// GET https://yields.llama.fi/chart/747c1d2a-c668-4682-b9f9-296708a3dd90\n// -> {\"status\":\"success\",\"data\":[ ... 1539 entries ... ]}\n// last element, verbatim:\n{\n  \"timestamp\": \"2026-08-18T21:01:14.411Z\",\n  \"tvlUsd\": 18220048031,\n  \"apy\": 2.18,\n  \"apyBase\": 2.18,\n  \"apyReward\": null,\n  \"il7d\": null,\n  \"apyBase7d\": null,\n  \"pricePerShare\": null      // null for most pools \u2014 do NOT build realized APY on this\n}\n// This endpoint is the quoted-APY history AiKi replays to build the passive baseline.",
+      "source": "https://yields.llama.fi/chart/747c1d2a-c668-4682-b9f9-296708a3dd90"
+    },
+    {
+      "name": "Response headers for the yields corpus (caching / size constraints)",
+      "language": "text",
+      "body": "HTTP/2 200\ndate: Tue, 18 Aug 2026 21:59:54 GMT\ncontent-type: application/json; charset=utf-8\ncontent-length: 10731074\naccess-control-allow-origin: *\netag: W/\"a3be42-Dmy/zUH679v5xl7NOe9Z0wumG3I\"\nexpires: Tue, 18 Aug 2026 22:22:04 GMT\nage: 2210\ncf-cache-status: HIT\nserver: cloudflare\naccept-ranges: bytes\n\n# No X-RateLimit-* headers returned. No pagination, no chain filter parameter:\n# the whole 10.7MB corpus is the only granularity available.\n# Poll with If-None-Match against the etag; ~22 min expiry window.",
+      "source": "https://yields.llama.fi/pools"
+    },
+    {
+      "name": "PancakeSwap v3 factory on BSC \u2014 verified eth_call responses",
+      "language": "text",
+      "body": "# RPC: https://bsc-dataseed.bnbchain.org   eth_chainId -> 0x38 (56)\n# eth_blockNumber -> 0x6f53401 (116,749,825)\n\nFACTORY = 0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865   # eth_getCode -> 0x60806040... (live)\nWBNB    = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c\nUSDT    = 0x55d398326f99059fF775485246999027B3197955\n\n# getPool(address,address,uint24) selector 0x1698ee82\nfee=100   (0.01%) -> 0x172fcd41e0913e95784454622d1c3724f546f849\nfee=500   (0.05%) -> 0x36696169c63e42cd08ce11f5deebbcebae652050\nfee=2500  (0.25%) -> 0x1401ff943d08a7e098328c1d3a9d388923b115d2\nfee=10000 (1.00%) -> 0x6805e0e5333c5c3accf2930be4734e2b98f4ce06\n\n# On pool 0x36696169c63e42cd08ce11f5deebbcebae652050:\nfee()         (0xddca3f43) -> 0x00...01f4   = 500\ntickSpacing() (0xd0c93a7c) -> 0x00...0a     = 10\nliquidity()   (0x1a686502) -> 0x1922cb17942354656964f  (nonzero)\n\n# Grid quantum: 1.0001^10 - 1 = 0.1001%  ~= the 0.10% round-trip fee on this tier.",
+      "source": "https://bsc-dataseed.bnbchain.org"
+    },
+    {
+      "name": "BSC execution-cost inputs (observed 18 Aug 2026)",
+      "language": "text",
+      "body": "eth_gasPrice              -> 0x2faf080 = 50,000,000 wei = 0.05 gwei\neth_maxPriorityFeePerGas  -> 0x2faf080 = 0.05 gwei\n\nGET https://coins.llama.fi/prices/current/coingecko:binancecoin,bsc:0x55d398326f99059fF775485246999027B3197955\n{\"coins\":{\n  \"coingecko:binancecoin\":{\"price\":602.10671211735,\"symbol\":\"BNB\",\"timestamp\":1787090510,\"confidence\":0.99},\n  \"bsc:0x55d398326f99059fF775485246999027B3197955\":{\"decimals\":18,\"symbol\":\"USDT\",\"price\":0.999419163370589,\"timestamp\":1787090510,\"confidence\":0.99}}}\n\n# eth_getBlockReceipts over blocks 116,733,139..116,733,143 (309 txs):\n#   median gasUsed = 87,481\n#   11 txs touched the WBNB/USDT v3 pools above:\n#     gasUsed 306,136 .. 1,039,362 ; effectiveGasPrice 0.0 .. 10 gwei ; 11..52 logs\n#     (multi-hop / MEV routes, not single swaps)\n#\n# Cost identity to implement per fill:\n#   cost = fee_tier*notional + impact*notional + gasUsed*effectiveGasPrice*BNB_px\n# At 0.05 gwei, 150k gas => ~$0.0045. On $10k notional the 0.05% fee is $5.\n# => fee drag is ~1000x gas. Never hardcode gas price: 10 gwei was observed in-sample.",
+      "source": "https://bsc-dataseed.bnbchain.org and https://coins.llama.fi/prices/current"
+    },
+    {
+      "name": "BSC yield venue TVL table \u2014 chainTvls[\"BSC\"], 18 Aug 2026",
+      "language": "text",
+      "body": "# GET https://api.llama.fi/lite/protocols2  (7,913 protocols; 830 with a BSC entry, sum $11.51B)\nCircle USYC                 2,908.6M  RWA          <- largest, not agent-addressable\nPancakeSwap AMM             1,719.3M  Dexs         <- MATERIAL\nVenus Core Pool             1,075.1M  Lending      <- MATERIAL\nLista Lending                 727.9M  Lending      <- MATERIAL\nLista Liquid Staking          567.3M  Liquid Staking\nGauntlet                      485.3M  Risk Curators\nBinance staked ETH            403.1M  Liquid Staking\nOndo Global Markets           317.2M  RWA\nLista CDP                     238.4M  CDP\nAster Bridge                  228.3M  Bridge\nPancakeSwap AMM V3            223.3M  Dexs         <- grid venue\nOpenEden TBILL                201.5M  RWA\nAave V3                       160.0M  Lending\nSolv Basis Trading            159.6M  Basis Trading\nAster USDF                    112.4M  Basis Trading\nAster asBNB                   111.8M  Yield\nPancakeSwap Infinity           67.8M  Dexs\nUniswap V3                     46.9M  Dexs\nUniswap V4                     34.6M  Dexs\nLista DEX                      17.4M  Dexs\n--- NOT MATERIAL, do not ship as launch venues ---\nVenus Flux                      3.0M  |  THENA V1        1.3M\nVenus Isolated Pools            0.8M  |  THENA INTEGRAL  0.9M\nKernel                          1.2M  |  THENA FUSION    0.6M\nStakeStone SBTC                 0.0M  |  lisAster        0.7M",
+      "source": "https://api.llama.fi/lite/protocols2"
+    },
+    {
+      "name": "PancakeSwap coverage defect in the yields corpus",
+      "language": "text",
+      "body": "# Counted directly on the live 15,650-pool snapshot:\n\nproject \"pancakeswap-amm-v3\"  -> 37 pools: Counter({'Ethereum': 36, 'Opbnb': 1})\n                                 BSC pools: 0        <-- v3 BSC is ABSENT\n\nproject \"pancakeswap-amm\"     -> 64 pools: Counter({'BSC': 37, 'Ethereum': 13,\n                                 'Base': 7, 'Arbitrum': 4, 'Opbnb': 2, 'ZKsync Era': 1})\n                                 BSC subtotal tvlUsd = $14.1M\n\n# Against chainTvls[\"BSC\"] = $1,719.3M for PancakeSwap AMM => 0.8% coverage.\n# Largest covered BSC pancake pools:\n#   CAKE-WBNB   $7,697,209  apy 1.73981  apyBase 1.73981  apyReward 0\n#   WBNB-BUSD   $1,146,209  apy 0.37749\n#   BTCB-WBNB   $  777,979  apy 1.45565\n\n# Invariant AiKi should monitor and alert on:\n#   sum(yields.pools where project==P and chain=='BSC') vs protocols[P].chainTvls['BSC']\n#   divergence > 10x  =>  the APY oracle is blind to that venue.",
+      "source": "https://yields.llama.fi/pools and https://api.llama.fi/lite/protocols2"
+    },
+    {
+      "name": "BSC yields coverage \u2014 nulls that force onchain measurement",
+      "language": "text",
+      "body": "# On the 506 BSC pools in https://yields.llama.fi/pools:\n\ntotal BSC pools                     506\nsum(tvlUsd)                         $6.294B\nunique projects                     47\nvolumeUsd1d non-null                220 / 506   (43%)\napyReward truthy (non-zero)          46 / 506   (9%)\n\n# Top BSC projects by summed tvlUsd within the yields corpus:\n#   circle-usyc            2,908.6M  (1 pool)\n#   venus-core-pool        1,074.4M  (42 pools)\n#   lista-liquid-staking     566.2M  (1 pool)\n#   lista-lending            529.6M  (17 pools)\n#   binance-staked-eth       402.8M  (1 pool)\n#   solv-basis-trading       194.3M  (1 pool)\n#   aave-v3                  160.0M  (8 pools)\n#   lista-cdp                131.8M  (6 pools)\n#   uniswap-v3                37.1M  (207 pools)\n#   pancakeswap-amm           14.1M  (37 pools)   <- see coverage defect\n#   pendle 9.1M | mdex 9.0M | wombat-exchange 6.2M | beefy 2.0M | thena-fusion 0.2M\n\n# Implication: reward APY and fee-derived APY must be measured from AiKi's own\n# onchain records for the majority of BSC pools; the API cannot supply them.",
+      "source": "https://yields.llama.fi/pools"
+    },
+    {
+      "name": "Grid-protocol scan across all 7,913 DefiLlama protocols",
+      "language": "text",
+      "body": "# Name-matched on grid|gridex|apex|bot across every protocol; BSC column from chainTvls:\n\nApex Omni            total $28,392,545   BSC $2,724,975   chains incl BSC   Derivatives\nGridex               total $     59,313  BSC  none        ['Arbitrum','Linea','Polygon','Base','OP Mainnet']   Dexs\nApeX Pro             total $  1,429,706  BSC  6.8e-09     Derivatives\nSuperBots            total $        829  BSC $829         Yield Aggregator\nEarnGrid             total $        220  BSC  none        Base only\nLiquidBots           total $    194,181  BSC  none        Hyperliquid L1\nFireBot              total $          0  BSC  none        Polygon\n\n# Conclusion: NO material onchain grid protocol on BSC. Gridex is not deployed on\n# BSC and is ~dead ($59k). The grid agent must be built directly against\n# PancakeSwap v3 pools (taker swaps or single-range LP orders).",
+      "source": "https://api.llama.fi/lite/protocols2"
+    }
+  ],
+  "gaps": [
+    "DefiLlama yields API documented rate limits: the live response returned NO X-RateLimit-* headers, so I could not verify a published limit. Only the Cloudflare caching behaviour (etag, expires ~22 min, cf-cache-status HIT, age 2210) is confirmed. Fetch https://defillama.com/docs/api before setting poll frequency; do not assume unlimited.",
+    "Exact gas cost of a single-hop PancakeSwap v3 swap on BSC: NOT directly measured. eth_getLogs was rate-limited (-32005 limit exceeded) on the public dataseed, so I could not isolate a clean single-swap receipt. The 306k\u20131.04M gasUsed figures observed are multi-hop/MEV routes. The ~150k figure used in the cost model is an estimate \u2014 measure it with a real eth_estimateGas against the router before publishing any fee model.",
+    "PancakeSwap SmartRouter / NonfungiblePositionManager addresses on BSC: NOT verified. Only the v3 factory and four WBNB/USDT pools were confirmed by eth_call. Do not hardcode router or NPM addresses from memory \u2014 resolve them from PancakeSwap's official deployment docs and verify with eth_getCode.",
+    "PancakeSwap Infinity mechanics (CLAMM/LBAMM hooks, pool manager, fee configuration): NOT investigated. It holds $67.8M on BSC and may be the better long-term grid venue, but nothing about its interface was verified.",
+    "Realized price impact / depth curves for the WBNB/USDT v3 pools: NOT measured. liquidity() is nonzero on the 0.05% pool but I did not read slot0 or walk the tick bitmap, so no slippage-vs-notional curve is available. Required before sizing grid levels.",
+    "Lista, Venus and Aster contract interfaces (deposit/withdraw/claim signatures, share-price accessors): NOT fetched. TVL and APY are verified; the integration surface is not. Every function signature must be read from the deployed ABI, not assumed.",
+    "Whether any BSC pool in the yields corpus exposes a usable pricePerShare: the sampled records returned null. Realized-APY measurement via share price may be impossible for most venues, forcing balance-delta accounting \u2014 this was not exhaustively checked across all 506 BSC pools.",
+    "Aster's product structure: three separate DefiLlama entries (Bridge $228M, USDF $112M, asBNB $112M) in different categories. Whether these are independent, nested, or double-counted is unverified \u2014 do not sum them into a single '$452M Aster' figure in any user-facing claim.",
+    "goodcryptoX / 3Commas / ApeX 'grid bot' claims are MARKETING only (vendor pages, unverified). No evidence was found that any of them is an onchain grid contract on BSC.",
+    "Historical price series source for grid backtesting/baseline replay on BSC: not identified. DefiLlama chart endpoints cover pool APY, not per-block DEX prices. A block-level price oracle (subgraph or archive-node tick reconstruction) is an unsolved dependency for the grid baseline."
+  ],
+  "aiki_implications": [
+    "Ship yield agents against Venus Core Pool, Lista (Lending/Liquid Staking/CDP), and PancakeSwap only. Drop Kernel, StakeStone and Thena from the launch list \u2014 they hold $1.2M, ~$0 and <$3M on BSC respectively and cannot absorb meaningful agent capital. That is a positive result: it shrinks the integration surface from seven venues to three.",
+    "Do NOT build the APY oracle on DefiLlama alone. It carries zero PancakeSwap v3 BSC pools and only $14.1M of PancakeSwap's $1.72B. Add a direct PancakeSwap source and implement a standing invariant: alert whenever sum(yields pools for project P on BSC) diverges >10x from protocols[P].chainTvls['BSC']. A silent coverage hole is how a trust platform ships a wrong number.",
+    "Persist your own {llamaPoolId (UUID) -> BSC contract address} mapping. The yields API key is an opaque UUID with no onchain join except underlyingTokens. Every attestation must bind the realized number to the contract the agent actually transacted with, not to a third party's identifier that can be re-keyed.",
+    "Record the quote timestamp derived from the API's `expires` header, not your fetch time. Quoted APY is up to ~20 minutes stale by construction. An honest quoted-vs-realized comparison must show what the agent could have known, which is the cached value's age.",
+    "Adopt time-weighted capital as the denominator for realized net APY. Simple end/start return is wrong the moment a user deposits or withdraws mid-epoch, and AiKi's whole value proposition is that its numbers survive an adversarial audit.",
+    "Charge every fill its actual gasUsed x effectiveGasPrice from the receipt, converted at that block's BNB price. Do not use a global gas constant: 0.05 gwei is the current base but 10 gwei was observed in the same 5-block sample. Gas is economically trivial on BSC (~$0.005/swap at $602 BNB) but the accounting must still be exact, because 'we estimated gas' is an audit failure even when the amount is a rounding error.",
+    "Treat reward tokens as unrealized until sold. Venus BSC pools advertise a rewardToken with apyReward=0 \u2014 the exact configuration where quoted and realized diverge. Value rewards at actual sale proceeds; never let a quoted apyReward enter a published realized number.",
+    "Build the grid on PancakeSwap v3 directly \u2014 there is no protocol to integrate. Gridex is $59k and not on BSC. This means AiKi owns every fill as its own transaction, which is strictly better for honest metrics: no third-party accounting to trust or reconcile.",
+    "Set the grid step from the fee tier, not from intuition. Breakeven requires step > 2*fee_tier + 2*expected_slippage. On the verified 0.05% WBNB/USDT pool, tickSpacing=10 makes the minimum range ~0.1001%, numerically equal to the round-trip fee \u2014 so a minimum-width grid on that pool earns approximately zero. Encode this as a validation rule that rejects unprofitable grid configurations at submission time rather than discovering it in the PnL.",
+    "Count completed grid cycles (matched buy/sell pairs), not fills, and report open inventory separately. A grid showing 400 fills and 12 matched cycles is a directional position wearing a grid's clothes, and the fill count is the number that flatters it.",
+    "Compute max drawdown on a block-interval-sampled equity curve, never on fill events. Event-sampled drawdown systematically understates the trough because the worst mark happens between trades, precisely when the grid is holding unfilled inventory.",
+    "Publish three baselines for grid agents replayed on the identical block range and pool: buy-and-hold the same initial split (isolates market beta), a naive fixed-parameter grid (isolates adaptive-parameter skill), and 100% numeraire (the do-nothing floor). For yield agents publish the frozen-t0-allocation replay on the same chart/{pool} series. This extends AiKi's existing passive-baseline rule with the specific baselines each category requires.",
+    "Label every grid result with a market-regime classification (realized volatility plus a trend ratio over the window). A grid's edge is regime-conditional by construction \u2014 it earns in chop and loses to buy-and-hold in trends. Publishing a grid return without the regime label is the canonical way these products mislead, and refusing to do it is a differentiator AiKi can actually market.",
+    "Enforce minimum-evidence thresholds before any performance claim is annualized or displayed as a headline: roughly 30 days and 10 rebalances for yield, ~30 completed cycles for grid. Below that, display the raw period return with the window length and an explicit noise label. Annualizing a 3-day return is the single most common dishonest metric in this space.",
+    "If you support v3 single-range LP orders as the grid implementation (recommended \u2014 the maker earns fees instead of paying them), decompose PnL into fees_collected + inventory_pnl + rebalance_cost. Reporting a range order's total return as 'grid profit' silently books directional exposure as strategy skill."
+  ]
+}

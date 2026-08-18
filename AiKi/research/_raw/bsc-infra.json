@@ -1,0 +1,369 @@
+{
+  "topic": "BNB Smart Chain infrastructure facts an indexing + execution platform must design around (measured live 2026-08-18)",
+  "verdict": "SOLID",
+  "executive_summary": "BSC in August 2026 is a 0.45s-block, 2-block-finality chain \u2014 I measured both against mainnet, not from docs. `eth_blockNumber` deltas over 2000 blocks give exactly 0.450s/block; the `finalized` tag consistently trails `latest` by 2 blocks / ~900ms, and `safe` by 1. On-chain `turnLength()` on the ValidatorSet system contract at 0x...1000 reads 8, and miner run-lengths over 400 sampled blocks are 8 in 49/51 runs \u2014 so the worst-case honest-protocol reorg window is 8 blocks (3.6s), while fast finality (BEP-126 + BEP-590, KAncestorGenerationDepth=3) cuts it to 2. Design your indexer around the `finalized` tag, not a fixed confirmation count.\n\nThree things will bite you. (1) Block `timestamp` is second-resolution and now covers ~2.2 blocks; BSC adds a non-standard `milliTimestamp` field to the block JSON \u2014 use it or your time-series keys collide. (2) `eth_getLogs` is disabled outright on the official dataseed endpoints (`-32005 limit exceeded` for any range, even 1 block; docs confirm), and every provider's cap is denominated in blocks, so a 10,000-block QuickNode window is only 75 minutes of chain and a full backfill of 116.7M blocks needs ~11,670 sequential calls. NodeReal's cap is 50,000 (verbatim error: `exceed maximum block range: 50000`). (3) Foundry/anvil 1.7.1 forks BSC correctly and `cast run --quick` reproduces gas exactly (34,515 measured == on-chain), but full-block replay dies with `transaction validation error: Eip7702 is not supported` because ~1.5% of BSC txs are type-0x4 and every block has some. `--evm-version prague` fixes it. The real replay bottleneck is archive-RPC storage fan-out, which 429s public endpoints within seconds.\n\nCosts are trivial: 0.05 gwei floor, median effective price 0.055 gwei, native transfer $0.00063, a measured Venus vBNB `repayBorrow` at 153,929 gas = $0.0055. Base fee is literally 0.",
+  "findings": [
+    {
+      "claim": "BSC mainnet chain ID is 56 (0x38); measured average block time is exactly 0.450s; block gas limit is currently 55,000,000; baseFeePerGas is 0.",
+      "detail": "Live probe 2026-08-18 16:08\u201316:33 UTC against https://bsc-dataseed.bnbchain.org and https://bsc-rpc.publicnode.com. eth_chainId -> \"0x38\" (56) from both. eth_getBlockByNumber over a 2000-block span: (t2-t1)/2000 = 0.45 exactly. Latest block fields: gasLimit 55000000, gasUsed 33,988,747\u201344,328,096 (62\u201381% full), baseFeePerGas \"0x0\", withdrawalsRoot present, blobGasUsed 0x0, excessBlobGas 0x0, parentBeaconBlockRoot 0x00..00, requestsHash non-zero, mixHash used as a small counter (0x...01c2). Head at time of measurement: 116,685,762. 0.45s/block => 192,000 blocks/day, 70,080,000 blocks/year.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org",
+        "https://bsc-rpc.publicnode.com",
+        "https://docs.bnbchain.org/bnb-smart-chain/developers/json_rpc/json-rpc-endpoint/"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "BSC block headers carry a non-standard `milliTimestamp` field. The standard `timestamp` is second-resolution and now spans ~2.2 blocks, so it is no longer a unique or monotonic-per-block key.",
+      "detail": "Observed verbatim in eth_getBlockByNumber result: \"timestamp\": \"0x6a8483b3\", \"milliTimestamp\": \"0x1a015a274fa\". At 450ms intervals, 2\u20133 consecutive blocks share the same second value. Any indexer keying events by (timestamp) or bucketing by second will collide/misorder; key by (blockNumber, logIndex) and use milliTimestamp for wall-clock. This field is BSC-specific and is NOT present in standard go-ethereum block JSON, so generic EVM indexers will silently drop it.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "Fast finality is 2 blocks / ~900ms in production. `finalized` trails `latest` by exactly 2 blocks and `safe` by 1, measured repeatedly.",
+      "detail": "Four consecutive batched probes 3s apart, each returning latest/safe/finalized in one JSON-RPC batch:\nlatest=116685794 safe=116685793 finalized=116685792  lag_safe=1 lag_final=2  ms_behind=900\nlatest=116685803 safe=116685802 finalized=116685801  lag_safe=1 lag_final=2  ms_behind=900\nlatest=116685811 safe=116685810 finalized=116685809  lag_safe=1 lag_final=2  ms_behind=900\nlatest=116685821 safe=116685820 finalized=116685819  lag_safe=1 lag_final=2  ms_behind=900\nms_behind computed from milliTimestamp deltas. BEP-126 spec: a block is 'justified' when its vote attestation appears in its direct child's header, and 'finalized' when 'it is justified and its direct child is justified' \u2014 'finality within two blocks in most cases'. Requires a 2/3+ supermajority of the validator vote set; safety is accountable (two conflicting finalized blocks require >=1/3 of validators to break voting rules, slashable at 10,000 BNB).",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org",
+        "https://raw.githubusercontent.com/bnb-chain/BEPs/master/BEPs/BEP126.md"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "The practical reorg depth an indexer must tolerate is bounded by turnLength = 8 blocks (3.6s), read live from the on-chain ValidatorSet system contract and confirmed by miner run-length histogram.",
+      "detail": "cast call 0x0000000000000000000000000000000000001000 \"turnLength()(uint256)\" --rpc-url https://bsc.blockrazor.xyz -> 8. Same for getTurnLength() -> 8. getValidators()(address[]) returns 45 addresses; 21 distinct addresses actually produced blocks in a 400-block sample. Consecutive-miner run-length histogram over 400 contiguous blocks: {8: 49 runs, 6: 1, 2: 1} \u2014 i.e. every validator produces exactly 8 consecutive blocks per turn (partial runs at sample boundaries). Under BEP-341 a validator can withhold and later publish its whole turn, so 8 blocks is the honest-protocol worst case; the finalized tag (2 blocks) cuts underneath it. BNB Chain governance previously reduced TurnLength from 16 to 8 specifically to lower reorg risk. Recommendation: treat `finalized` as the commit point; keep a rollback buffer of >= 8 and prudently 16\u201332 blocks for unfinalized hot-path state.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc.blockrazor.xyz",
+        "https://bsc-dataseed.bnbchain.org",
+        "https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-341.md"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "BNB Chain's own H1-2026 retrospective states memory finality dropped from 1,125ms to 650ms and reorg occurrence was 'significantly reduced' after the Osaka/Mendel fork. No public postmortem for a specific 2026 reorg incident could be found.",
+      "detail": "Verbatim from the H2 2026 tech roadmap: Block Interval \"750 ms\" (January) -> \"450 ms\" (June); Memory Finality \"1,125 ms\" -> \"650 ms\"; Benchmark Throughput \"~2,800 (~210 MGas/s)\" -> \"5,200 (~400 MGas/s)\". \"Following the Osaka/Mendel hard fork, re-org occurrence on BSC mainnet was significantly reduced.\" H2 2026 goals: double mainnet throughput, resource isolation to reduce 'cross-application interference', 'versatile gas fee adjustments' per vertical. A next-gen L1 targets '100K+ TPS' and 'sub-50ms transaction preconfirmation and sub-1-second block finality', testnet end-2026 / mainnet early-2027.",
+      "confidence": "medium",
+      "sources": [
+        "https://www.bnbchain.org/en/blog/bnb-chain-h2-2026-tech-roadmap-doubling-down-on-speed"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "2026 hardforks: Fermi (14 Jan 2026, 02:30 UTC, v1.6.4/v1.6.5), Osaka/Mendel (28 Apr 2026, 02:30 UTC, BEP-658, v1.7.1/v1.7.2), Pasteur (25 Aug 2026, 02:30 UTC, BEP-673, v1.7.7) \u2014 Pasteur is 7 days away and is a MANDATORY mainnet upgrade.",
+      "detail": "Fermi (BNB Chain blog, primary): block time 0.75s -> 0.45s; BEPs = BEP-590 (Extended Voting Rules for Fast Finality Stability), BEP-619 (Short Block Interval Phase Three, 0.45s), BEP-592 (Non-Consensus Based Block-Level Access List), BEP-593 (Incremental Snapshot), BEP-610 (Implement EVM Super Instruction). Operators warned of ~5h snapshot regeneration.\nOsaka/Mendel = BEP-658, containing BEP-651 (EIP-7823 MODEXP upper bounds), BEP-652 (EIP-7825 Transaction Gas Limit Cap), BEP-653 (EIP-7883 ModExp Gas Cost Increase), BEP-654 (EIP-7939 CLZ opcode), BEP-655 (EIP-7934 RLP Execution Block Size Limit), BEP-657 (Limit Blob Transaction Inclusion by Block Number \u2014 BSC-exclusive), BEP-659 (EIP-7951 secp256r1 precompile); non-forking: BEP-648 (Enhanced Fast Finality via In-Memory Voting Pool), BEP-656 (EIP-7910 eth_config JSON-RPC method).\nPasteur = BEP-673, containing BEP-682 (Reject Duplicate Validators in CometBFT Light Block Validation), BEP-695 (Staking and Governance Security Hardening), and non-forking BEP-675 (Builder-Proposed Block with Validator Blind Signing). v1.7.7 published 2026-07-22, 'Mandatory Update Required: Yes'. It deprecates flags --journalfile, --miner.txgaslimit, --enablebal and removes multi-database support. v1.7.6 removed BEP-592 block access list functionality.\nv1.8.0-alpha (2026-08-13, preview only) syncs to go-ethereum v1.17.3, removes the superinstruction optimization / incremental snapshot / ENR filtering, adds Unified Binary Trie (UBT), PathDB enhancements, dormant Amsterdam EIP scaffolding, breaking debug-trace output changes, and a new eth_getStorageValues method.",
+      "confidence": "high",
+      "sources": [
+        "https://www.bnbchain.org/en/blog/fermi-hard-fork-accelerates-bsc-to-0-45-second-block-times",
+        "https://raw.githubusercontent.com/bnb-chain/BEPs/master/BEPs/BEP-658.md",
+        "https://raw.githubusercontent.com/bnb-chain/BEPs/master/BEPs/BEP-673.md",
+        "https://api.github.com/repos/bnb-chain/bsc/releases?per_page=15",
+        "https://www.bnbchain.org/en/releases"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "EIP-7702 (type 0x4 SetCode) and blob (type 0x3) transactions are LIVE and non-trivially used on BSC mainnet today \u2014 not just spec'd.",
+      "detail": "Sampled 2,417 transactions across 20 consecutive recent blocks via eth_getBlockByNumber + eth_getBlockReceipts. Transaction type distribution: {'0x0': 1585 legacy, '0x2': 748 EIP-1559, '0x1': 43 EIP-2930, '0x4': 37 EIP-7702 SetCode, '0x3': 4 blob}. That is ~1.5% type-0x4, i.e. roughly 2 SetCode txs per block \u2014 high enough that essentially every block contains one. EIP-7702 shipped in the Pascal hardfork (Mar 2025). BEP-657 in Osaka/Mendel limits blob transaction inclusion by block number.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc.blockrazor.xyz",
+        "https://raw.githubusercontent.com/bnb-chain/BEPs/master/BEPs/BEP-658.md"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "Gas economics: minimum gas price is 0.05 gwei, base fee is 0, median effective gas price is 0.055 gwei and p90 is 0.5925 gwei. A native transfer costs $0.00063; a measured Venus repay costs $0.0055 (BNB = $603.21).",
+      "detail": "eth_gasPrice = 0x2faf080 = 50,000,000 wei = 0.05 gwei, identical from bsc-dataseed.bnbchain.org and bsc-rpc.publicnode.com. baseFeePerGas = 0x0 on every block sampled, so the entire fee is legacy gasPrice / priority fee. Over 2,417 sampled txs: min 0.0 gwei, median 0.055000002, p90 0.5925, max 396.288649513 gwei (MEV tail). gasUsed: median 118,624, mean 248,991, p90 582,489; 278/2417 = 11.5% are exactly 21,000. Throughput observed: 2,417 tx / 20 blocks = 120.85 tx/block = 268.6 TPS.\nBNB/USDT spot from https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT = 603.21 at 2026-08-18 16:10 UTC.\nCost table (gas x price x $603.21):\n- native BNB transfer, 21,000 @0.05 gwei = 0.00000105 BNB = $0.000633\n- BEP-20 USDT transfer, MEASURED 34,515 gas @0.05 gwei = $0.001041 (@median 0.055 = $0.001145)\n- Venus vBNB repayBorrow, MEASURED 153,929 gas @0.058795753 gwei actually paid = $0.005459 (@0.05 floor = $0.004643)\n- median BSC tx, 118,624 @0.055 = $0.003936\n- same Venus repay at p90 congestion price 0.5925 gwei = $0.055",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org",
+        "https://bsc.blockrazor.xyz",
+        "https://api.binance.com/api/v3/ticker/price?symbol=BNBUSDT",
+        "https://bscscan.com/gastracker"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "Venus repay measured directly on-chain: 153,929 gas for a direct vBNB repayBorrow. Verified by both receipt and callTracer.",
+      "detail": "Venus core-pool addresses from official docs: Comptroller 0xfD36E2c2a6789Db23113685031d7F16329158384, vBNB 0xA07c5b74C9B40447a954e1466938b865b6BBea36, vUSDT 0xfD5840Cd36d94D7229439859C0112a4185BC0255, vUSDC 0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8, vBTC 0x882C173bC7Ff3b7786CA16dfeD3DFFfb9Ee7847B.\nFound via eth_getLogs on topic0 0x1a2a22cb034d26d1854bdc6666a5b91fe25efbbb5dcad3b0355478d6f5c362a1 = keccak256(\"RepayBorrow(address,address,uint256,uint256,uint256)\").\ntx 0xb56224c035f6a7af5f158befc1ebf51ad19a073e30c5af85efc0fefe4a96ce16: to = 0xa07c5b74c9b40447a954e1466938b865b6bbea36 (vBNB, direct call), selector 0x4e4d9fea, gasUsed 153,929, gasPrice 0.058795753 gwei, 3 logs. debug_traceTransaction with callTracer confirms gasUsed \"0x25949\" = 153,929, gas limit \"0x3d090\", from 0x13074710b3e9d98f2e20ab49afa78cd0da183a94.\nCounter-example for sizing worst case: an aggregated Venus interaction through router 0x03f079e809185a669ca188676d0adb09cbad6dc1 (selector 0xc78befbe) burned 1,161,699 gas with 35 logs. Budget 150k for a bare repay, ~1.2M for aggregator-routed flows.",
+      "confidence": "high",
+      "sources": [
+        "https://docs-v4.venus.io/deployed-contracts/markets",
+        "https://bsc-rpc.publicnode.com",
+        "https://bsc.blockrazor.xyz",
+        "https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "eth_getLogs is DISABLED on the official BSC dataseed endpoints \u2014 confirmed both by documentation and by live probe returning -32005 for every range including a single block.",
+      "detail": "Official docs: \"eth_getLogs is disabled\" on mainnet endpoints, users directed to third-party providers. Rate limit \"10K/5min\" on both testnet and mainnet. Official mainnet endpoints listed: https://bsc-dataseed.bnbchain.org, https://bsc-dataseed.nariox.org, https://bsc-dataseed.defibit.io, https://bsc-dataseed.ninicoin.io, https://bsc.nodereal.io, https://bsc-dataseed-public.bnbchain.org. Testnet (chain id 97 / 0x61): https://bsc-testnet-dataseed.bnbchain.org, https://bsc-testnet.bnbchain.org, https://bsc-prebsc-dataseed.bnbchain.org.\nLive probe result on bsc-dataseed.bnbchain.org and bsc-dataseed1.binance.org, spans 1/10/100/500/1000/2000/5000/10000/50000 blocks: ALL returned {\"code\": -32005, \"message\": \"limit exceeded\"}. Same endpoints also return \"missing trie node\" for eth_getBalance at historical blocks (state-pruned, not archive).",
+      "confidence": "high",
+      "sources": [
+        "https://docs.bnbchain.org/bnb-smart-chain/developers/json_rpc/json-rpc-endpoint/",
+        "https://bsc-dataseed.bnbchain.org"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "Measured eth_getLogs block-range caps across live BSC endpoints vary from 25 blocks to 50,000 blocks. At 0.45s/block these caps translate to tiny wall-clock windows.",
+      "detail": "Empirically probed 2026-08-18 with a real filter (address + topic0):\n- https://bsc-dataseed.bnbchain.org : eth_getLogs disabled entirely, -32005 \"limit exceeded\" at any span\n- https://bsc-dataseed1.binance.org : same, -32005 \"limit exceeded\"\n- https://bsc-rpc.publicnode.com : OK to 5,000 blocks; HTTP 403 at 10,000 and above; also 403s after ~5-10 requests in quick succession (aggressive per-IP throttle)\n- https://bsc.blockrazor.xyz : verbatim error \"log query range must not exceed 25 blocks\" (OK at 1 and 10)\n- https://bsc-mainnet.nodereal.io/v1/<key> : OK at 1,000 / 5,000 / 10,000; verbatim error at 50,000 -> \"exceed maximum block range: 50000\"\n- https://1rpc.io/bnb : -32001 \"You've reached the usage limit for your current plan\"\n- https://rpc.ankr.com/bsc : -32000 \"Unauthorized: You must authenticate your request with an API key\" (no longer keyless)\n- https://bsc.drpc.org : HTTP 429\nDocumented caps: QuickNode BSC = 5 blocks on Free Trial, 10,000 blocks on paid plans. Alchemy BSC = 10 blocks Free tier, Unlimited on Pay As You Go and Enterprise, with all responses \"capped at 150MB\" and a note that ranges wider than 10,000 blocks are \"possible but less likely to succeed\".\nWall-clock math: a 10,000-block window = 75 minutes of chain; 50,000 blocks = 6.25 hours. A full backfill of 116.7M blocks needs ~11,670 sequential getLogs calls at 10k, or ~2,334 at 50k \u2014 per filter.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-dataseed.bnbchain.org",
+        "https://bsc-rpc.publicnode.com",
+        "https://bsc.blockrazor.xyz",
+        "https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3",
+        "https://1rpc.io/bnb",
+        "https://rpc.ankr.com/bsc",
+        "https://bsc.drpc.org",
+        "https://www.quicknode.com/docs/bnb-smart-chain/eth_getLogs",
+        "https://www.alchemy.com/docs/chains/bnb-smart-chain/bnb-smart-chain-api-endpoints/eth-get-logs"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "BSC archive state is scarce on free endpoints. Only NodeReal's public endpoint served historical state at blocks 1M/20M/40M/60M; blockrazor and rpcfast return 'header not found', dataseed returns 'missing trie node'.",
+      "detail": "Probe: eth_getBalance(<addr>, 0x<block>) at blocks 1,000,000 / 20,000,000 / 40,000,000 / 60,000,000:\n- https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3 : OK at all four\n- https://bsc.meowrpc.com : OK at 1M and 40M, \"header not found\" at 20M, HTTP 429 at 60M (inconsistent shard coverage)\n- https://bsc.blockrazor.xyz : \"header not found\" at all four\n- https://bsc.rpc.blxrbdn.com : \"header not found\" at all four\n- https://bsc-dataseed.bnbchain.org : \"missing trie node\" at all four\n- https://bsc-rpc.publicnode.com : HTTP 403 (throttled)\nNodeReal MegaNode documents archive data as included on ALL tiers including Free (\"Archive data \u2705\" for both Free and Growth), which is unusual \u2014 most providers gate it. debug_traceTransaction with callTracer worked on the public NodeReal key despite docs listing 'Debug API \u274c' for Free.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3",
+        "https://bsc.meowrpc.com",
+        "https://bsc.blockrazor.xyz",
+        "https://bsc-dataseed.bnbchain.org",
+        "https://docs.nodereal.io/docs/pricing-plan"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "Paid RPC provider reality for BSC: NodeReal MegaNode is the BSC-native option (archive on all tiers, $39/mo Growth, 500M CU, 700 CUPS); QuickNode flat-rate BSC starts at $799/mo for 75 RPS with archive NOT included; Chainstack starts at $149/mo for 25 RPS covering all chains.",
+      "detail": "NodeReal MegaNode verbatim table: Available API Keys Free 3 / Growth 15; Monthly CUs Free 10M / Growth 500M; CUPS Free 150 / Growth 700; Https & Websockets \u2705 both; Archive data \u2705 both; Debug API \u274c Free / \u2705 Growth. Growth priced at $39/mo (early-bird). Overage add-on $1/month per 5M CU (e.g. $20 for 100M). WebSocket subscriptions billed by bandwidth at 0.04 CU per byte. Per-method CU costs: eth_getLogs 50, eth_call 20, eth_getBlockByNumber 15, debug_traceTransaction 280, trace_block 2000 (Enhanced API). eth_getBlockReceipts not listed in the supported-methods table.\nChainstack 2026 flat-rate comparison (verbatim): Chainstack Unlimited Node $149/month (25 RPS), RPS options 25/100/250/500/1000, chain coverage \"All Chainstack chains\" including BNB Smart Chain, multi-chain on one plan Yes, archive \"Plan-dependent\", max RPS 1000. QuickNode Flat Rate RPS $799/month (75 RPS, EVM), options 75/150/250, \"EVM (6 chains) + Solana\", multi-chain No \u2014 1 chain per subscription, archive \"Not included\", max RPS 250. GetBlock Limitless Node $99/month (25 RPS), options 25/50/100/200, 10 chains, archive \"Included\", max 200 RPS \u2014 but GetBlock's listed chains do not include BSC in that table.\nWebSocket: NodeReal documents WSS on all tiers; publicnode's BSC host accepts TCP:443. The legacy public WS host bsc-ws-node.nariox.org timed out.",
+      "confidence": "medium",
+      "sources": [
+        "https://docs.nodereal.io/docs/pricing-plan",
+        "https://docs.nodereal.io/docs/compute-units-cus",
+        "https://chainstack.com/learn/compare/flat-rate-rpc-plans-compared-2026/"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "CRITICAL for replay harness: anvil/Foundry 1.7.1 forks BSC correctly and reproduces gas exactly, but full-block replay fails with 'Eip7702 is not supported' unless you pass --evm-version prague.",
+      "detail": "Environment: anvil Version 1.7.1, Commit 4072e48705af9d93e3c0f6e29e93b5e9a40caed8, build 2026-05-08.\nWHAT WORKS:\n- `anvil --fork-url <bsc-archive> --fork-block-number 116487736` came up in <12s. eth_chainId -> 56. Parlia block header round-trips intact: difficulty 2, totalDifficulty 232390151, extraData carrying the full Parlia vote attestation + seal, mixHash 0x...03b6, gasLimit 55000000, withdrawalsRoot present, blobGasUsed 0.\n- Parlia system contracts are present and callable on the fork: `cast codesize 0x0000000000000000000000000000000000001000` -> 29871 bytes.\n- Application state reads correct: Venus vUSDT exchangeRateStored() -> 264408394646502828204777640 on the fork.\n- `cast run <tx> --rpc-url <archive> --quick` reproduced a real BEP-20 transfer with EXACT gas parity: reported \"Gas used: 34515\" vs on-chain receipt gasUsed 34515. Wall time 5.4s. Trace decoded correctly (USDT 0x55d398326f99059fF775485246999027B3197955::transfer).\nWHAT BREAKS:\n1. Full-block replay (`cast run` WITHOUT --quick, which re-executes all preceding txs in the block) fails: \"Error: Failed to execute transaction: 0x42cb... in block 116687121 / Context: Error #0: EVM error / Error #1: transaction validation error: Eip7702 is not supported\". Because ~1.5% of BSC txs are type-0x4 and blocks carry ~120 txs, virtually EVERY block hits this. FIX: `--evm-version prague` \u2014 with that flag the 7702 tx executed and the run only failed later on RPC rate limits, not on validation.\n2. Archive RPC storage fan-out is the real bottleneck. Replay issues thousands of eth_getStorageAt at a pinned historical block; the public NodeReal endpoint 429'd mid-replay: \"Failed to send/recv `storage` err=failed to get storage for 0x059EabA8676b03e4e8f009eFb7F587C28450F50f at 40210823806684498652945081279059309818330415620702163000063545988038223380404: Max retries exceeded HTTP error 429\".\n3. Deep historical fork can fail before genesis is even built: `anvil --fork-block-number 25000000` died with \"Error: failed to create genesis / Context: failed to get account for 0x70997970C51812dc3A010C7d01b50e0d17dc79C8: Max retries exceeded HTTP error 429\" \u2014 i.e. rate limiting, not a consensus incompatibility. Deep forking was not proven working on a rate-limited endpoint.\nNo Parlia-specific failure was observed. anvil substitutes its own block production; it does not run Parlia, so validator-turn/system-tx semantics (the trailing system transactions that distribute fees) are NOT reproduced.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3",
+        "https://github.com/bnb-chain/bsc"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "opBNB: chain ID 204 (0xcc), measured 0.25s block time (docs say 1s \u2014 stale), 100,000,000 block gas limit, 0.001 gwei gas price, base fee 0, ~29-block finality lag (~7s).",
+      "detail": "Live probe of https://opbnb-mainnet-rpc.bnbchain.org 2026-08-18: eth_chainId -> \"0xcc\" (204). eth_gasPrice -> 1,000,000 wei = 0.001 gwei. Latest block 175,812,233: gasLimit 100000000, gasUsed 10,017,607 (10% full), baseFeePerGas 0, 27 txs. Average block time over 1000 blocks = 0.25s (BNB Chain docs and third-party pages still say 1s \u2014 treat those as stale). safe=175,812,192 finalized=175,812,204 vs latest=175,812,233 => finalized lag ~29 blocks ~7.25s.\nOfficial docs give Floor Base Price \"8 wei (dynamic)\" and Minimum Priority Price \"1001 wei\", with L2 cost = \"Layer 2 gas price x Layer 2 gas consumed + Layer 1 gas price x Layer 1 gas consumed\".\nCost at 0.001 gwei: 21,000-gas transfer = 2.1e-8 BNB = $0.0000127; a 153,929-gas op = $0.0000929. That is ~50x cheaper than BSC L1.\nHyperSync serves opBNB at https://opbnb.hypersync.xyz (height 175,812,505 at probe time, i.e. at tip). The Graph's supported-networks list does NOT include opBNB. Substreams chain list does not include opBNB.",
+      "confidence": "high",
+      "sources": [
+        "https://opbnb-mainnet-rpc.bnbchain.org",
+        "https://docs.bnbchain.org/bnb-opbnb/core-concepts/gas-and-fees/",
+        "https://opbnb.hypersync.xyz/height",
+        "https://thegraph.com/docs/en/supported-networks/"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "Envio HyperSync supports BSC (chain 56) and opBNB (chain 204) at chain tip, and now REQUIRES an API token \u2014 unauthenticated queries are rejected.",
+      "detail": "Live: GET https://bsc.hypersync.xyz/height -> {\"height\":116687299} \u2014 exactly at chain tip (head was 116,687,299 at that moment). GET https://opbnb.hypersync.xyz/height -> {\"height\":175812505}, also at tip.\nPOST https://bsc.hypersync.xyz/query without a token -> {\"error\":\"Your token is malformed. API Tokens can be created at https://app.envio.dev/api-tokens. For more info: https://docs.envio.dev/docs/HyperSync/api-tokens.\"} Same for HyperRPC at https://bsc.rpc.hypersync.xyz.\nDocumented endpoint aliases: BSC = https://bsc.hypersync.xyz or https://56.hypersync.xyz; opBNB = https://opbnb.hypersync.xyz or https://204.hypersync.xyz. Docs: \"API tokens will be required from 3 November 2025\"; indexers deployed to Envio Cloud get access without custom tokens. Tier classifications (whether traces/state-diffs are available for BSC) are explicitly \"still being refined\" in the docs \u2014 you must ask on Discord.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc.hypersync.xyz/height",
+        "https://opbnb.hypersync.xyz/height",
+        "https://docs.envio.dev/docs/HyperSync/hypersync-supported-networks",
+        "https://docs.envio.dev/docs/HyperSync/api-tokens"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "The Graph supports BSC ('bsc') for subgraphs on the decentralized network with issuance; the hosted service is fully retired. opBNB is not supported. Free tier is 100,000 queries/month.",
+      "detail": "thegraph.com/docs/en/supported-networks lists \"BNB / bsc\" with checkmarks for Subgraphs support and presence \"on The Graph Network (Issuance)\". opBNB does not appear in the list under any identifier. The Hosted Service was retired in June 2024 (Sunray/Sunbeam/Sunrise three-phase migration); there is no hosted option left \u2014 you deploy to Subgraph Studio and publish to the decentralized network. Billing: \"100,000 free monthly queries with full access to the Subgraph Studio testing environment\"; Growth Plan = \"everything in the Free Plan with all queries after 100,000 monthly queries requiring payments with GRT or credit card\". The exact USD per-query rate is not disclosed on the pages I fetched.",
+      "confidence": "medium",
+      "sources": [
+        "https://thegraph.com/docs/en/supported-networks/",
+        "http://thegraph.com/docs/en/subgraphs/providers/subgraph-studio/introduction/",
+        "https://thegraph.com/blog/sunsetting-hosted-service/"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "Goldsky supports BSC with published, concrete pay-as-you-go pricing \u2014 the most transparent of the hosted indexers.",
+      "detail": "Verbatim from goldsky.com/pricing:\nStarter (Free): $100 in free credits, no credit card. Subgraphs 2,250 worker hours + 100,000 entities stored. Mirror/Turbo 750 worker hours + 1,000,000 events. Edge RPC 1M requests/month.\nScale (PAYG): Subgraphs \"$0.05/hr (~$37/mo)\" per worker hour; entities \"First 100,000 free, then $4 per 100,000\". Mirror/Turbo \"$0.10/hr (~$73/mo)\"; events \"First 1M free, then $1 per 100,000\". Edge RPC \"$5.00 per 1M requests\". Compose \"1 worker free (720 hrs/mo), then $0.05/hr\"; calls \"First 10,000 free, then $6.00 per 1,000 calls\".\nEnterprise: custom, \"20%+\" committed-use discounts, 4-hour SLA. Each active subgraph consumes 1 worker hour per hour. Goldsky claims 156+ chains / 260+ networks, with a dedicated BSC page. Products: Turbo Pipelines (Postgres/ClickHouse/Kafka sinks), Mirror subgraphs (GraphQL), Edge RPC (live + archive with failover), Compose.",
+      "confidence": "high",
+      "sources": [
+        "https://goldsky.com/pricing",
+        "https://goldsky.com/chains/bsc"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "Substreams supports BNB mainnet via two endpoint providers; Ponder and SubQuery both index BSC as generic EVM chains driven by your own RPC.",
+      "detail": "Substreams chains-and-endpoints doc lists BNB (Mainnet) at bnb.streamingfast.io:443 (StreamingFast) and bsc.substreams.pinax.network:443 (Pinax). First-streamable-block and extended-block/trace availability are NOT stated for BSC on that page. opBNB is absent.\nPonder: TypeScript framework, indexes \"any contract or account on any EVM-compatible chain\" \u2014 BSC works by adding an RPC. It \"automatically determines the maximum block range for JSON-RPC requests with the eth_getLogs method\", with `ethGetLogsBlockRange` to override when auto-detection fails, `pollingInterval` (default 1000ms), `disableCache` (required against Anvil), and a `ws` field for WebSocket with automatic fallback to polling. Given BSC's 450ms blocks, the default 1000ms pollingInterval means Ponder is structurally ~2 blocks behind head.\nSubQuery: documents a BNB Smart Chain quick-start and ships bsc-starter, bsc-mobox-rewards and bsc-pancake-swap example projects; claims parallelised processing and indexing of unfinalised blocks.",
+      "confidence": "medium",
+      "sources": [
+        "https://docs.substreams.dev/reference-material/chain-support/chains-and-endpoints.md",
+        "https://ponder.sh/docs/config/chains",
+        "https://subquery.network/doc/indexer/quickstart/quickstart_chains/bsc.html"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "MEV / private-tx execution on BSC is a mature multi-builder market: bloXroute fans bundles to 5 named builders, and 48Club runs an explicit auction with a published sorting formula.",
+      "detail": "bloXroute: endpoint https://api.blxrbdn.com (HTTPS) or wss://api.blxrbdn.com/ws, method blxr_submit_bundle, auth via `Authorization` header. blockchain_network must be \"BSC-Mainnet\". Default max_block_number = current block + 40. Bundles limited to 2 transactions without the Bundle Size Add-on. \"This service is available via Cloud API only.\" mev_builders values: bloxroute (default), all, 48club, blockrazor, jetbldr, nodereal.\n48Club Puissant v2: method eth_sendBundle. Sorting formula: \"(sum of gas fees from non-pool transactions x 0.9) + BNB transfers to Builder Control EOA\" where the Builder Control EOA is 0x4848489f0b2BEdd788c696e2D79b6b69D7484848. The 0.9 factor \"accounts for BEP95, whereby 10% of the gas fees are burnt\". Direct transfers to the Builder Control EOA get priority ranking. Params support backrunTarget, maxBlockNumber, maxTimestamp, revertingTxHashes, noMerge, positionFirst, 48spSign.\nProtocol-level: BEP-675 (shipping with Pasteur, 25 Aug 2026) adds builder-proposed blocks with validator blind signing \u2014 builders submit fully-executed blocks via SendBidBlock, validators pick the highest-fee bid without re-simulating on the critical path. Builders poll /eth/v1/builder/permission. Permission is revoked for 24 hours on InsertChain failure, or one epoch if average gas price falls below the validator minimum.",
+      "confidence": "high",
+      "sources": [
+        "https://docs.bloxroute.com/bsc/submit-bundles/bsc-bundle-submission",
+        "https://docs.48.club/puissant-builder/send-bundle",
+        "https://raw.githubusercontent.com/bnb-chain/BEPs/master/BEPs/BEP-675.md"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "Historical price/market data for backtesting: Binance klines (6,000 weight/min), DefiLlama coins API (no key, works for BSC token addresses), Dune (X-Dune-Api-Key). All verified live.",
+      "detail": "Binance: GET https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=1d&limit=2 returns arrays [openTime_ms, open, high, low, close, volume, closeTime_ms, quoteVolume, trades, takerBuyBase, takerBuyQuote, ignore]. Documented rate limits from /api/v3/exchangeInfo: REQUEST_WEIGHT 6000 per 1 MINUTE; RAW_REQUESTS 300000 per 5 MINUTES; ORDERS 100/10s and 200000/day. Response headers expose x-mbx-used-weight-1m for backpressure (a 5-kline request consumed weight 26). No API key needed for klines.\nDefiLlama (all keyless, verified live):\n- https://coins.llama.fi/prices/current/bsc:0x55d398326f99059fF775485246999027B3197955 -> {\"coins\":{\"bsc:0x55d3...\":{\"decimals\":18,\"symbol\":\"USDT\",\"price\":0.999340365628316,\"timestamp\":1787070710,\"confidence\":0.99}}}\n- https://coins.llama.fi/prices/historical/<unixTimestamp>/bsc:<address> -> same shape at that timestamp\n- https://coins.llama.fi/chart/bsc:<address>?start=<ts>&span=<n>&period=1d -> {\"coins\":{...,\"prices\":[{\"timestamp\":...,\"price\":...}]}}\n- https://api.llama.fi/protocol/venus -> protocol TVL object (id \"parent#venus-finance\")\nResponses are Cloudflare-cached (cf-cache-status: HIT, ~2-minute expiry observed); no documented hard rate limit on the free tier, but treat the CDN cache window as your effective granularity. Note the `confidence` field \u2014 use it to reject thin-liquidity marks in a backtest.\nDune: https://api.dune.com/api/v1/query/<id>/results, auth header is X-Dune-Api-Key (confirmed via the access-control-allow-headers on a 401 response: {\"error\":\"invalid API Key\"}).",
+      "confidence": "high",
+      "sources": [
+        "https://api.binance.com/api/v3/exchangeInfo?symbol=BNBUSDT",
+        "https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=1d&limit=2",
+        "https://coins.llama.fi/prices/current/bsc:0x55d398326f99059fF775485246999027B3197955",
+        "https://coins.llama.fi/prices/historical/1750000000/bsc:0x55d398326f99059fF775485246999027B3197955",
+        "https://coins.llama.fi/chart/bsc:0x55d398326f99059fF775485246999027B3197955",
+        "https://api.llama.fi/protocol/venus",
+        "https://api.dune.com/api/v1/query/1/results"
+      ],
+      "source_date": "2026-08-18"
+    },
+    {
+      "claim": "Verified BSC mainnet contract addresses (checked for non-empty bytecode on an archive node). One widely-memorized address was WRONG and is excluded.",
+      "detail": "VERIFIED live via eth_getCode / cast codesize against https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3:\n- USDT (BSC): 0x55d398326f99059fF775485246999027B3197955 \u2014 confirmed by decoded transfer trace\n- PancakeSwap V2 Router: 0x10ED43C718714eb63d5aA57B78B54704E256024E \u2014 codesize 21,936\n- Venus vUSDT: 0xfD5840Cd36d94D7229439859C0112a4185BC0255 \u2014 codesize 4,744\n- Venus vBNB: 0xA07c5b74C9B40447a954e1466938b865b6BBea36 \u2014 confirmed as `to` of a real repayBorrow\n- Parlia ValidatorSet system contract: 0x0000000000000000000000000000000000001000 \u2014 codesize 29,871\n- 48Club Builder Control EOA: 0x4848489f0b2BEdd788c696e2D79b6b69D7484848 (from 48Club docs, not code-verified since it is an EOA)\nNEGATIVE RESULT WORTH RECORDING: the commonly-cited WBNB address 0xbb4CdB9CB20BB6b1e00C97E7ee1B3e2f6C05e4b9 returned eth_getCode = \"0x\" and codesize 0 on BSC mainnet at current head. Do NOT hardcode it from memory; resolve WBNB from a router's WETH() getter at runtime.",
+      "confidence": "high",
+      "sources": [
+        "https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3",
+        "https://docs-v4.venus.io/deployed-contracts/markets",
+        "https://docs.48.club/puissant-builder/send-bundle"
+      ],
+      "source_date": "2026-08-18"
+    }
+  ],
+  "interfaces": [
+    {
+      "name": "BSC block header JSON (note the non-standard milliTimestamp)",
+      "language": "json",
+      "body": "{\n  \"number\": \"0x6f2a...\",\n  \"timestamp\": \"0x6a8483b3\",\n  \"milliTimestamp\": \"0x1a015a274fa\",\n  \"gasLimit\": \"0x3473bc0\",\n  \"baseFeePerGas\": \"0x0\",\n  \"difficulty\": \"0x2\",\n  \"mixHash\": \"0x00000000000000000000000000000000000000000000000000000000000001c2\",\n  \"withdrawalsRoot\": \"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\n  \"blobGasUsed\": \"0x0\",\n  \"excessBlobGas\": \"0x0\",\n  \"parentBeaconBlockRoot\": \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n  \"requestsHash\": \"0x000000000000000000000001539e24781f616f0d912b60813ab75b7b80b75c53\"\n}",
+      "source": "https://bsc-dataseed.bnbchain.org (eth_getBlockByNumber, 2026-08-18)"
+    },
+    {
+      "name": "Live eth_getLogs rejection from official BSC dataseed (getLogs is disabled)",
+      "language": "json",
+      "body": "// POST https://bsc-dataseed.bnbchain.org\n// {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getLogs\",\"params\":[{\"fromBlock\":\"0x...\",\"toBlock\":\"0x...\",\"address\":\"0xfD5840Cd36d94D7229439859C0112a4185BC0255\",\"topics\":[\"0x1a2a22cb...\"]}]}\n// -> identical for spans of 1, 10, 100, 500, 1000, 2000, 5000, 10000, 50000 blocks:\n{\"jsonrpc\": \"2.0\", \"id\": 1, \"error\": {\"code\": -32005, \"message\": \"limit exceeded\"}}",
+      "source": "https://bsc-dataseed.bnbchain.org (probed 2026-08-18)"
+    },
+    {
+      "name": "Provider-specific eth_getLogs range-cap errors (verbatim)",
+      "language": "text",
+      "body": "# https://bsc.blockrazor.xyz  (cap = 25 blocks)\nlog query range must not exceed 25 blocks\n\n# https://bsc-mainnet.nodereal.io/v1/<key>  (cap = 50,000 blocks; OK at 10,000)\nexceed maximum block range: 50000\n\n# https://bsc-rpc.publicnode.com  (OK to 5,000; hard 403 at 10,000 and on burst)\nHTTP Error 403: Forbidden\n\n# https://rpc.ankr.com/bsc  (keyless access removed)\n{\"code\":-32000,\"message\":\"Unauthorized: You must authenticate your request with an API key\"}\n\n# https://1rpc.io/bnb\n{\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan.\"}",
+      "source": "live probes 2026-08-18 of bsc.blockrazor.xyz, bsc-mainnet.nodereal.io, bsc-rpc.publicnode.com, rpc.ankr.com/bsc, 1rpc.io/bnb"
+    },
+    {
+      "name": "Foundry full-block replay failure on BSC and the fix",
+      "language": "text",
+      "body": "$ cast run 0x7ca937510edeeca095a7928543fac86a01e0b93645b2e6b39b51f08b83d9edbb --rpc-url $BSC_ARCHIVE\nExecuting previous transactions from the block.\nError: Failed to execute transaction: 0x42cb332bf6bd036f86a69d41a096f355e089fd1439d6232a41416d12808b740a in block 116687121\n\nContext:\n- Error #0: EVM error\n- Error #1: transaction validation error: Eip7702 is not supported\n\n# FIX: force the EVM spec, otherwise revm resolves a pre-Prague spec for chain 56\n$ cast run <tx> --rpc-url $BSC_ARCHIVE --evm-version prague\n\n# --quick (single-tx, skips preceding block txs) reproduces gas EXACTLY:\n$ cast run 0x7ca9...edbb --rpc-url $BSC_ARCHIVE --quick\nTraces:\n  [12871] 0x55d398326f99059fF775485246999027B3197955::transfer(0xd88f19F7B82013b8c15F7106E6b556b92d43D128, 50000000000000000000 [5e19])\n    +- emit Transfer(from: 0x627809221fAe6B100E3eF3bBa8c9Db5E3A87393d, to: 0xd88f19F7B82013b8c15F7106E6b556b92d43D128, amount: 50000000000000000000 [5e19])\n    +- <- [Return] true\nTransaction successfully executed.\nGas used: 34515        # == on-chain receipt gasUsed",
+      "source": "anvil/cast 1.7.1 (commit 4072e48705af9d93e3c0f6e29e93b5e9a40caed8) against https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3, 2026-08-18"
+    },
+    {
+      "name": "Anvil BSC fork archive-RPC exhaustion (the real replay bottleneck)",
+      "language": "text",
+      "body": "ERROR sharedbackend: Failed to send/recv `storage`\n  err=failed to get storage for 0x059EabA8676b03e4e8f009eFb7F587C28450F50f\n      at 40210823806684498652945081279059309818330415620702163000063545988038223380404:\n      Max retries exceeded HTTP error 429 with body:\n      {\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32005,\"message\":\"You have reached the maximum API usage limit of public.\"}}\n\n# and at fork setup time on a deep historical block:\nError: failed to create genesis\nContext:\n- failed to get account for 0x70997970C51812dc3A010C7d01b50e0d17dc79C8: Max retries exceeded HTTP error 429",
+      "source": "anvil 1.7.1 --fork-url https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3 --fork-block-number 25000000, 2026-08-18"
+    },
+    {
+      "name": "BEP-675 builder-proposed block structures (Pasteur, 25 Aug 2026)",
+      "language": "go",
+      "body": "type BidBlockArgs struct {\n    BidBlock  *BidBlock\n    Signature hexutil.Bytes\n}\n\ntype BidBlock struct {\n    Header       *types.Header\n    Transactions []hexutil.Bytes\n    Sidecars     BlobSidecars\n}\n// Signature covers rlpHash(BidBlock).\n// Builders poll GET /eth/v1/builder/permission to check SendBidBlock access.\n// Revocation: 24h on InsertChain failure; one epoch if avg gas price < validator minimum.",
+      "source": "https://raw.githubusercontent.com/bnb-chain/BEPs/master/BEPs/BEP-675.md"
+    },
+    {
+      "name": "bloXroute BSC bundle submission",
+      "language": "json",
+      "body": "POST https://api.blxrbdn.com        (or wss://api.blxrbdn.com/ws)\nAuthorization: <your-auth-header>\n\n{\n  \"id\": \"1\",\n  \"method\": \"blxr_submit_bundle\",\n  \"params\": {\n    \"txs\": [\"<signed raw tx hex>\", \"...\"],\n    \"blockchain_network\": \"BSC-Mainnet\",\n    \"max_block_number\": 0,\n    \"reverting_tx_hashes\": [\"0x...\"],\n    \"max_timestamp\": 0,\n    \"mev_builders\": {},\n    \"no_merge\": false,\n    \"backrunme_reward_address\": \"0x...\"\n  }\n}\n\n// mev_builders keys: bloxroute (default) | all | 48club | blockrazor | jetbldr | nodereal\n// default max_block_number = current block + 40\n// max 2 txs per bundle without the Bundle Size Add-on; Cloud API only",
+      "source": "https://docs.bloxroute.com/bsc/submit-bundles/bsc-bundle-submission"
+    },
+    {
+      "name": "48Club Puissant v2 eth_sendBundle",
+      "language": "json",
+      "body": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": \"1\",\n  \"method\": \"eth_sendBundle\",\n  \"params\": [\n    {\n      \"txs\": [\"0x\u2026f1\", \"0x\u2026b7\"],\n      \"backrunTarget\": \"hash (optional)\",\n      \"maxBlockNumber\": \"uint64 (optional)\",\n      \"maxTimestamp\": \"uint64 (optional)\",\n      \"revertingTxHashes\": [\"0x\u20261a\", \"0x\u20262b\"],\n      \"noMerge\": \"bool (optional)\",\n      \"positionFirst\": \"bool (optional)\",\n      \"48spSign\": \"hex (optional)\"\n    }\n  ]\n}\n\n// Auction sort key:\n//   (sum of gas fees from non-pool transactions x 0.9) + BNB transferred to Builder Control EOA\n// Builder Control EOA: 0x4848489f0b2BEdd788c696e2D79b6b69D7484848\n// The 0.9 factor accounts for BEP95 (10% of gas fees are burnt).",
+      "source": "https://docs.48.club/puissant-builder/send-bundle"
+    },
+    {
+      "name": "Venus core-pool BSC addresses + RepayBorrow log topic",
+      "language": "text",
+      "body": "Comptroller : 0xfD36E2c2a6789Db23113685031d7F16329158384\nvBNB        : 0xA07c5b74C9B40447a954e1466938b865b6BBea36\nvUSDT       : 0xfD5840Cd36d94D7229439859C0112a4185BC0255\nvUSDC       : 0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8\nvBTC        : 0x882C173bC7Ff3b7786CA16dfeD3DFFfb9Ee7847B\n\ntopic0 for RepayBorrow(address,address,uint256,uint256,uint256)\n  = 0x1a2a22cb034d26d1854bdc6666a5b91fe25efbbb5dcad3b0355478d6f5c362a1\n\nMeasured direct vBNB repay (selector 0x4e4d9fea):\n  tx      0xb56224c035f6a7af5f158befc1ebf51ad19a073e30c5af85efc0fefe4a96ce16\n  gasUsed 153929 (0x25949)   gasPrice 0.058795753 gwei   3 logs",
+      "source": "https://docs-v4.venus.io/deployed-contracts/markets + live eth_getLogs/eth_getTransactionReceipt/debug_traceTransaction 2026-08-18"
+    },
+    {
+      "name": "DefiLlama coins API responses (keyless, verified live)",
+      "language": "json",
+      "body": "GET https://coins.llama.fi/prices/current/bsc:0x55d398326f99059fF775485246999027B3197955\n{\"coins\":{\"bsc:0x55d398326f99059fF775485246999027B3197955\":{\"decimals\":18,\"symbol\":\"USDT\",\"price\":0.999340365628316,\"timestamp\":1787070710,\"confidence\":0.99}}}\n\nGET https://coins.llama.fi/prices/historical/1750000000/bsc:0x55d398326f99059fF775485246999027B3197955\n{\"coins\":{\"bsc:0x55d398326f99059fF775485246999027B3197955\":{\"decimals\":18,\"symbol\":\"USDT\",\"price\":0.999448,\"timestamp\":1750000017,\"confidence\":0.99}}}\n\nGET https://coins.llama.fi/chart/bsc:0x55d398326f99059fF775485246999027B3197955?start=1780000000&span=3&period=1d\n{\"coins\":{\"bsc:0x55d3...\":{\"symbol\":\"USDT\",\"confidence\":0.99,\"decimals\":18,\"prices\":[{\"timestamp\":1780000023,\"price\":0.9985900141844609},{\"timestamp\":1780086405,\"price\":0.9987346727596397},{\"timestamp\":1780172824,\"price\":0.9984411364397549}]}}}",
+      "source": "https://coins.llama.fi (probed 2026-08-18)"
+    },
+    {
+      "name": "Binance klines rate-limit envelope",
+      "language": "text",
+      "body": "GET https://api.binance.com/api/v3/exchangeInfo?symbol=BNBUSDT -> rateLimits:\n  REQUEST_WEIGHT : 6000   per 1 MINUTE\n  ORDERS         : 100    per 10 SECOND\n  ORDERS         : 200000 per 1 DAY\n  RAW_REQUESTS   : 300000 per 5 MINUTE\n\nResponse headers for backpressure:\n  x-mbx-used-weight: 26\n  x-mbx-used-weight-1m: 26\n\nGET https://api.binance.com/api/v3/klines?symbol=BNBUSDT&interval=1d&limit=2\n[[1786924800000,\"602.99000000\",\"608.00000000\",\"601.01000000\",\"605.80000000\",\"79044.35500000\",1787011199999,\"47836393.02886000\",362332,\"34291.32600000\",\"20755680.33040000\",\"0\"]]",
+      "source": "https://api.binance.com/api/v3/exchangeInfo?symbol=BNBUSDT and /api/v3/klines (probed 2026-08-18)"
+    },
+    {
+      "name": "Ponder chain config (BSC needs explicit tuning at 450ms blocks)",
+      "language": "typescript",
+      "body": "import { createConfig } from \"ponder\";\n\nexport default createConfig({\n  chains: {\n    mainnet: {\n      id: 1,\n      rpc: process.env.PONDER_RPC_URL_1,\n      pollingInterval: 1000,\n    },\n  },\n  contracts: { /* ... */ },\n});\n\n// Relevant knobs for BSC:\n//   ethGetLogsBlockRange  - override when auto-detection guesses wrong (blockrazor=25, nodereal=50000)\n//   pollingInterval       - default 1000ms == ~2.2 BSC blocks of lag; lower it\n//   ws                    - WebSocket with automatic fallback to polling\n//   disableCache          - required when pointing at Anvil",
+      "source": "https://ponder.sh/docs/config/chains"
+    }
+  ],
+  "gaps": [
+    "Venus repay gas is a SINGLE measured sample (n=1, 153,929 gas, direct vBNB repayBorrow selector 0x4e4d9fea). Direct-to-vToken repays are rare in the recent window I could scan \u2014 I found only one across ~50,000 blocks of vUSDT/vBNB/vUSDC logs before public RPCs throttled me. Most Venus interaction flows through aggregators/routers at 1.1M+ gas. Re-measure with a dedicated archive node over a multi-day window before using 153,929 as a planning number.",
+    "No public postmortem for any specific BSC reorg incident in 2025-2026 could be found. The only evidence is (a) BNB Chain's own statement that 're-org occurrence on BSC mainnet was significantly reduced' after Osaka/Mendel, and (b) the governance decision to cut BEP-341 TurnLength from 16 to 8 explicitly to reduce reorg risk. I could not find reorg depth/frequency telemetry. My 8-block bound is derived from turnLength, not from an observed reorg. Build a reorg-depth histogram from your own node before trusting it.",
+    "Alchemy's BSC eth_getLogs limits are self-contradictory across sources: the primary Alchemy BSC docs page I fetched says Free=10 blocks, Pay As You Go=Unlimited, Enterprise=Unlimited with a 150MB response cap, while a search summary claimed 10,000 for paid tiers. I did not have an Alchemy key to test empirically. Verify before relying on 'unlimited'.",
+    "Chainstack does not publish per-plan eth_getLogs block-range numbers on the BNB reference page ('capped by your subscription plan'). Actual caps unverified.",
+    "The Graph's exact USD/GRT cost per query beyond the 100,000 free monthly queries is not published on the pages I could fetch. Also, whether BSC subgraphs have adequate Indexer coverage on the decentralized network (as opposed to merely being a supported network) is unverified \u2014 that is a real availability risk on a chain this high-throughput.",
+    "Substreams first-streamable-block and extended-block/trace availability for BSC are not documented on the chains-and-endpoints page. opBNB is not on the Substreams list at all.",
+    "No verified wall-clock backfill benchmark for BSC exists for ANY indexer. Envio's '2000x faster than RPC' and 'under a minute' claims are marketing, not measured; I confirmed HyperSync's BSC endpoint is live and at tip but could not run a query without an API token. Ponder/Goldsky/SubQuery BSC backfill times are entirely unverified. Budget a spike to measure this yourself \u2014 it is the single biggest unknown for your indexing plan.",
+    "Envio HyperSync free-tier rate limits, quotas and pricing are not documented with numbers anywhere I could fetch; the supported-networks page explicitly says tier distinctions are 'still being refined' and directs users to Discord. Whether BSC gets traces/state-diffs on HyperSync is unknown.",
+    "SubQuery managed-service pricing for 2026 is unverified.",
+    "opBNB block time: I measured 0.25s over 1000 blocks, but the official BNB Chain docs and third-party pages still state 1s. I could not find a primary source documenting the change, so the 0.25s figure rests on my measurement alone (which I trust) while the docs are stale. Also, opBNB gas-and-fees docs give 'Floor Base Price 8 wei' but the live chain reports baseFeePerGas 0 and eth_gasPrice 0.001 gwei \u2014 reconcile before pricing anything.",
+    "Deep historical anvil forking (block 25,000,000, 2023 era) was NOT proven working \u2014 the attempt died on RPC 429 during genesis construction, not on a consensus/spec error. Whether revm handles pre-Pascal/pre-Lorentz BSC hardfork boundaries correctly is UNVERIFIED. This is the highest-priority remaining test for your replay harness and requires a private archive node to run.",
+    "BSC-specific system transactions (the trailing Parlia system txs that distribute fees and rotate validators) are not reproduced by anvil, which substitutes its own block production. Any replay that depends on validator-reward accounting or system-contract state transitions will diverge. Extent of divergence unmeasured.",
+    "QuickNode flat-rate BSC pricing ($799/mo for 75 RPS, archive NOT included) comes from a Chainstack-authored competitor comparison page, not from QuickNode's own pricing page. Treat as directionally right, verify with QuickNode directly.",
+    "The gas-limit history (70M -> 35M during the Maxwell era) came from a search summary, not a primary source. What I can state with confidence is the CURRENT measured value: 55,000,000. The Fermi blog does not mention gas limit changes at all.",
+    "BNB price ($603.21) and all USD cost figures are a point-in-time snapshot at 2026-08-18 16:10 UTC.",
+    "The Pasteur hardfork activates 2026-08-25 02:30 UTC \u2014 seven days after this research. Everything measured here is PRE-Pasteur. BEP-675 (builder-proposed blocks) changes block production economics and BEP-695 hardens staking/governance; re-verify execution assumptions after activation."
+  ],
+  "aiki_implications": [
+    "Index off the `finalized` tag, not a confirmation count. BSC finalizes in 2 blocks / ~900ms, measured consistently. Write two streams: an optimistic head stream (for agent UX) and a finalized-commit stream (for anything that touches money or trust scores). The gap between them is under a second \u2014 this is the single best property BSC gives you, and a naive '12 confirmations' policy would throw away a 60x latency advantage.",
+    "Set your reorg rollback buffer to 8 blocks minimum (= turnLength, read live from 0x...1000), 16-32 for safety. A single validator produces exactly 8 consecutive blocks per turn and could withhold the whole turn. Do NOT hardcode 8 \u2014 read turnLength() from the ValidatorSet contract at startup and on epoch boundaries, because governance has already changed it once (16 -> 8).",
+    "Your event schema MUST use milliTimestamp, not timestamp. At 450ms blocks, 2-3 blocks share the same second-resolution `timestamp`. Any 'events per second' bucket, any time-ordered agent-action ledger, any dispute-resolution ordering built on `timestamp` will produce ties and non-determinism. Primary key everything on (blockNumber, transactionIndex, logIndex); use milliTimestamp for wall-clock display and SLA measurement. Note that generic EVM indexing frameworks (Ponder, subgraphs) will not surface this field \u2014 you may need a raw-RPC sidecar just to capture it.",
+    "Do not build on public RPC. eth_getLogs is disabled outright on the official dataseed endpoints, blockrazor caps at 25 blocks, publicnode 403s after ~5 rapid requests, Ankr now requires a key, 1rpc's free quota is exhausted, dRPC 429s. This is not a tuning problem, it is a hard blocker. Budget for NodeReal MegaNode (BSC-native, archive on every tier including free, 50,000-block getLogs cap, $39/mo Growth = 500M CU @ 700 CUPS) as your primary, plus a second provider for failover. NodeReal's 50,000-block cap is 5x QuickNode's 10,000 and is the single most valuable provider differentiator for backfill.",
+    "Size backfill in blocks, not days. 192,000 blocks/day, 70M blocks/year, 116.7M blocks to date. A full-history backfill costs ~2,334 getLogs calls at NodeReal's 50k cap or ~11,670 at QuickNode's 10k cap, PER FILTER. At 50 CU per eth_getLogs on NodeReal, a full backfill is only ~117k CU (trivial against a 500M quota) \u2014 the constraint is wall-clock round-trips and CUPS, not cost. Parallelize by block range with a bounded window; the caps are per-request, not per-second.",
+    "Strongly consider Envio HyperSync as the backfill path and RPC only for the head. Both bsc.hypersync.xyz and opbnb.hypersync.xyz are live and sitting exactly at chain tip. It sidesteps the getLogs-cap problem entirely. But you must get an API token (required since 3 Nov 2025), and you must run your own benchmark \u2014 the '2000x faster' claim is unverified marketing and Envio does not publish BSC rate limits or confirm trace availability. Spike this in week one; it is the highest-leverage unknown in your whole data plan.",
+    "For the benchmark replay harness: it works, with two mandatory flags. (1) ALWAYS pass --evm-version prague to cast/forge when replaying BSC. Without it, full-block replay dies on `transaction validation error: Eip7702 is not supported`, and since ~1.5% of BSC txs are type-0x4 with ~120 txs/block, essentially every block trips it. (2) Single-tx replay via `cast run --quick` is gas-exact (34,515 reproduced == on-chain) and takes ~5s, so deterministic replay of an individual agent action is genuinely feasible today.",
+    "The replay harness needs a DEDICATED archive node, not a hosted RPC plan. Forking issues thousands of eth_getStorageAt calls at a pinned historical block; the public NodeReal endpoint 429'd mid-replay and even failed to construct genesis on a deep fork. Either self-host bsc with PathDB/archive (note v1.7.7 removed multi-database support and deprecated --journalfile; v1.8.0-alpha introduces Unified Binary Trie), or buy a dedicated node. Budget for this explicitly \u2014 it is the difference between a working benchmark suite and a flaky one.",
+    "Two replay fidelity caveats to design around: anvil does not run Parlia, so trailing system transactions (fee distribution, validator rotation) are not reproduced \u2014 never benchmark anything whose outcome depends on validator reward accounting. And deep historical forking (2023-era blocks, pre-Pascal/pre-Lorentz hardfork boundaries) is UNVERIFIED; I could not test it through a rate-limited endpoint. Validate your intended replay depth on a private archive node before committing to a benchmark corpus.",
+    "Gas is a rounding error; design for it. Native transfer $0.00063, ERC-20 transfer $0.0010, Venus repay $0.0055, median tx $0.0039. You can afford per-action on-chain attestations, receipts, and trust-score commits that would be economically impossible on Ethereum L1. But size for the tail, not the median: p90 gas price is 0.5925 gwei (10x median) and the max observed was 396 gwei. A fixed 0.05 gwei gasPrice will silently stall agent transactions during MEV bursts \u2014 implement a dynamic pricing policy with a p90-based ceiling and a stuck-tx replacement path.",
+    "Base fee is 0 and EIP-1559 is effectively inert on BSC. Do not build fee logic that reasons about baseFeePerGas or expects it to rise under load. The entire fee is priority/legacy gasPrice, and the floor (0.05 gwei) is a validator-adopted market convention, NOT a consensus rule \u2014 it has moved 3 -> 1 -> 0.1 -> 0.05 gwei and can move again without a hardfork. Make it a runtime-configured value sourced from eth_gasPrice, never a constant.",
+    "Route agent transactions through a private relay from day one. Agent-commerce flows (swaps, repays, liquidations) are exactly what BSC MEV searchers hunt. bloXroute's blxr_submit_bundle at https://api.blxrbdn.com fans out to 5 builders (bloxroute/48club/blockrazor/jetbldr/nodereal) with a single call \u2014 that is the pragmatic default. Note the 2-transaction bundle limit without the paid Bundle Size Add-on, which will constrain multi-step agent actions; price the add-on into your infra budget.",
+    "BEP-675 lands with Pasteur on 25 Aug 2026 \u2014 seven days out \u2014 and moves BSC to builder-proposed blocks with validator blind signing. This changes inclusion economics: builders submit fully-executed blocks and validators pick the highest fee without re-simulating. Re-benchmark your inclusion latency and private-relay landing rate the week after activation; anything you measure before then is pre-Pasteur. Also note v1.7.7 is a MANDATORY node upgrade if you self-host.",
+    "opBNB (chain 204, measured 0.25s blocks, 100M gas limit, 0.001 gwei) is ~50x cheaper than BSC L1 but has ~29-block/~7s finality versus BSC's 2-block/900ms. For agent execution the tradeoff is backwards: you gain a cost saving on an already-negligible cost and pay an 8x finality penalty. Do NOT put trust/settlement primitives there. It is only worth considering for genuinely high-frequency, low-value, non-settlement telemetry \u2014 and even then, note The Graph and Substreams do not support opBNB at all, so your indexing options shrink to HyperSync or self-hosted.",
+    "Data-layer vendor picture: Goldsky has the only fully transparent pricing ($0.05/worker-hr subgraphs, $0.10/worker-hr pipelines, $4/100k entities) and supports BSC \u2014 it is the lowest-friction managed option. The Graph supports BSC on the decentralized network but the hosted service is gone, pricing beyond 100k free queries is opaque, and BSC Indexer coverage at 450ms blocks is an unquantified availability risk. Ponder is viable but its default 1000ms pollingInterval is ~2.2 BSC blocks of lag \u2014 override it, and set ethGetLogsBlockRange explicitly since auto-detection will negotiate against wildly different caps (25 vs 50,000) depending on which provider you point at.",
+    "For backtesting, layer three sources: Binance klines for BNB/major-pair OHLCV (6,000 weight/min, no key, use x-mbx-used-weight-1m for backpressure), DefiLlama coins API for BSC long-tail token prices by contract address (keyless, historical and chart endpoints both verified live), and Dune (X-Dune-Api-Key) for anything requiring SQL over decoded events. Critically: DefiLlama returns a `confidence` field per price (0.99 for USDT) \u2014 reject low-confidence marks in backtests or your agent's simulated PnL will be fiction on thin-liquidity pairs.",
+    "Never hardcode contract addresses from memory. I checked the universally-cited WBNB address 0xbb4CdB9CB20BB6b1e00C97E7ee1B3e2f6C05e4b9 against mainnet and eth_getCode returned '0x' \u2014 zero bytecode. Whatever the correct address is, that one is wrong. Make address resolution a startup-time verification step (assert codesize > 0 for every configured address, resolve WETH/WBNB from the router's getter) and fail loudly. On a platform whose whole value proposition is trust, shipping a wrong address is the worst possible failure."
+  ]
+}

@@ -1,0 +1,344 @@
+{
+  "topic": "BNB Chain \"Build the Era\" / \"The Smart Money Era\" \u2014 Build the Official BNB Agent Studio Marketplace: exact competition mechanics, rubric, constraints, and the live ERC-8004/ERC-8183 substrate on BSC",
+  "verdict": "SOLID",
+  "executive_summary": "The competition is real, currently live, and mechanically simple: a single Google Form intake (no DoraHacks, no public leaderboard), a three-criterion equally-weighted rubric, and one hard on-chain constraint \u2014 agents surfaced must be live on BSC. Build window is 12:00 UTC 5 Aug 2026 to 12:00 UTC 9 Sep 2026; judging 9\u201323 Sep; winners announced 5 Nov. Main prize is $30,000 plus \"official adoption as the BNB Agent Studio marketplace.\" Note the wording gap: the hackathon page asserts adoption as part of the prize, while BNB Chain's own press release says the winner gets \"the opportunity to become the officially adopted\" marketplace. No contract, grant amount, or follow-on funding terms are published anywhere. Treat adoption as an intent statement, not a commitment.\n\nThe rubric is Functionality, Data Quality, Agent Diversity, scored independently by three unnamed judges, all weighted equally. There is an undisclosed \"Phase 2\" with additional criteria, and the press release adds \"real-world usage\" as a criterion not listed on the hackathon page \u2014 plan for usage evidence. Submission requires a GitHub repo link and a publicly accessible working deployment during judging. No demo video, no open-source license, and no IP assignment terms are stated in any fetchable source; the linked \"Terms of Participation\" is not publicly retrievable.\n\nThe engineering reality matters more than the rules. Live 8004scan data (18 Aug 2026) shows 257,865 ERC-8004 agents on chain 56 out of 733,946 across 60 chains \u2014 contradicting the blog's \"60% across 26 networks.\" Critically, 674,773 of 733,946 agents have unresolved protocol metadata, and total_validators and total_validations are both 0. The four required categories have almost no supply: keyword matches on BSC are yield 132, rebalanc 40, grid 10, health factor 4. \"Data Quality\" is therefore the only defensible moat, and building it means enriching a registry that is ~92% metadata-dark, not querying one.",
+  "findings": [
+    {
+      "claim": "The build window has an exact UTC deadline stated only in the registration form, not in the blog or hackathon page.",
+      "detail": "Registration form availability-confirmation field reads: build period \"12:00pm UTC+0, Aug 5 2026 \u2013 12:00pm UTC+0, Sep 9 2026\" and judging \"Sep 9, 2026 \u2013 Sep 23, 2026\". The hackathon landing page states the window as \"5 Aug - 9 Sep, 2026 (UTC +0)\" without a time of day. The blog states \"Build period: Aug 5 - Sep 9\", \"Judging: Sep 9 - Sep 23\", \"Winner announcement: Nov 5\" with no year and no timezone. The hard cutoff is therefore 12:00 UTC on 9 Sep 2026 \u2014 a midday, not midnight, deadline.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://docs.google.com/forms/d/e/1FAIpQLSdFb30r24sZcFJVDbMqXNJ1_45BJHanc7eFqwUniScDYZfX9A/viewform?usp=send_form",
+        "https://www.bnbchain.org/en/hackathons/smart-money-era",
+        "https://www.bnbchain.org/en/blog/build-the-era-build-the-official-bnb-agent-studio-marketplace"
+      ]
+    },
+    {
+      "claim": "The main-track judging rubric is exactly three criteria, explicitly equally weighted, scored by three independent judges \u2014 but a second phase adds undisclosed criteria.",
+      "detail": "Verbatim from the hackathon page. Functionality: \"The full journey works end to end: land, find an agent by category, understand what it does, activate it, with minimal friction. Someone with zero Agent Studio knowledge should be able to get through it without hitting a dead end.\" Data Quality: \"Real-time, accurate data that goes beyond basic counts. A user should be able to look at what you're showing and make a genuinely informed call on which agent to hire.\" Agent Diversity: \"All four categories (rebalancing, grid trading, yield, health factor) surfaced with equal depth. A submission that treats one category as the main event and the rest as an afterthought won't score well here.\" Judging note: \"Three judges, scored independently.\" Plus: \"We'all also assess more criterias in the second phase, stay tuned to find out!\" [sic]. No numeric percentages are published for the main track.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://www.bnbchain.org/en/hackathons/smart-money-era"
+      ]
+    },
+    {
+      "claim": "The press release adds a fourth judging criterion \u2014 \"real-world usage\" \u2014 that does not appear on the hackathon page rubric.",
+      "detail": "Chainwire release, verbatim: \"Submissions will be scored against published criteria covering functionality, data quality, agent diversity, and real-world usage.\" The hackathon page lists only the first three. This is the most likely content of the undisclosed \"Phase 2\" criteria. Engineering implication: instrument and retain real usage telemetry (unique wallets, activations, completed hires) from day one \u2014 it is plausibly scored but not listed where most entrants will look.",
+      "confidence": "high",
+      "source_date": "2026-08-05",
+      "sources": [
+        "https://chainwire.org/2026/08/05/bnb-chain-launches-build-the-era-hackathon-to-find-the-official-bnb-agent-studio-marketplace/",
+        "https://www.bnbchain.org/en/hackathons/smart-money-era"
+      ]
+    },
+    {
+      "claim": "\"Official marketplace adoption\" is stated two different ways: as a guaranteed prize component on the hackathon page, and as an \"opportunity\" in BNB Chain's own press release. No contract, grant, or follow-on funding terms exist in any public source.",
+      "detail": "Hackathon page verbatim: \"\ud83e\udd47 Winner: $30,000 equivalent, plus official adoption as the BNB Agent Studio marketplace, the canonical front door for every agent on BSC.\" Chainwire press release verbatim: \"The winning submission will have the opportunity to become the officially adopted BNB Agent Studio marketplace, backed by BNB Chain as a standalone product with its own brand and team.\" The blog says the winner becomes \"the officially adopted community marketplace for BNB Agent Studio\" backed \"as a standalone product with its own brand and team.\" No written commitment, no contract terms, no incubation stipend figure, no equity/token terms, and no follow-on grant amount are published. The linked \"Terms of Participation\" is referenced in the form but is not publicly fetchable.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://www.bnbchain.org/en/hackathons/smart-money-era",
+        "https://chainwire.org/2026/08/05/bnb-chain-launches-build-the-era-hackathon-to-find-the-official-bnb-agent-studio-marketplace/",
+        "https://www.bnbchain.org/en/blog/build-the-era-build-the-official-bnb-agent-studio-marketplace"
+      ]
+    },
+    {
+      "claim": "The four-category framing in the question is accurate per the hackathon page, but the blog uses a different first category \u2014 \"Monitoring\" instead of \"Rebalancing\".",
+      "detail": "Hackathon page table, verbatim: Rebalancing \u2014 \"Manages LP ranges, resets positions automatically\"; Grid Trading \u2014 \"Places and manages automated grid orders\"; Yield Optimisation \u2014 \"Routes liquidity to the highest available APR\"; Health Factor Monitoring \u2014 \"Protects lending positions from liquidation\". The blog and press release instead list: \"Monitoring agents: watching markets, wallets, and positions\", \"Grid trading agents: running automated strategies within set ranges\", \"Health factor agents: tracking loan positions and acting before liquidation\", \"Yield agents: moving capital to where it earns most\". The hackathon page is the operative rules surface and its four categories are the ones named in the Agent Diversity criterion. Build to the hackathon page; consider surfacing generic monitoring as a fifth facet to cover the blog framing.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://www.bnbchain.org/en/hackathons/smart-money-era",
+        "https://www.bnbchain.org/en/blog/build-the-era-build-the-official-bnb-agent-studio-marketplace"
+      ]
+    },
+    {
+      "claim": "Prize structure: $30,000 main track, $10,000 TermiX split 6/3/1, 1,000 CAKE PancakeSwap, 50,000 XP Altana, unspecified AltLayer credits \u2014 advertised as \"$40,000+\".",
+      "detail": "Blog verbatim: \"$40,000+ in prizes from BNB Chain and ecosystem partners\" \u2014 \"BNB Chain: $30,000 USDT\", \"TermiX: $10,000 USDT\", \"PancakeSwap: 1,000 CAKE\", \"AltLayer: 8004scan Pro plans and AltLLM credits\", \"Altana: 50,000 XP\". Hackathon page gives the TermiX split: \"1st: $6,000 | 2nd: $3,000 | 3rd: $1,000\" and Altana as \"50,000 XP (winner takes all)\". Main track is winner-take-all at $30,000 \"equivalent\" \u2014 note \"equivalent\", not a fixed USDT amount, so denomination/settlement asset is not contractually pinned. No 2nd/3rd place prize exists on the main track.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://www.bnbchain.org/en/blog/build-the-era-build-the-official-bnb-agent-studio-marketplace",
+        "https://www.bnbchain.org/en/hackathons/smart-money-era"
+      ]
+    },
+    {
+      "claim": "Submission is a Google Form requiring a GitHub repo link and a payout wallet. There is no DoraHacks page, no demo video requirement, and no public leaderboard or submission list.",
+      "detail": "Form is https://forms.gle/9g9XPNFwnYaHAz9L8 redirecting (302) to https://docs.google.com/forms/d/e/1FAIpQLSdFb30r24sZcFJVDbMqXNJ1_45BJHanc7eFqwUniScDYZfX9A/viewform. Required fields: Full Name, Email, Telegram Handle, X (Twitter) Handle, how you heard about it, Country and Timezone, Registration type (Solo or Team), Number of Teammates (1 Solo / 2 / 3 / 4 / 5+), Project Name, One-Line Pitch, Project Description, sub-prize tracks of interest (PancakeSwap / AltLayer / TermiX / Not sure), \"Project GitHub Repo Link\", Prototype Stage (Fresh idea / Early prototype / Working MVP), mentorship interest, availability confirmation, wallet address (\"compatible ERC-20/BEP-20\"), and \"I have read and agree to the Terms of Participation\". Optional: Discord handle, BSC/EVM experience level, comfort areas (Solidity, AI frameworks, onchain data/APIs, frontend), additional notes. Terms include a third-party risk disclaimer and co-marketing consent. No demo video field, no deployed-URL field, no license field. Searches for a DoraHacks page for this event returned only unrelated BNB hackathons (dorahacks.io/hackathon/297, /bnbchain-hackathon, /bnbcollegedition).",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://docs.google.com/forms/d/e/1FAIpQLSdFb30r24sZcFJVDbMqXNJ1_45BJHanc7eFqwUniScDYZfX9A/viewform?usp=send_form",
+        "https://forms.gle/9g9XPNFwnYaHAz9L8"
+      ]
+    },
+    {
+      "claim": "Eligibility is four bullet points; the only hard technical constraint is that surfaced agents must be live on BSC. \"Prototype Stage: Working MVP\" is an accepted answer, so prior work is implicitly permitted.",
+      "detail": "Hackathon page verbatim: \"Open globally, to individuals or teams. / One entry per team. / Your submission must be functional and publicly accessible during judging. / Agents surfaced on your marketplace must be live on BSC.\" No maximum team size is stated (form caps its dropdown at \"5+\"). No prior-work prohibition appears anywhere; the form's \"Prototype Stage\" options explicitly include \"Working MVP\", which signals pre-existing builds are acceptable. \"Live on BSC\" is not qualified as mainnet-only on the main track \u2014 but see the separate mainnet/testnet finding.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://www.bnbchain.org/en/hackathons/smart-money-era",
+        "https://docs.google.com/forms/d/e/1FAIpQLSdFb30r24sZcFJVDbMqXNJ1_45BJHanc7eFqwUniScDYZfX9A/viewform?usp=send_form"
+      ]
+    },
+    {
+      "claim": "Mainnet vs testnet: the main track says only \"live on BSC\"; the explicit \"testnet counts, mainnet is stronger\" language attaches to the Altana partner track.",
+      "detail": "Blog verbatim on the Altana track: \"testnet counts, mainnet is stronger\". The main track eligibility bullet says only \"Agents surfaced on your marketplace must be live on BSC\" with no chain-ID qualifier. BSC mainnet is chainId 56, BSC Testnet is chainId 97 (both confirmed in BNB Agent Studio networks docs and in 8004scan's /chains endpoint). Given \"Data Quality\" requires \"real-time, accurate data\" and the press release adds \"real-world usage\", mainnet (56) is the defensible read. Note also that BNB Agent Studio's AWS Free Tier trial is \"bsc-testnet only. Mainnet is not supported\" \u2014 so a free-tier Agent Studio deployment cannot itself satisfy a mainnet posture.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://www.bnbchain.org/en/blog/build-the-era-build-the-official-bnb-agent-studio-marketplace",
+        "https://www.bnbchain.org/en/hackathons/smart-money-era",
+        "https://docs.bnbchain.org/developer-kit/bnbagent-sdk/networks/",
+        "https://www.bnbchain.org/en/blog/bnb-agent-studio-is-live-on-bnb-chain-ai-agents-from-one-prompt"
+      ]
+    },
+    {
+      "claim": "Required integrations: ERC-8004 agent identity and BSC are required; BNB Agent Studio itself is not stated as a mandatory build dependency for the marketplace front end.",
+      "detail": "Blog: agents use \"ERC-8004, the standard for onchain agent identity\" and \"Binance x402\" is \"the payment facilitator in BNB Agent Studio\". Hackathon page requires agents \"live on BSC\". The main track asks for \"a front-end marketplace where users discover, understand, and activate AI agents\" \u2014 the mandate is to surface ERC-8004 agents on BSC, not to build inside Agent Studio. x402 is described as the facilitator within Agent Studio rather than as an entrant requirement. Partner tracks add their own hard requirements (Altana: session keys with call allowlist, spend cap, expiry, Keystore registration, real on-chain txs, user-facing revocation; TermiX: an Agent Advantage Report; PancakeSwap: real benefit to PancakeSwap traders/LPs).",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://www.bnbchain.org/en/blog/build-the-era-build-the-official-bnb-agent-studio-marketplace",
+        "https://www.bnbchain.org/en/hackathons/smart-money-era"
+      ]
+    },
+    {
+      "claim": "No judges are named in any public source.",
+      "detail": "The hackathon page states \"Three judges, scored independently\" without identifying them. The Chainwire press release names no judges or spokespeople \u2014 only sponsors (TermiX, PancakeSwap, AltLayer, Altana). Partner tracks are \"judged separately according to each sponsor's own criteria\", implying sponsor-side judges for those, also unnamed. TermiX states it \"will hire from your marketplace and evaluate the results\", so TermiX judging is at least partly empirical rather than panel-based.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://www.bnbchain.org/en/hackathons/smart-money-era",
+        "https://chainwire.org/2026/08/05/bnb-chain-launches-build-the-era-hackathon-to-find-the-official-bnb-agent-studio-marketplace/"
+      ]
+    },
+    {
+      "claim": "The TermiX partner track is the only track with published numeric weights: 30/30/20/20.",
+      "detail": "Hackathon page, verbatim table: Value of services 30%; Proven agent advantage 30%; High-stakes categories & track record 20%; Marketplace quality 20%. Overarching question: \"Does hiring an agent through this marketplace outperform manual alternatives, supported by data?\" Required deliverable is an \"Agent Advantage Report\" containing: \"At least 3 real tasks run both ways (with agent vs. without)\", \"Time, cost, and output quality metrics per task\", \"Actual outputs attached\", and \"Minimum one task from trading, stock, security, or equities\". This is a concrete, checkable artifact worth $6,000 for first place and is largely orthogonal to the main-track build.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://www.bnbchain.org/en/hackathons/smart-money-era"
+      ]
+    },
+    {
+      "claim": "Live on-chain data contradicts the marketing claim about BSC's share of ERC-8004 agents.",
+      "detail": "Blog/press claim: \"Over 200,000 AI Agents registered on BNB Smart Chain based on the ERC-8004 standard currently account for approximately 60% of all such agents across 26 networks.\" Live 8004scan /stats at 2026-08-18T16:11:14.868Z returns total_agents 733946. Live /agents?chainId=56 returns pagination.total 257865. That is 35.1%, not ~60%. /chains enumerates 60 networks, not 26. The absolute BSC figure (\"over 200,000\") is accurate and understated; the share and network count are stale. Treat the 60% figure as MARKETING.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/public/stats",
+        "https://8004scan.io/api/v1/public/agents?chainId=56&limit=5",
+        "https://8004scan.io/api/v1/public/chains",
+        "https://www.bnbchain.org/en/blog/build-the-era-build-the-official-bnb-agent-studio-marketplace"
+      ]
+    },
+    {
+      "claim": "The ERC-8004 registry on BSC is metadata-dark for ~92% of agents, and the Validation Registry is completely unused \u2014 zero validators, zero validations network-wide.",
+      "detail": "From /stats at 2026-08-18: total_agents 733946; protocol_distribution {mcp: 24213, a2a: 34961, unknown: 674773} \u2014 91.9% unknown. total_validators 0, total_validations 0, average_validation_score null. total_feedbacks 3549334 with average_feedback_score 80.99 across 400763 users. registration_stats {total: 4822, resolved: 4272, unresolved: 550, owner_verified: 2951, reciprocal_verified: 305} \u2014 only ~4.8k agents have resolvable registration metadata out of 733,946, and only 2,951 are owner-verified. daily_new_agents 1358. Engineering consequence: the \"Data Quality\" criterion cannot be won by proxying 8004scan; it requires independent enrichment, liveness probing, and a verification signal, because the canonical registry supplies almost no usable descriptive or trust data.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/public/stats"
+      ]
+    },
+    {
+      "claim": "Agent supply in the four required categories is extremely thin on BSC mainnet \u2014 single-digit to low-hundreds \u2014 and competitors are already registering seed agents.",
+      "detail": "Keyword counts via /agents?chainId=56&search= (meta.pagination.total) on 2026-08-18: \"yield\" 132; \"rebalanc\" 40; \"grid\" 10; \"health factor\" 4. Against 257,865 total BSC agents. Sample results are visibly hackathon-seeded and very recent: \"BNB Grid Trader (test)\" (created 2026-08-17T20:10:38Z, description begins \"TEST DEPLOYMENT \u2014 not for production use. Autonomous PancakeSwap V3 BNB/USDT grid trader... priced in $U via ERC-8183\"), \"Grid Trader\" (2026-08-17T19:32:40Z), \"GridMaster Ops (Agent Studio)\" (2026-08-14T19:04:04Z, \"Hires and transacts inside Altana sessions with onchain spend caps and revocable authority\"), \"Portfolio Rebalancer\" (2026-08-17T19:27:09Z), \"Yield Allocator\" (2026-08-17T19:37:53Z), \"Health Factor Monitor\" (2026-08-17T19:43:11Z). The \"Agent Diversity\" criterion demands \"all four categories surfaced with equal depth\" \u2014 but Health Factor has 4 matching agents. Meeting the criterion likely requires publishing your own agents in the thin categories.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/public/agents?chainId=56&search=grid&limit=3",
+        "https://8004scan.io/api/v1/public/agents?chainId=56&search=rebalanc&limit=1",
+        "https://8004scan.io/api/v1/public/agents?chainId=56&search=health%20factor&limit=1",
+        "https://8004scan.io/api/v1/public/agents?chainId=56&search=yield&limit=1"
+      ]
+    },
+    {
+      "claim": "The ERC-8004 Identity Registry on BSC mainnet is at 0x8004a169fb4a3325136eb29fa0ceb6d2e539a432, and agent IDs are namespaced chainId:contract:tokenId.",
+      "detail": "Every chain-56 agent returned by 8004scan carries \"contract_address\": \"0x8004a169fb4a3325136eb29fa0ceb6d2e539a432\", \"chain_type\": \"evm\", \"is_testnet\": false, with \"agent_id\" formatted as e.g. \"56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:269666\" and \"token_id\": \"269666\". Token IDs observed in the 267,000\u2013269,000 range on 2026-08-17/18, consistent with the 257,865 count and daily_new_agents 1358. The address is derived from 8004scan's indexed field rather than from a BNB Chain docs table \u2014 BNB's own networks page declines to list addresses, saying only that the SDK \"resolves commerce-related addresses at runtime from its network presets\" and pointing to ERC8004_REGISTRY_ADDRESS overrides in bnbagent-sdk. Verify against the SDK presets before hardcoding.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/api/v1/public/agents?chainId=56&limit=5",
+        "https://8004scan.io/api/v1/public/agents?chainId=56&search=grid&limit=3",
+        "https://docs.bnbchain.org/developer-kit/bnbagent-sdk/networks/"
+      ]
+    },
+    {
+      "claim": "APEX / ERC-8183 commerce contracts are deployed on both BSC mainnet (56) and testnet (97) with published addresses.",
+      "detail": "From the apex-contracts README. BSC Mainnet (chainId 56): AgenticCommerceUpgradeable 0xEa4DAa3100A767e86FDed867729ae7446476EBA6; EvaluatorRouterUpgradeable 0x51895229E12F9876011789B04f8698af06cCD6DA; OptimisticPolicy 0x9C01845705b3078Aa2e8cfF7520a6376FD766dE5; Payment token 0xcE24439F2D9C6a2289F741120FE202248B666666. BSC Testnet (chainId 97): AgenticCommerceUpgradeable 0xa206c0517B6371C6638CD9e4a42Cc9f02A33B0DE; EvaluatorRouterUpgradeable 0xd7d36d66d2f1b608a0f943f722d27e3744f66f25; OptimisticPolicy 0x4f4678d4439fec812ac7674bb3efb4c8f5fb78a6; Payment token (USDC) 0xc70B8741B8B07A6d61E54fd4B20f22Fa648E5565. Architecture is a kernel/router/policy pattern; ABIs are generated via `bun run abis` into abis/, and compliance notes live in docs/erc-8183-compliance.md.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://raw.githubusercontent.com/bnb-chain/apex-contracts/main/README.md",
+        "https://docs.bnbchain.org/developer-kit/bnbagent-sdk/networks/"
+      ]
+    },
+    {
+      "claim": "Both underlying standards are Draft status \u2014 ERC-8004 created 2025-08-13, ERC-8183 created 2026-02-25.",
+      "detail": "EIP-8004 \"Trustless Agents\": Status Draft, Type Standards Track, Category ERC, Created 2025-08-13. Defines three registries \u2014 Identity (an ERC-721 extension), Reputation, and Validation. EIP-8183 \"Agentic Commerce\": Status Draft, Type Standards Track, Category Interface, Created 2026-02-25. Defines a minimal job-escrow protocol with JobStatus { Open, Funded, Submitted, Completed, Rejected, Expired } and lifecycle createJob / setBudget / fund / submit / complete / reject / claimRefund, plus an IACPHook interface with beforeAction/afterAction. Neither is Final; interfaces can still change. Building hard dependencies on either means accepting Draft-stage churn.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://eips.ethereum.org/EIPS/eip-8004",
+        "https://eips.ethereum.org/EIPS/eip-8183"
+      ]
+    },
+    {
+      "claim": "8004scan's public API is the practical data source, is free without a key, and hackathon participants can get Pro tier (500 req/min, 100k/day) \u2014 but it is not fully reliable and its live response schema is richer than its OpenAPI doc.",
+      "detail": "Base URL https://8004scan.io/api/v1/public. Endpoints: GET /agents, GET /agents/{chainId}/{tokenId}, GET /agents/search, GET /accounts/{address}/agents, GET /stats, GET /feedbacks, GET /chains. Rate limits by tier: Anonymous 10/min 100/day; Free 30/min 1,000/day; Basic+ 100/min 10,000/day; Pro+ 500/min 100,000/day; Enterprise custom. Headers X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset. CORS enabled. OpenAPI 3.0 at /api/v1/public/docs/openapi.json. Pro-tier upgrade form for hackathon participants: https://forms.gle/jQevEPCAacBXaKG79. Reliability caveat: GET /agents/search?q=grid%20trading&chainId=56&limit=5 returned HTTP 502 Bad Gateway during testing while the keyword-filter path on /agents succeeded. Schema caveat: live /agents responses include fields absent from the documented schema \u2014 chain_type, contract_address, is_testnet, owner_id, owner_ens, owner_username, owner_avatar_url, owner_publisher_tier, owner_certified_name, is_verified, x402_supported, average_score, rank, network_rank, health_score, cross_chain_versions, updated_at. Notably x402_supported is a live boolean and health_score/rank/network_rank are present but null on all sampled agents.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://8004scan.io/developers",
+        "https://8004scan.io/api/v1/public/docs/openapi.json",
+        "https://8004scan.io/api/v1/public/agents?chainId=56&search=grid&limit=3",
+        "https://8004scan.io/api/v1/public/agents/search?q=grid%20trading&chainId=56&limit=5"
+      ]
+    },
+    {
+      "claim": "BNB Agent Studio is a CLI-driven, six-layer, two-tier deployment product with a keyless public service and a key-holding agent \u2014 a security architecture directly relevant to agent-commerce execution.",
+      "detail": "Stack: L1 user code (app/agent/*, app/service/*); L2 IDE (Claude Code or Cursor); L3 Studio surfaces (bag CLI, MCP server, recipes, skills); L4 core library bnbagent_studio_core (wallet factories, Policy, ERC-8004/8183 workflows, x402, audit logging); L5 bnbagent-sdk (ERC8004Agent, ERC8183Client, EVMWalletProvider); L6 BSC testnet/mainnet. Layer A (Agent) deploys to AWS Bedrock AgentCore, holds keys, runs the LLM, handles quote/fulfill/settle. Layer B (Service) deploys to EC2/Fargate, is keyless, runs no LLM. Verbatim constraint: \"Service \u2192 Agent. The public Service can only ask the Agent to sign; the Agent re-validates on chain before signing.\" And: signing \"lives in app/agent/signing.py \u2014 fixed entrypoint code, never an LLM-callable tool.\" Commerce flow: buyer POSTs /apex/negotiate to the Service \u2192 Service calls InvokeAgentRuntime(quote) \u2192 Agent signs price offer \u2192 buyer funds job on-chain \u2192 Service polls funded jobs \u2192 fulfill \u2192 settle after dispute window. Install: npm install -g @bnbagent/studio-cli, then bag skills install, bag init, bag dev, bag deploy agent, bag doctor. Python SDK on PyPI as bnbagent. Free tier: max 10 agents per user, max 10 deployments/hour, bsc-testnet only.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/architecture/",
+        "https://docs.bnbchain.org/developer-kit/bnbchain-studio/",
+        "https://www.bnbchain.org/en/bnb-agent-studio",
+        "https://www.bnbchain.org/en/blog/bnb-agent-studio-is-live-on-bnb-chain-ai-agents-from-one-prompt"
+      ]
+    },
+    {
+      "claim": "BNB Agent Studio went live on BSC mainnet on/around 1 July 2026, settling in $U via x402, with B402 (Binance Pay) merchant integration only on the roadmap.",
+      "detail": "Blog dated \"2026.7.1\": \"BNB Agent Studio is live on BNB Smart Chain mainnet.\" Studio \"registers an ERC-8004 identity for it, binds its wallet to that identity\". Agents \"automatically top up via the x402 protocol\" drawing from funded wallets \"settled in $U on BNB Smart Chain\". Roadmap item: \"BinancePay B402 merchants integration\" \u2014 i.e. B402 is NOT yet live. Gasless transfers use EIP-3009. Default LLM aggregator is Pieverse; primary wallet integration is TWAK. Distinguish clearly: x402 + $U is DEPLOYED; B402 is ROADMAP.",
+      "confidence": "high",
+      "source_date": "2026-07-01",
+      "sources": [
+        "https://www.bnbchain.org/en/blog/bnb-agent-studio-is-live-on-bnb-chain-ai-agents-from-one-prompt",
+        "https://www.bnbchain.org/en/bnb-agent-studio"
+      ]
+    },
+    {
+      "claim": "Altana's SDK exposes a one-call agent-hiring primitive over ERC-8183 with session-key spend limits \u2014 the closest existing analogue to an agent-commerce execution layer on BSC.",
+      "detail": "Primary function hireErc8183Agent(wallet, signer, { provider, task, budget }, { network: BNB }) returns { jobId }; budget is a bigint at 18 decimals; provider is the seller agent address. Job tracking via getErc8183Job (states OPEN \u2192 FUNDED \u2192 SUBMITTED \u2192 COMPLETED) and getErc8183DeliverableUrl (manifest URL after submission). Settlement via settleErc8183Job(wallet, signer, { jobId, action?: \"dispute\" }, { network: BNB }) and buildClaimRefundCall(chainId, jobId) after expiry. ERC8183_ADDRESSES exports kernel, EvaluatorRouter, OptimisticPolicy, ERC-8004 registry, and $U token addresses for chainId 56 and 97. Session keys are accepted as the signer, giving a \"scoped key with an on-chain spend limit\". Altana track mandates: agents on individual Altana wallets; sessions with real limits (call allowlist, spend cap, expiry); sessions registered in Keystore; real on-chain transactions via session key; user-facing revocation controls. Bonus: hire via ERC-8183 using the Altana SDK, and implement x402/B402 payments.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://docs.altana.network/sdk/erc8183",
+        "https://www.bnbchain.org/en/hackathons/smart-money-era"
+      ]
+    },
+    {
+      "claim": "No entrant count, shortlist, or public submission list exists for this event as of 18 Aug 2026.",
+      "detail": "The hackathon page describes phases as \"1. Build: NOW! 2. Shortlist: Submissions close and the top 3 are shortlisted publicly. 3. Phase 2: [REDACTED] 4. Winner announced\" \u2014 so a public top-3 shortlist WILL exist, but only after submissions close on 9 Sep 2026. No number of registrants is published. Searches surfaced no DoraHacks or Devfolio listing for this event; a \"60 projects\" figure found in search results belongs to a different BNB event (the \"Good Vibes Only\" hackathon, article dated 2026-01-26) and must not be attributed here. Because intake is a private Google Form, there is no observable competitor list \u2014 the only visible competitive signal is freshly-registered hackathon-themed agents in the on-chain registry.",
+      "confidence": "high",
+      "source_date": "2026-08-18",
+      "sources": [
+        "https://www.bnbchain.org/en/hackathons/smart-money-era",
+        "https://blockchain.news/news/bnb-chain-hackathon-60-projects-build-phase"
+      ]
+    }
+  ],
+  "gaps": [
+    "The \"Terms of Participation\" document \u2014 referenced and required-to-accept in the registration form \u2014 could not be located or fetched at any public URL. Consequently ALL of the following are unverified: IP ownership and assignment, licensing obligations, any open-source or license requirement, warranty/indemnity, dispute resolution, and the actual legal terms of \"official adoption\". This is the single largest gap and it is the one with commercial consequences. Request the document from BNB Chain before submitting.",
+    "No judges are named anywhere. Only \"Three judges, scored independently\" is published. Whether they are BNB Chain staff, partner representatives, or external is unknown.",
+    "\"Phase 2\" is explicitly redacted on the hackathon page (\"[REDACTED]\", \"We'all also assess more criterias in the second phase\"). Its criteria, weights, format, and whether it involves a live demo, interview, or user-testing period are all unknown. \"Real-world usage\" from the press release is my inference as to its likely content, not a stated fact.",
+    "Main-track criteria have no published numeric weights. \"Weighted equally\" is stated for the four categories under Agent Diversity and the three criteria are presented without percentages; I am reading them as equal thirds, but no percentage table exists for the main track (unlike TermiX's explicit 30/30/20/20).",
+    "No demo video, pitch deck, or deployed-URL field exists in the registration form. It is unclear how judges receive the live URL \u2014 plausibly via the Project Description free-text field or a later follow-up. Whether a separate final-submission step exists after the initial intake form is not documented.",
+    "Whether the main track requires BSC mainnet (56) specifically, or accepts testnet (97), is not explicitly stated. Only the Altana partner track carries the \"testnet counts, mainnet is stronger\" language. \"Agents surfaced on your marketplace must be live on BSC\" is ambiguous on chain ID.",
+    "Maximum team size is unspecified; the form's dropdown ends at \"5+\", which is a UI limit, not a stated rule.",
+    "No prior-work rule is published either permitting or prohibiting pre-existing codebases. I infer permission from the form's \"Working MVP\" prototype-stage option; this is inference, not a stated rule.",
+    "The ERC-8004 Identity Registry address on BSC (0x8004a169fb4a3325136eb29fa0ceb6d2e539a432) is derived from 8004scan's indexed contract_address field, not from an official BNB Chain address table. BNB's networks doc deliberately does not publish addresses. I did not independently read the bnbagent-sdk network presets or verify the contract on BscScan.",
+    "x402 / B402 protocol specifications were not fetched. Message formats, HTTP 402 header shapes, the facilitator endpoint, and the $U token contract address are all unverified. The $U address is stated to be exported by Altana's ERC8183_ADDRESSES but I did not read its value.",
+    "Category agent counts (yield 132, rebalanc 40, grid 10, health factor 4) are naive substring keyword matches over name/description via the `search` parameter, not semantic classification. True category supply is likely somewhat higher; the semantic /agents/search endpoint returned HTTP 502 when I attempted to cross-check, so these figures are a lower bound and should be treated as order-of-magnitude.",
+    "The exact 8004scan ERC-8004 registry addresses per chain are not exposed by GET /chains (it returns chain_id, name, is_testnet only) \u2014 I could not build a full cross-chain registry address map.",
+    "Whether the $30,000 main prize is paid in USDT specifically is unclear; the hackathon page says \"$30,000 equivalent\" while the blog says \"BNB Chain: $30,000 USDT\". Settlement asset and timing are not pinned.",
+    "Whether AiKi's existing work would be considered a competing product rather than a hackathon entry \u2014 and whether BNB Chain would view an adopted marketplace as exclusive \u2014 is entirely unaddressed by any public source."
+  ],
+  "aiki_implications": [
+    "The deadline is 12:00 UTC on 9 September 2026, not end-of-day. That is a midday cutoff and roughly three weeks out from today (18 Aug). Anything not merged and publicly deployed by 11:00 UTC that day does not exist. Register early regardless \u2014 the intake form asks for prototype stage and explicitly accepts \"Working MVP\", so an existing AiKi build is submittable rather than disqualifying.",
+    "Data Quality is the only criterion AiKi can win decisively, and the live data proves why: 674,773 of 733,946 ERC-8004 agents have unknown protocol, only 4,272 have resolved registration metadata, and 2,951 are owner-verified. A marketplace that merely proxies 8004scan will look identical to every other entrant. AiKi's trust layer \u2014 liveness probing, capability verification, provenance, reputation independent of the on-chain feedback blob \u2014 is directly the differentiator the rubric is asking for, and it maps onto AiKi's core thesis rather than being throwaway hackathon work.",
+    "total_validators = 0 and total_validations = 0 network-wide. The ERC-8004 Validation Registry is specified but entirely unused in production. This is the clearest open niche on the chain: AiKi could be the first validator, and doing so is both a rubric differentiator and a durable product position. Weigh against ERC-8004 being Draft status \u2014 the Validation Registry interface may still change.",
+    "Agent Diversity is a supply trap, not a UI problem. Health Factor Monitoring has ~4 matching agents on BSC and Grid Trading ~10, against a criterion demanding \"all four categories surfaced with equal depth.\" You cannot satisfy this by indexing alone. Budget engineering time to publish AiKi-operated reference agents in the thin categories (health factor, grid) so the marketplace has something to show \u2014 this is mandatory scope, not optional polish.",
+    "Do not build on the assumption that adoption is guaranteed. The hackathon page says \"plus official adoption\"; BNB Chain's own press release says \"the opportunity to become the officially adopted\" marketplace. No contract, grant figure, or incubation terms are published. Treat the $30,000 as the only certain consideration and any adoption as an unpriced option. Obtain the Terms of Participation before submitting \u2014 it is the one document that governs IP and licensing and it is not publicly available.",
+    "The IP/licensing risk is unquantified and blocking. Every fetchable source is silent on IP assignment, license requirements, and exclusivity. Other BNB hackathons have required work to be \"open source and free for others to use\" \u2014 if that term carries over here, submitting AiKi's trust/verification core could force it under a permissive license. Do not submit proprietary core IP until the Terms are read. A defensible structure is to submit an open marketplace front end plus a documented API boundary, keeping the scoring/trust engine behind a service.",
+    "Architect the marketplace to enrich, not to proxy. 8004scan Pro gives 500 req/min and 100k/day (free for participants via forms.gle/jQevEPCAacBXaKG79) but the semantic /agents/search endpoint returned a 502 during testing. Build an independent ingestion and cache layer over GET /agents with your own indexing and classification; treat 8004scan as a seed source with a circuit breaker, never as a runtime dependency on the critical path during judging, when \"functional and publicly accessible\" is an eligibility condition.",
+    "Classify agents yourself. The four required categories are not fields in the registry \u2014 the only way to bucket agents today is substring matching over free-text name/description, which is why my counts are a lower bound. A real classifier over agent descriptions and manifests is both a Data Quality win and reusable AiKi infrastructure.",
+    "Target BSC mainnet (chainId 56), not testnet. The main track says only \"live on BSC\", but Data Quality demands \"real-time, accurate data\" and the press release adds \"real-world usage\" as a criterion. Note that BNB Agent Studio's free tier is testnet-only and does not support mainnet, so a free-tier Agent Studio deployment cannot back a mainnet posture \u2014 plan for paid infrastructure or self-hosted agents.",
+    "Instrument usage telemetry from day one. \"Real-world usage\" appears in the press release but not in the published rubric, and Phase 2 criteria are redacted. Unique wallets, activations, completed hires, and retained session data are cheap to capture now and impossible to backfill after 9 Sep.",
+    "The TermiX $10,000 track (1st $6,000) is largely orthogonal engineering and high expected value: it needs an \"Agent Advantage Report\" with 3+ tasks run agent-vs-manual, time/cost/quality metrics, attached outputs, and at least one task from trading/stock/security/equities. TermiX will actually hire from your marketplace. This doubles as real usage evidence for the main track \u2014 one artifact, two scoring surfaces.",
+    "Altana's track requirements are a specification for exactly what AiKi's execution layer should do anyway: per-agent wallets, sessions with call allowlist + spend cap + expiry, Keystore registration, real on-chain txs via session key, and user-facing revocation. hireErc8183Agent(wallet, signer, { provider, task, budget }, { network: BNB }) with session-key signers is a working delegated-execution primitive on BSC today. Evaluate adopting or interoperating with it rather than rebuilding escrowed agent hiring from scratch.",
+    "Both foundational standards are Draft \u2014 ERC-8004 (created 2025-08-13) and ERC-8183 (created 2026-02-25). Isolate them behind adapter interfaces. Pin the APEX addresses per chain (mainnet AgenticCommerce 0xEa4DAa3100A767e86FDed867729ae7446476EBA6, EvaluatorRouter 0x51895229E12F9876011789B04f8698af06cCD6DA, OptimisticPolicy 0x9C01845705b3078Aa2e8cfF7520a6376FD766dE5) via config, and verify them on BscScan before mainnet use rather than trusting a README.",
+    "Copy the Agent Studio security boundary into AiKi's execution design: a keyless public Service that can only request signatures, a key-holding Agent that re-validates on-chain before signing, and signing as fixed entrypoint code that is never an LLM-callable tool. For an agent-commerce platform handling third-party funds, that separation is the correct default and it is already the pattern BNB Chain's judges will recognise.",
+    "Settle in x402/$U, not B402. x402 with $U settlement is live on mainnet; B402 (Binance Pay merchants) is explicitly still roadmap. Note x402_supported is a live boolean on 8004scan agent records \u2014 surfacing and filtering on it is a cheap, concrete Data Quality signal competitors are unlikely to use.",
+    "Competitive intelligence is only available on-chain, since intake is a private Google Form with no public leaderboard until the top-3 shortlist after 9 Sep. Poll GET /agents?chainId=56 sorted by created_at for hackathon-themed registrations \u2014 entries like \"GridMaster Ops (Agent Studio)\" and \"BNB Grid Trader (test)\" registered 14\u201317 Aug already reveal competitor approaches, including who is building on Altana sessions.",
+    "Do not repeat the \"60% of ERC-8004 agents across 26 networks\" claim in any AiKi material. Live data shows 257,865 of 733,946 (35.1%) across 60 chains. Citing the corrected figure in your submission is itself a credible Data Quality signal to judges."
+  ],
+  "interfaces": [
+    {
+      "name": "ERC-8004 Identity Registry (ERC-721 extension) \u2014 core interface",
+      "language": "solidity",
+      "body": "function register(string agentURI, MetadataEntry[] calldata metadata) external returns (uint256 agentId)\nfunction register(string agentURI) external returns (uint256 agentId)\nfunction register() external returns (uint256 agentId)\n\nfunction setAgentURI(uint256 agentId, string calldata newURI) external\nfunction getMetadata(uint256 agentId, string memory metadataKey) external view returns (bytes memory)\nfunction setMetadata(uint256 agentId, string memory metadataKey, bytes memory metadataValue) external\n\nfunction setAgentWallet(uint256 agentId, address newWallet, uint256 deadline, bytes calldata signature) external\nfunction getAgentWallet(uint256 agentId) external view returns (address)\nfunction unsetAgentWallet(uint256 agentId) external\n\nevent Registered(uint256 indexed agentId, string agentURI, address indexed owner)\nevent URIUpdated(uint256 indexed agentId, string newURI, address indexed updatedBy)\nevent MetadataSet(uint256 indexed agentId, string indexed indexedMetadataKey, string metadataKey, bytes metadataValue)",
+      "source": "https://eips.ethereum.org/EIPS/eip-8004"
+    },
+    {
+      "name": "ERC-8004 Reputation Registry \u2014 feedback interface",
+      "language": "solidity",
+      "body": "function getIdentityRegistry() external view returns (address identityRegistry)\n\nfunction giveFeedback(uint256 agentId, int128 value, uint8 valueDecimals, string calldata tag1, string calldata tag2, string calldata endpoint, string calldata feedbackURI, bytes32 feedbackHash) external\n\nfunction revokeFeedback(uint256 agentId, uint64 feedbackIndex) external\nfunction appendResponse(uint256 agentId, address clientAddress, uint64 feedbackIndex, string calldata responseURI, bytes32 responseHash) external\n\nfunction getSummary(uint256 agentId, address[] calldata clientAddresses, string tag1, string tag2) external view returns (uint64 count, int128 summaryValue, uint8 summaryValueDecimals)\nfunction readFeedback(uint256 agentId, address clientAddress, uint64 feedbackIndex) external view returns (int128 value, uint8 valueDecimals, string tag1, string tag2, bool isRevoked)\nfunction readAllFeedback(uint256 agentId, address[] calldata clientAddresses, string tag1, string tag2, bool includeRevoked) external view returns (address[] memory clients, uint64[] memory feedbackIndexes, int128[] memory values, uint8[] memory valueDecimals, string[] memory tag1s, string[] memory tag2s, bool[] memory revokedStatuses)\nfunction getResponseCount(uint256 agentId, address clientAddress, uint64 feedbackIndex, address[] responders) external view returns (uint64 count)\nfunction getClients(uint256 agentId) external view returns (address[] memory)\nfunction getLastIndex(uint256 agentId, address clientAddress) external view returns (uint64)\n\nevent NewFeedback(uint256 indexed agentId, address indexed clientAddress, uint64 feedbackIndex, int128 value, uint8 valueDecimals, string indexed indexedTag1, string tag1, string tag2, string endpoint, string feedbackURI, bytes32 feedbackHash)\nevent FeedbackRevoked(uint256 indexed agentId, address indexed clientAddress, uint64 indexed feedbackIndex)\nevent ResponseAppended(uint256 indexed agentId, address indexed clientAddress, uint64 feedbackIndex, address indexed responder, string responseURI, bytes32 responseHash)",
+      "source": "https://eips.ethereum.org/EIPS/eip-8004"
+    },
+    {
+      "name": "ERC-8004 Validation Registry \u2014 currently ZERO usage on all chains (0 validators, 0 validations)",
+      "language": "solidity",
+      "body": "function getIdentityRegistry() external view returns (address identityRegistry)\n\nfunction validationRequest(address validatorAddress, uint256 agentId, string requestURI, bytes32 requestHash) external\nfunction validationResponse(bytes32 requestHash, uint8 response, string responseURI, bytes32 responseHash, string tag) external\n\nfunction getValidationStatus(bytes32 requestHash) external view returns (address validatorAddress, uint256 agentId, uint8 response, bytes32 responseHash, string tag, uint256 lastUpdate)\nfunction getSummary(uint256 agentId, address[] calldata validatorAddresses, string tag) external view returns (uint64 count, uint8 averageResponse)\nfunction getAgentValidations(uint256 agentId) external view returns (bytes32[] memory requestHashes)\nfunction getValidatorRequests(address validatorAddress) external view returns (bytes32[] memory requestHashes)\n\nevent ValidationRequest(address indexed validatorAddress, uint256 indexed agentId, string requestURI, bytes32 indexed requestHash)\nevent ValidationResponse(address indexed validatorAddress, uint256 indexed agentId, bytes32 indexed requestHash, uint8 response, string responseURI, bytes32 responseHash, string tag)",
+      "source": "https://eips.ethereum.org/EIPS/eip-8004"
+    },
+    {
+      "name": "ERC-8183 Agentic Commerce \u2014 Job struct, status enum, and hook interface",
+      "language": "solidity",
+      "body": "interface IACPHook is IERC165 {\n    function beforeAction(uint256 jobId, bytes4 selector, bytes calldata data) external;\n    function afterAction(uint256 jobId, bytes4 selector, bytes calldata data) external;\n}\n\nenum JobStatus { Open, Funded, Submitted, Completed, Rejected, Expired }\n\nstruct Job {\n    uint256 id;\n    address client;\n    address provider;\n    address evaluator;\n    string description;\n    uint256 budget;\n    uint256 expiredAt;\n    JobStatus status;\n    address hook;\n}\n\n// Lifecycle: createJob() -> setBudget() -> fund() -> submit() -> complete() | reject()\n// claimRefund() recovers funds after expiry and is NOT hookable.\n// Events: JobCreated, BudgetSet, JobFunded, JobSubmitted, JobCompleted, JobRejected, PaymentReleased, Refunded",
+      "source": "https://eips.ethereum.org/EIPS/eip-8183"
+    },
+    {
+      "name": "APEX / ERC-8183 deployed contract addresses on BSC",
+      "language": "text",
+      "body": "BSC Mainnet (chainId 56)\n  AgenticCommerceUpgradeable   0xEa4DAa3100A767e86FDed867729ae7446476EBA6\n  EvaluatorRouterUpgradeable   0x51895229E12F9876011789B04f8698af06cCD6DA\n  OptimisticPolicy             0x9C01845705b3078Aa2e8cfF7520a6376FD766dE5\n  Payment token                0xcE24439F2D9C6a2289F741120FE202248B666666\n\nBSC Testnet (chainId 97)\n  AgenticCommerceUpgradeable   0xa206c0517B6371C6638CD9e4a42Cc9f02A33B0DE\n  EvaluatorRouterUpgradeable   0xd7d36d66d2f1b608a0f943f722d27e3744f66f25\n  OptimisticPolicy             0x4f4678d4439fec812ac7674bb3efb4c8f5fb78a6\n  Payment token (USDC)         0xc70B8741B8B07A6d61E54fd4B20f22Fa648E5565\n\nERC-8004 Identity Registry, chainId 56 (observed via 8004scan indexed contract_address, NOT from an official BNB address table):\n  0x8004a169fb4a3325136eb29fa0ceb6d2e539a432\n\nABIs: `bun run abis` emits to abis/ in bnb-chain/apex-contracts.\nCompliance notes: docs/erc-8183-compliance.md",
+      "source": "https://raw.githubusercontent.com/bnb-chain/apex-contracts/main/README.md"
+    },
+    {
+      "name": "8004scan public API \u2014 live GET /agents response (fields beyond the documented OpenAPI schema)",
+      "language": "json",
+      "body": "{\n  \"success\": true,\n  \"data\": [\n    {\n      \"id\": \"bf69c332-8918-485e-a67a-8f405815ceaf\",\n      \"agent_id\": \"56:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432:269233\",\n      \"token_id\": \"269233\",\n      \"chain_id\": 56,\n      \"chain_type\": \"evm\",\n      \"contract_address\": \"0x8004a169fb4a3325136eb29fa0ceb6d2e539a432\",\n      \"is_testnet\": false,\n      \"owner_id\": \"d40c90f4-d774-48c8-aa62-04f69706a8a7\",\n      \"owner_address\": \"0xfaf0ffd121947b9ee3920fa0cfbf9eeeb0acbf7f\",\n      \"owner_ens\": null,\n      \"owner_username\": null,\n      \"owner_avatar_url\": null,\n      \"owner_publisher_tier\": null,\n      \"owner_certified_name\": null,\n      \"name\": \"BNB Grid Trader (test)\",\n      \"description\": \"TEST DEPLOYMENT \u2014 not for production use. Autonomous PancakeSwap V3 BNB/USDT grid trader. Sells computed grid plans (levels, sizing, net edge after fees and slippage) and live strategy status reports, priced in $U via ERC-8183.\",\n      \"image_url\": null,\n      \"is_verified\": false,\n      \"star_count\": 0,\n      \"supported_protocols\": [\"A2A\"],\n      \"x402_supported\": true,\n      \"total_score\": 12.09,\n      \"rank\": null,\n      \"network_rank\": null,\n      \"health_score\": null,\n      \"total_feedbacks\": 0,\n      \"average_score\": 0,\n      \"cross_chain_versions\": null,\n      \"created_at\": \"2026-08-17T20:10:38Z\",\n      \"updated_at\": \"2026-08-18T15:48:18.871890Z\"\n    }\n  ],\n  \"meta\": {\n    \"version\": \"1.0.0\",\n    \"timestamp\": \"2026-08-18T16:12:54.661Z\",\n    \"requestId\": \"ec6kZNuml7OTD36dmjryR\",\n    \"pagination\": { \"page\": 1, \"limit\": 3, \"total\": 10, \"hasMore\": true }\n  }\n}",
+      "source": "https://8004scan.io/api/v1/public/agents?chainId=56&search=grid&limit=3"
+    },
+    {
+      "name": "8004scan public API \u2014 GET /stats live response (registry data-quality evidence)",
+      "language": "json",
+      "body": "{\n  \"success\": true,\n  \"data\": {\n    \"total_agents\": 733946,\n    \"total_users\": 400763,\n    \"total_validators\": 0,\n    \"total_feedbacks\": 3549334,\n    \"total_validations\": 0,\n    \"total_chats\": 0,\n    \"total_messages\": 0,\n    \"daily_new_agents\": 1358,\n    \"daily_new_users\": 1075,\n    \"daily_feedbacks\": 6380,\n    \"daily_validations\": 0,\n    \"average_feedback_score\": 80.99120197243049,\n    \"average_validation_score\": null,\n    \"protocol_distribution\": {\n      \"mcp\": 24213,\n      \"a2a\": 34961,\n      \"unknown\": 674773\n    },\n    \"registration_stats\": {\n      \"total\": 4822,\n      \"resolved\": 4272,\n      \"unresolved\": 550,\n      \"owner_verified\": 2951,\n      \"reciprocal_verified\": 305\n    }\n  },\n  \"meta\": {\n    \"version\": \"1.0.0\",\n    \"timestamp\": \"2026-08-18T16:11:14.868Z\",\n    \"requestId\": \"LdO85JsbK7AMft9Gc6TTE\"\n  }\n}",
+      "source": "https://8004scan.io/api/v1/public/stats"
+    },
+    {
+      "name": "8004scan public API \u2014 endpoints, query params, and rate limits",
+      "language": "text",
+      "body": "Base URL: https://8004scan.io/api/v1/public\nOpenAPI 3.0 spec: https://8004scan.io/api/v1/public/docs/openapi.json\nAuth: none required for anonymous; optional API keys by tier. CORS enabled.\n\nGET /agents                          List and filter agents with pagination\nGET /agents/{chainId}/{tokenId}      Get a specific agent by ID\nGET /agents/search                   Semantic search (hybrid vector + keyword)\nGET /accounts/{address}/agents       Agents owned by a wallet\nGET /stats                           Platform statistics\nGET /feedbacks                       List agent feedbacks\nGET /chains                          Supported blockchain networks\n\nGET /agents query parameters:\n  page       integer  default 1        1-indexed page number\n  limit      integer  default 20, max 100\n  chainId    integer                   Filter by blockchain chain ID\n  ownerAddress string                  Filter by owner wallet address\n  search     string                    Search by name, description, or agent ID\n  protocol   string  enum: MCP, A2A, OASF, Web, Email\n  sortBy     string  default created_at; enum: created_at, stars, name, token_id, total_score\n  sortOrder  string  default desc; enum: asc, desc\n  isTestnet  boolean                   Filter by testnet/mainnet\n\nGET /agents/search query parameters:\n  q               string  REQUIRED     Search query\n  limit           integer default 20, max 100 (varies by tier)\n  chainId         integer              Filter by chain ID\n  semanticWeight  number  default 0.5, range 0-1  Balance semantic vs keyword\n  NOTE: returned HTTP 502 Bad Gateway during testing on 2026-08-18.\n\nRate limits (headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset):\n  Anonymous    10 req/min      100/day\n  Free         30 req/min    1,000/day\n  Basic+      100 req/min   10,000/day\n  Pro+        500 req/min  100,000/day   <- free for hackathon participants\n  Enterprise  custom        custom\n\nPro-tier upgrade form for participants: https://forms.gle/jQevEPCAacBXaKG79",
+      "source": "https://8004scan.io/developers"
+    },
+    {
+      "name": "Altana SDK \u2014 ERC-8183 agent hiring with session-key spend limits",
+      "language": "typescript",
+      "body": "// Primary buyer workflow, executed atomically. Returns { jobId }.\nhireErc8183Agent(wallet, signer, {\n  provider: \"0xSellerAgentAddress\",\n  task: \"string\",\n  budget: bigint // 18 decimals\n}, { network: BNB })\n\n// Job state tracking: OPEN -> FUNDED -> SUBMITTED -> COMPLETED\ngetErc8183Job(...)\ngetErc8183DeliverableUrl(...)   // manifest URL after submission\n\n// Settlement: release escrow, or contest\nsettleErc8183Job(wallet, signer,\n  { jobId, action?: \"dispute\" },\n  { network: BNB }\n)\n\n// Full refund transaction after expiry\nbuildClaimRefundCall(chainId, jobId)\n\n// ERC8183_ADDRESSES exports kernel, EvaluatorRouter, OptimisticPolicy,\n// ERC-8004 registry, and $U token addresses for BSC mainnet (56) and testnet (97).\n// The `signer` parameter accepts session keys, giving a\n// \"scoped key with an on-chain spend limit\" for autonomous agents.",
+      "source": "https://docs.altana.network/sdk/erc8183"
+    },
+    {
+      "name": "BNB Agent Studio \u2014 commerce flow and Layer A / Layer B trust boundary",
+      "language": "text",
+      "body": "Two-tier deployment:\n  Layer A (Agent)   -> AWS Bedrock AgentCore. HOLDS KEYS. Runs the LLM.\n                       Handles `quote`, `fulfill`, `settle` actions.\n  Layer B (Service) -> EC2/Fargate. KEYLESS. Runs NO LLM.\n                       Invokes the Agent to request signatures.\n\nVerbatim constraint:\n  \"Service -> Agent. The public Service can only ask the Agent to sign;\n   the Agent re-validates on chain before signing.\"\n  Signing \"lives in app/agent/signing.py -- fixed entrypoint code,\n   never an LLM-callable tool.\"\n\nSeller commerce flow:\n  1. Buyer sends POST /apex/negotiate to the Service\n  2. Service invokes InvokeAgentRuntime(quote) on Layer A\n  3. Agent signs the price offer; buyer funds the job on-chain\n  4. Service polls for funded jobs and triggers `fulfill`\n  5. Agent executes work and submits deliverables\n  6. Settlement via `settle` after any dispute window\n\nSix-layer stack:\n  L1 User code            app/agent/*, app/service/*\n  L2 IDE                  Claude Code or Cursor\n  L3 Studio surfaces      bag CLI, MCP server, recipes, skills\n  L4 Core library         bnbagent_studio_core (wallet factories, Policy,\n                          ERC-8004/8183 workflows, x402, audit logging)\n  L5 SDK layer            bnbagent-sdk (ERC8004Agent, ERC8183Client,\n                          EVMWalletProvider)\n  L6 Blockchain           BSC testnet/mainnet: ERC-8004 registry,\n                          APEX/ERC-8183 contracts, x402 infrastructure\n\nCLI: npm install -g @bnbagent/studio-cli\n     bag skills install | bag init | bag dev | bag deploy agent | bag doctor\nPython SDK: https://pypi.org/project/bnbagent/\nGitHub: https://github.com/bnb-chain/bnbagent-sdk\nFree tier limits: max 10 agents/user, max 10 deployments/hour, bsc-testnet ONLY\n                  (\"Mainnet is not supported\" on the AWS Free Tier trial).",
+      "source": "https://docs.bnbchain.org/developer-kit/bnbchain-studio/architecture/"
+    }
+  ]
+}
