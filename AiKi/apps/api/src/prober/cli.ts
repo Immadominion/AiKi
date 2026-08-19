@@ -1,0 +1,270 @@
+/**
+ * Probe sweep CLI.
+ *
+ *   pnpm --filter @aiki/api probe -- --limit 100
+ *
+ * Samples agents from the canonical BSC ERC-8004 registry via 8004scan, resolves
+ * each registration file, probes every declared endpoint, and reports what is
+ * actually reachable.
+ *
+ * This is the measurement behind AiKi's "Data Quality" claim. It is meant to be
+ * re-runnable and to produce a number we can defend, not a marketing figure.
+ */
+
+import { writeFileSync } from 'node:fs'
+import type { LivenessState } from '@aiki/contracts'
+import type { DeclaredService } from './detect.js'
+import { type ProbeAgentResult, mapLimit, probeAgent } from './probe.js'
+
+const BASE = 'https://8004scan.io/api/v1/public'
+const CHAIN_ID = 56
+const REGISTRY = '0x8004a169fb4a3325136eb29fa0ceb6d2e539a432'
+
+const KEY = process.env.EIGHT004SCAN_API_KEY ?? ''
+
+interface ScanAgent {
+  agent_id: string
+  token_id: string
+  name: string | null
+  description: string | null
+  supported_protocols: string[] | null
+  x402_supported: boolean | null
+  owner_address: string | null
+  created_at: string
+}
+
+/**
+ * 8004scan client with real 429 handling.
+ *
+ * Their 429 body carries `error.details.resetAt`, which is far more useful than a
+ * Retry-After guess — we sleep until exactly that instant. The `x-ratelimit-*`
+ * headers ARE accurate (an earlier assumption that they were stale was wrong:
+ * a short burst can straddle a window boundary and look like it passed).
+ */
+async function scan<T>(path: string, attempt = 0): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { headers: KEY ? { 'X-API-Key': KEY } : {} })
+
+  if (res.status === 429) {
+    if (attempt >= 4) throw new Error(`8004scan ${path} → rate limited, gave up after ${attempt}`)
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: { details?: { resetAt?: string } }
+    }
+    const resetAt = body.error?.details?.resetAt
+    const waitMs = resetAt
+      ? Math.max(1_000, new Date(resetAt).getTime() - Date.now() + 500)
+      : 2 ** attempt * 2_000
+    console.log(`    rate limited — waiting ${Math.ceil(waitMs / 1000)}s`)
+    await new Promise((r) => setTimeout(r, Math.min(waitMs, 70_000)))
+    return scan<T>(path, attempt + 1)
+  }
+
+  if (!res.ok) throw new Error(`8004scan ${path} → HTTP ${res.status}`)
+
+  const json = (await res.json()) as { success?: boolean; data?: T }
+  // NOTE: the PUBLIC api envelopes as { success, data }. The undocumented
+  // /api/v1 endpoint uses { items, total } instead. They are not interchangeable.
+  return (json.data ?? (json as unknown)) as T
+}
+
+/** Pull a spread sample across the registry rather than only the newest agents. */
+async function sampleAgents(total: number): Promise<ScanAgent[]> {
+  const pageSize = 25
+  const pages = Math.max(1, Math.ceil(total / pageSize))
+  const highestOffset = 260_000
+  const out: ScanAgent[] = []
+  const seen = new Set<string>()
+
+  for (let i = 0; i < pages; i++) {
+    const offset = Math.floor((highestOffset / pages) * i)
+    try {
+      const batch = await scan<ScanAgent[]>(
+        `/agents?chainId=${CHAIN_ID}&limit=${pageSize}&offset=${offset}`,
+      )
+      for (const a of batch ?? []) {
+        if (!seen.has(a.agent_id)) {
+          seen.add(a.agent_id)
+          out.push(a)
+        }
+      }
+    } catch (err) {
+      console.warn(`  page at offset ${offset} failed: ${(err as Error).message}`)
+    }
+    if (out.length >= total) break
+  }
+  return out.slice(0, total)
+}
+
+/**
+ * Resolve declared services from an agent detail record.
+ *
+ * 8004scan does NOT return a `services` array — it FLATTENS the ERC-8004 service
+ * entries into named columns (`mcp_server`, `a2a_endpoint`, `agent_url`), with the
+ * original registration file under `raw_metadata.offchain`.
+ *
+ * This was discovered with `--inspect` after a guessed field name produced
+ * "0/25 declare a service", which looks like a finding and was actually a bug.
+ * Verify field names against a real record; never infer them.
+ */
+async function resolveServices(
+  agent: ScanAgent,
+): Promise<{ services: DeclaredService[]; agentUri?: string }> {
+  try {
+    const detail = await scan<Record<string, unknown>>(`/agents/${CHAIN_ID}/${agent.token_id}`)
+
+    const raw = detail.raw_metadata as { offchain?: unknown } | undefined
+    const offchain = raw?.offchain as
+      | { services?: unknown[]; type?: string; uri?: string }
+      | undefined
+
+    const services: DeclaredService[] = []
+
+    // Preferred: the verbatim registration file, which preserves `transport`
+    // (needed for D3 — a stdio MCP entry is declared but not remotely callable).
+    if (Array.isArray(offchain?.services)) {
+      for (const s of offchain.services) {
+        const o = s as Record<string, unknown>
+        const endpoint = String(o.endpoint ?? '')
+        if (!endpoint) continue
+        services.push({
+          name: String(o.name ?? o.type ?? 'service'),
+          endpoint,
+          ...(o.version ? { version: String(o.version) } : {}),
+          ...(o.transport ? { transport: String(o.transport) } : {}),
+        })
+      }
+    }
+
+    // Fallback: the flattened columns.
+    if (services.length === 0) {
+      const flat: [string, unknown][] = [
+        ['MCP', detail.mcp_server],
+        ['A2A', detail.a2a_endpoint],
+        ['web', detail.agent_url],
+      ]
+      for (const [name, value] of flat) {
+        if (typeof value === 'string' && value.length > 0) {
+          services.push({ name, endpoint: value })
+        }
+      }
+    }
+
+    const agentUri =
+      (detail.offchain_uri as string | undefined) ??
+      (detail.agent_uri as string | undefined) ??
+      offchain?.uri
+
+    return agentUri ? { services, agentUri } : { services }
+  } catch {
+    return { services: [] }
+  }
+}
+
+/**
+ * Dump one detail record's shape. Field names on the public API are undocumented,
+ * so we discover them rather than guessing — a wrong guess reads as "0 agents
+ * declare a service", which looks like a finding and is actually a bug.
+ */
+async function inspectOne(tokenId: string) {
+  const detail = await scan<Record<string, unknown>>(`/agents/${CHAIN_ID}/${tokenId}`)
+  console.log(`\nDetail record for token ${tokenId}:\n`)
+  for (const [k, v] of Object.entries(detail)) {
+    const t = Array.isArray(v) ? `array[${v.length}]` : v === null ? 'null' : typeof v
+    const preview = JSON.stringify(v)?.slice(0, 110) ?? ''
+    console.log(`  ${k.padEnd(26)} ${t.padEnd(10)} ${preview}`)
+  }
+  console.log()
+}
+
+async function main() {
+  const argLimit = process.argv.indexOf('--limit')
+  const limit = argLimit > -1 ? Number(process.argv[argLimit + 1]) : 50
+  // The public tier is 10 req/min. Serial is not a preference, it is the ceiling.
+  const argConc = process.argv.indexOf('--concurrency')
+  const concurrency = argConc > -1 ? Number(process.argv[argConc + 1]) : 2
+
+  const argInspect = process.argv.indexOf('--inspect')
+  if (argInspect > -1) {
+    await inspectOne(process.argv[argInspect + 1] ?? '270262')
+    return
+  }
+
+  if (!KEY) {
+    console.warn('⚠  EIGHT004SCAN_API_KEY not set — running at anonymous rate limits.\n')
+  }
+
+  console.log(`Sampling ${limit} agents across the BSC registry…`)
+  const agents = await sampleAgents(limit)
+  console.log(`  got ${agents.length}\n`)
+
+  console.log('Resolving registration files…')
+  const resolved = await mapLimit(agents, concurrency, async (a) => ({
+    agent: a,
+    ...(await resolveServices(a)),
+  }))
+  const withServices = resolved.filter((r) => r.services.length > 0).length
+  console.log(`  ${withServices}/${resolved.length} declare at least one service\n`)
+
+  console.log('Probing endpoints…')
+  const results: ProbeAgentResult[] = await mapLimit(resolved, concurrency, (r) =>
+    probeAgent({
+      agentId: r.agent.token_id,
+      registry: `eip155:${CHAIN_ID}:${REGISTRY}`,
+      services: r.services,
+      ...(r.agentUri ? { agentUri: r.agentUri } : {}),
+    }),
+  )
+
+  // ── report ────────────────────────────────────────────────────────────────
+  const byState = new Map<LivenessState, number>()
+  for (const r of results) byState.set(r.verdict.state, (byState.get(r.verdict.state) ?? 0) + 1)
+
+  const reciprocal = results.filter((r) => r.reciprocal?.verified).length
+  const zeroCost = results.filter((r) => r.registrationWasZeroCost).length
+  const live = byState.get('LIVE') ?? 0
+
+  console.log(`\n${'─'.repeat(58)}`)
+  console.log(`PROBE SWEEP — ${results.length} agents, BSC chain ${CHAIN_ID}`)
+  console.log('─'.repeat(58))
+  for (const [state, n] of [...byState.entries()].sort((a, b) => b[1] - a[1])) {
+    const pct = ((n / results.length) * 100).toFixed(1)
+    console.log(`  ${state.padEnd(17)} ${String(n).padStart(4)}  ${pct.padStart(5)}%`)
+  }
+  console.log('─'.repeat(58))
+  console.log(`  genuinely LIVE          ${live}  (${((live / results.length) * 100).toFixed(1)}%)`)
+  console.log(`  reciprocal proof (D8)   ${reciprocal}`)
+  console.log(`  data: URI, zero-cost    ${zeroCost}`)
+  console.log('─'.repeat(58))
+
+  const impostors = results.filter((r) => r.verdict.state === 'IMPOSTOR_STATIC')
+  if (impostors.length > 0) {
+    console.log(`\nIMPOSTOR_STATIC detail (${impostors.length}):`)
+    for (const i of impostors.slice(0, 3)) {
+      console.log(`  agent ${i.agentId}: ${i.verdict.detail}`)
+    }
+  }
+
+  const out = `probe-sweep-${Date.now()}.json`
+  writeFileSync(
+    out,
+    JSON.stringify(
+      {
+        sweptAt: new Date().toISOString(),
+        chainId: CHAIN_ID,
+        registry: REGISTRY,
+        sampled: results.length,
+        byState: Object.fromEntries(byState),
+        reciprocalVerified: reciprocal,
+        zeroCostRegistrations: zeroCost,
+        results,
+      },
+      null,
+      2,
+    ),
+  )
+  console.log(`\nFull results → ${out}\n`)
+}
+
+main().catch((err) => {
+  console.error(err)
+  process.exit(1)
+})

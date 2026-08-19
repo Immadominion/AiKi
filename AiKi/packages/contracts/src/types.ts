@@ -430,8 +430,10 @@ export type ConstraintKind =
  * consumers since 2016. `total` is a LIFETIME cap that never refills — visually
  * distinct from a renewing one.
  *
- * NOTE: the shipping SmartSession spend policy is lifetime-only. Do not offer a
- * renewing period until a rolling-window policy is deployed and audited.
+ * All four periods are enforceable at T0 on BSC via the MetaMask Delegation
+ * Framework's ERC20PeriodTransferEnforcer, which genuinely resets per period.
+ * (Rhinestone's SmartSession policy is lifetime-only — if that path is used
+ * instead, only `total` is honest. The enforcement tier carries the difference.)
  */
 export type CapPeriod = 'per_transaction' | 'per_month' | 'per_year' | 'total'
 

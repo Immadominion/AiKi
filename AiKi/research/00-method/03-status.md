@@ -60,13 +60,27 @@ ERC-1967 proxies. `name()` = **"AgentIdentity"**, `symbol()` = **"AGENT"**, `get
 
 ---
 
+## ✅ O-2 and O-3 RESOLVED — 19 Aug 2026
+
+See [01-protocols/08-execution-path.md](../01-protocols/08-execution-path.md). Verified by direct RPC.
+
+**O-3 was not a blocker.** Pimlico's bundler is live on chain 56 (`https://public.pimlico.io/v2/56/rpc` — chain must be **numeric**; `/v2/bsc/rpc` errors). Four EntryPoints deployed, gas oracle answering at ~0.06 gwei. Etherspot/Skandha is open-source and self-hostable.
+
+**Better: we don't need a bundler.** The **MetaMask Delegation Framework v1.3.0** is deployed on BSC — DelegationManager `0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3`, EIP7702StatelessDeleGatorImpl `0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B`. AiKi self-relays a type-0x4 SetCode tx via viem and redeems delegations as relayer. **5–8 eng days vs 8–14 for the 4337 route.**
+
+**🎯 The rolling-window gap is closed.** `ERC20PeriodTransferEnforcer` is a **resetting** per-period cap. We can honestly say *"$250 per month, renewing"* and have the **chain** enforce it — no custom contract, no audit of our own. **ADR-014 (ship lifetime-only caps) is withdrawn.**
+
+**O-2 closed: Altana is genuinely T0 with a true rolling window** — but enforcement is **not** in KeyStore (a registry). It is in the account implementation `0x4b5d20cd8a3927b500540d9bccddc27385c9fa79` (Porto), which reverts `ExceededSpendLimit`. ⚠️ **The CertiK audit covered the registry, not the enforcing contract** — never cite the audit beside the spend cap.
+
+**ADR-006 unblocked.** Recommended: 7702 self-relay as primary, ERC-4337 + Pimlico behind the same adapter as secondary.
+
 ## Remaining open items
 
 | # | Item | Blocks | Priority |
 |---|---|---|---|
 | **O-1** | **Terms of Participation** — not publicly fetchable; IP/licensing/open-source obligations unknown | Submission | **Founder action** |
-| **O-2** | Altana spend-cap enforcement not read at source level; BscScan source-verification unconfirmed (Cloudflare 403) | The T0 claim in the mandate UI | **High** |
-| **O-3** | **No bundler or paymaster verified as serving chain 56**; Biconomy/Safe/thirdweb/Alchemy BSC support unchecked | ADR-006 wallet custody boundary | **High** |
+| **O-8** | Which of the two v0.8 EntryPoints is canonical — `0x4337084D…` or `0x433709009B…` (both deployed) | Only the 4337 path | Low |
+| **O-9** | Sourcify verification for the Altana account implementation | Strength of the T0 claim | Low |
 | O-4 | ERC-8183 BscScan source verification (Cloudflare 403; needs Etherscan v2 key) | Mainnet funds | Medium |
 | O-5 | `$U` liquidity, depth, on/off-ramps | Checkout UX | Medium (product risk) |
 | O-6 | Agent Studio: registration-file JSON schema; full ERC-8183 wire protocol; whether IdentityRegistry is ERC-721 Enumerable | Ingestion, commerce adapter | Medium |
