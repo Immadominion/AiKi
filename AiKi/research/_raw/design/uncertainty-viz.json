@@ -1,0 +1,179 @@
+{
+  "topic": "Visually communicating uncertainty and confidence in a score, for non-expert high-stakes users (AiKi design system brief)",
+  "summary": "The research literature is mostly about analysts reading charts. Your user is reading a card on a phone deciding whether to hand $500 to a bot. For that user, three things demonstrably work and almost nothing else does.\n\nFirst: countable evidence, not probability. \"(12,847 ratings)\", \"3 of 20 weeks observed\", a 10x10 dot grid where 71 dots are filled. Kay et al.'s quantile-dotplot work and every consumer review system converge here \u2014 non-experts reason about counts, not densities. \"0.22 confidence\" is noise to them.\n\nSecond: rank by the lower bound, not the point estimate. IMDb's weighted rating, BoardGameGeek's Geek Rating and Reddit's Wilson-bound comment sort all solved your exact 89@0.94-beats-95@0.22 problem years ago, and BGG's UI is the honest version \u2014 it shows the raw average and the shrunk score in adjacent columns, so the penalty is visible rather than hidden in a formula.\n\nThird: withholding is a designed state. Steam refuses to compute a score below its review threshold and says so; Rotten Tomatoes does the same. Users accept \"we won't guess\" far better than a hedged number.\n\nThe dangerous move is encoding confidence in opacity, blur or desaturation. In an interactive product those channels already mean disabled, loading, or paywalled \u2014 and in a trading UI green/red already mean P&L, so color is spoken for too. You need a channel nobody else is using. Your sticker brand hands you one for free: the thick black outline. Stroke continuity is unused, survives grayscale and screenshots, works at 24px, and is native to the logo. Spend it on evidence.\n\nAnd never ship a non-answer without a plan to resolve it \u2014 that's what separates \"honest\" from \"evasive.\"",
+  "patterns": [
+    {
+      "name": "Shrunk score with the shrinkage shown (Bayesian lower-bound ranking, displayed as two numbers)",
+      "how_it_works": "Rank and headline the *lower bound* of the interval, not the point estimate. Mathematically this is Wilson score lower bound or a Bayesian prior with m phantom average votes. The design move that matters is refusing to hide it: show both numbers side by side and label them differently, so a sparse 95 visibly collapses to a 71 while a well-evidenced 89 barely moves. The gap between the two numbers IS the uncertainty visualization \u2014 no error bar required.",
+      "when_it_fails": "If you only show the adjusted number, new/good agents look bad and operators scream that you're 'punishing' them without explanation. If you only show the raw number, the whole product's claim evaporates. Also fails if the prior is opaque \u2014 you must state the phantom-evidence assumption in plain words ('scored as if it had 20 weeks of average performance until it earns its own').",
+      "used_by": "IMDb Top 250 weighted rating (with minimum-votes threshold m), BoardGameGeek 'Geek Rating' vs 'Average Rating' as adjacent columns, Reddit 'best' comment sort (Wilson lower bound), Steam's Bayesian review score, Amazon's adjusted star average"
+    },
+    {
+      "name": "Countable evidence strip (sample size as a pre-attentive glyph, not a parenthetical)",
+      "how_it_works": "A fixed-length strip of discrete cells \u2014 say 20 \u2014 where each filled cell equals one unit of real observed evidence (a week of live capital at risk, a settled epoch, a completed rebalance cycle). 20/20 filled reads as authoritative; 3/20 reads as a guess, instantly, without any numeric or statistical vocabulary. Fixed length is essential: the empty cells do the work, because the user sees what's missing.",
+      "when_it_fails": "Breaks if the unit is fuzzy or gameable (an agent that does 10,000 trivial transactions must not fill the strip). Breaks below ~10 cells (not enough resolution) and above ~30 (uncountable, becomes a progress bar). Also fails if the strip is reused elsewhere in the UI for progress or completion \u2014 then it reads as 'setup incomplete' rather than 'we don't know yet'.",
+      "used_by": "Amazon/Yelp/Letterboxd review counts, Apple App Store rating counts, GitHub contribution grid (the visual form), Duolingo streak dots"
+    },
+    {
+      "name": "Refusal to compute (withholding as a designed, branded state)",
+      "how_it_works": "Below an evidence threshold, the product does not render a score at all. It renders a named state, the threshold, and progress toward it \u2014 plus everything that IS known. This converts 'we have no data' from a hole into a statement of standards.",
+      "when_it_fails": "Reads as broken or as a loading skeleton if styled with grays, dashes, or em-dashes. Must be *positively* designed \u2014 full color, its own copy, its own glyph. Also fails commercially if the threshold is so high that most of the marketplace is scoreless on launch day; you need a deliberately lower bar plus a very visible 'provisional' tier.",
+      "used_by": "Steam ('Need more user reviews to generate a score'), Rotten Tomatoes (no Tomatometer under its review minimum), FICO 'insufficient credit file' / credit-invisible states, Grafana's explicit 'No Data' alert state"
+    },
+    {
+      "name": "Named tie category with a resolution plan attached",
+      "how_it_works": "'Statistically indistinguishable' becomes a first-class named rating with its own visual identity \u2014 not a missing rank, not a gray blob. Ordinal numbers are removed inside the tie group, order is randomized per session and that fact is stated, and the group carries a line saying exactly what would break the tie ('~6 more weeks of live data, or $40k more routed volume'). A/B tools do the same thing with 'estimated days to significance'. The plan is what makes it read as rigor rather than evasion.",
+      "when_it_fails": "Fails if the tie group has no boundary drawn around it \u2014 an unordered list with no container just looks like a bug. Fails if the tie category has no name; users need a noun ('Too Close To Call') to file the experience under. And if nearly everything is a tie, the product feels useless \u2014 you need a secondary sort within the tie (e.g. by fees, or by enforcement strength) that is explicitly labelled as *not* a performance ranking.",
+      "used_by": "Silver Bulletin / FiveThirtyEight-lineage 'Toss-Up' race ratings (Ohio, Iowa, Alaska in the 2026 Senate map), Optimizely Stats Engine 'Inconclusive', Statsig/GrowthBook underpowered-experiment states, Cook Political Report ratings"
+    },
+    {
+      "name": "Interval overlap drawn as an object",
+      "how_it_works": "For head-to-head comparison, draw each candidate as a horizontal band (not a whisker). Where bands overlap, render the overlap region as a distinct filled/hatched shape and label it. The reader doesn't have to compute the comparison \u2014 the ambiguity is a thing on screen with a name. This is the single most legible way to show 'these three are the same' without it looking like a rendering failure.",
+      "when_it_fails": "Thin error-bar whiskers instead of thick bands are fatal on mobile \u2014 sub-2px marks vanish and non-experts read the end caps as the meaningful values (a well-documented misreading). Also fails with more than ~5 rows; overlap regions start colliding and the chart becomes a plaid.",
+      "used_by": "A/B testing result tables (Statsig, Eppo, Optimizely) where the CI bar crossing a heavily-drawn zero line is the whole message; forest plots in meta-analysis; polling average charts with shaded margins"
+    },
+    {
+      "name": "Precision budget \u2014 significant figures as an uncertainty channel",
+      "how_it_works": "The number of digits you display is a claim about how much you know. High confidence gets an integer; medium gets nearest-5 with a tilde; low gets no number at all, only a band name. The US National Weather Service issues probability of precipitation exclusively in 10% increments for precisely this reason \u2014 it never shows 37%. Free to implement, zero screen real estate, and it kills the '89.3' credibility leak.",
+      "when_it_fails": "Users who screenshot and compare two agents at different precision levels can be confused about why one has a tilde. Needs a one-line legend somewhere. Also fails if rounding pushes two genuinely different agents onto the same displayed number \u2014 that case must fall into the tie treatment, not the rounding treatment.",
+      "used_by": "NWS / Apple Weather PoP in 10% increments, Google Maps ETA ranges ('12\u201318 min') vs point ETAs when traffic is stable, Zillow rounding conventions"
+    },
+    {
+      "name": "Frequency framing in the copy layer",
+      "how_it_works": "Replace the probability with a count of imagined outcomes: 'in 100 similar weeks, this agent beat its benchmark in 71' plus a 10x10 dot grid. Kay/Hullman's transit work (quantile dotplots, 'When (ish) is my bus') found discrete outcome displays beat continuous density displays for non-expert decision quality. The grid is a picture of the sentence, not a chart.",
+      "when_it_fails": "Needs enough dots to be countable \u2014 under ~20 it looks arbitrary, and the grid must be square/regular or people can't subitize. Animated versions (hypothetical outcome plots) are actively bad here: on a financial dashboard, jitter reads as live data and creates anxiety \u2014 the FiveThirtyEight 2016 election needle is the canonical warning.",
+      "used_by": "Kay et al. CHI 2018 quantile dotplots, FiveThirtyEight's 100-ball / simulation-count graphics, Microsoft election simulation displays, medical decision aids (icon arrays for treatment risk \u2014 the most-validated non-expert uncertainty display that exists)"
+    },
+    {
+      "name": "Expanding cone / fan for time-forward uncertainty \u2014 and its known failure mode",
+      "how_it_works": "Uncertainty widens with forecast horizon, drawn as a widening envelope. Useful for projected agent performance over a hold period.",
+      "when_it_fails": "This is the best-documented non-expert misreading in existence. Users read the cone edge as a hard boundary and the interior as uniform \u2014 for two decades people assumed 'outside the cone = safe'. NHC's response for the 2026 season is instructive: they added all *inland* tropical storm/hurricane watches and warnings into the standard cone graphic, and are testing an experimental cone built from ellipses at each forecast point capturing the 90th percentile of track error (about 23% wider than the operational 67% cone). The lesson for AiKi: don't just widen the band \u2014 render the *consequence* inside it (what your $500 actually does at the edges), because the band alone teaches the wrong model.",
+      "used_by": "NHC hurricane cone (2026 revision), Monte Carlo retirement projections (Vanguard, Fidelity, Empower 'likelihood of success' out of 10,000 simulations), Financial Times and Economist charts using hatched/tinted fills for the forecast segment of a line"
+    },
+    {
+      "name": "Provenance shown as a link to the primary artifact",
+      "how_it_works": "Instead of a badge asserting a property, show the thing that proves it and let the user click through. A verified contract badge that links to the source on the explorer is qualitatively stronger than any trust glyph, because the claim is falsifiable by the reader.",
+      "when_it_fails": "Fails the moment you use the *same* glyph family at two strengths for two categorically different guarantees. Chrome removed the address-bar padlock in 2023 specifically because users read a narrow technical assurance (transport encryption) as a global endorsement ('this site is safe'). Two shades of the same shield will be read as 'more secure / slightly less secure', never as 'enforced by code / enforced by a company's promise'.",
+      "used_by": "Etherscan / BscScan 'Contract Source Code Verified', Sigstore & npm provenance attestations, Apple App Privacy labels (and their weakness: self-reported), Chrome's padlock removal as the cautionary case"
+    },
+    {
+      "name": "Score \u2192 weighted factors \u2192 raw data (progressive disclosure with impact weights)",
+      "how_it_works": "Three levels. The number, then 3\u20135 named drivers each tagged with an impact size, then the underlying records. Credit Karma's 'Credit card use \u2014 High impact' is the reference implementation for a mass-market financial audience.",
+      "when_it_fails": "Almost nobody clicks through, so the top level must already be honest on its own \u2014 disclosure is a legitimacy signal for the 5% who check and a liability shield, not a substitute for a truthful headline. Also fails when factor names are jargon; each factor needs a consequence clause, not a metric name.",
+      "used_by": "Credit Karma / Experian score factors, Nutri-Score, Apple App Privacy label drill-down, Morningstar rating rationale"
+    }
+  ],
+  "anti_patterns": [
+    "Opacity, blur, or desaturation as the confidence channel. In an interactive product these already mean disabled, loading/skeleton, paywalled, or NSFW-blurred. A 40%-opacity score card will be read as 'this agent is unavailable', not 'we're unsure'. This is the most common recommendation in the uncertainty-viz literature and the most wrong one for a consumer product.",
+    "Color as the confidence channel in a trading UI. Green and red are already P&L; orange is already your CTA and brand. Spending hue on confidence guarantees a collision the first time a low-confidence agent is profitable. (Also fails for ~8% of male users on any red/green split.)",
+    "Thin error-bar whiskers on mobile cards. Sub-2px marks disappear, and non-experts systematically read the end caps as the two 'real' values rather than the interval bounds.",
+    "A bare decimal confidence figure ('0.22 confidence', 'confidence: 22%'). Meaningless to the target user, and the two-decimal presentation itself implies a precision you don't have about your own uncertainty.",
+    "Fusing performance and evidence quality into one composite 'trust score'. This is exactly what CoinGecko-style single trust grades do, and it destroys the differentiating claim \u2014 the user can no longer tell a mediocre-but-proven agent from an unproven-but-flashy one, which is the only distinction you're selling.",
+    "Gray as the low-confidence colour when gray is also your disabled/secondary colour. Every 'we don't know' state will read as 'turned off'.",
+    "Ordinal rank numbers (1, 2, 3) on items that are statistically tied. Users infer meaning from position with near-total reliability; if you print a 1 next to something, no caveat text undoes it.",
+    "An unordered list with no container as the tie treatment. Absence of ranking, without a drawn boundary and a name, reads as a bug or a failed sort.",
+    "Animated jitter / hypothetical outcome plots on a live financial dashboard. The FiveThirtyEight needle is the case study: motion in an uncertainty display reads as incoming news and produces anxiety, not calibration. It also can't be screenshotted, and crypto users share screenshots.",
+    "The same lock/shield glyph at two strengths for contract-enforced vs backend-enforced limits. Degree-encoding a difference in kind. See Chrome killing the padlock.",
+    "'Beta', 'Preview', or 'Experimental' labels standing in for a real uncertainty state. They describe your product's maturity, not this agent's evidence.",
+    "Decimals on the headline score (89.3). Every added digit is an unearned credibility claim and the first thing a skeptical crypto user will screenshot and mock.",
+    "A tie state or an insufficient-data state with no next step. 'We can't tell' without 'here's what would resolve it, and when' is precisely the evasiveness you're trying to avoid \u2014 and it's the one failure mode that makes honesty feel like a cop-out.",
+    "Hatching or texture rendered too fine. Sub-3px stripe pitch moir\u00e9s on retina downscale and in screenshots; it must be chunky enough to survive a Telegram forward."
+  ],
+  "recommendations": [
+    "Spend the black outline on evidence \u2014 it is the one free channel your brand hands you. Solid 3px black stroke = well-evidenced (\u2265 your full threshold). Dashed stroke = provisional. Dotted/ghost stroke with no fill = insufficient data. Stroke continuity is used nowhere else in the UI, survives grayscale, survives a Telegram screenshot, works at 24px in a list row, and is literally the logo's construction. Score value keeps fill and typography; confidence keeps stroke. Never let them share a channel.",
+    "Reserve #FDED02 yellow exclusively for uncertainty and unknown states, product-wide. Nothing else may be yellow. Do this and within a week users learn 'yellow = AiKi is telling me it doesn't know', which turns your differentiating claim into a pre-attentive brand asset. Orange #FD4A01 stays action/brand, black stays structure, cream stays ground.",
+    "Rank by lower confidence bound, display both numbers, label them in plain English. Steal BoardGameGeek's two-column structure exactly: headline the shrunk number large ('84 \u2014 what we'd stand behind'), show the raw point estimate small beside it ('95 observed, from 3 weeks'). The visible gap between the two numbers is your entire thesis rendered as a layout. Publish the prior in words: 'every agent is scored as if it had 20 weeks of average results until it earns its own.'",
+    "Ship a 20-cell evidence strip as a core component, one cell per week of live capital-at-risk operation. Chunky rounded squares with black outlines \u2014 brand-native. Fixed length always visible, so 3/20 shows seventeen empty holes. This is your sample-size affordance and it does more work than any interval visualization will, because it is countable rather than statistical.",
+    "Bind display precision to confidence: \u22650.85 \u2192 integer ('89'); 0.60\u20130.85 \u2192 nearest 5 with tilde ('\u224890'); <0.60 \u2192 no number at all, only the band name plus the evidence strip. Never render a decimal anywhere in the product. Precedent: NWS issues probability of precipitation only in 10% steps.",
+    "Build 'TOO CLOSE TO CALL' as a first-class designed state, not a fallback. One thick black rounded container wrapping the tied agents, yellow starburst sticker badge, ordinal numbers removed inside, order randomized per session with that stated in the container ('order shuffled \u2014 we're not implying one is better'), and a mandatory resolution line: '\u22486 more weeks of live data, or ~$40k more routed volume, would separate these.' The resolution line is non-optional \u2014 it is what makes the state read as rigour rather than a dodge. Model: Silver Bulletin's Toss-Up rating plus Statsig's days-to-significance.",
+    "For head-to-head comparison, draw thick horizontal interval bands and render the overlap as an explicit hatched shape with a label ('we can't tell these apart in this range'). Never whiskers. The overlap being a drawn object is the answer to 'how do we show indistinguishable without looking broken' \u2014 the ambiguity is something you built, not something missing.",
+    "Make the impostor state a response-variance sparkline, not a badge. Probe the agent with N materially different market states and plot output divergence. An honest agent is a jagged line; a static impostor is a literal flat line \u2014 legible in half a second with zero jargon. Copy: 'Returned identical output to 12 different market conditions.' Name the state RESPONDS, BUT NOT TO INPUT \u2014 distinct from OFFLINE (no response) and LIVE. Three states, three glyphs, mirroring Grafana's OK / No Data / Alerting separation. Render this one loud: full-bleed orange card with chunky black caution hatching, because it is the one state where your playful brand should stop being playful.",
+    "Encode the spend-cap distinction as two different shapes with two different failure sentences, never two shades of a shield or lock. Contract-enforced: black hexagonal seal, truncated contract address printed on it, links to BscScan \u2014 the address is the proof, and showing it is the design. Sub-line: 'Holds even if AiKi disappears.' Backend-enforced: cream rounded rect, dashed border, sub-line: 'AiKi enforces this. If our servers fail, this cap stops applying.' Chrome removing the padlock in 2023 is the cautionary precedent \u2014 a positive security glyph gets over-read as a blanket endorsement.",
+    "Write confidence as frequency, never as a coefficient. '0.94 confidence' \u2192 'in 100 weeks like these, this agent beat its benchmark in 71' with a 10\u00d710 grid of chunky brand dots. This is the best-supported finding for non-expert audiences (Kay/Hullman quantile-dotplot work; icon arrays in medical decision aids) and the dot grid is on-brand as a sticker motif.",
+    "Design the insufficient-data card as a full-strength positive state \u2014 full cream card, black outline, yellow badge, real copy \u2014 not a gray dash. Steam's 'Need more user reviews to generate a score' is the exact register. Always show what you DO know alongside it: source verified, caps on-chain, code hash, operator history. Absence of a score must never look like absence of the product.",
+    "Take the NHC lesson literally: don't just widen the band, render the consequence inside it. For any projected-performance view, put the dollar outcome at the interval edges on the chart ('at the bad edge of this range, your $500 is $437 after fees'), because a decade of hurricane research shows people read an uncertainty envelope as a hard boundary with a uniform interior unless you draw what happens inside it.",
+    "Add one 20-second first-run explainer, sticker-card deck format, built entirely around the $500 decision \u2014 'why an 89 can beat a 95 here'. Every uncertainty affordance in the research fails when the user lacks the mental model, and yours is deliberately counter-intuitive relative to every competitor's confident score. Show it once, make it skippable, make it re-openable from the score's info tap."
+  ],
+  "references": [
+    {
+      "name": "BoardGameGeek \u2014 'Geek Rating' vs 'Average Rating'",
+      "url": "https://boardgamegeek.com/browse/boardgame",
+      "why": "The closest existing thing to what AiKi must ship. Two numeric columns side by side: the raw crowd average and the Bayesian-shrunk rating that actually drives the ranking. A game with a 9.2 from 40 votes sits below a 8.4 from 90,000, and the UI shows you exactly why. Show this to the designer first \u2014 it proves the two-number layout is legible to a mainstream audience and has been for fifteen years."
+    },
+    {
+      "name": "IMDb Top 250 weighted rating",
+      "url": "https://help.imdb.com/article/imdb/track-movies-tv/faq-for-imdb-ratings/G67Y87TFYYP6TWAV",
+      "why": "Same shrinkage math with a minimum-votes threshold, at consumer scale. Useful as the argument for a public, plain-English statement of the prior \u2014 IMDb publishes the formula and it buys them enormous credibility with skeptics, which is exactly AiKi's position with crypto users."
+    },
+    {
+      "name": "Steam store review score + the 'Recent' / 'All Reviews' split",
+      "url": "https://store.steampowered.com/",
+      "why": "Two lessons in one page. First, refusal to compute: below the review threshold it says 'Need more user reviews to generate a score' as a normal, unashamed state. Second, it shows recency-weighted and lifetime evidence as two separate scores rather than blending them \u2014 directly applicable to an agent whose strategy degraded three months ago."
+    },
+    {
+      "name": "Reddit 'best' comment sort / Wilson score lower bound (Randall Munroe's write-up)",
+      "url": "https://www.evanmiller.org/how-not-to-sort-by-average-rating.html",
+      "why": "The canonical explanation of why point estimates rank badly with sparse samples, in language an engineer can implement this week. The design lesson is the inverse of BGG's: Reddit ships the math and shows the user nothing. AiKi should ship the math AND show the user \u2014 but the engineer needs this page to build it."
+    },
+    {
+      "name": "National Hurricane Center forecast cone \u2014 2026 operational revision and the experimental ellipse cone",
+      "url": "https://www.nhc.noaa.gov/experimental/cone/",
+      "why": "The best-documented case of non-experts misreading an uncertainty display, with a live redesign in progress. The 2026 operational cone now folds in inland watches and warnings (not just coastal) because people read 'outside the cone = safe'; the experimental version swaps circles for ellipses at each forecast point capturing the 90th percentile of track error, roughly 23% wider. The takeaway for AiKi is the fix, not the problem: they stopped trying to make the boundary clearer and started rendering the consequences inside it."
+    },
+    {
+      "name": "Silver Bulletin 2026 midterm forecast \u2014 'Toss-Up' race ratings",
+      "url": "https://www.natesilver.net/p/nate-silver-2026-midterm-election-polls-model",
+      "why": "Live proof that a named tie category works for a mass audience. Ohio, Iowa and Alaska are rated Toss-Up with their own visual treatment, and a 57% Senate probability is explicitly discussed as weak rather than sold as a call. Pair it with the 2016 FiveThirtyEight election needle as the counter-example: animated uncertainty jitter on a high-stakes live display produced panic, not calibration."
+    },
+    {
+      "name": "Statsig / Optimizely Stats Engine / GrowthBook experiment result views",
+      "url": "https://docs.statsig.com/experiments-plus/read-results",
+      "why": "The industry's most-iterated answer to 'show a non-answer without looking broken'. Confidence-interval bars against a heavily drawn zero line, an explicit 'Inconclusive' label, and \u2014 the move worth stealing \u2014 an estimated time or sample remaining until the result resolves. Sequential/always-valid p-values exist precisely because these tools assume users will peek constantly, which is exactly how a crypto user behaves."
+    },
+    {
+      "name": "Grafana alerting states: OK / No Data / Alerting",
+      "url": "https://grafana.com/docs/grafana/latest/alerting/fundamentals/alert-rules/state-and-health/",
+      "why": "'No Data' is a separate, mandatory, separately-configured state \u2014 not a variant of OK and not a variant of Alerting. This is precisely the trichotomy AiKi needs for LIVE / OFFLINE / RESPONDS-BUT-NOT-TO-INPUT, and it's a battle-tested argument for why the impostor case must be its own state rather than a low-confidence score."
+    },
+    {
+      "name": "Chrome's removal of the address-bar padlock (2023)",
+      "url": "https://blog.chromium.org/2023/05/an-update-on-lock-icon.html",
+      "why": "The single most important cautionary reference for AiKi's spend-cap problem. Google removed a positive security indicator because users read a narrow technical guarantee as a blanket endorsement of safety. Two shades of the same shield for contract-enforced vs backend-enforced caps will fail the same way \u2014 the difference must be carried by shape and by an explicit failure sentence."
+    },
+    {
+      "name": "Etherscan / BscScan 'Contract Source Code Verified'",
+      "url": "https://bscscan.com/",
+      "why": "Crypto-native provenance done right: the badge links to the actual verified source, so the claim is falsifiable by the reader in one click. AiKi's on-chain spend-cap seal should print the truncated contract address on the badge itself \u2014 in this audience the address is more persuasive than any glyph."
+    },
+    {
+      "name": "Zillow Zestimate + Estimated Sale Range",
+      "url": "https://www.zillow.com/zestimate/",
+      "why": "The largest-scale consumer range display in existence \u2014 a point estimate with an explicit range whose width signals uncertainty, plus published median error rates (roughly 1.9% on-market vs 7.5% off-market). Also a cautionary tale worth naming in the brief: because the point estimate is typographically dominant, people anchor on it and ignore the range. AiKi should invert that hierarchy."
+    },
+    {
+      "name": "Kay, Hullman et al. \u2014 quantile dotplots, 'When (ish) is my bus' and the 2018 CHI transit study",
+      "url": "https://dl.acm.org/doi/10.1145/3173574.3173718",
+      "why": "The empirical backbone for frequency framing with non-experts: discrete, countable outcome displays produced better real decisions than continuous density displays in a mobile, everyday, time-pressured context \u2014 the closest research setting to AiKi's. Read the mobile mockups, not the statistics."
+    },
+    {
+      "name": "Correll, Moritz & Heer \u2014 Value-Suppressing Uncertainty Palettes (CHI 2018)",
+      "url": "https://idl.cs.washington.edu/papers/uncertainty-palettes/",
+      "why": "If anyone on the team insists on encoding confidence in colour, this is the only rigorous way to do it: as certainty drops, the palette collapses toward fewer distinguishable values rather than fading out. Include it in the brief mainly so the team can consciously reject it \u2014 AiKi's colour budget is already spent on P&L and brand."
+    },
+    {
+      "name": "Credit Karma score factors",
+      "url": "https://www.creditkarma.com/",
+      "why": "The reference implementation of score \u2192 named factors with impact weights \u2192 raw records, for a mass-market financial audience with real money at stake. Directly transferable structure for 'why is this agent an 84?'"
+    },
+    {
+      "name": "CoinGecko exchange Trust Score",
+      "url": "https://support.coingecko.com/hc/en-us/articles/36442561461657-Trust-Score-Methodology",
+      "why": "The crypto-native precedent, and mostly a warning. Green/Yellow/Red plus 'None' for unscored exchanges, with a May 2026 rebuild that dropped web traffic for order-book depth and added grading on a curve. It shows a graded trust label can gain traction in this market \u2014 but it fuses everything into one opaque colour, which is exactly the thing AiKi is differentiating against. Useful as the 'here is the competitor's answer' slide."
+    },
+    {
+      "name": "NWS probability of precipitation in 10% increments (as surfaced by Apple Weather)",
+      "url": "https://www.weather.gov/ffc/pop",
+      "why": "A whole national forecasting agency deliberately refusing to display precision it doesn't have. The cheapest, highest-credibility idea in this document: never render 89.3."
+    }
+  ]
+}

@@ -1,0 +1,200 @@
+{
+  "topic": "Dense, data-heavy interface references for AiKi (2025\u20132026): calm density, honest uncertainty, graceful staleness",
+  "summary": "The best dense interfaces of 2025\u201326 don't win on whitespace \u2014 they win by giving every visual property exactly one semantic job and never reusing it. Hyperliquid is monochrome except for direction. Linear uses one accent for \"assigned to you.\" Stripe's Radar shows a risk score plus the signals that produced it, never the score alone.\n\nFor AiKi, three references matter more than the rest. LMArena ships a column literally headed \"Rank (UB)\" \u2014 a model's rank is 1 + the number of models whose CI lower bound exceeds its upper bound, so statistically tied models share a rank number. That is your \"we cannot distinguish these three agents\" state, already solved and open-sourced (arena-rank). Datadog treats NO DATA as a fifth monitor state alongside OK/WARN/ALERT, with five configurable missing-data behaviors including \"Show last known status\" \u2014 your degrade path, named. Chainlink judges staleness against a per-feed declared heartbeat and deviation threshold, so freshness is a contract the source publishes, not a global 5-minute rule you impose.\n\nThe brand tension resolves by splitting layers. Sticker language (chunky strokes, starburst, badges) does semantic work on identity, verdict, and state; numbers live in a strictly quiet tabular layer. Best single move: make outline weight encode enforcement provenance \u2014 thick double stroke for smart-contract-enforced, single thin for backend-enforced, dashed for agent self-reported. That is your logo's vocabulary carrying the highest-stakes distinction in the product.",
+  "patterns": [
+    {
+      "name": "Rank-as-interval (Rank UB / rank spread)",
+      "how_it_works": "The leaderboard column is headed \"Rank (UB)\", not \"Rank\". A model's rank = 1 + the count of models whose 95% CI lower bound exceeds this model's upper bound. Consequence: models whose intervals overlap literally share the same rank integer \u2014 three rows all read \"1\". The score column carries a paired \"95% CI\" column rendered as asymmetric +x/-y, and a \"Votes\" column so sample size is always visible next to the estimate. Methodology is open-sourced as the arena-rank Python package, including reweighting for models with few battles.",
+      "when_it_fails": "Users still scan the score column and mentally re-rank by point estimate, defeating the whole mechanism. It fails harder when intervals are so wide that everything ties \u2014 the table becomes uninformative and users route around it. Also fails on mobile where the CI column is the first thing dropped.",
+      "used_by": "LMArena / arena.ai leaderboard; Artificial Analysis; Scale SEAL leaderboards"
+    },
+    {
+      "name": "No Data as a first-class state, with an explicit degrade policy",
+      "how_it_works": "Missing data is not an error and not a zero \u2014 it is its own status. Datadog monitors expose five distinct behaviors when a query returns nothing for N minutes: evaluate as zero, show last known status, show NO DATA silently, show NO DATA and notify, or resolve to OK. The choice is per-monitor and visible in config, so an operator always knows which lie the dashboard is telling. Critically, a monitor that has never reported data cannot alert on absence \u2014 the system distinguishes \"went quiet\" from \"never spoke\".",
+      "when_it_fails": "\"Show last known status\" silently lies if the age of that last-known value is not rendered adjacent to it. The pattern only works when last-known is always stamped with how old it is and against what expectation.",
+      "used_by": "Datadog monitors; Grafana per-panel no-data handling; Prometheus/Alertmanager"
+    },
+    {
+      "name": "Freshness contract published by the source (heartbeat + deviation threshold)",
+      "how_it_works": "Each price feed declares two parameters: a heartbeat (max idle time before a forced update) and a deviation threshold (% move that triggers an early update). Consumers read updatedAt from latestRoundData() and compare age against that feed's own heartbeat. So a 4-hour-old value from a 24h-heartbeat feed is fresh; a 90-second-old value from a 60s-heartbeat feed is stale. Docs explicitly instruct consumers to pause operation or switch to an alternate mode on staleness rather than proceed.",
+      "when_it_fails": "\"Heartbeat\" is jargon; users read a raw age and panic or relax for the wrong reasons. Needs plain-language translation at the point of display (\"this source promises an update every 24h \u2014 last one 4h ago\").",
+      "used_by": "Chainlink Data Feeds / data.chain.link; Pyth confidence intervals; RedStone"
+    },
+    {
+      "name": "Simulation-before-signing (WYSIWYS)",
+      "how_it_works": "Before a signature, the wallet simulates the transaction and renders the predicted balance delta in plain terms (\"you send 1,000 USDT, you receive ~0.31 BNB\") rather than calldata. A separate rule engine scores the target contract against known phishing and exploit patterns and emits discrete badges. Two independent layers: what will happen (simulation) and whether you should be worried (risk rules). They are never merged into one score.",
+      "when_it_fails": "Simulation is itself a prediction against a state that may change before inclusion. If the sim result isn't timestamped and re-run on a countdown, it becomes a confident lie. Also fails when every transaction gets a warning badge \u2014 alert fatigue kills the signal.",
+      "used_by": "Rabby Wallet security engine; Safe{Wallet} with Blockaid + Tenderly simulation; Blowfish"
+    },
+    {
+      "name": "Three-tier progressive disclosure ending in raw bytes",
+      "how_it_works": "Every rendered value has a documented path down to the artifact that produced it. Tier 1: the humanised summary. Tier 2: structured attributes (key/value, typed). Tier 3: the raw payload \u2014 API object JSON, SQL query, decoded-vs-raw calldata toggle. Stripe Workbench puts the raw API object and the event log that touched it on every object page. Dune links every chart to the SQL that generated it. Etherscan/Blockscout toggle decoded and raw input data on the same tx.",
+      "when_it_fails": "When tier 3 is a different page with a different URL scheme, nobody goes there and the honesty is theatre. It must be an expand-in-place on the same route, and the route must be linkable at depth."
+    },
+    {
+      "name": "Waterfall timeline where in-flight spans are visually unbounded",
+      "how_it_works": "Long-running processes render as a span tree on a shared time axis. Completed spans have a hard right edge and a frozen duration. In-flight spans have no right edge \u2014 they extend to the playhead with a soft/hatched terminus and an elapsed timer that counts up. Nesting shows causality. Orphan spans (parent never arrived) are rendered at root with an explicit marker rather than silently reparented or dropped.",
+      "when_it_fails": "Fake progress bars for steps of unknown duration. If you can't estimate completion, an indeterminate elapsed counter is honest and a percentage is not.",
+      "used_by": "Sentry Trace Waterfall; Datadog APM flame graphs; LangSmith run trees; Vercel build log streaming"
+    },
+    {
+      "name": "Stale-while-revalidate as the default data lifecycle",
+      "how_it_works": "Skeletons appear only on first paint, when there is genuinely nothing to show. Every subsequent fetch keeps the previously rendered value on screen, optionally at slightly reduced emphasis, with a hairline progress indicator at the container edge. Data never regresses from a number back to a spinner. Vercel literally shipped this as a library (SWR) and runs it across their own dashboard.",
+      "when_it_fails": "Without a visible age, indefinite stale-while-revalidate is indistinguishable from working software \u2014 the user believes they're looking at live data forever. SWR needs a staleness ceiling after which the value visibly demotes."
+    },
+    {
+      "name": "Per-panel failure isolation",
+      "how_it_works": "One broken query degrades one panel, not the dashboard. Grafana renders a corner error affordance on the failing panel with the query error retrievable, while every healthy panel keeps rendering. Panels also get an explicit configurable 'no data' render so an empty series is a designed state rather than a blank rectangle.",
+      "when_it_fails": "Users stop noticing the small corner glyph. Needs a page-level roll-up (\"3 of 11 sources degraded\") so partial failure is legible without scanning.",
+      "used_by": "Grafana dashboards; Datadog; Vercel Observability"
+    },
+    {
+      "name": "Score plus contributing signals, never score alone",
+      "how_it_works": "Stripe Radar shows a fraud risk score and immediately below it the individual rules and signals that moved it, each with direction and weight. The score is presented as a summary of an audit trail, not as an oracle. The user can disagree with the score by disagreeing with a specific signal.",
+      "when_it_fails": "When the signal list is longer than ~7 items it becomes wallpaper. Needs the top 3 movers surfaced and the rest collapsed.",
+      "used_by": "Stripe Radar; Sentry Seer root-cause with explicit uncertainty framing; Arkham entity attribution (labelled 'inferred' vs 'verified')"
+    },
+    {
+      "name": "Named accountable party on every risk surface",
+      "how_it_works": "Morpho vault pages name the curator who chose the market allocations, and each market row exposes its LLTV and specifically which oracle secures it. Risk is attributed to a party and a mechanism, not to the protocol in the abstract. Sky/Ethena transparency pages do the equivalent with custodian names and attestation dates.",
+      "when_it_fails": "A name without a track record is just a logo. The identity must link to its own history page or it becomes brand-washing.",
+      "used_by": "Morpho vaults; Sky (MakerDAO) transparency; Ethena reserve pages"
+    },
+    {
+      "name": "Showing the losing options, not just the winner",
+      "how_it_works": "CoW Swap surfaces solver competition \u2014 you see the quote you got and evidence that competing solvers produced worse ones. The winning number is made credible by publishing the alternatives it beat, plus a visible countdown on quote validity.",
+      "when_it_fails": "Only credible if the alternative set is complete and unfiltered. Publishing a curated set of losers is worse than publishing none."
+    },
+    {
+      "name": "Color reserved for direction only, everywhere else monochrome",
+      "how_it_works": "Hyperliquid runs a near-monochrome UI at very small tabular numerals and spends its entire color budget on one axis: PnL/price direction. Because nothing else is colored, a green number is unambiguous at a glance across a screen carrying hundreds of values. Density becomes calm because saturation is scarce, not because elements are far apart.",
+      "when_it_fails": "Breaks instantly the moment a second meaning claims a color. If green means both 'up' and 'verified', both meanings are destroyed.",
+      "used_by": "Hyperliquid; Bloomberg terminal; TradingView"
+    },
+    {
+      "name": "Freshness badge attached to the datum, not the page",
+      "how_it_works": "TradingView puts a delayed-data indicator next to the individual symbol's price, not in a global header, because different symbols have different feed entitlements. Freshness is a property of a cell, and in a comparison table different columns for the same row can legitimately have different ages.",
+      "when_it_fails": "A per-cell badge on a dense table is visual noise if every cell is fresh. Render it only on the exception \u2014 fresh is the silent default, stale is the marked case."
+    }
+  ],
+  "anti_patterns": [
+    "Rendering confidence as a second number beside the score (89 / 0.94). Users read two numbers as two scores and average them. Confidence must change how the score itself is drawn \u2014 interval width, or significant digits \u2014 not sit next to it.",
+    "Printing more precision than the confidence supports. Showing '95.3' at 0.22 confidence is a lie told by typography. Cap displayed significant digits to what the interval justifies: 95 \u00b122 should render as '~95', and 89 \u00b11 as '89.2'.",
+    "Spinners or skeletons replacing a value that was already on screen. Once a number has been rendered, it may only be replaced by a newer number or demoted to a labelled stale state \u2014 never by a loading affordance.",
+    "A CSS-animated 'live' pulse that runs regardless of socket state. Animation is a truth claim about a live connection. If the stream drops, the pulse must stop within one tick and become a static ring, otherwise the whole product's honesty claim is falsifiable in devtools.",
+    "Reusing green/red for verified/unverified when green/red already carries PnL direction. In a financial UI, direction owns that pair permanently.",
+    "Default-sorting a comparison table by point estimate. It reintroduces exactly the false confidence the product exists to reject. Sort by rank-lower-bound or by confidence-adjusted score, and label the sort key in the header.",
+    "Collapsing liveness, performance, economics, and risk into one composite trust score. Composite scores destroy the ability to say 'high performance, unverifiable liveness', which is the most common real state of an agent.",
+    "Traffic-light-only risk with no quantity or evidence link. A red dot with no path to why is indistinguishable from a bug.",
+    "Tooltip-only disclosure of load-bearing caveats. Hover does not exist on touch, and the caveat is exactly the thing a user on a phone about to grant spend authority needs.",
+    "Fake determinate progress bars for agent runs of unknown duration. An elapsed counter that counts up is honest; a bar at 70% that sits there is not.",
+    "Empty-state illustrations where a 'no data' cell belongs. In a comparison table an em-dash with a reason on demand beats a friendly graphic \u2014 the graphic implies a temporary condition when the truth may be permanent.",
+    "Rendering an unreachable source and a source returning suspicious data in the same error style. HTTP-200-but-implausible is a different fact from HTTP-timeout and needs a different mark.",
+    "Using relative time alone past the staleness threshold. '2 hours ago' is fine when fresh; once degraded, show absolute time plus relative ('14:02 UTC \u00b7 2h 11m ago') because the user is now doing forensics, not glancing."
+  ],
+  "references": [
+    {
+      "name": "LMArena leaderboard (arena.ai) + arena-rank",
+      "url": "https://arena.ai/leaderboard",
+      "why": "The single most directly transferable reference in this brief. Its 'Rank (UB)' column makes statistical ties a native, non-error state: rank = 1 + number of models whose CI lower bound beats this model's upper bound, so indistinguishable models share a rank integer. Paired columns for 95% CI and vote count keep sample size visible next to every estimate. The methodology is open-sourced as the arena-rank Python package with reweighting for low-sample entrants \u2014 you can adopt the statistics, not just the visual. Read the ranking-method writeup at https://news.lmarena.ai/ranking-method/ and https://github.com/lmarena/arena-rank."
+    },
+    {
+      "name": "Datadog monitor configuration (No Data semantics)",
+      "url": "https://docs.datadoghq.com/monitors/configuration/",
+      "why": "Proves that a serious ops product treats missing data as a status, not a failure \u2014 five explicit configurable behaviors including 'Show last known status' and 'Show NO DATA and notify', plus the distinction that a monitor that never reported cannot alert on absence. That last distinction is exactly your 'never had evidence' vs 'had evidence, source went dark' split. Show a designer the monitor status list: OK / WARN / ALERT / NO DATA is the state machine AiKi needs."
+    },
+    {
+      "name": "Chainlink Data Feeds (heartbeat + deviation threshold + updatedAt)",
+      "url": "https://docs.chain.link/data-feeds",
+      "why": "Defines freshness as a contract the source publishes rather than a threshold the UI invents. Each feed declares a heartbeat and a deviation threshold; consumers compare updatedAt against that feed's own promise and are explicitly told to pause or switch modes on staleness. For AiKi this legitimises a per-source freshness SLA rendered on the Agent Passport \u2014 and gives you crypto-native vocabulary your users already recognise."
+    },
+    {
+      "name": "Hyperliquid",
+      "url": "https://app.hyperliquid.xyz/trade",
+      "why": "The best current proof that extreme density can be calm. Orderbook, positions, funding, fills and chart in one viewport at small tabular numerals, with the entire colour budget spent on one axis (direction). Show a designer how little chrome there is per data point and how strict the tabular-figure alignment is \u2014 density is achieved by removing decoration, not by shrinking type."
+    },
+    {
+      "name": "Morpho app (vaults and markets)",
+      "url": "https://app.morpho.org/",
+      "why": "Best-in-class 'who is accountable for this risk' surface in DeFi. Vaults name the curator; market rows expose LLTV and specifically which oracle secures the market. This is the closest existing analogue to an Agent Passport \u2014 a named party with delegated authority over other people's money, rendered with its parameters exposed rather than abstracted away."
+    },
+    {
+      "name": "Aave v3 dashboard (health factor)",
+      "url": "https://app.aave.com/",
+      "why": "The reference for compressing a risk model into one honest scalar. Health factor gets a colour ramp, an explicit liquidation threshold, and \u2014 crucially \u2014 a simulate-before-commit slider so the user sees the number move before authorising. AiKi's spend-cap and authority-grant flow should borrow the pre-commit simulation directly."
+    },
+    {
+      "name": "Rabby Wallet",
+      "url": "https://rabby.io/",
+      "why": "Simulation-first signing: predicted balance changes in plain language plus a separate rule-based risk engine, kept as two distinct layers rather than one merged score. Directly applicable to the moment a user grants an agent scoped authority \u2014 show the delta, then show the warnings, never blend them."
+    },
+    {
+      "name": "Safe{Wallet}",
+      "url": "https://safe.global/",
+      "why": "The canonical UI for contract-enforced versus app-enforced constraints. Modules and guards are on-chain and immutable; app-level settings are not, and Safe's signing flow with Blockaid scanning and Tenderly simulation makes the boundary legible. This is the reference for your 'spend cap enforced by a smart contract must not look like one enforced by our backend' requirement."
+    },
+    {
+      "name": "DeFiLlama",
+      "url": "https://defillama.com/",
+      "why": "Best handling of missing and unreliable data in crypto. Dashes rather than zeros for unavailable TVL, per-protocol methodology links, explicit double-counting flags, fork and audit annotations, and per-chain update timing. It is not beautiful, but it is the most intellectually honest data product in the space \u2014 and it stays usable at extreme row counts."
+    },
+    {
+      "name": "Dune",
+      "url": "https://dune.com/",
+      "why": "Provenance as a first-class UI element: every chart links to the SQL that produced it, so the raw-evidence tier is a click from any rendered number and is publicly forkable. This is the model for AiKi's evidence layer \u2014 the receipt is not a screenshot, it is a re-runnable artifact."
+    },
+    {
+      "name": "CoW Swap",
+      "url": "https://swap.cow.fi/",
+      "why": "Publishes the competition, not just the winner \u2014 solver results plus a visible quote-validity countdown. Makes a number credible by showing what it beat, and makes freshness an explicit expiring property of a quote. Directly transferable to agent comparison and to any quoted economics on the Agent Passport."
+    },
+    {
+      "name": "Stripe Dashboard + Workbench",
+      "url": "https://docs.stripe.com/workbench",
+      "why": "The reference for summary \u2192 structured \u2192 raw drill-down on entity pages: every object exposes its raw API representation and the event log that touched it, in place. Pair with Radar, which shows a risk score alongside the specific signals that produced it. Between them they cover both the evidence tier and the 'never show a bare score' rule."
+    },
+    {
+      "name": "Sentry (Trace Explorer / issue pages)",
+      "url": "https://docs.sentry.io/product/explore/traces/",
+      "why": "Trace waterfall for long-running work: span tree on a shared time axis, drill from span to attributes to raw payload, and issue pages that lead with first-seen/last-seen/count rather than a single number. Sentry's Seer root-cause output is also worth studying for how it frames a machine guess as a guess."
+    },
+    {
+      "name": "Vercel dashboard (deployments + Observability)",
+      "url": "https://vercel.com/docs/observability",
+      "why": "Two things specifically: deployments are immutable objects with permanent shareable URLs and a status pill plus live-tailing logs with an elapsed timer \u2014 the model for AiKi receipts and execution timelines. And the Observability views report p75/p90/p99 rather than averages, which is the correct default for anything an agent does repeatedly."
+    },
+    {
+      "name": "Linear",
+      "url": "https://linear.app/",
+      "why": "The reference for density plus speed: optimistic local mutation with a non-blocking sync indicator, keyboard-first navigation, one accent colour with one meaning, and no full-page spinners anywhere. Study how little the UI moves during data updates \u2014 stability under change is what makes density feel calm."
+    },
+    {
+      "name": "Grafana",
+      "url": "https://grafana.com/docs/grafana/latest/panels-visualizations/",
+      "why": "Per-panel failure isolation and configurable no-data rendering: one broken query degrades one panel while the dashboard survives, and empty series are a designed output rather than a blank box. This is the architecture for a dashboard whose upstream sources fail independently \u2014 which is AiKi's normal condition, not its edge case."
+    },
+    {
+      "name": "Etherscan / Blockscout contract and tx pages",
+      "url": "https://bscscan.com/",
+      "why": "Two conventions worth stealing verbatim: the decoded-versus-raw input data toggle on every transaction, and the verified-versus-unverified contract state, which is a genuine binary rendered as a genuine binary. Your users are already fluent in both \u2014 reuse the vocabulary rather than inventing one."
+    }
+  ],
+  "recommendations": [
+    "Adopt LMArena's rank-interval mechanic literally on the comparison table. Head the column 'Rank (range)' and compute rank as 1 + the number of agents whose confidence-interval lower bound exceeds this agent's upper bound. Agents that cannot be separated get the same integer and are drawn inside one shared tie band \u2014 a single cream card with a thick black outline wrapping all three rows, labelled 'statistically tied at this sample size'. That band is a designed component, not an error message, and it is the visual proof of your entire differentiating claim. Default-sort by lower bound, and label the sort key in the header so the choice is visible.",
+    "Never render confidence as a second number. Encode it as the drawing of the score itself: a horizontal interval bar behind the numeral whose width is the CI, plus significant-digit clamping so low confidence physically cannot display false precision ('~95' at 0.22 vs '89.2' at 0.94). Score 89/0.94 outranking 95/0.22 then requires no explanation \u2014 the 95 is visibly a smear and the 89 is visibly a point.",
+    "Make outline weight encode enforcement provenance across the entire product. Thick double black stroke = enforced by a smart contract, with the contract address and the exact function linked. Single thin stroke = enforced by AiKi's backend. Dashed stroke = agent self-reported, unverified. This is the highest-leverage move in the brief: it uses the sticker brand's native vocabulary \u2014 chunky outlines \u2014 to carry the most safety-critical distinction in the product, and it survives greyscale, small sizes, and colour blindness. Publish it as the first entry in the design system with a legend that appears on the authority-granting screen.",
+    "Give each palette colour exactly one semantic job and never reuse it. Orange #FD4A01 = user authority and action required (nothing else, ever). Yellow #FDED02 = uncertainty, staleness, degraded evidence. Black = confirmed and contract-backed. Cream #F9F8F1 = ground. Since yellow now owns uncertainty, a stale Agent Passport visibly yellows \u2014 which is memorable, brand-native, and impossible to misread. Do not let orange double as both brand accent and alert colour; if the brand needs a decorative accent elsewhere, use black outline weight or cream-on-black inversion instead of a hue.",
+    "Define four data states, not two, and give each a distinct render. LIVE (within the source's declared heartbeat): full colour, tabular figures, socket-driven pulse. STALE (last-known-good, past heartbeat): ink desaturates, orange accents become outline-only, a yellow age chip attaches to the cell reading absolute + relative time. NO DATA (never observed): em-dash plus an on-demand reason, never a zero and never an illustration. UNTRUSTED (bytes received but failed a plausibility or determinism probe): hatched or halftone fill \u2014 visually distinct from both filled and empty, and brand-native as a sticker texture. Ship all four as one component with a state prop so no screen can invent a fifth.",
+    "Give the impostor-endpoint case its own named state and its own probe narrative. An endpoint returning HTTP 200 with byte-identical responses to varied inputs is not 'offline' and not 'error' \u2014 it is 'responding, not reasoning'. Render it as the hatched UNTRUSTED state with a one-line evidence summary ('12 distinct probes, 12 identical responses, last 09:41 UTC') and a drill-down to the probe payloads. This is your most defensible screenshot; design it as a hero state, not a footnote.",
+    "Store and display a per-source freshness SLA, Chainlink-style. Every evidence source on the Agent Passport declares its own expected update cadence, and the UI judges age against that declaration rather than a global timeout. Render it in plain language on hover and in the raw tier as the actual parameter: 'on-chain settlement \u2014 expected every block, last 4s ago' next to 'third-party performance attestation \u2014 expected daily, last 31h ago (overdue)'. Same panel, different verdicts, both honest.",
+    "Attach freshness to the cell, not the page \u2014 but only on the exception. In the side-by-side comparison, fresh cells carry no badge at all; only stale, missing, and untrusted cells are marked. Add a single page-level roll-up in the header ('4 of 17 signals degraded') so partial failure is legible without scanning, borrowing Grafana's per-panel isolation model so one dead upstream never blanks the comparison.",
+    "Make animation a truth claim you can be held to. The live pulse must be driven by actual socket/stream events, not a CSS keyframe loop \u2014 on disconnect it stops within one tick and becomes a static ring. Write this into the design system as a rule: motion is reserved exclusively for data arriving. It costs almost nothing to implement and it means a sceptical user opening devtools finds the product telling the truth, which is worth more than any marketing copy about honesty.",
+    "Ban the spinner-over-rendered-data pattern outright. Skeletons appear only on first paint; every subsequent refresh keeps the prior value on screen with a hairline progress indicator at the container edge, and demotes to the STALE render once the source's heartbeat is exceeded. Data may only be replaced by newer data or by a labelled degraded state \u2014 never by a loading affordance.",
+    "Build the execution timeline as a Sentry-style waterfall with unbounded in-flight spans. Completed steps get a hard right edge and a frozen duration; the running step has no right edge, a hatched terminus at the playhead, and an elapsed counter that counts up. No determinate progress bars for steps of unknown duration. Steps that failed and retried nest under one parent so the retry count is visible without expanding.",
+    "Make receipts immutable, permalinked objects the way Vercel deployments are. Every agent action gets a stable URL, a frozen snapshot of the evidence as it stood at execution time, and an on-chain reference where one exists. Crucially, a receipt must render identically forever \u2014 if it was executed on stale evidence, the receipt says so permanently rather than silently refreshing to today's numbers. Show the shareable receipt page to investors; it is the artifact that proves the honesty claim is architectural.",
+    "Enforce three-tier disclosure in place, on the same route. Summary \u2192 structured attributes \u2192 raw payload as expand-in-place, with deep-linkable anchors, following Stripe Workbench and Dune. Any evidence claim on the Agent Passport that cannot reach a raw artifact within two expands should not be on the passport. This also gives you a hard editorial test for deciding what earns a slot.",
+    "Split the type system into a loud layer and a quiet layer, and let the brand live entirely in the loud one. Loud: agent identity, verdict chips, authority CTAs, empty and degraded states, navigation \u2014 chunky rounded sticker forms, thick outlines, the starburst, the yellow badge. Quiet: every number, in one tabular-figure family, four ink steps, no decoration, tight vertical rhythm. The playfulness then reads as confidence about the product rather than levity about the money, and the density stays calm because nothing decorative competes inside the data region.",
+    "Design the 'we cannot distinguish these agents' outcome as a recommended action, not a dead end. When the tie band fires, offer the next honest move \u2014 'run 200 more paper trades', 'compare on a narrower market condition', 'these differ on economics even where performance ties' \u2014 with the differentiating axis highlighted. A designed state needs an exit, otherwise honest uncertainty reads as product failure to a user who came to make a choice.",
+    "Adopt Morpho's accountability convention on the Agent Passport: name the party, name the mechanism. Every claim carries who asserted it (the agent, AiKi's probes, an on-chain contract, a third party) as an attribution chip, styled with the same outline-weight vocabulary as enforcement provenance. Self-reported capability claims get the dashed outline and sit visually below probe-verified ones, so the passport's own layout ranks evidence quality without needing a paragraph to explain it."
+  ]
+}

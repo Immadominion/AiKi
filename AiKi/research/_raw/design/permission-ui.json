@@ -1,0 +1,166 @@
+{
+  "topic": "Making scoped authority legible before a user grants it \u2014 consent UI prior art for AiKi's Mandate Builder, with special attention to communicating enforcement tiers (contract-enforced vs backend-enforced)",
+  "summary": "The good news: the exact problem AiKi has \u2014 a user pre-authorising an autonomous agent to spend real money under constraints \u2014 now has real, shipped prior art, and most of it converges on the same four parameters AiKi already has. Coinbase/Base Spend Permissions ships `allowance` + `period` + `start`/`end`. MetaMask's ERC-7715 ships typed permissions (`erc20-token-periodic`, `native-token-stream`) with `periodAmount`, `periodDuration`, `expiry`. Google's AP2 ships signed Intent/Cart/Payment Mandates and \u2014 most usefully \u2014 a formal human-present vs human-not-present split that is precisely AiKi's \"when is human approval required\" axis. Privacy.com has been shipping the renewing-vs-lifetime cap distinction to consumers since 2016 with a four-value vocabulary (per transaction / per month / per year / total). Steal all of it; do not invent vocabulary.\n\nThe bad news: nobody has solved enforcement tiering, and the one industry that tried it at scale \u2014 browser TLS \u2014 publicly abandoned it. Chrome killed the padlock in v117 after research showed only 11% of users understood it and most read it as \"this site is safe.\" EV certificates were pulled from the URL bar in 2019 for the same reason. The transferable lesson is brutal and directly applicable: **positive trust badges get ignored or over-read; negative indicators change behaviour.** So do not build a \"cryptographically secured \u2713\" badge. Build a mandatory enforcement column where every constraint must declare a tier, make the *weak* tier visually loud, and state the failure mode in plain language (\"if AiKi's servers are compromised, this cap may not hold\") rather than asserting strength.",
+  "patterns": [
+    {
+      "name": "Exhaustive asset diff \u2014 absence is the guarantee",
+      "how_it_works": "Rabby, Tenderly Transaction Preview, Blockaid and Safe's simulation render a *complete, closed* list of every balance change a transaction will cause: tokens out (red, minus), tokens in (green, plus), approvals granted, NFTs moved. Because the enumeration is exhaustive, anything NOT in the list is guaranteed unchanged. This is the single best answer to 'how do you show what it CANNOT do' \u2014 you don't write a negative list, you make the positive list provably complete and tell the user so. Rabby pairs this with a rules engine that assigns each detected condition a severity (safe / warning / danger / forbidden) and escalates the confirm control accordingly \u2014 at 'forbidden' the sign button is disabled outright, not just reddened.",
+      "when_it_fails": "Simulation is a forecast against a state snapshot, not a promise. It breaks on state-dependent contracts, MEV, multi-block sequences, and \u2014 critically for AiKi \u2014 on *future* actions. An agent mandate authorises N transactions over 30 days, so there is no single diff to simulate. AiKi must simulate the authority envelope, not one transaction, which nobody has good prior art for. Also fails when users see the same clean diff 50 times and stop reading it.",
+      "used_by": "Rabby, Tenderly, Safe{Wallet}, Blockaid (in MetaMask/Zerion), Pocket Universe"
+    },
+    {
+      "name": "The four-value cap period vocabulary (renewing vs lifetime in one control)",
+      "how_it_works": "Privacy.com's spend-limit control is a single amount field plus a period selector with exactly four values: Per Transaction / Per Month / Per Year / Total. 'Total' sits inside the same selector as the renewing options, which forces the user to make an explicit choice between renewing and lifetime rather than defaulting into one. Coinbase Spend Permissions does the same in code: an `allowance` scoped to a `period`, where usage resets to zero when the clock rolls into the next period, all bounded by an absolute `start`/`end`. MetaMask ERC-7715 splits this into distinct *permission types* \u2014 `erc20-token-periodic` (periodAmount + periodDuration) vs `erc20-token-allowance` (a single non-renewing maxAmount) \u2014 so the two can never be confused at the type level.",
+      "when_it_fails": "The failure is renderingn them identically after the fact. A '180 BNB cap' chip on a dashboard is catastrophically ambiguous: 180 forever, or 180 every week for a year (= 9,400)? Users systematically underestimate the total exposure of a renewing cap. The control communicates well at grant time and terribly at review time unless the two forms use visually different components.",
+      "used_by": "Privacy.com, Lithic, Revolut disposable/merchant-locked cards, Coinbase Spend Permissions, MetaMask ERC-7715"
+    },
+    {
+      "name": "Target \u00d7 function \u00d7 parameter scoping grid, with a diff before apply",
+      "how_it_works": "Zodiac Roles Modifier (Gnosis Guild) lets a Safe grant a role permission to call specific functions on specific contracts with conditions on individual calldata parameters, plus per-role allowances (rate limits). The Roles web app renders this as a navigable tree \u2014 contract \u2192 function \u2192 parameter conditions \u2014 and, crucially, shows a **permission diff** against the currently deployed role before you sign the update. Stripe's restricted API keys use the flat version: a full resource \u00d7 permission grid where every resource has an explicit None / Read / Write state, so denied capabilities are visible rows rather than absent ones. GitHub's fine-grained PATs do the same and print 'No access' explicitly in the pre-generate summary.",
+      "when_it_fails": "Enumeration doesn't scale to comprehension. A Zodiac role with 40 scoped functions is technically complete and humanly unreadable. It also encodes power at the wrong altitude \u2014 users think in outcomes ('rebalance my LP'), not in `0x38ed1739 swapExactTokensForTokens`. The grid is the audit artefact, not the consent artefact; you need a semantic layer above it.",
+      "used_by": "Zodiac Roles Modifier v2, Stripe restricted keys, GitHub fine-grained PATs, AWS IAM policy summaries"
+    },
+    {
+      "name": "Clear signing vs blind signing \u2014 a two-state legibility indicator that actually shipped",
+      "how_it_works": "Ledger's ERC-7730 (now stewarded by the Ethereum Foundation, v2 shipped April 2026) defines a metadata registry that lets a wallet render a contract call in human terms. The load-bearing UI decision: when the descriptor is *missing*, the device must show an explicit blind-signing warning and require a separate acknowledgement. It is a binary, honest, negatively-framed indicator \u2014 'we cannot tell you what this does' \u2014 rather than a positive 'verified' badge. This is the closest shipped analogue to AiKi's enforcement-tier problem, and it works because the weak state is the one that interrupts.",
+      "when_it_fails": "Coverage gaps mean users hit the blind-signing warning constantly on long-tail contracts, and habituate to clicking through it. Ledger's own history shows blind signing acknowledgement became a routine tap for power users. Any tier indicator that fires too often becomes furniture.",
+      "used_by": "Ledger (ERC-7730 / Clear Signing Alliance), Safe{Wallet} post-Bybit, Rabby, Frame"
+    },
+    {
+      "name": "Named tier ladders with a stated attack model per level",
+      "how_it_works": "SLSA build levels (L1/L2/L3) are the best existing model for 'how strongly is this guarantee held.' Each level is a *name* with an explicit sentence about what attack it prevents and what it does not \u2014 L3 says 'prevents a compromised build platform from forging provenance', not 'more secure.' npm/GitHub provenance surfaces this as a per-package attestation with a link to the build that produced it. Google Play's App Defense Alliance MASA badge ('Independent security review') sits alongside self-declared Data Safety answers, making the self-reported/independently-validated split visible in one screen. Apple's Privacy Nutrition Labels are the counterexample \u2014 self-reported with no verification tier, which drew sustained criticism precisely because a badge with no enforcement reads identically to one with enforcement.",
+      "when_it_fails": "Numeric ladders (L1/L2/L3, 1\u20135 shields, colour-coded scores) invite users to read them as quality scores and to assume higher is always available. The ladder only works when each rung carries a plain-language failure sentence and there are at most three rungs.",
+      "used_by": "SLSA, npm provenance, Sigstore, Google Play MASA badge, Cloudflare/CA certificate transparency"
+    },
+    {
+      "name": "Consumption-at-renewal \u2014 showing what the authority actually did, then re-asking",
+      "how_it_works": "iOS's 'Always Allow' location re-prompt is the canonical version: some days after granting background location, iOS interrupts with a map showing the actual points collected while you weren't looking, then re-asks. It converts an abstract grant into observed consequence. Android extends this structurally with auto-reset of permissions for unused apps. GitHub forces an expiry on fine-grained PATs (default 30 days, max 1 year, 'no expiration' actively discouraged) and emails before expiry. The pattern: expiry is not a field, it is a scheduled re-consent moment with evidence attached.",
+      "when_it_fails": "Only lands if there is real activity to show. Re-prompting with 'this agent did nothing' trains dismissal. And re-prompt fatigue is real \u2014 Android's auto-reset silently breaks background apps, generating support load rather than informed consent.",
+      "used_by": "iOS location Always re-prompt, Android permission auto-reset, GitHub PAT expiry, Google 'Third-party apps with account access' review"
+    },
+    {
+      "name": "Standing authority inventory, separate from the grant flow",
+      "how_it_works": "revoke.cash's entire product is one screen: every live approval across 100+ chains, each row showing spender, asset, allowance amount ('Unlimited' rendered as a distinct hazard value, not a number), last-updated date, and a Revoke button. It works because it is a *persistent inventory*, not a modal \u2014 reachable when calm, not only when alarmed. iOS Settings \u2192 Privacy & Security and Chrome's per-site settings panel do the same: every permission category listed with its current state including the denied ones. The revocation control is boring, always present, and never wrapped in a red destructive-action confirm.",
+      "when_it_fails": "On-chain revocation is itself a transaction: costs gas, can fail, takes a block. A Revoke button that spins and then errors is worse than none. Etherscan added EIP-7702 batch revocation in March 2026 precisely because per-approval revocation was too expensive to actually do. Also, inventories decay \u2014 users with 60 live approvals stop auditing.",
+      "used_by": "revoke.cash, Etherscan Token Approvals, iOS Settings Privacy, Google Account third-party access, Stripe Connect dashboard"
+    },
+    {
+      "name": "Pre-signed constraint mandates with an explicit human-present/absent split",
+      "how_it_works": "Google's AP2 encodes an agent purchase as three W3C Verifiable Credentials. The Intent Mandate is signed by the user *up front* and carries the constraints ('under $150, white or grey'); the Cart Mandate is signed at transaction time when the human is present. When the human is NOT present, the pre-signed Intent Mandate is what authorises the agent to generate the Cart Mandate itself once conditions are met. So the protocol makes 'does a human have to be in the loop for this action' a first-class, signed, auditable property rather than a setting. AiKi's 'when human approval is required' is exactly this axis and should be modelled as a boundary drawn across the action space, not a toggle.",
+      "when_it_fails": "The user signs the Intent Mandate at a moment of low stakes and high optimism, then discovers weeks later what 'under $150, any colour' actually authorised. Pre-authorisation always front-loads consent to the point of least information. Mitigate with the consumption-at-renewal pattern.",
+      "used_by": "Google AP2 (60+ partners incl. Mastercard, PayPal, Coinbase, Amex), Visa Trusted Agent Protocol, Stripe/OpenAI ACP"
+    },
+    {
+      "name": "Threshold-and-policy statements as compact authority sentences",
+      "how_it_works": "Safe renders multisig authority as '2 of 3' \u2014 a two-glyph statement of exactly how much power any one key holds. Fireblocks' Transaction Authorization Policy editor renders enterprise rules as ordered if/then rows (source \u2192 destination \u2192 asset \u2192 amount threshold \u2192 require N approvers / block), read top-down like a firewall. Both compress a complex authority envelope into a scannable line rather than a form.",
+      "when_it_fails": "Ordered rule lists have precedence semantics users get wrong (first-match-wins vs most-specific-wins). And '2 of 3' says nothing about who the 3 are or whether one party controls two.",
+      "used_by": "Safe, Fireblocks TAP, Anchorage, AWS SCPs"
+    }
+  ],
+  "anti_patterns": [
+    "The positive trust badge. Chrome removed the padlock in v117 (Sept 2023) after finding only ~11% of users understood it and most read it as 'this site is safe'; EV certificate name display was pulled from Chrome and Firefox URL bars in 2019 for the same reason. A green shield next to 'contract-enforced' will be read as 'AiKi is safe' and will bleed reassurance onto every adjacent claim on the screen, including the backend-enforced ones. Never badge the strong tier alone.",
+    "Apple-style self-reported labels with no verification tier. Privacy Nutrition Labels look identical whether the claim was audited or typed in by the developer. If AiKi renders 'max 5 BNB/action' in the same chip for a contract-enforced cap and a backend-enforced one, the design is actively lying by typography.",
+    "'Unlimited' as a default. ERC-20 infinite approval is the industry's original sin and the reason revoke.cash exists. Never offer an unbounded option in the same visual weight as a bounded one; if you must offer it, render the value as a hazard-styled word, not a number.",
+    "Raw API strings as scope descriptions. Classic OAuth failure: 'https://www.googleapis.com/auth/drive' or 'manage your contacts' \u2014 technically accurate, semantically useless, and impossible to reason about denial from. AiKi's equivalent is showing function selectors or contract addresses as the primary scope label.",
+    "All-or-nothing consent with no partial grant. Pre-iOS-13 location and pre-Android-6 install-time permissions both proved users will grant anything to get the app working, then resent it. If AiKi's Mandate Builder has a path where declining one constraint blocks the whole hire, users will max every field.",
+    "Red-everything alarm design. Rabby's tiered severity works because 'safe' and 'warning' look different from 'danger'; if every mandate screen is red-bordered with warning triangles, the genuinely dangerous configuration is invisible. Reserve the loudest treatment for exactly one thing \u2014 backend-only enforcement \u2014 and let everything else be calm.",
+    "Progressive disclosure that hides the cap. Collapsing 'Advanced: spending limits' behind an accordion is the standard SaaS move and is disqualifying here. The cap, the period, and the expiry are the product; they are never 'advanced'.",
+    "Revoke behind a destructive-action confirm. Styling revoke as a red 'Danger Zone' delete button makes users avoid it, which is the opposite of the goal. Revocation should feel like turning off a light.",
+    "A single numeric trust score for enforcement strength. AiKi's whole thesis is that confident single numbers are dishonest; do not reintroduce one for security. '87% secure' is unfalsifiable.",
+    "Rendering renewing and lifetime caps with the same component. See the Privacy.com pattern's failure mode \u2014 this is the single highest-consequence ambiguity in the entire Mandate Builder."
+  ],
+  "recommendations": [
+    "Make enforcement a MANDATORY COLUMN, not a badge. Render the mandate as a table where every constraint row must populate an 'Enforced by' cell \u2014 there is no empty state. Three values only, each with a fixed plain-language failure sentence that ships as copy, not as a tooltip: (1) 'BNB Chain contract' \u2014 'AiKi cannot exceed this. Even if our servers are compromised, the transaction reverts.' (2) 'AiKi backend' \u2014 'This is our policy, not a chain rule. If our systems fail or are compromised, this may not hold.' (3) 'Best-effort target' \u2014 'The agent aims for this. Nothing prevents a miss.' Because the column always exists, a weak cell is visible by contrast rather than by badge. This directly satisfies the brief's hardest requirement and is the Ledger clear-signing lesson applied.",
+    "Invert the visual weight: the STRONG tier is quiet, the WEAK tier is loud. Contract-enforced rows get a small, low-contrast chip in black on cream. Backend-enforced rows get the hazard treatment \u2014 black text on #FDED02 with the chunky black outline from the logo, which is genuinely on-brand (hazard tape is a sticker language) and reads as caution without reading as failure. Do NOT use #FD4A01 for danger: it is your brand colour and is already everywhere, so it cannot carry semantic alarm. Introduce one true red used for nothing except blocked/failed states, and use it perhaps twice in the whole product.",
+    "Give renewing and lifetime caps STRUCTURALLY DIFFERENT components. Renewing: a horizontal bar with a reset tick and a clock \u2014 '42 / 180 BNB used \u00b7 resets Mon 24 Aug 09:00 (in 5d)'. Lifetime: a depleting fuel-gauge form with no tick and the literal words 'TOTAL \u2014 does not reset' in hazard style. Then always show the derived worst case next to any renewing cap: '180 BNB per 7 days \u00d7 until 16 Sep = up to 720 BNB total.' Users cannot multiply under uncertainty; do it for them. Adopt Privacy.com's exact selector vocabulary (Per action / Per day / Per week / Per month / Total) so the lifetime option lives inside the same control and must be actively chosen.",
+    "Model 'when human approval is required' as a BOUNDARY LINE across the action space, not a checkbox. Borrow AP2's human-present/human-not-present framing literally. Render two stacked zones on one screen: an upper 'Agent acts alone' zone and a lower 'Comes to you first' zone, with a draggable threshold between them (amount, or action class). The user should be able to see the shape of what they've delegated in one glance and drag the line, watching actions move between zones. This is far more legible than a list of rules and it makes the un-delegated space visible \u2014 which is half the answer to 'show what it cannot do'.",
+    "Answer 'what it CANNOT do' with a closed enumeration plus one explicit sentence. Follow the Rabby/Tenderly exhaustive-diff logic: list every contract the agent may call and every asset it may touch, then state \u2014 as body copy, not a tooltip \u2014 'This is the complete list. Any contract or asset not shown here will revert on-chain.' Then add a short, hand-picked 'Cannot' block for the three things users most fear and most often assume: cannot withdraw to an external address, cannot change this mandate, cannot grant authority to another agent. Three concrete denials beat forty grey rows. Each 'Cannot' line carries its own enforcement chip \u2014 and if any of them is backend-only, say so, because that is exactly the honesty claim.",
+    "Ship a TWO-SPEED revoke and let it demonstrate the tier distinction. 'Pause' \u2014 instant, backend-enforced, no gas, no wallet popup, weak \u2014 sits as a persistent, calm control on the agent card. 'Revoke on-chain' \u2014 a real transaction with gas, a pending state, and a block confirmation \u2014 is the strong one. Label both with the same enforcement chips used everywhere else. This turns your riskiest honesty admission into a feature: the user learns the tier vocabulary by using it on the control they care most about. Show the revoke path BEFORE granting ('You can pause instantly or revoke on-chain at any time') \u2014 pre-committing the exit is a well-established consent-UI move and it lowers grant anxiety.",
+    "Forbid non-expiring mandates and make expiry a scheduled re-consent, not a field. Follow GitHub's fine-grained PAT posture: default 30 days, hard maximum, no 'never' option. Render expiry as absolute plus relative and plus a visible countdown on the live agent card \u2014 'expires Wed 16 Sep 2026 \u00b7 28 days left'. At ~80% elapsed, run iOS's Always-location move: interrupt with what the agent ACTUALLY did with the authority (spend used vs granted, number of actions, realised outcome, and your confidence figure on that outcome), then offer Renew / Narrow / Revoke. Consumption evidence is what makes duration land; a date alone never does.",
+    "Show the confidence figure INSIDE the mandate screen, not only in the marketplace. AiKi's differentiator dies if the grant screen renders a clean confident summary after the browse screen was honest. If the agent's track record is 89 @ 0.94 confidence, that pairing appears in the grant confirmation; if the agent is statistically indistinguishable from two others, say so at the moment money is committed. Same for liveness: an endpoint that returns 200 with static bytes gets a hazard chip on the grant screen reading 'Liveness unverified \u2014 this endpoint may not be a real agent', in the same visual family as backend-only enforcement. One hazard language for all weak guarantees.",
+    "Resolve the brand tension by splitting chrome from payload. Let the sticker language \u2014 chunky rounded forms, thick black outlines, the orange starburst, cream fields \u2014 own the navigation, the agent cards, the buttons, the celebratory and marketing surfaces. The mandate itself renders as a 'contract card': tabular, tight leading, a mono or mono-adjacent face for every number and address, generous rules between rows, near-zero colour except the enforcement column. The playfulness is the wrapper; the payload is deadpan. This is the Monzo/Revolut resolution \u2014 expressive brand, forensic statements \u2014 and it also gives the hazard yellow somewhere to be loud without competing.",
+    "Do not build a numeric or star-rated security level. Two named tiers plus one advisory tier, each with a fixed failure sentence, is the whole system. SLSA's lesson is that a tier is only useful when it names an attack it stops; Chrome's lesson is that anything more decorative than that gets misread upward. If you find yourself designing a third visual style for 'partially enforced', that is a signal to fix the contract, not the UI."
+  ],
+  "references": [
+    {
+      "name": "Coinbase / Base Spend Permissions (SpendPermissionManager)",
+      "url": "https://docs.base.org/identity/smart-wallet/technical-reference/spend-permissions/spendpermissionmanager",
+      "why": "The closest shipped analogue to AiKi's mandate: allowance + recurring period + start/end, enforced by a contract. Read the accounting doc for how period rollover resets usage \u2014 then look at the user-facing prompt, which shows amount, frequency, and start/end dates. This is the baseline AiKi should beat, not reinvent."
+    },
+    {
+      "name": "MetaMask ERC-7715 permission types (Delegation Toolkit)",
+      "url": "https://docs.metamask.io/delegation-toolkit/development/get-started/erc7715-quickstart/",
+      "why": "Shows that the industry has already typed these permissions apart at the protocol level: erc20-token-periodic vs erc20-token-allowance vs erc20-token-stream are DIFFERENT types, not one type with a flag. Strong argument that AiKi's renewing and lifetime caps deserve different components, backed by a standard the designer can point at."
+    },
+    {
+      "name": "Google AP2 \u2014 Agent Payments Protocol specification",
+      "url": "https://ap2-protocol.org/specification/",
+      "why": "The Intent/Cart/Payment Mandate model, and specifically the human-present vs human-not-present distinction, is the exact conceptual frame for 'when is human approval required'. Also validates AiKi's 'Mandate' naming \u2014 60+ partners including Mastercard, PayPal, Coinbase are converging on that word."
+    },
+    {
+      "name": "Privacy.com spend limits",
+      "url": "https://www.privacy.com/spend-limits",
+      "why": "Consumer-grade proof that ordinary people can handle a renewing-vs-lifetime cap choice, in one control, with four values (per transaction / per month / per year / total). Show a designer the actual card-creation flow \u2014 merchant-lock, single-use, pause, and limit are all one calm screen with no fear language."
+    },
+    {
+      "name": "Zodiac Roles Modifier (Gnosis Guild)",
+      "url": "https://docs.roles.gnosisguild.org/",
+      "why": "The most granular shipped 'which contracts, which functions, which parameter values, plus allowances' UI in crypto \u2014 and the Roles app shows a permission DIFF before you apply changes. Look at it for the audit layer and for the diff idea, but note how unreadable full enumeration becomes; it argues for a semantic layer above the grid."
+    },
+    {
+      "name": "Ledger Clear Signing / ERC-7730",
+      "url": "https://developers.ledger.com/docs/clear-signing/overview",
+      "why": "The best shipped example of an honest, negatively-framed legibility tier: when the wallet cannot decode a call, it must show a blind-signing warning and require separate acknowledgement. Direct template for how AiKi surfaces backend-only enforcement \u2014 the weak state interrupts, the strong state is silent. v2 shipped April 2026; stewardship moved to the Ethereum Foundation in May 2026."
+    },
+    {
+      "name": "revoke.cash",
+      "url": "https://revoke.cash",
+      "why": "The reference implementation of a standing authority inventory: every live approval, spender, amount ('Unlimited' rendered as a hazard word), last-updated date, and a boring Revoke button. Note that it is calm, not alarmist, and that it exists as a separate destination reachable when the user is not panicking."
+    },
+    {
+      "name": "Rabby Wallet",
+      "url": "https://rabby.io",
+      "why": "Best-in-class pre-signature preview: simulated exhaustive asset diff plus a rules engine with graded severity where the highest level disables the sign control entirely rather than merely warning. Shows how to grade risk without turning every screen red."
+    },
+    {
+      "name": "Tenderly Transaction Preview",
+      "url": "https://docs.tenderly.co/simulations/transaction-preview",
+      "why": "The infrastructure behind many of these previews, and the docs describe exactly what a simulation can and cannot promise. Useful for calibrating AiKi's honesty copy \u2014 a simulation is a forecast against a state snapshot, which is a confidence claim, not a guarantee."
+    },
+    {
+      "name": "Chromium blog \u2014 'An update on the lock icon'",
+      "url": "https://blog.chromium.org/2023/05/an-update-on-lock-icon.html",
+      "why": "The single most important reference in this brief. Google's own research: ~11% of users understood the padlock, most read it as 'this site is safe.' Chrome replaced it with a neutral tune icon in v117 (Sept 2023). Read it before designing any 'cryptographically enforced' badge \u2014 it is the case against positive trust indicators, made by the org with the most data."
+    },
+    {
+      "name": "SLSA build levels",
+      "url": "https://slsa.dev/spec/v1.0/levels",
+      "why": "How to write a tier ladder honestly: each level names the specific attack it prevents and explicitly states what it does not cover. This is the model for AiKi's per-tier failure sentence. Contrast with Apple's Privacy Nutrition Labels, which are self-reported with no verification tier and were criticised for exactly that."
+    },
+    {
+      "name": "App Defense Alliance MASA \u2014 Google Play 'Independent security review' badge",
+      "url": "https://appdefensealliance.dev/masa",
+      "why": "A live example of self-declared and independently-validated claims sitting on the same screen with a visible distinction between them. Directly analogous to AiKi's contract-enforced vs backend-enforced problem in a mass-consumer surface."
+    },
+    {
+      "name": "GitHub fine-grained personal access tokens",
+      "url": "https://docs.github.com/en/authentication/keeping-your-account-secure/managing-your-personal-access-tokens",
+      "why": "Best mainstream expiry posture: expiry is mandatory, defaults short, 'no expiration' is actively discouraged, and the pre-generate summary explicitly prints 'No access' for every unselected permission \u2014 denied capabilities are visible rows, not absent ones."
+    },
+    {
+      "name": "Stripe restricted API keys",
+      "url": "https://docs.stripe.com/keys",
+      "why": "The flat version of the scoping grid: every resource listed with an explicit None / Read / Write state. Clean reference for making the negative space of a permission set visible without writing a 'cannot' list by hand."
+    },
+    {
+      "name": "Safe{Wallet}",
+      "url": "https://safe.global",
+      "why": "For the '2 of 3' compact authority sentence, and \u2014 post-Bybit (Feb 2025) \u2014 for how a serious custody product talks publicly about the gap between what a UI displays and what a contract enforces. Relevant tone reference for AiKi's honesty positioning."
+    },
+    {
+      "name": "Android permission auto-reset + iOS 'Always Allow' location re-prompt",
+      "url": "https://developer.android.com/training/permissions/requesting",
+      "why": "The two best examples of expiry-as-scheduled-re-consent. iOS's re-prompt showing a map of points actually collected is the pattern AiKi should copy at 80% of mandate term: show what the authority was used for, then re-ask. Evidence is what makes duration land."
+    }
+  ]
+}

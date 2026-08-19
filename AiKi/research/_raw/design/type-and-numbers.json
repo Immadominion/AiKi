@@ -1,0 +1,216 @@
+{
+  "topic": "Typography and numeric display for AiKi \u2014 a data-dense, uncertainty-first financial product with a sticker brand",
+  "summary": "The tension you named \u2014 sticker brand over high-stakes tables \u2014 is solved by *separation of registers with a hard size boundary*, not by softening the data or hardening the brand. Give the display face a floor (nothing below 28px) and it becomes a guest star instead of a tone problem. Below that line the product should be quiet, dense and boring on purpose; that contrast is what makes the sticker read as confidence rather than costume.\n\nThe bigger finding is that your honesty thesis is mostly a *numeric* problem, not a colour problem. The single highest-leverage move: let the number of digits you print be the uncertainty claim. Rendering 95.3 at 0.22 confidence is a lie told in typography; rendering it as \"90 (low confidence)\" while 89 at 0.94 renders as \"89.4\" makes the ranking self-evident before any badge. Precision is a channel, and nobody in crypto uses it.\n\nTwo hard constraints fell out of the contrast maths. #FD4A01 on #F9F8F1 is 3.2:1 \u2014 brand orange can never be body text on cream; it works as text only on black (5.8:1). #FDED02 on cream is 1.14:1 \u2014 yellow is a fill with black type on it, never a text colour, ever. And a sharp detail most briefs miss: EVM hex contains no O, I or l, so 0/O disambiguation is largely irrelevant on BNB Chain. Your real confusables are 8/B, 5/S, 6/b, 2/Z and \u2014 critically \u2014 *letter case*, because EIP-55 checksums live in the casing.",
+  "patterns": [
+    {
+      "name": "Hard size floor for the display register",
+      "how_it_works": "Display face is permitted only at >=28px and only in Black/ExtraBold: hero numbers, empty-state headlines, marketing surfaces, the one number in a card that is the point of the card. Everything else \u2014 including every h2, h3, table header and button \u2014 is the UI face. One rule, mechanically enforceable in the token layer (no display token below 28px exists), which stops the slow leak of brand voice into data surfaces.",
+      "when_it_fails": "Products with genuinely short screens (mobile agent detail) where the only headline is 20px. Fix by dropping to the UI face at heavy weight with tighter tracking, not by shrinking the display face \u2014 a chunky rounded face at 20px reads as a children's app.",
+      "used_by": "Linear, Stripe Dashboard, Rainbow"
+    },
+    {
+      "name": "Tabular by default, proportional by exception",
+      "how_it_works": "Set `font-variant-numeric: tabular-nums` on the root and opt *out* for prose and for single display numbers. Tabular is mandatory for anything in a column, anything that ticks live (proportional figures make live prices visibly jitter as 1s swap for 8s), timers, and countdowns. Proportional is better for a lone hero number, where tabular's fixed advance leaves a visible hole around the 1.",
+      "when_it_fails": "Tabular figures do not guarantee the minus sign, plus sign, decimal separator or currency glyph share an advance width. Verify those five glyphs specifically, and if they differ, put the sign in its own fixed-width gutter span so +2.4% and -2.4% do not shift the digits.",
+      "used_by": "Stripe, Bloomberg, Kalshi"
+    },
+    {
+      "name": "Precision-as-uncertainty",
+      "how_it_works": "Significant digits are derived from confidence, not from the data type. Score 89 at 0.94 confidence prints 89.4; score 95 at 0.22 prints 90 (rounded to the nearest 10 \u2014 precision the evidence supports). The visual result is that the low-confidence number is literally shorter and blunter, so ranking honesty is legible pre-attentively, before any badge, bar or colour is read. Formalise as a function: digits = f(confidence), e.g. 0.9+ -> 1 decimal, 0.7-0.9 -> integer, 0.4-0.7 -> nearest 5, <0.4 -> nearest 10 plus a qualifier.",
+      "when_it_fails": "Users who expect a stable identifier get confused when a score changes granularity between refreshes. Mitigate by keeping the *slot* fixed-width and showing full precision on hover/copy, so the rounding is clearly a display choice not a data change.",
+      "used_by": "Metaculus, FiveThirtyEight, scientific publishing convention"
+    },
+    {
+      "name": "Tie bracket for statistically indistinguishable rows",
+      "how_it_works": "When three agents cannot be separated, do not render ranks 1, 2, 3. Render a shared rank range \u2014 '1-3' in the rank column for all three rows \u2014 plus a single continuous vertical rule or bracket in the gutter spanning the group, and one caption at the group level ('within margin of error, n=142'). This is the sports-table / ranked-choice convention and reads instantly. Sorting within the tied group should be visibly arbitrary (alphabetical), and labelled as such.",
+      "when_it_fails": "Breaks if the table is user-sortable by another column, which shatters the group. Either freeze the bracket to the confidence-sorted view only, or recompute grouping per sort and accept that the bracket sometimes covers non-adjacent rows (in which case use a shared tint band, not a bracket).",
+      "used_by": "Formula 1 / athletics results tables, Good Judgment Open"
+    },
+    {
+      "name": "Interval in a reserved uncertainty gutter",
+      "how_it_works": "Every numeric cell that can carry uncertainty gets a fixed-width right sub-column at 0.85em in the mono face, muted to ~55% contrast. Symmetric: '89 \u00b13'. Asymmetric: '89 [84-92]'. The gutter is reserved even when empty, so a *missing* interval shows as a visible gap rather than reading as certainty. Never encode confidence via opacity on the primary number \u2014 reduced opacity reads as 'disabled' or 'stale', which is a different and dangerous meaning in a financial product.",
+      "when_it_fails": "At mobile widths the gutter is unaffordable. Stack the interval below the value at 0.8em rather than dropping it, or collapse to a 5-segment confidence comb glyph that costs ~24px.",
+      "used_by": "The Economist charts, Our World in Data, Metaculus"
+    },
+    {
+      "name": "Measured vs projected typographic split",
+      "how_it_works": "Realised, on-chain-verifiable numbers (PnL to date, fees paid, current balance) render in the mono face at medium weight, full contrast. Projected or modelled numbers (APY, expected yield, simulated outcome) render in the UI face, regular weight, prefixed with a true approximation sign and carrying a dotted 1px underline that opens the methodology popover. Two different materials, so a user can tell measurement from forecast at a glance without reading a label. This is the single most direct typographic expression of AiKi's core claim.",
+      "when_it_fails": "Hybrid values (trailing-30d APY: measured input, annualised projection) sit in neither bucket. Rule: if any extrapolation occurred, it is projected. Also fails if the dotted underline collides with your link affordance \u2014 reserve dotted-underline exclusively for 'this number is a model output'.",
+      "used_by": "Wise (guaranteed rate vs estimate), FT/Economist forecast charts"
+    },
+    {
+      "name": "Verify-vs-navigate truncation",
+      "how_it_works": "Truncation length is a function of the user's task, not of available width. NAVIGATE (tx hash in a history row \u2014 user clicks through, never compares): 4+4 is fine, 0x1a2b\u20269f0e. VERIFY (destination address on an approval screen \u2014 user is confirming where money goes): never truncate at all; render all 42 characters in mono, chunked in groups of 4 with a thin gap, EIP-55 mixed case preserved. RECOGNISE (address in a list): 6+6 minimum. The reason is address poisoning: grinding a vanity address matching 4 prefix + 4 suffix hex chars is 16^8 (~4.3bn) \u2014 GPU-minutes. 6+6 is 16^12 (~2.8e14) \u2014 expensive but demonstrated.",
+      "when_it_fails": "Even 6+6 fails against a funded attacker, so truncation must never be the only defence on a signing screen. Pair with address-book labels, ENS/SPACE ID resolution, and a hard 'first time you have sent to this address' interstitial. Typography cannot solve poisoning; it can only stop making it easier.",
+      "used_by": "Safe{Wallet}, Rabby, ERC-8117"
+    },
+    {
+      "name": "Copy-safe visual truncation (two-span ellipsis)",
+      "how_it_works": "Render the complete string in the DOM and truncate *visually*: a flex container with span A holding the full string under `overflow:hidden; text-overflow:ellipsis; min-width:0` and span B holding the last N chars with `flex-shrink:0`. Select-and-copy yields the real, complete address; the display adapts to container width instead of a hardcoded character count. JS string-slicing produces a DOM that copies a broken address \u2014 a genuine loss-of-funds bug pattern.",
+      "when_it_fails": "Double-render means span B's characters appear twice in the copied text in some browsers. Guard with a `copy` event handler that writes the canonical full value to the clipboard, and add an explicit copy button as the primary affordance so selection is the fallback path.",
+      "used_by": "Etherscan, Blockscout"
+    },
+    {
+      "name": "Subscript-zero compression at a threshold of four",
+      "how_it_works": "For values with >=4 leading decimal zeros, compress to 0.0(n)9 with the zero count as a true subscript glyph (Unicode U+2080-2089, or the font's `subs`/`sinf` feature). Below 4 zeros, print plainly \u2014 the compression costs more cognition than it saves. The threshold of 4 is the same one ERC-8117 adopted for addresses, on the basis that four is where reliable human counting stops. Applies to token prices and to leading zeros in addresses alike, so one visual convention covers both.",
+      "when_it_fails": "Screen readers announce '0.0 6 9' as three tokens, which is meaningless. Ship a visually-hidden full-precision string alongside the aria-hidden compressed one. Also fails in any surface the user copies into a spreadsheet \u2014 copy must always yield the plain decimal.",
+      "used_by": "Etherscan, DexScreener, Uniswap, ERC-8117"
+    },
+    {
+      "name": "Direction-aware rounding",
+      "how_it_works": "Rounding direction is a policy, not a default. Balances and available-to-spend round DOWN (never overstate what a user has). Costs, fees, gas estimates and spend-cap consumption round UP (never understate what a user will pay). Slippage bounds round toward the worse outcome. `Intl.NumberFormat` exposes this directly via `roundingMode: 'floor' | 'ceil' | 'trunc'`, so it is a one-line policy per formatter, not a bespoke helper.",
+      "when_it_fails": "Totals stop equalling the sum of their rounded parts, which looks like a bug. Either show the reconciliation ('rounded' footnote with exact-on-hover), or compute the total from raw values and round once at the end.",
+      "used_by": "Wise, Stripe"
+    },
+    {
+      "name": "Zero vs rounds-to-zero",
+      "how_it_works": "A displayed 0.0000 that is actually 0.00000031 destroys trust the moment a user checks on-chain. Render sub-precision non-zero values as '<0.0001' (with the less-than glyph), reserving a bare 0 for exact zero. Same rule for percentages: '<0.01%' not '0.00%'. Costs one comparison in the formatter and eliminates an entire class of 'your numbers are wrong' support tickets.",
+      "when_it_fails": "Columns become ragged because '<0.0001' is wider than '0.0000'. Reserve the extra character width in the column from the start."
+    },
+    {
+      "name": "Enforcement material (contract vs backend)",
+      "how_it_works": "A spend cap enforced by a smart contract and one enforced by your backend get different *materials*, not different colours. On-chain: mono face, a seal/lock glyph, and the enforcing contract address rendered as a verifiable link \u2014 because the defining property is that the user can independently check it. Off-chain: UI face, a policy/document glyph, no address, and the literal words 'enforced by AiKi'. Different badge geometry too (hard-cornered vs pill). The presence or absence of a verifiable address IS the semantic difference, so surface it as the visual difference.",
+      "when_it_fails": "Users may read 'enforced by AiKi' as stronger because it names a party. Add the consequence explicitly: 'AiKi will refuse the transaction' vs 'the contract cannot execute it'."
+    },
+    {
+      "name": "Ternary liveness with shape encoding",
+      "how_it_works": "Agent endpoint status is never binary. Three states, encoded by shape first: VERIFIED (filled disc) = challenge-response passed, distinct outputs for distinct probe inputs; RESPONDING (hollow disc) = HTTP 200 but outputs are static/identical across probes \u2014 the impostor state; DOWN (hollow disc with slash) = no response. Shape carries it; colour amplifies. Always paired with a text label, and RESPONDING should carry its evidence inline ('returned identical bytes to 5 distinct probes, 14:02 UTC').",
+      "when_it_fails": "A legitimately deterministic agent (a pure calculator) trips the impostor heuristic. Needs a fourth state or a per-agent declared determinism flag; do not silently downgrade honest deterministic agents."
+    },
+    {
+      "name": "Asset chip plus fiat approximation for unfamiliar settlement tokens",
+      "how_it_works": "$U never appears as bare text and never takes the leading-dollar position \u2014 a leading $ is a claim of dollar-denomination. Format is `142.50 U` with the ticker as a suffix inside a consistent chip component (token mark + 'U'), and, when the surface is money-critical, a second line at 0.8em muted: the approximation sign, the USD value, and the rate's age. If the peg drifts, the approximation must visibly break \u2014 show the actual rate rather than silently continuing to render 1:1. First appearance per session gets an info affordance defining what U is, what backs it, and how to redeem.",
+      "when_it_fails": "In dense tables the second line is unaffordable. Put the USD approximation in the column header ('Amount (U) \u2014 1 U = $0.9987 @ 14:02') instead of per-row, so the conversion is stated once and stays honest.",
+      "used_by": "Wise, Revolut, Stripe multi-currency"
+    },
+    {
+      "name": "Redundant sign encoding (three channels)",
+      "how_it_works": "Every signed value carries sign glyph + direction glyph + colour, in that priority order. `Intl.NumberFormat` with `signDisplay: 'exceptZero'` gives +2.4% / -2.4% for free; use the true minus U+2212, not a hyphen, so the minus matches the plus in width and weight. Add a small solid triangle for direction. Colour is the third, most expendable channel \u2014 the number must be fully readable in greyscale.",
+      "when_it_fails": "Accounting parentheses for negatives are familiar to finance professionals and alien to crypto-native users. Use signs in the product UI; use parentheses only in exported CSV/PDF statements where accountants read them."
+    },
+    {
+      "name": "Colour as amplifier, not carrier",
+      "how_it_works": "Do not tint whole rows or cell backgrounds for PnL \u2014 a table of 40 positions becomes a Christmas tree and scanning collapses. Colour only the glyphs of the number itself, and only in the summary/hero position; in dense tables let sign and triangle do the work and keep every number at full text contrast. This solves the colour-blindness problem and the visual-noise problem with one decision, and it looks markedly more serious than every competitor.",
+      "when_it_fails": "Users transferring from Binance/Robinhood expect the green wall and may read the restraint as 'the data isn't loading'. Ship a settings toggle for full-colour rows if churn data demands it, but keep restraint as the default."
+    }
+  ],
+  "anti_patterns": [
+    "Brand orange #FD4A01 as body text on cream #F9F8F1 \u2014 measured 3.2:1, fails WCAG AA for normal text (needs 4.5:1) and only clears the 3:1 large-text bar at >=24px or >=18.66px bold. It is a fill, rule and icon colour on cream; it is a *text* colour only on black (5.8:1 on #0A0A0A).",
+    "Yellow #FDED02 as any text colour on cream \u2014 1.14:1, effectively invisible. It is a badge/highlight fill with black type on it (17.3:1), full stop.",
+    "Red/green as the sole channel for gain/loss. ~8% of male users cannot separate them, and your brand orange sits inside the confusion zone with green under deuteranopia.",
+    "Using the display face below 28px. Chunky rounded terminals at 16px read as a children's app, which is precisely the failure mode you are trying to avoid.",
+    "Setting the whole product in mono ('terminal cosplay'). Mono costs ~25-40% more horizontal space, wrecks table density, and makes prose measurably slower to read.",
+    "Printing more significant digits than the confidence supports (95.3 at 0.22 confidence). This is the exact lie AiKi exists to refuse, told in typography.",
+    "4+4 address truncation on any screen where a user approves a destination. Grinding a matching 8-hex vanity address is GPU-minutes.",
+    "Uppercase-transforming or lowercasing an EVM address. EIP-55 checksum information lives in the mixed casing; case-transforming destroys the only built-in typo defence.",
+    "JS string-slicing for truncation, producing a DOM whose copy yields a broken address.",
+    "Fixed decimal places across all assets. Two decimals is right for $U and catastrophic for a token trading at 0.00000031.",
+    "Compact notation (1.2M, 4.5K) in any cell a user will reconcile against on-chain data. Fine in chart axes and summary headlines only.",
+    "Encoding confidence via opacity on the primary number \u2014 reduced opacity already means 'disabled' or 'stale' in every other part of a UI.",
+    "Animated roll-up/odometer counters on financial values. Slot-machine semantics, breaks copy and screen readers, and actively undermines a credibility-first brand.",
+    "Blockies/jazzicon identicons as the primary address-verification channel. They are perceptual hashes with easy near-collisions; secondary only.",
+    "A leading '$' on $U. It reads as a dollar claim you cannot make.",
+    "Proportional figures on live-ticking prices \u2014 the jitter is visible and reads as instability.",
+    "Poppins, Nunito, Quicksand or Baloo as the UI face because they 'match the sticker'. All collapse below 14px and none has a serious tabular figure set.",
+    "Relying on `font-feature-settings` instead of `font-variant-numeric` \u2014 the former is not composable and silently resets sibling features."
+  ],
+  "references": [
+    {
+      "name": "ERC-8117: Anti-Poisoning Compact EVM Address Format",
+      "url": "https://eips.ethereum.org/EIPS/eip-8117",
+      "why": "The only standards-track document that treats address truncation as a *security* typography problem. Gives you a defensible threshold (compress at >=4 leading zeros, because four is where human counting fails), a Unicode subscript format plus an ASCII fallback, and an explicit rule that compression must not touch mixed-case sequences so EIP-55 checksums survive. Read this before you design a single address chip."
+    },
+    {
+      "name": "Metaculus",
+      "url": "https://www.metaculus.com/",
+      "why": "The closest existing product to AiKi's core interaction: it shows a community distribution rather than a point estimate, tracks calibration over time, and has spent years solving 'how do we make a confident-looking number visibly less trustworthy than a hedged one'. Steal their track-record surfaces for agent history."
+    },
+    {
+      "name": "Safe{Wallet}",
+      "url": "https://app.safe.global/",
+      "why": "The reference for making enforcement mechanism visible \u2014 on-chain thresholds and module permissions are rendered as verifiable contract state, not as a settings toggle. Directly relevant to your 'contract-enforced vs backend-enforced spend cap must not look the same' requirement. Also shows full addresses on signing screens, which is the correct behaviour."
+    },
+    {
+      "name": "Wise",
+      "url": "https://wise.com/",
+      "why": "The gold standard for showing a rate, its age, what is guaranteed versus estimated, and every fee component before commitment. This is the exact pattern you need for '$U \u2248 USD' \u2014 Wise never lets an approximate conversion look like a settled amount."
+    },
+    {
+      "name": "Etherscan",
+      "url": "https://etherscan.io/",
+      "why": "Not for aesthetics \u2014 for convention. Subscript-zero notation, address chunking, hash truncation lengths, EIP-55 case rendering. Your users already have these motor patterns; deviating costs you comprehension for no gain."
+    },
+    {
+      "name": "Rainbow Wallet",
+      "url": "https://rainbow.me/",
+      "why": "The best existing proof that a loud, saturated, playful crypto brand can front real-money surfaces without reading as unserious. Study specifically where the brand *stops* \u2014 the balance figures and transaction rows are quiet and conventional, the personality lives in illustration, motion and empty states."
+    },
+    {
+      "name": "Stripe Dashboard",
+      "url": "https://dashboard.stripe.com/",
+      "why": "The benchmark for dense financial tables that stay readable: one accent colour, no row tinting for signed values, tabular figures everywhere, and typographic hierarchy carried by weight and contrast rather than colour. Screenshot their payments table and use it as the density target."
+    },
+    {
+      "name": "FiveThirtyEight forecast archives",
+      "url": "https://projects.fivethirtyeight.com/",
+      "why": "The most-copied uncertainty visual language in existence \u2014 the cone, the fan of simulated outcomes, the deliberate refusal to print a single number. Directly transferable to agent performance projections."
+    },
+    {
+      "name": "Bricolage Grotesque specimen",
+      "url": "https://fonts.google.com/specimen/Bricolage+Grotesque",
+      "why": "OFL variable display face by Mathieu Triay with wght, wdth and a genuine optical-size axis whose display end goes chunky and idiosyncratic. The strongest open-source candidate for a display register with actual voice rather than friendly-geometric default."
+    },
+    {
+      "name": "Gabarito (Naipe Foundry)",
+      "url": "https://fonts.google.com/specimen/Gabarito",
+      "why": "OFL, six weights to Black, rounded geometric with real chunk. Critically for you it ships scientific inferiors and superiors \u2014 meaning it has the actual subscript digit glyphs you need for 0.0(6)9 notation, which most display faces lack."
+    },
+    {
+      "name": "Martian Mono (Evil Martians)",
+      "url": "https://github.com/evilmartians/mono",
+      "why": "OFL variable monospace with a width axis, slashed zero, and a 0.70 character cell \u2014 roughly 20% more characters per line than a typical 0.60 mono, which matters enormously when you are fitting 42-character addresses. It also has enough personality to sit under an expressive brand without looking like a stock terminal."
+    },
+    {
+      "name": "Inter (Rasmus Andersson)",
+      "url": "https://rsms.me/inter/",
+      "why": "The specimen page is the reference, not just the download: it documents tnum, zero, ss01 (open digits), ss02 (disambiguation set), and the cv-series alternates including cv05 (l with tail) and cv08 (I with serif) \u2014 the exact controls you need to make 12-14px financial text unambiguous. Its text/display optical sizing means one family covers dense tables and mid-size headings."
+    },
+    {
+      "name": "Okabe-Ito / Wong colour-blind-safe palette",
+      "url": "https://jfly.uni-koeln.de/color/",
+      "why": "The canonical CVD-safe set (#0072B2 blue, #E69F00 orange, #009E73 bluish green, #D55E00 vermillion, #CC79A7 reddish purple). Use it as the constraint check on your gain/loss pair \u2014 note that its orange and vermillion both collide with your brand #FD4A01, which is why gain/loss needs to leave the brand palette entirely."
+    },
+    {
+      "name": "Financial Times Visual Vocabulary",
+      "url": "https://github.com/Financial-Times/chart-doctor/tree/main/visual-vocabulary",
+      "why": "The 'uncertainty' and 'ranking' pages specifically. Gives you vetted forms for confidence intervals in small multiples and for showing ranked items whose order is not statistically meaningful \u2014 both are core AiKi states."
+    },
+    {
+      "name": "Recursive (Arrow Type)",
+      "url": "https://recursive.design/",
+      "why": "Worth a look as a wildcard system solution: one OFL variable superfamily with a MONO axis (0-1) and a CASL 'casual' axis (0-1), so UI, mono and a warmer expressive voice all come from one file with matched metrics. If you want the playfulness to be a *dial* rather than a separate font, this is the only open-source family that offers it."
+    }
+  ],
+  "recommendations": [
+    "STACK \u2014 Display: Bricolage Grotesque ExtraBold/Black (Mathieu Triay, SIL OFL, Google Fonts) at max optical size, with Gabarito Black (Naipe Foundry, SIL OFL) as the friendlier alternate. Pick Bricolage if you want voice and want to avoid the friendly-geometric AI-startup default; pick Gabarito if the sticker wordmark is already geometric and needs a sibling. Third option for maximum sticker energy: Archivo Expanded Black (Omnibus-Type, OFL) \u2014 width plus weight is what actually makes a form read as a sticker, and Archivo's variable wdth axis gets you there. If budget exists, the commercial faces that nail this register are Ohno Type Co's Obviously and Hoss Round, and Pangram Pangram's PP Right Grotesk Spatial.",
+    "STACK \u2014 UI: Inter v4 (Rasmus Andersson, SIL OFL), text optical size. Non-negotiable feature config for data surfaces: `font-variant-numeric: tabular-nums slashed-zero` on all numeric cells, plus `font-feature-settings: 'cv05' 1, 'cv08' 1` (l with tail, I with serif) globally. If Inter feels too neutral against the brand, Instrument Sans (Rhode Island Type, OFL) has more idiosyncrasy and holds at 13px; Hanken Grotesk (OFL) is rounder and echoes the sticker without collapsing. Do not use Geist here \u2014 it is excellent but its neutrality will fight your brand rather than balance it.",
+    "STACK \u2014 Mono: Martian Mono (Evil Martians, SIL OFL) for addresses, hashes and raw identifiers \u2014 variable width axis, slashed zero, 0.70 cell width for ~20% more characters per line. Use the condensed width for 42-character addresses. Quieter alternates: Geist Mono (Vercel, OFL, slashed zero by default) or Commit Mono (Eigil Nikolajsen, OFL, custom-buildable with slashed zero and disambiguated l/i baked in so you never depend on runtime feature flags). If you use JetBrains Mono you must explicitly enable the `zero` feature \u2014 its default zero is dotted, not slashed.",
+    "DO NOT set money in the mono face by default. Use Inter with tabular figures for all currency, percentage and score columns \u2014 it is denser, quieter and pairs better with labels. Reserve the mono strictly for strings a human verifies character-by-character: addresses, tx hashes, contract addresses, agent IDs, signatures. That split is itself a semantic signal ('mono means you are meant to check this').",
+    "HEX CONFUSABLES, not 0/O. EVM hex uses only 0-9 and a-f/A-F \u2014 there is no O, I or l, so the classic 0/O test is largely irrelevant on BNB Chain. Test your mono candidates on the real risks instead: 8 vs B, 5 vs S, 6 vs b, 2 vs Z, 0 vs D, and above all uppercase vs lowercase of the same letter (b/B, d/D, e/E) at 12px, because EIP-55 checksum data lives entirely in the casing. Set a paste-test string like 0xB8bB5d2C6e8Ea9F0d3b8E5b2c9D0a1F6e3B7c2D8 in each candidate at 12px and 12.5px before deciding. Never apply text-transform to an address.",
+    "SIZE THE MONO DOWN. Martian Mono and Geist Mono run optically larger than Inter at the same nominal size. Set mono at 0.94x the UI size (12.5px mono against 13px Inter) so an address inside a table row does not visually dominate the label beside it. Verify by matching x-heights, not point sizes.",
+    "TABLE SPEC to build against: row body 13px/18px Inter, tabular-nums; column headers 11px/16px Inter Medium, uppercase, +0.06em tracking, muted; row height 40px; numeric columns right-aligned with a fixed 2ch sign gutter on the left of the digits; addresses 12.5px Martian Mono Condensed. Column headers carry the unit ('Amount (U)', 'APY (proj.)'), never the rows.",
+    "PRECISION FUNCTION \u2014 implement this before anything else, it is your differentiator. digits(confidence): >=0.90 -> 1 decimal; 0.70-0.90 -> integer; 0.40-0.70 -> nearest 5; <0.40 -> nearest 10 + 'low confidence' qualifier. Result: 89 at 0.94 renders '89.4', 95 at 0.22 renders '90'. The honest ranking becomes legible from the glyph count alone, before any badge or bar is read.",
+    "GAIN/LOSS COLOUR \u2014 take it out of the brand palette entirely, because #FD4A01 sits inside the deuteranopia confusion zone with green. Measured, AA-passing pair: light theme deep teal #0E6E63 (5.75:1 on #F9F8F1) for gain and deep pink #C2185B (5.52:1 on cream) for loss; dark theme #2FD4C0 (10.65:1 on #0A0A0A) and #FF6FA8 (7.63:1). Both pairs stay separable under protanopia, deuteranopia and tritanopia, and neither collides with brand orange. Then apply the amplifier rule: in dense tables use sign + triangle only, and let colour appear on the one hero number.",
+    "BRAND ORANGE RULES, derived from measured contrast: #FD4A01 on cream is 3.2:1 \u2014 fills, 2-3px rules, icon shapes >=24px, and display type >=24px (or >=18.66px bold) only. For orange as small text on cream you need to darken to ~#D13D01 (4.5:1) or ~#9C2E01 (7:1); keep the pure #FD4A01 as the brand-object colour and treat the darkened tint as a separate 'orange-text' token so nobody confuses them. On black, #FD4A01 is 5.8:1 and works as body text \u2014 which means your dark theme can be far more brand-saturated than your light theme. Lean into that asymmetry.",
+    "YELLOW RULE: #FDED02 is 1.14:1 on cream and 17.3:1 against black. It is exclusively a fill with black type on it \u2014 badges, highlight swipes, the sticker's badge element. Never a text colour, never a stroke on cream, never a status dot without a black outline.",
+    "STICKER RENDERING: get the thick black outline with SVG text using `paint-order: stroke fill` plus `stroke-linejoin: round` and `stroke-width: 6-10`. `paint-order` draws the stroke *outside* the letterform; the naive `-webkit-text-stroke` alone centres the stroke and eats 3-5px off every stem, which is why chunky faces go muddy. `stroke-linejoin: round` is what produces the die-cut sticker corner. Never fake it with stacked text-shadows.",
+    "FORMATTER LAYER \u2014 one module, no ad-hoc formatting anywhere. Build on Intl.NumberFormat with: `signDisplay: 'exceptZero'` for all deltas; `maximumSignificantDigits: 4` for prices rather than fixed decimals; `roundingMode: 'floor'` for balances and available-to-spend, `'ceil'` for fees, gas and spend-cap consumption; `trailingZeroDisplay: 'stripIfInteger'` where a column allows it. Replace hyphens with the true minus U+2212. Every formatter returns { display, aria, raw } so the visual string, the screen-reader string and the clipboard string can differ correctly.",
+    "SUBSCRIPT ZEROS: compress at >=4 leading decimal zeros, matching ERC-8117's threshold. Render the count with real subscript glyphs (U+2080-2089 or the font's `subs` feature \u2014 Gabarito ships scientific inferiors, Inter does not have a full set, so verify per face and fall back to a styled span at 0.6em with a -0.25em baseline shift). Mark the compressed form aria-hidden and ship the full decimal in a visually-hidden sibling. Copy always yields plain decimal.",
+    "TRUNCATION POLICY, three tiers: navigate (tx hash in history) 4+4; recognise (address in a list) 6+6 minimum; verify (destination on an approval screen) no truncation at all \u2014 all 42 characters, mono, chunked in groups of 4 with a 0.25ch gap, EIP-55 case preserved, plus an explicit copy button. Implement visual truncation with the two-span flex-ellipsis technique so selection copies the real string, and add a `copy` event handler writing the canonical value.",
+    "$U DISPLAY CONTRACT: ticker as suffix, never a leading '$'. Canonical form `142.50 U` with the U inside a reusable AssetChip component (token mark + ticker) so it can never be mistaken for prose. On money-critical surfaces pair with a muted 0.8em line: approximation sign, USD value, and the rate's timestamp. In tables, state the conversion once in the column header ('Amount (U) \u2014 1 U = $0.9987 @ 14:02 UTC') rather than per row. If the peg deviates beyond a threshold, the approximation must visibly break \u2014 strike the approximation and show the actual deviation. First appearance per session gets an info affordance defining what U is, what backs it, and how redemption works.",
+    "TIE STATE: build 'we cannot statistically distinguish these' as a first-class table state now, not later. Rank column shows the range ('1-3') on all tied rows, a continuous 2px rule in the left gutter spans the group, and a single group-level caption gives the evidence ('within margin of error, n=142 runs'). Within-group order is alphabetical and labelled as arbitrary. Make it look designed, because a blank or an error there is the one thing that would falsify your entire positioning.",
+    "IMPOSTOR STATE: status is ternary and shape-encoded \u2014 filled disc (verified: challenge-response produced distinct outputs for distinct probes), hollow disc (responding: HTTP 200 but returned identical bytes across probes), hollow disc with slash (down). Always paired with text, and the 'responding' state carries its evidence inline. Do not let this be a colour variant of 'healthy'; it is a different shape and a different word.",
+    "ENFORCEMENT BADGE: on-chain caps get the mono face, a seal glyph, hard corners, and the enforcing contract address as a verifiable link. Backend caps get the UI face, a policy glyph, pill shape, no address, and the words 'enforced by AiKi'. The presence of a checkable address is the semantic difference \u2014 make it the visual difference. State the consequence explicitly on both: 'the contract cannot execute it' vs 'AiKi will refuse the transaction'.",
+    "GREYSCALE TEST as a CI gate: screenshot every data-dense view, desaturate, and assert that gain/loss, all three status states, and both enforcement types remain distinguishable. This is cheap to automate with your existing visual-regression setup and it is the only way the redundant-encoding discipline survives six months of feature work."
+  ]
+}

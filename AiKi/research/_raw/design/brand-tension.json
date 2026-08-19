@@ -1,0 +1,182 @@
+{
+  "topic": "Pairing a playful sticker brand with a high-stakes autonomous-finance surface: how real products concentrate expression, and how AiKi should encode uncertainty and enforcement",
+  "summary": "Every product that pulls this off does the same structural thing: it refuses to let the brand and the instrument share a layer. Monzo's own guidelines spend three-quarters of their length preventing Hot Coral from being used \u2014 coral is the colour of the *card*, the object you buy, never the colour of the button you click. Ramp is a near-monochrome editorial system where one highlighter chartreuse (#e4f222) appears only where money moves. Mercury is onyx and ivory with a single cobalt reserved for literally one action. Duolingo's canvas is a calm white storybook page with grey body copy; Duo shows up at celebration and streak, never adjudicating your answer. Figma is a rainbow logo wrapped around a grey canvas. The mechanism is not \"less brand\" \u2014 it's a two-tier token architecture where the expressive tier is physically unavailable to product components, plus a rule about *what the accent means* rather than where it goes.\n\nFor AiKi the opportunity is sharper than \"restraint.\" Your sticker language is an outline language, and outline is the one visual property that can carry semantics no colour can: a die-cut black border can mean *this boundary is enforced by a contract*, and a dashed border can mean *this one is enforced by us*. Confidence becomes fill density, not a second grey number. The starburst becomes a cryptographic seal glyph. You get to be the only product in the category whose playfulness is load-bearing rather than decorative \u2014 and the cautionary tale (Robinhood's confetti, pulled in 2021 after regulators called it gamification) tells you exactly which surface must never be delightful: the one where authority is granted.",
+  "patterns": [
+    {
+      "name": "Brand the object, not the click",
+      "how_it_works": "The signature colour is reserved for the physical/conceptual thing the user acquires, and is banned from interactive chrome. Monzo's Hot Coral fills the card and the illustrated phone tiles; CTAs are navy or white. This keeps the colour rare enough to stay identity-bearing while the UI hierarchy is carried by neutrals and typography. Most fintechs brand the click, which spends the colour a hundred times per screen and reduces it to a Tailwind primary.",
+      "when_it_fails": "Fails when the 'object' is abstract and never rendered. If AiKi never draws an agent as a discrete card-like entity, orange has nothing to live on and will migrate to buttons within two sprints. It also fails if the object appears 40 times in a list \u2014 a marketplace grid of 40 orange agent cards is the same noise problem by another route, so the object treatment has to be scoped to the *selected* or *hired* agent, not every row.",
+      "used_by": "Monzo (Hot Coral card), Cash App (green card as the brand object), Nothing (the dot-matrix glyph on hardware only)"
+    },
+    {
+      "name": "One accent, one meaning \u2014 the accent is an event, not a decoration",
+      "how_it_works": "Ramp uses a single chartreuse and it only appears where money moves: CTAs, live counters, active states. Mercury's cobalt is reserved for the single primary account action. The rule is semantic, not spatial: designers can answer 'may I use the accent here?' by asking 'is money moving?' rather than by counting pixels. This is far more durable than a percentage-based colour budget because it survives new screens nobody designed for.",
+      "when_it_fails": "Fails when the semantic is too broad. 'Use orange for anything important' is not a rule. It also fails on dense dashboards where the semantic event genuinely occurs 20 times per viewport (a live positions table) \u2014 there you need a second gate: accent only at the highest-cardinality level (row group, not row).",
+      "used_by": "Ramp (#e4f222), Mercury (#5266eb), Linear (one accent per state, greyscale otherwise)"
+    },
+    {
+      "name": "Expressive tier as a hard token boundary, not a guideline",
+      "how_it_works": "Two token namespaces \u2014 brand.* and ui.* \u2014 resolved from the same primitives but exposed to different component sets. Marketing pages, empty states, onboarding, celebration, 404, changelog and illustration import brand.*; tables, forms, charts, modals, approval flows can only import ui.*. Enforced by a lint rule and by not shipping the brand tokens into the app bundle's theme object. The point is that the discipline stops depending on individual designer taste on a Friday.",
+      "when_it_fails": "Fails at the seams \u2014 the dashboard header, the nav, the sidebar. These are 'chrome' and everyone argues they're brand surface. Resolve it by declaring chrome part of ui.* with exactly one brand exception (the wordmark itself). Also fails if the expressive tier gets no real work: if brand.* only powers the marketing site, the product feels like a different company and the brand dies.",
+      "used_by": "Wise multi-brand system, Spotify Encore, GitHub Primer (brand vs product colour sets)"
+    },
+    {
+      "name": "Mascot/character as commentator, never as authority",
+      "how_it_works": "The expressive character may narrate, react, encourage or apologise, but is never the source of a number, a permission, or a verdict. Duo celebrates a streak and nags you by push notification; the answer-check surface is a plain green/red bar with no owl. The separation lets you keep enormous personality in the emotional register while every factual claim is rendered in the same neutral typographic voice.",
+      "when_it_fails": "Fails the moment the character delivers bad news about money \u2014 a cartoon telling you a position was liquidated reads as mockery. Also fails when the character appears adjacent to a consent action: a sticker next to 'Grant this agent $5,000/week' is exactly the Robinhood-confetti failure mode, where playfulness reads as inducement rather than warmth.",
+      "used_by": "Duolingo (Duo), Mailchimp (Freddie \u2014 deliberately absent from billing), Slack (personality in loading copy only)"
+    },
+    {
+      "name": "Personality concentrated in zero-data and transition moments",
+      "how_it_works": "Expression is allocated to the parts of the product where there is nothing to be serious about: first-run, empty states, successful completion, loading, error recovery, the changelog, keyboard-shortcut overlays, the command palette. These are the moments with no dense information to compete with and no consequential decision pending, so a full-strength brand hit is pure gain. Raycast and Arc put nearly all of their identity here plus in motion; Linear's is in marketing and micro-motion.",
+      "when_it_fails": "Fails if the empty state is actually a *risk* state. 'No agents hired yet' is a genuine empty state and can be delightful. 'No confidence data available for this agent' looks like an empty state but is a warning \u2014 treat it as instrument, not canvas. The heuristic: if the emptiness is a fact about the user's journey, be expressive; if it's a fact about your knowledge, be sober.",
+      "used_by": "Raycast, Arc, Linear, Notion (illustration only in onboarding/templates)"
+    },
+    {
+      "name": "Outline as semantics \u2014 neo-brutalist borders made load-bearing",
+      "how_it_works": "Neo-brutalism's vocabulary (2\u20133px solid #000 borders, hard offset shadows, zero blur) is normally pure decoration and reads as toy. It becomes credible the moment the border *encodes something*. Because the border has two independent free variables nobody else uses \u2014 weight and dash pattern \u2014 it can carry a binary that colour cannot safely carry in a financial UI (colour is already spent on gain/loss). Solid black die-cut = guaranteed by an external, verifiable mechanism; dashed = guaranteed by us; hairline grey = not guaranteed. This survives greyscale, colourblindness and screenshots.",
+      "when_it_fails": "Fails if you apply the offset shadow universally \u2014 `box-shadow: 5px 5px 0 #000` on every card is the single fastest way to make a financial product look like a Gumroad clone circa 2023. Restrict the offset shadow to entities that can be *picked up* (agent cards, badges) and never to data containers (tables, charts, forms, modals). Also fails at density: 2px black borders on 40 stacked table rows produce a grid that vibrates. Below ~44px row height, drop to 1px and rely on the dash/solid distinction alone.",
+      "used_by": "Gumroad (and the walk-back), Figma's marketing surfaces, Vercel's use of hard edges without blur"
+    },
+    {
+      "name": "Confidence encoded as ink density, not as a second number",
+      "how_it_works": "Uncertainty visualisation research (Padilla/Kay/Hullman) and the graded-error-bar convention both map confidence to a *perceptual* property: opacity, fill texture, stroke weight, or interval width \u2014 darker/thicker/solid = more certain. Rendering a big score plus a small grey '0.94' fails because readers anchor on the large number and treat the small one as metadata. If instead the 89-at-0.94 card is solidly filled and outlined while the 95-at-0.22 card is hollow, dashed and rendered in outline type, the ranking reads pre-attentively and the number becomes confirmation rather than the entire signal.",
+      "when_it_fails": "Fails when confidence encoding collides with your semantic palette \u2014 if low confidence is 'faded', it will be read as 'disabled' or 'loading'. Avoid opacity as the primary channel for exactly this reason; use fill *texture* (diagonal hatch, dot grid) plus stroke style, which no other state in your system uses. Also fails if you use a colour ramp for confidence \u2014 you cannot afford a second colour scale next to profit/loss.",
+      "used_by": "National Hurricane Center cone, FiveThirtyEight/Silver Bulletin forecast bands, Kalshi and Polymarket probability rendering"
+    },
+    {
+      "name": "Designed indeterminacy \u2014 'we cannot distinguish these' as a first-class layout, not a message",
+      "how_it_works": "Instead of showing rank 1/2/3 with a caveat, the layout itself stops ranking: the tied set is drawn inside one bracket with a shared horizontal range band, the ordinal column is removed for those rows (not greyed \u2014 removed), and the group gets one label. Sports league ties, Olympic joint medals and election forecasts all do this. The user cannot misread it because there is no ordering present to misread.",
+      "when_it_fails": "Fails if the tied group is the whole list \u2014 a screen where nothing is ranked feels broken. Set a floor: if more than ~60% of results are statistically indistinguishable, switch the whole view to a different mode (a scatter of score vs confidence, or a filter prompt) rather than rendering one giant bracket. Also fails if users can still sort the column, which silently reintroduces a false order.",
+      "used_by": "FiveThirtyEight 'too close to call', Kalshi tied markets, Bloomberg terminal's convention of blanking rather than estimating"
+    },
+    {
+      "name": "Chunky display face / disciplined data face split",
+      "how_it_works": "The seriousness of a financial UI is carried almost entirely by numerals. You can run a very expressive rounded display face at 32px+ for headings, empty states and marketing and still be trusted, provided every number in the product renders in a face with true tabular lining figures, no rounded terminals, and a numeral design where 0/O and 1/l/7 are unambiguous. Ramp does the inverse trick \u2014 one neo-grotesque at a single weight, huge and tight for display, small and tracked for labels \u2014 proving the split can be within one family if the family has the range.",
+      "when_it_fails": "Fails when the display face leaks into currency values or table headers 'just for one hero metric'. A rounded sticker face rendering $12,480.33 is the single most damaging thing you can do to perceived trustworthiness. Also fails if the data face is Inter or Geist Mono, both now legible as AI-default tells; pick something with an actual opinion.",
+      "used_by": "Ramp (Lausanne), Mercury (custom display at 480 weight + body at 400), Copilot Money (warm brand, strict tabular figures)"
+    },
+    {
+      "name": "Motion as the safety valve",
+      "how_it_works": "Motion is where a playful brand can spend energy without touching colour or layout: overshoot, squash, sticker-peel, and rotation live in onboarding, celebration and marketing. The product tier gets a hard rule \u2014 no spring physics, ease-out only, 120\u2013180ms \u2014 applied to anything inside a container displaying a mutable balance. This gives designers a genuine outlet, which is what stops them from smuggling personality into the dense surface.",
+      "when_it_fails": "Fails on celebration specifically. Robinhood shipped confetti on trade execution and removed it in March 2021 after regulators (Massachusetts' complaint, and later a $70M FINRA settlement covering broader conduct) characterised its interface as gamifying risk-taking. For AiKi the equivalent is animating the moment authority is granted. Celebrate *deposits* and *milestones*; never animate consent, execution, or a realised gain.",
+      "used_by": "Duolingo (celebration only), Linear (micro-motion in chrome), Robinhood (the cautionary case)"
+    }
+  ],
+  "references": [
+    {
+      "name": "Monzo Brand Style Guide 2022 (breakdown)",
+      "url": "https://www.deck.gallery/blog/monzo-brand-guidelines-breakdown/",
+      "why": "The single most relevant document in existence for AiKi. An 82-slide guide where roughly three quarters of the content is rules for NOT using the signature colour, and where Hot Coral is defined as an object colour \u2014 the card, the illustrated tile \u2014 explicitly not a CTA colour. Show a designer slides 14 and 17 (primary colour, and AA-compliant pairings)."
+    },
+    {
+      "name": "Ramp",
+      "url": "https://ramp.com",
+      "why": "The clearest proof that one violently loud accent (#e4f222 highlighter chartreuse) is compatible with a dense financial product, because the accent has a single semantic: it appears where money moves. Also a masterclass in carrying all expression through type scale (single-weight neo-grotesque, huge and tight) rather than colour."
+    },
+    {
+      "name": "Mercury",
+      "url": "https://mercury.com",
+      "why": "Near-monochrome onyx/ivory with exactly one cobalt (#5266eb) reserved for one action. Useful as the counter-argument to AiKi's instinct: shows how much brand identity survives when colour is almost entirely withdrawn from the working surface, with typography (a custom display face at 480 weight) carrying the voice."
+    },
+    {
+      "name": "Duolingo",
+      "url": "https://duolingo.com",
+      "why": "The canonical playful-brand/serious-surface split. Note specifically: white storybook canvas, mid-grey body copy so the green can do the emotional work, and Duo's total absence from the answer-adjudication surface. Duo is a commentator on your streak, never an authority on your answer."
+    },
+    {
+      "name": "Morpho brand guidelines",
+      "url": "https://brand.morpho.org/",
+      "why": "A crypto brand with an actual tier system rather than a dark-purple gradient: a primary abstract symbol, a secondary illustration tier (grain texture, gradients) explicitly scoped to social and web, and a separate 'product icons \u2014 minimalist, clean lines, for UI clarity' tier. This is the two-tier architecture stated out loud by a DeFi protocol."
+    },
+    {
+      "name": "Robinhood's confetti removal (March 2021) and the FINRA settlement",
+      "url": "https://www.finra.org/media-center/newsreleases/2021/finra-orders-record-financial-penalties-robinhood-financial-llc",
+      "why": "The hard boundary. Playful animation at the moment of a financial commitment was read by regulators and the press as gamification of risk. AiKi's equivalent moment is granting an agent scoped spending authority \u2014 this reference is the argument for why that specific screen must be the calmest in the product."
+    },
+    {
+      "name": "National Hurricane Center cone of uncertainty",
+      "url": "https://www.nhc.noaa.gov/aboutcone.shtml",
+      "why": "The most-studied uncertainty artifact in public design, including its documented failure mode (people read the cone edge as a safety boundary). Directly instructive for AiKi's confidence bands: show the research on graded error bars \u2014 darker/thicker for narrower intervals \u2014 as the encoding to steal, and the cone's misreading as the trap to avoid."
+    },
+    {
+      "name": "Silver Bulletin / FiveThirtyEight forecast pages",
+      "url": "https://www.natesilver.net/",
+      "why": "The best working example of 'we cannot distinguish these' as a designed state rather than an error. Ties are rendered as overlapping bands with the ordinal suppressed, and the interface's whole credibility rests on visibly declining to over-claim \u2014 the exact positioning AiKi has chosen."
+    },
+    {
+      "name": "Kalshi and Polymarket",
+      "url": "https://kalshi.com",
+      "why": "Probability-native financial UIs that ship percentages as the primary number in a dense, serious surface. Worth studying for numeral treatment and for how they avoid making a probability look like a price."
+    },
+    {
+      "name": "Copilot Money",
+      "url": "https://copilot.money",
+      "why": "Warm, colourful, genuinely charming consumer finance app that never compromises its numerals \u2014 colour lives in category chips and illustration, tabular figures and neutral greys carry every amount. The closest existing product to the tonal target AiKi describes."
+    },
+    {
+      "name": "Gumroad's neo-brutalist era",
+      "url": "https://gumroad.com",
+      "why": "Show a designer this as the cautionary version of AiKi's own aesthetic: thick black borders and hard offset shadows applied universally, which made a real commerce product read as a toy and was substantially walked back. Use it to argue that the border must encode something, not decorate everything."
+    },
+    {
+      "name": "Figma",
+      "url": "https://figma.com",
+      "why": "A maximally expressive identity (rainbow logo, playful marketing, Config as a circus) wrapped around a grey, near-colourless working canvas. The cleanest demonstration that brand strength and surface neutrality are not in tension when they occupy different layers."
+    },
+    {
+      "name": "Linear, Raycast, Arc",
+      "url": "https://linear.app",
+      "why": "Three products whose personality lives almost entirely in chrome, motion, changelogs and command palettes rather than in colour on the working surface. Study Raycast's onboarding and Linear's changelog as the template for where AiKi's sticker energy is allowed to run at full strength."
+    },
+    {
+      "name": "Nothing",
+      "url": "https://nothing.tech",
+      "why": "A hardware brand that solved the identical problem with a formal device: an expressive tier (dot-matrix typeface, glyph interface, transparency) that is rigorously separated from the functional tier. Useful for arguing that the expressive tier should be a *named system* with its own rules, not just 'more brand'."
+    }
+  ],
+  "anti_patterns": [
+    "The blue/indigo-to-purple gradient \u2014 named repeatedly as the loudest AI tell of 2026, traceable to Tailwind's indigo-500 default. Any purple in AiKi is a defect.",
+    "Inter as the product face, and Geist Mono as the display face. Both are now read as 'nobody made a typography decision here'. Geist Mono headlines specifically appear in the canonical AI-slop crypto landing page description.",
+    "Three rounded cards in a row, each with a thin-line icon at the top and a soft blurred shadow. This exact block is the single most reproduced AI layout.",
+    "A 3\u20134px coloured left-border strip on alert/callout cards \u2014 called out as the most reliable single AI tell in 2026 UI.",
+    "Gradient-filled headline text, and animated mesh/aurora gradient hero backgrounds.",
+    "Glassmorphism (backdrop-blur panels) over or beside charts \u2014 it destroys chart legibility and dates the product to 2021.",
+    "Near-black-with-a-purple-cast dark mode (#0F0B1E, #121026 and relatives). Crypto's default. Use a warm true black instead.",
+    "3D isometric blockchain cubes, floating glass coins, glowing node-graph/particle-network backgrounds, and hexagonal grid motifs.",
+    "A fake dashboard screenshot in the hero with a generic upward-and-to-the-right line chart and no readable axis labels.",
+    "Sparkle/star icons (\u2728) as the universal signifier of 'AI', and 'Powered by AI' as a badge.",
+    "Copy in the register of 'Revolutionize DeFi' / 'Build faster. Ship smarter.' \u2014 confident, weightless, category-generic.",
+    "Rounded-2xl applied uniformly to every element so nothing has a distinct silhouette; radius should be a meaningful variable (entity vs container vs control), not a global default.",
+    "Applying the sticker/comic language to numerals, table rows, or currency values. A rounded display face rendering $12,480.33 is the fastest available way to lose trust.",
+    "Hard offset shadows (`5px 5px 0 #000`) on every element. Reads as Gumroad-clone toy. Reserve for pickable entities only.",
+    "2px black borders on dense table rows \u2014 below ~44px row height the grid vibrates and legibility collapses.",
+    "Confidence rendered as a small grey number beside a large score. Readers anchor on the big number and discard the qualifier; this defeats AiKi's entire differentiating claim.",
+    "Using opacity as the primary encoding for low confidence \u2014 it is indistinguishable from 'disabled' and 'loading'.",
+    "A second colour ramp for confidence running alongside the profit/loss ramp. Two competing colour scales in one table is unreadable.",
+    "Emoji as a data encoding (\ud83d\udd25 for hot agents, \u26a0\ufe0f for risk). Fails in tables, fails cross-platform, and reads as unserious precisely where seriousness is required.",
+    "The mascot or any expressive illustration adjacent to a spend-authority grant, an execution confirmation, or a liquidation notice.",
+    "Confetti / celebratory animation on trade execution or realised gain \u2014 the specific pattern regulators characterised as gamification at Robinhood.",
+    "Rendering the backend-enforced spend cap and the contract-enforced spend cap with the same component. This is the product's core honesty claim expressed as a visual lie.",
+    "Showing a rank of 1/2/3 with an asterisk or tooltip explaining the agents are statistically indistinguishable. If they are indistinguishable, the ordinal must not be rendered at all.",
+    "Reusing the generic error-red state for the impostor-endpoint case. An endpoint that returns HTTP 200 with identical bytes is not down \u2014 it needs its own state, distinct from both healthy and failed.",
+    "Orange (#FD4A01) as body-text colour on cream. It measures ~3.2:1 against #F9F8F1 \u2014 legal for large text and UI borders, illegal for body copy.",
+    "Yellow (#FDED02) as text or as a chart series on cream. It measures ~1.14:1 against #F9F8F1 \u2014 effectively invisible. Yellow is a fill that carries black text, nothing else."
+  ],
+  "recommendations": [
+    "Split the system into two named tiers with different names, not one system with guidance. Call them something like MARKET (expressive) and INSTRUMENT (working surface). Ship them as separate token namespaces resolved from the same primitives, and add an ESLint/Stylelint rule that fails the build if an INSTRUMENT component imports a MARKET token. The discipline must be structural, because taste will not survive a deadline.",
+    "Assign orange (#FD4A01) exactly one product semantic: authority. It marks the agent as an entity you have hired, and it marks money leaving under delegated permission. It is not the primary-button colour. Copy Monzo's move \u2014 orange is the colour of the agent card and the badge, never the colour of every click. If you need a workhorse CTA, use black on cream.",
+    "Assign yellow (#FDED02) to the label tier only, inheriting directly from the 'AGENT MARKET' badge. In product it becomes the caution chip: 'backend-enforced', 'unverified endpoint', 'low sample size'. It is always a fill with black text on it, never text, never a chart series, never a large area. Contrast math forces this anyway: #FDED02 on #F9F8F1 is 1.14:1; black on #FDED02 is 17.3:1.",
+    "Ship cream #F9F8F1 as the actual app canvas, not just the marketing background. A warm paper ground is the single cheapest, most effective de-genericising move available \u2014 no competitor in BNB-chain DeFi has one, and it makes every screenshot instantly identifiable. For dark mode use a warm true black (around #0D0C0A), never a purple-cast near-black. Note that orange flips role between modes: 3.2:1 on cream (large text and borders only) but 6.2:1 on black (body-legal).",
+    "Make the black outline semantic and make that the headline of the design system. Solid 2px die-cut black = enforced by an on-chain contract. Dashed 1.5px black = enforced by AiKi's backend. 1px hairline grey = not enforced, informational only. This uses the one visual channel colour cannot afford, survives greyscale and colourblindness, and turns the sticker aesthetic into the most trustworthy thing about the product rather than the least.",
+    "Promote the starburst to a guarantee seal. It appears \u2014 solid, filled orange \u2014 only on values that are cryptographically enforced or verifiably attested on-chain, always adjacent to the contract address in monospace. Its absence is the signal for everything else. One glyph, one meaning, never decorative. This gives the loudest element of the logo a job that only increases in credibility with use.",
+    "Encode confidence as fill texture plus stroke style, with the number as confirmation rather than the whole signal. High (\u22650.85): solid fill, solid 2px outline, full-weight tabular numerals. Medium (0.5\u20130.85): 40% diagonal-hatch or dot-grid fill, 1.5px outline. Low (<0.5): no fill, dashed outline, score rendered in outline/lighter optical weight with a visible \u00b1 band drawn as a bar. Deliberately avoid opacity (reads as disabled) and avoid any colour ramp (collides with P&L). Test the ranking by printing it in greyscale \u2014 if 89@0.94 does not visibly beat 95@0.22 on paper, the encoding has failed.",
+    "Design the indistinguishable state as a bracket, not a caveat. Group the tied agents inside a single container with one shared horizontal range band, remove the ordinal column for those rows entirely (delete, do not grey out), disable sorting within the group, and label it once \u2014 'not statistically separable at n=41'. If more than ~60% of a result set is tied, switch the entire view to a score-vs-confidence scatter instead of rendering one giant bracket.",
+    "Give the impostor-endpoint case its own state, distinct from both healthy and failed. Suggested treatment: the agent card renders in outline-only type over a repeating diagonal hatch \u2014 visually 'hollow' \u2014 with the label 'Responds, but does not compute' and the evidence shown inline (identical response hash across N distinct probe inputs). This is a state no competitor has, so it should look like nothing else in the product. Do not spend the error-red on it.",
+    "Split the typefaces by job and never let them cross. Display/expressive: a chunky rounded grotesque with heavy terminals matching the wordmark (GT Maru, PP Right Grotesk, or Sharp Grotesk if licensed; Bricolage Grotesque as a free option). Data/UI: a face with true tabular lining figures and unambiguous 0/O and 1/7 (S\u00f6hne or ABC Diatype if licensed; Commit Mono or Martian Mono for numeric columns). Explicitly ban Inter and Geist Mono. Write the rule as: 'no rounded terminal ever touches a currency value.'",
+    "Allocate the personality budget by surface, in writing: full brand strength on marketing, first-run, empty states about the user's journey, celebration of deposits and milestones, changelog, 404, and the command palette. Zero brand on the agent-hiring flow, the authority-grant screen, the spend-cap editor, positions tables, charts, and any liquidation or failure notice. The distinguishing test for empty states: if the emptiness is a fact about the user, be expressive; if it is a fact about what AiKi does not know, be sober.",
+    "Write the motion rule as a hard constraint, then give designers a real outlet. INSTRUMENT tier: ease-out only, 120\u2013180ms, no spring physics inside any container displaying a mutable balance. MARKET tier: sticker-peel, overshoot, rotation, squash \u2014 go as far as you want. Absolutely never animate the moment authority is granted or an order executes; celebrate deposits and milestones instead. Robinhood's confetti is the precedent that ends this argument.",
+    "Restrict the hard offset shadow to entities that could plausibly be picked up \u2014 agent cards, badges, the seal \u2014 and forbid it on tables, charts, forms and modals. Make border-radius a semantic variable rather than a global default: large radius for entities (sticker-like), small for containers, minimal for controls. This is what stops the neo-brutalist vocabulary from reading as toy in 2026.",
+    "Build one artefact early and test it with five real users: a single screen showing three agents where the top-scored one is the least trustworthy. If users pick the 89@0.94 over the 95@0.22 without reading a tooltip, the visual system works and the rest of the design system can be derived from it. If they do not, no amount of brand polish elsewhere matters \u2014 the product's entire claim is unrendered."
+  ]
+}
