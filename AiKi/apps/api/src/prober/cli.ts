@@ -49,8 +49,19 @@ interface ScanAgent {
  * `resetAt` on a real 429, and let the true ceiling be discovered at runtime. That
  * is robust whether or not the Pro upgrade is actually applied to this key.
  */
-async function scan<T>(path: string, attempt = 0): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { headers: KEY ? { 'X-API-Key': KEY } : {} })
+interface Pagination { page: number; limit: number; total: number; hasMore: boolean }
+/** Last seen meta.pagination — the only place the registry total is exposed. */
+let lastPagination: Pagination | null = null
+/** How many distinct registry locations the sample drew from. */
+let sampledPages = 0
+
+async function scan<T>(path: string, attempt = 0, _captureMeta = false): Promise<T> {
+  // Send BOTH header names. Their OpenAPI documents X-API-Key; their MCP config
+  // uses X-Access-Token. Which one gates the Pro tier is undocumented, so send both.
+  const headers: Record<string, string> = KEY
+    ? { 'X-API-Key': KEY, 'X-Access-Token': KEY }
+    : {}
+  const res = await fetch(`${BASE}${path}`, { headers })
 
   // Soft backpressure: slow down before they have to say no.
   const remaining = Number(res.headers.get('x-ratelimit-remaining') ?? '1')
@@ -72,25 +83,58 @@ async function scan<T>(path: string, attempt = 0): Promise<T> {
 
   if (!res.ok) throw new Error(`8004scan ${path} → HTTP ${res.status}`)
 
-  const json = (await res.json()) as { success?: boolean; data?: T }
-  // NOTE: the PUBLIC api envelopes as { success, data }. The undocumented
-  // /api/v1 endpoint uses { items, total } instead. They are not interchangeable.
+  const json = (await res.json()) as {
+    success?: boolean
+    data?: T
+    meta?: { pagination?: Pagination }
+  }
+  if (json.meta?.pagination) lastPagination = json.meta.pagination
+  // NOTE: the PUBLIC api envelopes as { success, data } with pagination under
+  // meta.pagination. The undocumented /api/v1 endpoint uses { items, total }
+  // instead. They are not interchangeable.
   return (json.data ?? (json as unknown)) as T
 }
 
-/** Pull a spread sample across the registry rather than only the newest agents. */
+/**
+ * Pull a sample spread across the whole registry.
+ *
+ * CRITICAL: this API ignores `offset` entirely — it paginates with `page`, and
+ * `meta.pagination` returns { page, limit, total, hasMore }. Passing offset silently
+ * returns page 1 every time, which yields a sample of only the newest agents. Those
+ * are minted minutes ago and declare nothing, so the sweep reports "0% declare a
+ * service" and looks like a devastating finding when it is actually a sampling bug.
+ * Verified 19 Aug 2026: offset=0 and offset=100000 return identical token_ids.
+ */
 async function sampleAgents(total: number): Promise<ScanAgent[]> {
-  const pageSize = 25
-  const pages = Math.max(1, Math.ceil(total / pageSize))
-  const highestOffset = 260_000
+  // Small pageSize on purpose. A page returns CONSECUTIVE token ids, and on a
+  // registry dominated by bulk minting, consecutive agents come from the same
+  // batch and are near-identical — so 3 pages of 25 is 3 clusters, not 75
+  // independent draws. Reporting a percentage from that overstates precision
+  // badly (see the 5 identical {agentId} placeholders at 203497-203507, all one
+  // batch). Detail lookups cost 1 request per agent and dominate the budget
+  // anyway, so buying page diversity here is nearly free.
+  const pageSize = 3
+  const first = await scan<ScanAgent[]>(`/agents?chainId=${CHAIN_ID}&limit=1&page=1`, 0, true)
+  const totalAgents = lastPagination?.total ?? 0
+  const maxPage = Math.max(1, Math.floor(totalAgents / pageSize))
+  console.log(`  registry holds ${totalAgents.toLocaleString()} agents (${maxPage.toLocaleString()} pages)`)
+  void first
+
+  const wanted = Math.ceil(total / pageSize)
+  // Track cluster count so the report can be honest about sample design.
+  sampledPages = wanted
+  // Deterministic spread across the registry so runs are comparable, plus a
+  // rotating offset so repeated sweeps do not always hit the same pages.
+  const stride = Math.max(1, Math.floor(maxPage / wanted))
+  const jitter = Math.floor((Date.now() / 60000) % stride)
+
   const out: ScanAgent[] = []
   const seen = new Set<string>()
-
-  for (let i = 0; i < pages; i++) {
-    const offset = Math.floor((highestOffset / pages) * i)
+  for (let i = 0; i < wanted && out.length < total; i++) {
+    const page = Math.min(maxPage, 1 + i * stride + jitter)
     try {
       const batch = await scan<ScanAgent[]>(
-        `/agents?chainId=${CHAIN_ID}&limit=${pageSize}&offset=${offset}`,
+        `/agents?chainId=${CHAIN_ID}&limit=${pageSize}&page=${page}`,
       )
       for (const a of batch ?? []) {
         if (!seen.has(a.agent_id)) {
@@ -99,9 +143,8 @@ async function sampleAgents(total: number): Promise<ScanAgent[]> {
         }
       }
     } catch (err) {
-      console.warn(`  page at offset ${offset} failed: ${(err as Error).message}`)
+      console.warn(`  page ${page} failed: ${(err as Error).message}`)
     }
-    if (out.length >= total) break
   }
   return out.slice(0, total)
 }
@@ -234,8 +277,14 @@ async function main() {
   const zeroCost = results.filter((r) => r.registrationWasZeroCost).length
   const live = byState.get('LIVE') ?? 0
 
+  // Report sample DESIGN alongside the numbers. A percentage from clustered
+  // draws is not the same statistic as one from independent draws, and this
+  // product does not get to be sloppy about that.
+  const blocks = new Set(results.map((r) => Math.floor(Number(r.agentId) / 1000))).size
+
   console.log(`\n${'─'.repeat(58)}`)
   console.log(`PROBE SWEEP — ${results.length} agents, BSC chain ${CHAIN_ID}`)
+  console.log(`sample: ${sampledPages} registry locations, ${blocks} distinct 1k-id blocks`)
   console.log('─'.repeat(58))
   for (const [state, n] of [...byState.entries()].sort((a, b) => b[1] - a[1])) {
     const pct = ((n / results.length) * 100).toFixed(1)
@@ -243,6 +292,10 @@ async function main() {
   }
   console.log('─'.repeat(58))
   console.log(`  genuinely LIVE          ${live}  (${((live / results.length) * 100).toFixed(1)}%)`)
+  if (blocks < 10) {
+    console.log('  ⚠ CLUSTERED SAMPLE — too few distinct registry locations to')
+    console.log('    quote these as ecosystem percentages. Raise --limit.')
+  }
   console.log(`  reciprocal proof (D8)   ${reciprocal}`)
   console.log(`  data: URI, zero-cost    ${zeroCost}`)
   console.log('─'.repeat(58))
