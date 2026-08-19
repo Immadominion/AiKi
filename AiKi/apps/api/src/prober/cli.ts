@@ -34,15 +34,27 @@ interface ScanAgent {
 }
 
 /**
- * 8004scan client with real 429 handling.
+ * 8004scan client with adaptive rate-limit handling.
  *
- * Their 429 body carries `error.details.resetAt`, which is far more useful than a
- * Retry-After guess — we sleep until exactly that instant. The `x-ratelimit-*`
- * headers ARE accurate (an earlier assumption that they were stale was wrong:
- * a short burst can straddle a window boundary and look like it passed).
+ * Measured behaviour (19 Aug 2026), which is stranger than the docs suggest:
+ *  - `x-ratelimit-limit` always reports 10, even on a Pro-upgraded key, and even
+ *    while the same key is happily serving a 14-request burst. The LIMIT field is
+ *    not trustworthy.
+ *  - `x-ratelimit-remaining` DOES decrement and does reach 0 — and requests keep
+ *    succeeding past that point. So `remaining: 0` is soft backpressure, not a wall.
+ *  - A hard 429 does eventually arrive under sustained load, and its body carries
+ *    `error.details.resetAt`, which is precise and worth obeying exactly.
+ *
+ * Conclusion: do not hard-code a rate. Treat `remaining: 0` as "ease off", obey
+ * `resetAt` on a real 429, and let the true ceiling be discovered at runtime. That
+ * is robust whether or not the Pro upgrade is actually applied to this key.
  */
 async function scan<T>(path: string, attempt = 0): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { headers: KEY ? { 'X-API-Key': KEY } : {} })
+
+  // Soft backpressure: slow down before they have to say no.
+  const remaining = Number(res.headers.get('x-ratelimit-remaining') ?? '1')
+  if (res.ok && remaining <= 0) await new Promise((r) => setTimeout(r, 1_500))
 
   if (res.status === 429) {
     if (attempt >= 4) throw new Error(`8004scan ${path} → rate limited, gave up after ${attempt}`)
