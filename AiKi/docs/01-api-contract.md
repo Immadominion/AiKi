@@ -462,7 +462,7 @@ packages/contracts/
 ```
 
 ```bash
-pnpm mock            # localhost:4000, full API from fixtures
+pnpm mock            # localhost:4700, full API from fixtures
 pnpm dev             # web app pointed at the mock
 ```
 

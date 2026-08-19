@@ -1,0 +1,23 @@
+{
+  "name": "@aiki/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fixtures": "./src/fixtures.ts"
+  },
+  "scripts": {
+    "mock": "tsx watch src/mock-server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.1",
+    "hono": "4.13.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "tsx": "4.23.12",
+    "typescript": "6.0.3"
+  }
+}

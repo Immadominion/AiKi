@@ -1,0 +1,22 @@
+{
+  "name": "aiki",
+  "private": true,
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "mock": "pnpm --filter @aiki/contracts mock"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.9",
+    "turbo": "2.10.11",
+    "typescript": "6.0.3"
+  }
+}

@@ -1,0 +1,17 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 11 gates postinstall scripts. esbuild is a tsx/vitest transitive dep.
+allowBuilds:
+  esbuild: true
+
+# Pins added by pnpm's supply-chain minimum-release-age check.
+minimumReleaseAgeExclude:
+  - '@turbo/darwin-64@2.10.11'
+  - '@turbo/darwin-arm64@2.10.11'
+  - '@turbo/linux-64@2.10.11'
+  - '@turbo/linux-arm64@2.10.11'
+  - '@turbo/windows-64@2.10.11'
+  - '@turbo/windows-arm64@2.10.11'
+  - turbo@2.10.11
