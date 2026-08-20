@@ -36,7 +36,7 @@ Then skim, as reference when you touch the area: `01-protocols/01` (ERC-8004 int
 These cost real debugging time. All verified by direct RPC.
 
 1. **`totalSupply()` reverts** on the canonical IdentityRegistry — it is not ERC721Enumerable. You cannot scan `1..totalSupply`. **Index `Registered` events.**
-2. **No event params are indexed** on `Registered`/`URIUpdated`, and `NewFeedback` indexes only `tag1` — **per-agent log filters are impossible.** Index the full stream, shard downstream.
+2. **`Registered` indexes agentId and owner** — verified by decoding live logs (`topics=3`), correcting an earlier note. Per-agent filters work there. `NewFeedback` indexes only `tag1`, so feedback still needs full-stream indexing and downstream sharding.
 3. **`eth_getLogs` is disabled** on public BSC dataseeds. Caps elsewhere are 5k (publicnode) to 50k (NodeReal). At 0.45s/block, a 10k window is **75 minutes** of chain.
 4. **USDT-BSC is 18 decimals, not 6**, and implements **neither** EIP-3009 nor EIP-2612. A 6-decimal assumption is wrong by 10¹². The working settlement asset is **`$U`**.
 5. **The ERC-8183 deployed ABI diverges from the EIP**: `fund(uint256,uint256,bytes)` and `setProvider(uint256,address,bytes)`. Build from the deployed ABI.

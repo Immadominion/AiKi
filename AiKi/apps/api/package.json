@@ -6,7 +6,8 @@
   "scripts": {
     "probe": "tsx src/prober/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "index": "tsx src/indexer/cli.ts"
   },
   "dependencies": {
     "@aiki/contracts": "workspace:*"

@@ -58,7 +58,7 @@ The **evidence plane is the moat**. Everything above it is a projection; everyth
 | Constraint | Consequence |
 |---|---|
 | **`totalSupply()` reverts** — the canonical IdentityRegistry is **not** ERC721Enumerable | A `1..totalSupply()` scan is impossible. **Index `Registered` events.** |
-| **No indexed params on `Registered` / `URIUpdated`** | Cannot filter by `agentId` at log level. Filter by `topic0 + address`, decode everything. |
+| **`Registered` DOES index agentId and owner** (verified by decoding a live log: `topics=3`) | `Registered(uint256 indexed agentId, string agentURI, address indexed owner)` — agentId is `topics[1]`, owner is `topics[2]`. Per-agent filters DO work. `NewFeedback` still indexes only `tag1`. |
 | **`NewFeedback` indexes only `tag1`** — not `agentId`, not `clientAddress` | **Per-agent log filters are impossible.** Index the full stream and shard downstream. |
 
 Plus: `eth_getLogs` is **disabled** on public dataseeds; caps elsewhere run 5k–50k blocks — and at 0.45s/block a 10,000-block window is **75 minutes**.
@@ -96,7 +96,7 @@ raw log store ──► decode ──► Observation (append-only)
 
 **Ordering:** key every event by `(blockNumber, logIndex)`. Use BSC's non-standard **`milliTimestamp`** for wall-clock — the standard `timestamp` is second-resolution and now spans ~2.2 blocks, so 2–3 blocks share a value. Generic EVM indexers drop this field silently.
 
-**Scale:** ~269,718 agents, growing ~460/day.
+**Scale:** ~272,500 agents (20 Aug 2026). Registration is BURSTY — a 75-minute window implied ~27,000/day while the agentId delta over 11.5 hours implied ~4,400/day. Never extrapolate a rate from a short window.
 
 ---
 
