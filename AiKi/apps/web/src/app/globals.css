@@ -1,0 +1,107 @@
+@import 'tailwindcss';
+
+/*
+ * AiKi design tokens.
+ *
+ * Two tiers, deliberately separated (docs/design-system-brief.md §2.9):
+ *   --market-*      expressive. Landing, empty states, receipts, celebration.
+ *   --instrument-*  the working surface. Calm, dense, quiet.
+ *
+ * ONE COLOUR, ONE MEANING — this is what keeps a dense UI legible:
+ *   orange  authority. A hired agent, or money moving under delegated permission.
+ *           NOT the default button colour.
+ *   yellow  uncertainty and unknown. Backend-enforced, unverified, low sample.
+ *           Nothing else may be yellow, product-wide.
+ *   cream   the canvas itself.
+ *   black   structure, and semantics via stroke (see below).
+ *
+ * Measured contrast (do not violate):
+ *   #FD4A01 on #F9F8F1 = 3.2:1  → fills, rules, icons ≥24px, display ≥24px ONLY
+ *   #FD4A01 on #000000 = 5.8:1  → orange text works on black
+ *   #FDED02 on #F9F8F1 = 1.14:1 → fill only, black type on top, NEVER text
+ *
+ * Gain/loss leaves the brand palette entirely: #FD4A01 sits in the deuteranopia
+ * confusion zone with green, so teal/plum instead of the crypto red/green default.
+ */
+@theme {
+  /* ── brand, straight from the logo file ── */
+  --color-aiki-orange: #fd4a01;
+  --color-aiki-orange-ink: #d13c00; /* darkened for small text on cream */
+  --color-aiki-yellow: #fded02;
+  --color-aiki-cream: #f9f8f1;
+  --color-aiki-ink: #000000;
+
+  /* ── neutrals: warm, so they sit on cream rather than fighting it ── */
+  --color-neutral-50: #faf9f4;
+  --color-neutral-100: #f1efe6;
+  --color-neutral-200: #e2dfd2;
+  --color-neutral-300: #c9c5b4;
+  --color-neutral-400: #9c9887;
+  --color-neutral-500: #6f6c5f;
+  --color-neutral-600: #4d4b41;
+  --color-neutral-700: #35342d;
+  --color-neutral-800: #1f1e1a;
+  --color-neutral-900: #12110f;
+
+  /* ── direction: NOT green/red (colour-blind safe, and red is already danger) ── */
+  --color-gain: #0e6e63;
+  --color-loss: #7b2d5e;
+
+  /* ── semantic, kept clear of brand orange ── */
+  --color-danger: #b3261e;
+  --color-info: #1f5c8b;
+
+  /* ── stroke = the semantic channel (§2.3) ────────────────────────────────
+   * Opacity is taken by disabled/loading. Colour is taken by P&L. Stroke is
+   * the one channel nobody else uses, and the sticker logo makes it native.
+   *   solid thick  → contract-enforced / well-evidenced
+   *   dashed       → backend-enforced / provisional
+   *   hairline     → observed only / thin evidence
+   */
+  --stroke-enforced: 2.5px;
+  --stroke-provisional: 1.5px;
+  --stroke-observed: 1px;
+
+  --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Martian Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+@layer base {
+  html {
+    background: var(--color-aiki-cream);
+    color: var(--color-neutral-900);
+  }
+
+  /* Numbers are load-bearing here. Tabular by default so columns align and
+     values do not jitter as they update live. */
+  .tnum,
+  table td,
+  table th {
+    font-variant-numeric: tabular-nums slashed-zero;
+  }
+
+  /* Display face has a hard floor of 28px — below that the product goes quiet
+     on purpose, and that contrast is what makes the sticker read as confidence
+     rather than costume. */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(1.75rem, 4vw, 3.5rem);
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer components {
+  /* The stroke system, as reusable classes. */
+  .edge-enforced {
+    border: var(--stroke-enforced) solid var(--color-aiki-ink);
+  }
+  .edge-provisional {
+    border: var(--stroke-provisional) dashed var(--color-aiki-ink);
+  }
+  .edge-observed {
+    border: var(--stroke-observed) solid var(--color-neutral-300);
+  }
+}

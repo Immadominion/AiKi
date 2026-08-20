@@ -11,3 +11,7 @@ out/
 probe-sweep-*.json
 
 apps/api/probe-sweep-*.json
+
+# Next 16 auto-generates these; agentRules:false stops it, this is belt-and-braces.
+AGENTS.md
+CLAUDE.md

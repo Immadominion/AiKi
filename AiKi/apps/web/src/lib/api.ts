@@ -1,0 +1,51 @@
+/**
+ * API client for the AiKi backend.
+ *
+ * Points at the mock server by default (`pnpm mock` → :4700), so the frontend is
+ * never blocked on apps/api existing. Same shapes either way — the contract is
+ * the seam, and both sides build against it.
+ */
+
+import type { EcosystemStats, Passport, SearchRequest, SearchResponse } from '@aiki/contracts'
+
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4700'
+
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+    /** Whether the caller should retry, per the contract's error model. */
+    readonly retryable: boolean,
+  ) {
+    super(message)
+  }
+}
+
+async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: { 'content-type': 'application/json', ...init?.headers },
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as {
+      error?: { code: string; message: string; retryable: boolean }
+    } | null
+    throw new ApiError(
+      res.status,
+      body?.error?.code ?? 'UNKNOWN',
+      body?.error?.message ?? res.statusText,
+      body?.error?.retryable ?? false,
+    )
+  }
+  return (await res.json()) as T
+}
+
+export const api = {
+  stats: () => req<EcosystemStats>('/v1/stats'),
+  search: (body: SearchRequest) =>
+    req<SearchResponse>('/v1/search', { method: 'POST', body: JSON.stringify(body) }),
+  passport: (id: string) => req<Passport>(`/v1/agents/${id}/passport`),
+}
