@@ -133,7 +133,7 @@ app.get('/v1/jobs/:id', (c) => c.json(JOB))
  * Control can be built against a genuinely live-feeling stream — including the
  * policy DENY and the approval request, which are the two events that matter.
  */
-app.get('/v1/jobs/:id/events', (c) => {
+app.get('/v1/jobs/:id/events', () => {
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder()
