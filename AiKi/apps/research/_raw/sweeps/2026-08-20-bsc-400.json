@@ -1,0 +1,60 @@
+{
+  "sweptAt": "2026-08-20T10:25:42.243Z",
+  "chainId": 56,
+  "registry": "0x8004a169fb4a3325136eb29fa0ceb6d2e539a432",
+  "sampled": 400,
+  "distinctBlocks": 126,
+  "declaredService": 157,
+  "byState": {
+    "IMPOSTOR_STATIC": 133,
+    "DECLARED_ONLY": 243,
+    "PLACEHOLDER_URL": 22,
+    "DEGRADED": 2
+  },
+  "reciprocalVerified": 0,
+  "zeroCostRegistrations": 231,
+  "hostDistribution": [
+    {
+      "host": "evoevo.ai",
+      "n": 129
+    },
+    {
+      "host": "platform-backend.prod.termix.live",
+      "n": 22
+    },
+    {
+      "host": "api.bortagent.xyz",
+      "n": 2
+    },
+    {
+      "host": "ensoul.ac",
+      "n": 2
+    },
+    {
+      "host": "q402.quackai.ai",
+      "n": 2
+    }
+  ],
+  "verdictRules": [
+    {
+      "rule": "D0",
+      "n": 243
+    },
+    {
+      "rule": "D1",
+      "n": 126
+    },
+    {
+      "rule": "D2",
+      "n": 22
+    },
+    {
+      "rule": "D10",
+      "n": 7
+    },
+    {
+      "rule": "D5",
+      "n": 2
+    }
+  ]
+}

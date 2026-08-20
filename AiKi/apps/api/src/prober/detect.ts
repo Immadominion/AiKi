@@ -223,6 +223,35 @@ export interface ClassifyInput {
   services: DeclaredService[]
   samples: ProbeSample[]
   primaryBody?: string
+  /**
+   * D10 — how many OTHER agents in this sweep declare the identical endpoint URL.
+   * One URL serving many identities cannot be agent-specific, by construction.
+   */
+  sharedWithOtherAgents?: number
+}
+
+/**
+ * D10 — shared endpoint.
+ *
+ * If several distinct agents register the exact same URL with no distinguishing
+ * parameter, that endpoint is not agent-specific no matter what it returns. Observed:
+ * 7 agents all declaring https://q402.quackai.ai/api/relay/info, which serves a
+ * static {"facilitator":"0x..."} config blob identical for every input.
+ *
+ * This is the companion to D1. D1 catches "same bytes for different inputs"; D10
+ * catches "same URL for different agents" — which D1 cannot see, because a URL with
+ * no identifier in it has nothing to vary.
+ */
+export function d10_sharedEndpoint(sharedWith: number): ProbeVerdict | null {
+  if (sharedWith < 1) return null
+  return {
+    state: 'IMPOSTOR_STATIC',
+    rule: 'D10',
+    detail:
+      `This exact endpoint URL is registered by ${sharedWith + 1} different agents. ` +
+      'One URL serving many identities cannot be agent-specific.',
+    evidence: { agentsSharingEndpoint: sharedWith + 1 },
+  }
 }
 
 /**
@@ -249,6 +278,9 @@ export function classify(input: ClassifyInput): ProbeVerdict {
     return { state: 'UNPROBED', rule: '-', detail: 'Not yet probed.' }
   }
 
+  const shared = d10_sharedEndpoint(input.sharedWithOtherAgents ?? 0)
+  if (shared) return shared
+
   const impostor = d1_impostorStatic(samples)
   if (impostor) return impostor
 
@@ -274,6 +306,23 @@ export function classify(input: ClassifyInput): ProbeVerdict {
 
   const handshake = d5_capabilityHandshake(primary, primaryBody ?? '')
   if (handshake) return handshake
+
+  /**
+   * CRITICAL: D1 needs at least two probes to mean anything. If the URL carried no
+   * identifier we could vary, D1 never ran — and defaulting to LIVE there is exactly
+   * the mistake D1 exists to prevent. Absence of evidence is not evidence of
+   * liveness, so this reports as DEGRADED with the reason stated.
+   */
+  if (samples.length < 2) {
+    return {
+      state: 'DEGRADED',
+      rule: 'D1-inapplicable',
+      detail:
+        'Responded with structured content, but the URL carries no identifier we ' +
+        'could vary, so agent-specificity is unproven. Not counted as live.',
+      evidence: { contentType: primary.contentType, probesRun: samples.length },
+    }
+  }
 
   return {
     state: 'LIVE',

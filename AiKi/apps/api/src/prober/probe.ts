@@ -19,7 +19,41 @@ import {
 
 export const USER_AGENT = 'AiKi-Prober/0.1 (+https://github.com/Immadominion/AiKi)'
 
-const TIMEOUT_MS = 8_000
+/**
+ * Per-host serialisation with a courtesy gap.
+ *
+ * Concurrency is bounded per AGENT, but the BSC registry is dominated by a handful
+ * of hosts — one domain accounted for 120 of 146 declared endpoints in a 387-agent
+ * sweep. Firing 8 concurrent agents x 3 D1 variants at a single host makes it time
+ * out, and we then record OUR OWN overload as evidence that THEIR endpoint is
+ * unreachable. That is both rude and factually wrong: re-probing one such host
+ * serially returned HTTP 200 in 0.87s.
+ *
+ * Evidence about a third party must never be an artifact of how hard we hit them.
+ */
+const HOST_GAP_MS = 350
+const hostQueue = new Map<string, Promise<unknown>>()
+
+function perHost<T>(url: string, fn: () => Promise<T>): Promise<T> {
+  let host: string
+  try {
+    host = new URL(url).host
+  } catch {
+    return fn()
+  }
+  const prior = hostQueue.get(host) ?? Promise.resolve()
+  const next = prior
+    .catch(() => undefined)
+    .then(async () => {
+      const out = await fn()
+      await new Promise((r) => setTimeout(r, HOST_GAP_MS))
+      return out
+    })
+  hostQueue.set(host, next)
+  return next as Promise<T>
+}
+
+const TIMEOUT_MS = 15_000
 /** Cap body reads — some endpoints will happily stream forever. */
 const MAX_BODY_BYTES = 256 * 1024
 
@@ -36,7 +70,11 @@ export interface FetchResult {
  * default, which matters because many declared endpoints redirect, and it keeps
  * the dependency surface at zero.
  */
-export async function fetchOnce(url: string): Promise<FetchResult> {
+export function fetchOnce(url: string): Promise<FetchResult> {
+  return perHost(url, () => fetchOnceRaw(url))
+}
+
+async function fetchOnceRaw(url: string): Promise<FetchResult> {
   const started = Date.now()
   try {
     const res = await fetch(url, {
@@ -133,6 +171,8 @@ export interface ProbeAgentInput {
   services: DeclaredService[]
   /** The scheme of the agentURI, so D4 can be reported honestly. */
   agentUri?: string
+  /** D10 — count of OTHER agents declaring this identical endpoint URL. */
+  sharedWithOtherAgents?: number
 }
 
 export interface ProbeAgentResult {
@@ -195,7 +235,12 @@ export async function probeAgent(input: ProbeAgentInput): Promise<ProbeAgentResu
     })
   }
 
-  const verdict = classify({ services: input.services, samples, primaryBody })
+  const verdict = classify({
+    services: input.services,
+    samples,
+    primaryBody,
+    sharedWithOtherAgents: input.sharedWithOtherAgents ?? 0,
+  })
 
   // D8 — only worth checking when there is a real host to check against.
   let reciprocal: ProbeAgentResult['reciprocal']
