@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
+import { Freshness } from '@/components/ui/Freshness'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG } from '@/lib/agents'
 import { route } from '@/lib/routes'
@@ -135,6 +136,10 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           <span className="text-muted hidden text-[11px] lg:inline">⌄</span>
         </button>
       ))}
+
+      <span className="hidden md:inline">
+        <Freshness state="LIVE" ageMs={42_000} />
+      </span>
 
       <div className="flex-1" />
 

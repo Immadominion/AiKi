@@ -2,7 +2,8 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { usePalette } from '@/components/shell/CommandPalette'
 import { useToast } from '@/components/ui/Toast'
 import { route } from '@/lib/routes'
@@ -56,10 +57,12 @@ export function Sidebar({
   onNavigate: () => void
 }) {
   const path = usePathname()
+  const router = useRouter()
   const say = useToast()
   const openPalette = usePalette()
   const { layout, setLayout } = useLayoutPref()
   const onPhone = useIsPhone()
+  const [accountOpen, setAccountOpen] = useState(false)
 
   // The collapse preference belongs to the desktop column. In the drawer the
   // sidebar is always full width, so the rail never appears on touch.
@@ -256,30 +259,75 @@ export function Sidebar({
         </div>
       )}
 
-      <button
-        type="button"
-        title={collapsed ? `${userName} · 0x7f4a…3a91` : undefined}
-        onClick={() => say('Wallet & account settings come later in the journey.')}
-        className={`mt-[6px] flex flex-none items-center gap-[11px] rounded-2xl border-0 bg-none py-[9px] text-left hover:bg-[rgb(26_26_25_/_0.055)] ${
-          collapsed ? 'justify-center px-0' : 'px-[10px]'
-        }`}
-      >
-        <span
-          className="flex size-9 flex-none items-center justify-center rounded-xl text-[14px] font-extrabold text-white"
-          style={{ background: 'var(--agent-account)' }}
-        >
-          D
-        </span>
-        {collapsed ? null : (
+      <div className="relative mt-[6px] flex-none">
+        {accountOpen ? (
           <>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13.5px] font-bold">{userName}</span>
-              <span className="text-muted mt-px block text-[11.5px]">0x7f4a…3a91</span>
-            </span>
-            <span className="text-muted flex-none text-[13px]">⌄</span>
+            <button
+              type="button"
+              aria-label="Close account menu"
+              onClick={() => setAccountOpen(false)}
+              className="fixed inset-0 z-40 cursor-default border-0 bg-transparent"
+            />
+            <div className="animate-rise absolute bottom-[calc(100%+8px)] left-0 z-50 w-[232px] overflow-hidden rounded-[16px] bg-white shadow-[0_24px_60px_-20px_rgb(26_26_25_/_0.35),0_1px_2px_rgb(26_26_25_/_0.08)]">
+              <div className="px-[14px] pt-[13px] pb-[10px]">
+                <div className="text-[13px] font-bold">{userName}</div>
+                <div className="text-muted mt-[2px] font-mono text-[11.5px] leading-[1.5] break-all">
+                  0x7f4a2b91c0de44a1f8e37b25d90ac6183f4a3a91
+                </div>
+              </div>
+              {[
+                ['Copy address', () => say('Address copied.')],
+                ['Take the walkthrough', () => router.push(route('/welcome'))],
+                ['Your limits', () => router.push(route('/limits'))],
+                [
+                  'Disconnect',
+                  () =>
+                    say(
+                      'Disconnecting stops AiKi reading your wallet. Authorities stay on chain until revoked.',
+                    ),
+                ],
+              ].map(([label, run]) => (
+                <button
+                  key={label as string}
+                  type="button"
+                  onClick={() => {
+                    setAccountOpen(false)
+                    ;(run as () => void)()
+                  }}
+                  className="block w-full border-t border-[rgb(26_26_25_/_0.06)] px-[14px] py-[10px] text-left text-[13px] font-semibold hover:bg-[#FAFAF9]"
+                >
+                  {label as string}
+                </button>
+              ))}
+            </div>
           </>
-        )}
-      </button>
+        ) : null}
+
+        <button
+          type="button"
+          title={collapsed ? `${userName} · 0x7f4a…3a91` : undefined}
+          onClick={() => setAccountOpen((o) => !o)}
+          className={`flex w-full items-center gap-[11px] rounded-2xl border-0 bg-none py-[9px] text-left hover:bg-[rgb(26_26_25_/_0.055)] ${
+            collapsed ? 'justify-center px-0' : 'px-[10px]'
+          }`}
+        >
+          <span
+            className="flex size-9 flex-none items-center justify-center rounded-xl text-[14px] font-extrabold text-white"
+            style={{ background: 'var(--agent-account)' }}
+          >
+            D
+          </span>
+          {collapsed ? null : (
+            <>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13.5px] font-bold">{userName}</span>
+                <span className="text-muted mt-px block text-[11.5px]">0x7f4a…3a91</span>
+              </span>
+              <span className="text-muted flex-none text-[13px]">{accountOpen ? '×' : '⌄'}</span>
+            </>
+          )}
+        </button>
+      </div>
     </div>
   )
 }
