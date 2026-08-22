@@ -134,8 +134,7 @@ export default function AgentsPage() {
                 {
                   label: 'Open',
                   primary: true,
-                  onClick: () =>
-                    router.push(h.jobId ? jobHref(h.jobId) : agentHref(h.key)),
+                  onClick: () => router.push(h.jobId ? jobHref(h.jobId) : agentHref(h.key)),
                 },
               ]}
             />,
