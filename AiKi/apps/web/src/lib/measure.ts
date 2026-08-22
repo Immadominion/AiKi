@@ -60,6 +60,28 @@ export function measureFrom(
   }
 }
 
+/**
+ * Wilson interval from a rate rather than a count.
+ *
+ * Only for projections — "how much more evidence would we need" — where the
+ * successes are hypothetical. Rounding a rate back into whole successes makes
+ * the effective rate jitter with every n, and the interval width jitters with
+ * it, which is how you end up reporting a knife-edge answer that flips the
+ * moment one more check lands.
+ */
+export function wilsonRate(rate: number, trials: number, z = Z): Interval {
+  if (trials <= 0) return { lower: 0, upper: 1, point: rate }
+  const z2 = z * z
+  const denom = 1 + z2 / trials
+  const centre = rate + z2 / (2 * trials)
+  const margin = z * Math.sqrt((rate * (1 - rate)) / trials + z2 / (4 * trials * trials))
+  return {
+    lower: Math.max(0, (centre - margin) / denom),
+    upper: Math.min(1, (centre + margin) / denom),
+    point: rate,
+  }
+}
+
 /** Our own probes, observed directly. Class B — the only class we fully control. */
 export const aikiProbe = (observedAt: string): Provenance => ({
   source: 'aiki:prober',

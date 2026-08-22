@@ -1,89 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { rankTask, TASKS, type Task } from '@/lib/tasks'
 
-export interface Task {
-  title: string
-  sub: string
-  glyph: string
-  bg: string
-  meta: string
-  intent: string
-  keys: string[]
-}
-
-export const TASKS: Task[] = [
-  {
-    title: 'Protect me from liquidation',
-    sub: 'Watches positions, repays debt before danger',
-    glyph: 'G',
-    bg: 'linear-gradient(135deg,#FF4D00,#FF8A3D)',
-    meta: '4 agents',
-    intent: 'Protect me from liquidation on Venus',
-    keys: [
-      'protect',
-      'liquidation',
-      'liquidated',
-      'health',
-      'borrow',
-      'venus',
-      'debt',
-      'repay',
-      'safe',
-    ],
-  },
-  {
-    title: 'Keep my LP in range',
-    sub: 'Adjusts concentrated liquidity as price moves',
-    glyph: 'L',
-    bg: 'linear-gradient(135deg,#00B3A4,#4ADE80)',
-    meta: '2 agents',
-    intent: 'Keep my BNB / USDT position in range',
-    keys: ['lp', 'liquidity', 'range', 'pool', 'rebalance', 'position'],
-  },
-  {
-    title: 'Earn more on idle assets',
-    sub: 'Finds a better rate, moves in, shows receipts',
-    glyph: 'Y',
-    bg: 'linear-gradient(135deg,#3B82F6,#8B5CF6)',
-    meta: '3 agents',
-    intent: 'Find better yield for 2 BNB',
-    keys: ['yield', 'earn', 'apy', 'idle', 'move', 'interest', 'stake', 'better'],
-  },
-  {
-    title: 'Trade a price range',
-    sub: 'Grid strategy between two prices you set',
-    glyph: 'G',
-    bg: 'linear-gradient(135deg,#7C5CFF,#C05CFF)',
-    meta: '2 agents',
-    intent: 'Run a grid strategy on BNB',
-    keys: ['trade', 'grid', 'price', 'buy', 'sell'],
-  },
-]
-
-/** Rotates in the field when it is empty. Tab accepts whichever one is showing. */
 const HINTS: readonly [string, ...string[]] = [
   'Protect me from liquidation on Venus',
   'Keep my BNB / USDT position in range',
   'Find better yield for 2 BNB',
   'Run a grid strategy on BNB',
 ]
-
-/**
- * Rank a query against the four kinds of work AiKi claims today.
- *
- * A whole-phrase key hit is worth two, a word-prefix hit one. If nothing scores,
- * we say so rather than padding the panel with agents that cannot do the job —
- * an empty honest result is the whole point of the surface.
- */
-function rank(task: Task, q: string, words: string[]): number {
-  const keyScore = task.keys.reduce(
-    (n, k) =>
-      n + (q.includes(k) ? 2 : words.some((w) => k.startsWith(w) || w.startsWith(k)) ? 1 : 0),
-    0,
-  )
-  return keyScore + (q && task.title.toLowerCase().includes(q) ? 2 : 0)
-}
 
 export function AskField({
   onSubmit,
@@ -108,10 +33,7 @@ export function AskField({
   const hint = HINTS[hintI % HINTS.length] ?? HINTS[0]
 
   const hits = useMemo(() => {
-    const norm = q.trim().toLowerCase()
-    if (!norm) return []
-    const words = norm.split(/\s+/).filter((w) => w.length > 2)
-    return TASKS.map((t) => ({ t, s: rank(t, norm, words) }))
+    return TASKS.map((t) => ({ t, s: rankTask(t, q) }))
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s)
       .map((x) => x.t)

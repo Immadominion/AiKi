@@ -1,10 +1,10 @@
 import { Suspense } from 'react'
-import { ExploreView } from '@/components/shell/ExploreView'
+import { CompareView } from '@/components/compare/CompareView'
 
 export default function Page() {
   return (
     <Suspense fallback={null}>
-      <ExploreView />
+      <CompareView />
     </Suspense>
   )
 }
