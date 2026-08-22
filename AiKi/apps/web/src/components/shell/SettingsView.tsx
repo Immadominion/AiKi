@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { PageCard } from '@/components/shell/PageCard'
-import { useLayoutPref } from '@/components/shell/prefs'
+import { useAccount, useLayoutPref } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
 import { route } from '@/lib/routes'
 
@@ -62,6 +62,7 @@ export function SettingsView() {
   const say = useToast()
   const router = useRouter()
   const { layout, setLayout } = useLayoutPref()
+  const { connected, connect, disconnect } = useAccount()
 
   const header = (
     <div className="flex flex-wrap items-start gap-[14px]">
@@ -84,8 +85,8 @@ export function SettingsView() {
           note="Connecting lets AiKi read. It never grants the ability to move anything — that only comes from an authority you sign per agent, with limits you set."
         >
           <Row
-            title="Connected wallet"
-            body={ADDRESS}
+            title={connected ? 'Connected wallet' : 'No wallet connected'}
+            body={connected ? ADDRESS : 'AiKi cannot see any balances or positions right now.'}
             action="Copy"
             onAction={() => {
               navigator.clipboard
@@ -99,12 +100,22 @@ export function SettingsView() {
             body="BNB Smart Chain · chain 56. Agents are ERC-8004 identities on this chain and nowhere else."
           />
           <Row
-            title="Disconnect"
-            body="Stops AiKi reading your balances. Authorities already signed stay on the chain until you revoke them — disconnecting is not revoking, and pretending otherwise would be dangerous."
-            action="Disconnect"
-            onAction={() =>
-              say('Disconnecting stops the reading. Revoke each authority from Limits.')
+            title={connected ? 'Disconnect' : 'Connect'}
+            body={
+              connected
+                ? 'Stops AiKi reading your balances. Authorities already signed stay on the chain until you revoke them — disconnecting is not revoking, and pretending otherwise would be dangerous.'
+                : 'Lets AiKi read your balances and positions so it can suggest work worth doing. It grants nothing on its own.'
             }
+            action={connected ? 'Disconnect' : 'Connect'}
+            onAction={() => {
+              if (connected) {
+                disconnect()
+                say('Disconnected. Revoke each authority from Limits — that is a separate thing.')
+              } else {
+                connect()
+                say('Connected. AiKi can read your balances; it still cannot move anything.')
+              }
+            }}
           />
         </Section>
 

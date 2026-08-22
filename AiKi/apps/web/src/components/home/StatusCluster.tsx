@@ -90,14 +90,13 @@ export function StatusCluster({ first, onSay }: { first: boolean; onSay: (msg: s
           </span>
         </button>
 
-        <button
-          type="button"
-          title="Wallet & account"
-          onClick={() => onSay('Wallet & account settings come later in the journey.')}
+        <Link
+          href={first ? '/welcome' : '/settings'}
+          title={first ? 'Connect a wallet' : 'Wallet & account'}
           className="flex size-10 flex-none items-center justify-center rounded-full border-0 bg-[linear-gradient(135deg,#FF4D00,#FFB300)] text-[14px] font-extrabold text-white shadow-[0_12px_28px_-14px_rgb(255_77_0_/_0.7)]"
         >
-          D
-        </button>
+          {first ? '+' : 'D'}
+        </Link>
       </div>
 
       {shown && (

@@ -216,6 +216,18 @@ full width. Twenty routes, two widths, no horizontal overflow.
 indicator with NO DATA separate from STALE, an error boundary that leads with
 what did *not* happen, and a not-found that explains transferred identities.
 
+### Phase 5b — nothing to show · **done**
+The app assumed a wallet everywhere. Connecting is now real state, written by
+onboarding and cleared from Settings or the account menu, and every surface
+reads it: My agents, Activity and Limits each have an empty state that says what
+the emptiness means and what would fill it, the status pill reads "No agents
+yet", badges disappear, freshness disappears because nothing is being read, and
+the ask page derives first-run from it rather than from a demo switch.
+
+Storage is only readable on the client, so each of those surfaces shows a
+skeleton until it knows, rather than flashing the wrong answer and correcting
+it.
+
 ### Phase 6 — the seam · **next, and not ours**
 Wiring these screens to `apps/api` through the contract. The frontend builds
 against fixtures shaped exactly like the contract, so this is a change of import

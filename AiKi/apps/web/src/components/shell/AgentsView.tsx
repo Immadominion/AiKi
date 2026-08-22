@@ -2,7 +2,10 @@
 
 import { useRouter } from 'next/navigation'
 import { AgentCell, Cell, DataTable, RowActions } from '@/components/shell/DataTable'
+import { EmptyState, NoWallet } from '@/components/shell/EmptyState'
 import { PageCard } from '@/components/shell/PageCard'
+import { useAccount } from '@/components/shell/prefs'
+import { PageSkeleton } from '@/components/ui/Skeleton'
 import { SpendMeter } from '@/components/ui/SpendMeter'
 import { StatusPill, type Tone } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
@@ -78,6 +81,7 @@ const HIRED: Hired[] = [
 export function AgentsView() {
   const say = useToast()
   const router = useRouter()
+  const { connected, ready } = useAccount()
 
   const table = (rows: Hired[]) => (
     <DataTable
@@ -126,13 +130,27 @@ export function AgentsView() {
     />
   )
 
-  const working = HIRED.filter((h) => h.tone !== 'idle')
-  const paused = HIRED.filter((h) => h.tone === 'idle')
+  const hired = connected ? HIRED : []
+  const working = hired.filter((h) => h.tone !== 'idle')
+  const paused = hired.filter((h) => h.tone === 'idle')
+
+  const nothing = !connected ? (
+    <NoWallet what="anything working for you" />
+  ) : (
+    <EmptyState
+      title="Nothing is working for you yet."
+      body="Hiring an agent takes one signature and the limits are yours to set. Nothing runs until you do, and pausing afterwards is instant and free."
+      action="Find an agent"
+      href="/explore"
+    />
+  )
+
+  if (!ready) return <PageSkeleton rows={3} />
 
   return (
     <PageCard
       title="My agents"
-      count={`${working.length} working · ${paused.length} paused`}
+      count={hired.length ? `${working.length} working · ${paused.length} paused` : ''}
       primary="Hire agent"
       onPrimary={() => router.push(route('/explore'))}
       tabs={['Working', 'Paused', 'All']}
@@ -141,13 +159,21 @@ export function AgentsView() {
         'Paused agents cannot act and cannot spend',
         `${HIRED.length} authorised in total`,
       ]}
-      banner={{
-        title: 'One action was blocked overnight.',
-        body: 'Guardian tried to spend $91.20 against your $80 per-action limit. Nothing was spent.',
-        cta: 'See it',
-        onAction: () => router.push(route('/activity')),
-      }}
-      panels={[table(working), table(paused), table(HIRED)]}
+      banner={
+        hired.length
+          ? {
+              title: 'One action was blocked overnight.',
+              body: 'Guardian tried to spend $91.20 against your $80 per-action limit. Nothing was spent.',
+              cta: 'See it',
+              onAction: () => router.push(route('/activity')),
+            }
+          : undefined
+      }
+      panels={[
+        working.length ? table(working) : nothing,
+        paused.length ? table(paused) : nothing,
+        hired.length ? table(hired) : nothing,
+      ]}
     />
   )
 }

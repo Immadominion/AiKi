@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { useAccount } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
 import { agentHref, route } from '@/lib/routes'
 import type { Task } from '@/lib/tasks'
@@ -22,12 +23,15 @@ import { SHARDS_FIRST, SHARDS_RETURNING } from './shards'
  * dissolve as they approach the question instead of crowding it.
  */
 export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
-  const [view, setView] = useState<'returning' | 'first'>('returning')
+  const { connected } = useAccount()
+  const [override, setView] = useState<'returning' | 'first' | null>(null)
   const [resumed, setResumed] = useState(0)
   const [historyOpen, setHistoryOpen] = useState(false)
   const say = useToast()
   const router = useRouter()
 
+  // Follows the wallet unless someone is deliberately previewing the other state.
+  const view = override ?? (connected ? 'returning' : 'first')
   const first = view === 'first'
   const shards = first ? SHARDS_FIRST : SHARDS_RETURNING
 
@@ -85,7 +89,7 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
         className="absolute top-[46%] left-1/2 z-30 flex w-[calc(100vw-32px)] max-w-[660px] -translate-x-1/2 -translate-y-[52%] flex-col items-center lg:w-[clamp(420px,calc(100vw-700px),660px)]"
       >
         <div className="text-[14px] leading-[1.4] font-semibold whitespace-nowrap text-[#8A8A8A]">
-          {first ? `Welcome to AiKi, ${userName}` : `Good morning, ${userName}`}
+          {first ? 'Welcome to AiKi' : `Good morning, ${userName}`}
         </div>
         <h1 className="mt-[9px] max-w-full text-center text-[clamp(30px,7vw,54px)] leading-[1.02] font-extrabold tracking-[-0.036em] text-balance">
           What do you need done?

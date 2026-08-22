@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
+import { useAccount } from '@/components/shell/prefs'
 import { Freshness } from '@/components/ui/Freshness'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG } from '@/lib/agents'
@@ -86,6 +87,7 @@ const DOT: Record<Note['tone'], string> = {
 }
 
 export function TopBar({ onMenu }: { onMenu: () => void }) {
+  const { connected } = useAccount()
   const [open, setOpen] = useState(false)
   const [bell, setBell] = useState(false)
   const [read, setRead] = useState<Record<string, boolean>>({})
@@ -109,19 +111,30 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
         </span>
       </button>
 
-      <div
-        title="0x7f4a…3a91"
-        className="hidden h-11 flex-none items-center gap-2 rounded-[15px] bg-white px-2 shadow-[0_1px_2px_rgb(26_26_25_/_0.06)] sm:flex"
-      >
-        <Image
-          src="/aiki-logo.png"
-          alt=""
-          width={56}
-          height={56}
-          className="size-7 object-contain"
-        />
-        <span className="hidden text-[14px] font-bold whitespace-nowrap lg:block">0x7f4a…3a91</span>
-      </div>
+      {connected ? (
+        <div
+          title="0x7f4a…3a91"
+          className="hidden h-11 flex-none items-center gap-2 rounded-[15px] bg-white px-2 shadow-[0_1px_2px_rgb(26_26_25_/_0.06)] sm:flex"
+        >
+          <Image
+            src="/aiki-logo.png"
+            alt=""
+            width={56}
+            height={56}
+            className="size-7 object-contain"
+          />
+          <span className="hidden text-[14px] font-bold whitespace-nowrap lg:block">
+            0x7f4a…3a91
+          </span>
+        </div>
+      ) : (
+        <Link
+          href={route('/welcome')}
+          className="bg-ink-app hover:bg-orange-app hidden h-11 flex-none items-center rounded-[15px] px-4 text-[13.5px] font-bold whitespace-nowrap text-white transition-colors sm:flex"
+        >
+          Connect wallet
+        </Link>
+      )}
 
       {CHIPS.map((c) => (
         <button
@@ -137,9 +150,12 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
         </button>
       ))}
 
-      <span className="hidden md:inline">
-        <Freshness state="LIVE" ageMs={42_000} />
-      </span>
+      {/* Nothing is being read, so nothing has an age. */}
+      {connected ? (
+        <span className="hidden md:inline">
+          <Freshness state="LIVE" ageMs={42_000} />
+        </span>
+      ) : null}
 
       <div className="flex-1" />
 
@@ -147,18 +163,33 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
         <button
           type="button"
           onClick={() => {
+            if (!connected) return
             setOpen((o) => !o)
             setBell(false)
           }}
           className="flex h-11 flex-none items-center gap-[10px] rounded-[15px] border-0 bg-white pr-2 pl-[15px] text-[14px] font-semibold whitespace-nowrap shadow-[0_1px_2px_rgb(26_26_25_/_0.06)] hover:shadow-[0_4px_14px_-4px_rgb(26_26_25_/_0.16)]"
         >
-          <span className="animate-breathe bg-good size-2 rounded-full" />
+          <span
+            className="size-2 rounded-full"
+            style={{
+              background: connected ? 'var(--color-good)' : 'var(--color-faint)',
+              animation: connected ? 'aikiBreathe 2.6s ease-in-out infinite' : 'none',
+            }}
+          />
           <span className="whitespace-nowrap">
-            2 agents<span className="hidden lg:inline"> · all good</span>
+            {connected ? (
+              <>
+                2 agents<span className="hidden lg:inline"> · all good</span>
+              </>
+            ) : (
+              'No agents yet'
+            )}
           </span>
-          <span className="flex size-[26px] items-center justify-center rounded-[9px] bg-[rgb(26_26_25_/_0.055)] text-[11px] text-[#77776F]">
-            {open ? '×' : '⌄'}
-          </span>
+          {connected ? (
+            <span className="flex size-[26px] items-center justify-center rounded-[9px] bg-[rgb(26_26_25_/_0.055)] text-[11px] text-[#77776F]">
+              {open ? '×' : '⌄'}
+            </span>
+          ) : null}
         </button>
 
         {open && (
@@ -241,7 +272,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           className="relative flex size-11 flex-none items-center justify-center rounded-[15px] border-0 bg-white shadow-[0_1px_2px_rgb(26_26_25_/_0.06)] hover:shadow-[0_4px_14px_-4px_rgb(26_26_25_/_0.16)]"
         >
           <span className="size-[14px] rounded-t-[6px] rounded-b-[3px] border-[1.8px] border-[#4A4A46]" />
-          {unread ? (
+          {connected && unread ? (
             <span className="bg-orange-app absolute top-[9px] right-[10px] size-2 rounded-full border-2 border-white" />
           ) : null}
         </button>
@@ -250,7 +281,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           <div className="animate-rise fixed inset-x-2 top-[68px] z-60 overflow-hidden rounded-[20px] bg-white shadow-[0_24px_60px_-20px_rgb(26_26_25_/_0.3),0_1px_2px_rgb(26_26_25_/_0.08)] sm:absolute sm:inset-x-auto sm:top-[52px] sm:right-0 sm:w-[376px]">
             <div className="flex items-center justify-between px-4 pt-[15px] pb-3">
               <span className="text-[14.5px] font-bold">
-                {unread ? `${unread} waiting` : 'Nothing waiting'}
+                {!connected ? 'Nothing yet' : unread ? `${unread} waiting` : 'Nothing waiting'}
               </span>
               {unread ? (
                 <button
@@ -263,7 +294,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
               ) : null}
             </div>
 
-            {NOTES.map((n) => (
+            {(connected ? NOTES : []).map((n) => (
               <Link
                 key={n.id}
                 href={route(n.href)}
@@ -295,7 +326,9 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
             ))}
 
             <div className="text-muted border-t border-[rgb(26_26_25_/_0.06)] px-4 py-[11px] text-[11.5px] leading-[1.45]">
-              Blocked actions are kept here on purpose. They are the proof your limits hold.
+              {connected
+                ? 'Blocked actions are kept here on purpose. They are the proof your limits hold.'
+                : 'Once an agent is working, anything that needs you — or was refused — appears here.'}
             </div>
           </div>
         ) : null}

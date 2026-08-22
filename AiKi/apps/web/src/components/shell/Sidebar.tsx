@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { usePalette } from '@/components/shell/CommandPalette'
 import { useToast } from '@/components/ui/Toast'
 import { route } from '@/lib/routes'
-import { useIsPhone, useLayoutPref } from './prefs'
+import { useAccount, useIsPhone, useLayoutPref } from './prefs'
 
 interface Item {
   label: string
@@ -65,6 +65,7 @@ export function Sidebar({
   const { layout, setLayout } = useLayoutPref()
   const onPhone = useIsPhone()
   const [accountOpen, setAccountOpen] = useState(false)
+  const { connected, disconnect } = useAccount()
 
   // The collapse preference belongs to the desktop column. In the drawer the
   // sidebar is always full width, so the rail never appears on touch.
@@ -162,7 +163,7 @@ export function Sidebar({
                         >
                           {item.label}
                         </span>
-                        {item.count ? (
+                        {connected && item.count ? (
                           <span className="bg-orange-app flex h-[21px] min-w-[21px] flex-none items-center justify-center rounded-full px-[6px] text-[11.5px] font-bold text-white">
                             {item.count}
                           </span>
@@ -176,7 +177,7 @@ export function Sidebar({
                     )}
                     {/* Collapsed, a count has nowhere to sit beside the label, so
                         it becomes a dot on the icon rather than disappearing. */}
-                    {collapsed && item.count ? (
+                    {connected && collapsed && item.count ? (
                       <span className="bg-orange-app absolute top-[7px] right-[7px] size-[7px] rounded-full" />
                     ) : null}
                   </>
@@ -293,10 +294,12 @@ export function Sidebar({
                 ['Your limits', () => router.push(route('/limits'))],
                 [
                   'Disconnect',
-                  () =>
+                  () => {
+                    disconnect()
                     say(
-                      'Disconnecting stops AiKi reading your wallet. Authorities stay on chain until revoked.',
-                    ),
+                      'Disconnected. AiKi has stopped reading your wallet — authorities stay on chain until revoked.',
+                    )
+                  },
                 ],
               ].map(([label, run]) => (
                 <button
@@ -315,30 +318,55 @@ export function Sidebar({
           </>
         ) : null}
 
-        <button
-          type="button"
-          title={collapsed ? `${userName} · 0x7f4a…3a91` : undefined}
-          onClick={() => setAccountOpen((o) => !o)}
-          className={`flex w-full items-center gap-[11px] rounded-2xl border-0 bg-none py-[9px] text-left hover:bg-[rgb(26_26_25_/_0.055)] ${
-            collapsed ? 'justify-center px-0' : 'px-[10px]'
-          }`}
-        >
-          <span
-            className="flex size-9 flex-none items-center justify-center rounded-xl text-[14px] font-extrabold text-white"
-            style={{ background: 'var(--agent-account)' }}
+        {/* With no wallet there is no account to open a menu for, so this
+            becomes the thing that gets you one. */}
+        {connected ? (
+          <button
+            type="button"
+            title={collapsed ? `${userName} · 0x7f4a…3a91` : undefined}
+            onClick={() => setAccountOpen((o) => !o)}
+            className={`flex w-full items-center gap-[11px] rounded-2xl border-0 bg-none py-[9px] text-left hover:bg-[rgb(26_26_25_/_0.055)] ${
+              collapsed ? 'justify-center px-0' : 'px-[10px]'
+            }`}
           >
-            D
-          </span>
-          {collapsed ? null : (
-            <>
+            <span
+              className="flex size-9 flex-none items-center justify-center rounded-xl text-[14px] font-extrabold text-white"
+              style={{ background: 'var(--agent-account)' }}
+            >
+              D
+            </span>
+            {collapsed ? null : (
+              <>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13.5px] font-bold">{userName}</span>
+                  <span className="text-muted mt-px block text-[11.5px]">0x7f4a…3a91</span>
+                </span>
+                <span className="text-muted flex-none text-[13px]">{accountOpen ? '×' : '⌄'}</span>
+              </>
+            )}
+          </button>
+        ) : (
+          <Link
+            href={route('/welcome')}
+            onClick={onNavigate}
+            title={collapsed ? 'Connect a wallet' : undefined}
+            className={`flex w-full items-center gap-[11px] rounded-2xl border-0 py-[9px] text-left hover:bg-[rgb(26_26_25_/_0.055)] ${
+              collapsed ? 'justify-center px-0' : 'px-[10px]'
+            }`}
+          >
+            <span className="text-muted flex size-9 flex-none items-center justify-center rounded-xl border border-dashed border-[rgb(26_26_25_/_0.2)] text-[16px] font-bold">
+              +
+            </span>
+            {collapsed ? null : (
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13.5px] font-bold">{userName}</span>
-                <span className="text-muted mt-px block text-[11.5px]">0x7f4a…3a91</span>
+                <span className="block truncate text-[13.5px] font-bold">Connect a wallet</span>
+                <span className="text-muted mt-px block text-[11.5px]">
+                  Reads only. Grants nothing.
+                </span>
               </span>
-              <span className="text-muted flex-none text-[13px]">{accountOpen ? '×' : '⌄'}</span>
-            </>
-          )}
-        </button>
+            )}
+          </Link>
+        )}
       </div>
     </div>
   )

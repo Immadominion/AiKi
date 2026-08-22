@@ -12,6 +12,10 @@ import { useCallback, useEffect, useState } from 'react'
  */
 function usePersisted<T extends string>(key: string, fallback: T, valid: readonly T[]) {
   const [value, setValue] = useState<T>(fallback)
+  // Storage is only readable on the client, so the first client render has to
+  // match the server's. `ready` lets a caller show that it does not know yet
+  // rather than flashing the wrong answer and correcting it.
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     try {
@@ -20,6 +24,7 @@ function usePersisted<T extends string>(key: string, fallback: T, valid: readonl
     } catch {
       /* no stored value is a valid state */
     }
+    setReady(true)
   }, [key, valid])
 
   const set = useCallback(
@@ -34,7 +39,7 @@ function usePersisted<T extends string>(key: string, fallback: T, valid: readonl
     [key],
   )
 
-  return [value, set] as const
+  return [value, set, ready] as const
 }
 
 export type HomeLayout = 'ask' | 'market'
@@ -43,6 +48,30 @@ const LAYOUTS = ['ask', 'market'] as const
 export function useLayoutPref() {
   const [layout, setLayout] = usePersisted<HomeLayout>('aiki.home-layout', 'ask', LAYOUTS)
   return { layout, setLayout }
+}
+
+const WALLET = ['connected', 'disconnected'] as const
+
+/**
+ * Whether a wallet is connected.
+ *
+ * This is the difference between the app having anything to show and having
+ * nothing, so it is the one preference every surface reads. Connecting grants
+ * nothing on its own — it is what lets AiKi read, and what makes an empty
+ * dashboard honest rather than a lie about someone else's agents.
+ */
+export function useAccount() {
+  const [state, setState, ready] = usePersisted<'connected' | 'disconnected'>(
+    'aiki.wallet',
+    'disconnected',
+    WALLET,
+  )
+  return {
+    connected: state === 'connected',
+    ready,
+    connect: () => setState('connected'),
+    disconnect: () => setState('disconnected'),
+  }
 }
 
 const SIDEBAR = ['open', 'closed'] as const

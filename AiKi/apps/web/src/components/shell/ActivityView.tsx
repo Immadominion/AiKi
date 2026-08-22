@@ -1,7 +1,10 @@
 'use client'
 
 import { AgentCell, Cell, DataTable } from '@/components/shell/DataTable'
+import { EmptyState, NoWallet } from '@/components/shell/EmptyState'
 import { PageCard } from '@/components/shell/PageCard'
+import { useAccount } from '@/components/shell/prefs'
+import { PageSkeleton } from '@/components/ui/Skeleton'
 import { StatusPill, type Tone } from '@/components/ui/StatusPill'
 import { AGENT_BG, type AgentKey } from '@/lib/agents'
 
@@ -113,6 +116,7 @@ function download(rows: Event[]) {
 }
 
 export function ActivityView() {
+  const { connected, ready } = useAccount()
   const table = (rows: Event[], footnote: string) => (
     <DataTable
       cols="92px minmax(170px,1.2fr) minmax(220px,1.7fr) 100px 118px"
@@ -154,8 +158,9 @@ export function ActivityView() {
     />
   )
 
-  const moved = EVENTS.filter((e) => e.cost !== '$0.00')
-  const blocked = EVENTS.filter((e) => e.tone === 'warn')
+  const events = connected ? EVENTS : []
+  const moved = events.filter((e) => e.cost !== '$0.00')
+  const blocked = events.filter((e) => e.tone === 'warn')
 
   const empty = (title: string, body: string) => (
     <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-[22px]">
@@ -166,27 +171,45 @@ export function ActivityView() {
     </div>
   )
 
+  if (!ready) return <PageSkeleton rows={6} />
+
   return (
     <PageCard
       title="Activity"
-      count={`Last 7 days · ${EVENTS.length} events`}
+      count={events.length ? `Last 7 days · ${events.length} events` : ''}
       primary="Export"
       onPrimary={() => download(EVENTS)}
       tabs={['Everything', 'Money moved', 'Blocked']}
       tabHint={[
         'Every row links to its transaction',
-        `${moved.length} of ${EVENTS.length} events cost anything`,
+        `${moved.length} of ${events.length} events cost anything`,
         'Kept on purpose — this is the proof your limits hold',
       ]}
-      banner={{
-        title: 'Nothing needed you this week.',
-        body: `Agents acted ${EVENTS.length} times, spent $46.00 of the $370 you allowed, and were stopped once.`,
-        cta: 'Details',
-      }}
+      banner={
+        events.length
+          ? {
+              title: 'Nothing needed you this week.',
+              body: `Agents acted ${events.length} times, spent $46.00 of the $370 you allowed, and were stopped once.`,
+              cta: 'Details',
+            }
+          : undefined
+      }
       panels={[
-        table(
-          EVENTS,
-          'Every row is a real event with a transaction behind it. Blocked rows are kept on purpose — they are the proof your limits hold.',
+        !connected ? (
+          <NoWallet key="nw" what="everything your agents did" />
+        ) : !events.length ? (
+          <EmptyState
+            key="e0"
+            title="Nothing has happened yet."
+            body="Once an agent is working, every check and every action it takes lands here — including the ones your limits refused."
+            action="Find an agent"
+            href="/explore"
+          />
+        ) : (
+          table(
+            events,
+            'Every row is a real event with a transaction behind it. Blocked rows are kept on purpose — they are the proof your limits hold.',
+          )
         ),
         moved.length
           ? table(

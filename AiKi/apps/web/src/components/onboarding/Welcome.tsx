@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { useLayoutPref } from '@/components/shell/prefs'
+import { useAccount, useLayoutPref } from '@/components/shell/prefs'
 import { AGENT_BG, AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
 import { route } from '@/lib/routes'
 import { TASKS } from '@/lib/tasks'
@@ -30,6 +30,7 @@ export function Welcome() {
   const [task, setTask] = useState<string | null>(null)
   const [cap, setCap] = useState(80)
   const { layout, setLayout } = useLayoutPref()
+  const { connect } = useAccount()
   const router = useRouter()
 
   const chosen = task ? TASKS.find((t) => t.key === task) : null
@@ -310,7 +311,12 @@ export function Welcome() {
           <button
             type="button"
             disabled={!canAdvance}
-            onClick={() => (step === STEPS.length - 1 ? finish() : setStep((s) => s + 1))}
+            onClick={() => {
+              // Step one is the connect. Everything after it assumes a wallet.
+              if (step === 0) connect()
+              if (step === STEPS.length - 1) finish()
+              else setStep((s) => s + 1)
+            }}
             className="h-[46px] flex-1 rounded-[14px] border-0 bg-[linear-gradient(135deg,#FF4D00,#FF7A2E)] px-[18px] text-[14px] font-bold text-white shadow-[0_14px_28px_-14px_rgb(255_77_0_/_0.7)] transition-opacity disabled:opacity-40 disabled:shadow-none"
           >
             {step === 0
