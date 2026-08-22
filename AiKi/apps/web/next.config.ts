@@ -9,6 +9,8 @@ const config: NextConfig = {
   // want tool-attribution files in this repo, so turn it off at the source rather
   // than gitignoring them and hoping.
   agentRules: false,
+  // The dev overlay badge lands bottom-left, on top of a real control.
+  devIndicators: false,
 }
 
 export default config

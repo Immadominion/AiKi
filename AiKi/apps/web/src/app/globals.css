@@ -1,219 +1,121 @@
 @import 'tailwindcss';
 
 /*
- * AiKi design tokens — extracted from the design reference, not guessed.
- * Source: assets/AiKi Clean UI Design Reference/{AiKi Home v3, AiKi App}.dc.html
+ * Tokens are lifted directly from the design reference files, not approximated:
+ *   assets/AiKi Clean UI Design Reference/AiKi Home v3.dc.html   → the ask surface
+ *   assets/AiKi Clean UI Design Reference/AiKi App.dc.html       → the app surface
  *
- * ONE COLOUR, ONE MEANING:
- *   orange  authority and action — the agent you hired, money moving under your permission
- *   yellow  uncertainty and blocked — a denied action, an unverified endpoint, thin evidence
- *   teal    direction: gain (never green — red/green fails colour-blind users, and red is
- *           already danger)
- *   purple  agent avatar fills ONLY. Never chrome, never a CTA, never a background.
- *           Purple UI gradients are the loudest AI tell of 2026; avatar fills are not.
+ * The two surfaces are deliberately different. The ask page is a warm page-white
+ * (#FAFAF8) with the content floating on it. The app is a cooler tray (#EAEAE8)
+ * with white cards sitting inside it. Same family, different job — so both live
+ * here as named tokens rather than one being bent into the other.
  */
 @theme {
-  /* ── surface ── */
+  /* ── ask surface ───────────────────────────────────────────────── */
   --color-canvas: #fafaf8;
-  --color-surface: #ffffff;
-  --color-sunken: #f8f8f6;
-  --color-muted-bg: #f3f3f1;
-  --color-muted-bg-hover: #eaeae7;
-
-  /* ── ink ── */
   --color-ink: #141414;
-  --color-ink-soft: #1a1a19;
-  --color-grey-700: #57574f;
-  --color-grey-600: #6b6b66;
-  --color-grey-500: #767676;
-  --color-grey-400: #8a8a8a;
-  --color-grey-300: #9a9a9a;
-
-  /* ── orange: authority. Logo is #FD4A01; 2/255 from this and indistinguishable. ── */
   --color-orange: #ff4d00;
-  --color-orange-bright: #ff5a00;
-  --color-orange-mid: #ff7a2e;
-  --color-orange-light: #ff8a3d;
-  --color-orange-amber: #ffb300;
-  --color-orange-deep: #c93e00;
+  --color-orange-lit: #ff7a2e;
+  --color-orange-warm: #ff8a3d;
 
-  /* ── yellow: uncertainty, blocked ── */
-  --color-warn: #ffd400;
-  --color-warn-bg: #fff8e0;
-  --color-warn-ink: #4f4a38;
-  --color-warn-deep: #8a6a00;
+  /* ── app surface ───────────────────────────────────────────────── */
+  --color-tray: #eaeae8;
+  --color-ink-app: #1a1a19;
+  --color-orange-app: #ff5a00;
+  --color-surface: #ffffff;
+  --color-surface-sunk: #fafaf9;
+  --color-surface-hover: #fcfcfb;
 
-  /* ── direction ── */
-  --color-gain: #00a092;
-  --color-gain-deep: #00786e;
-  --color-loss: #7b2d5e;
-  --color-info: #3b82f6;
+  /* ── text ramp, warm grey ──────────────────────────────────────── */
+  --color-muted: #6b6b66;
+  --color-muted-2: #77776f;
+  --color-muted-3: #9c9c98;
+  --color-body: #57574f;
+  --color-body-2: #3d3d3a;
+  --color-faint: #b5b5b0;
+  --color-faint-2: #bdbdb8;
 
-  /* ── agent avatar gradient stops (avatars only) ── */
-  --color-avatar-violet: #7c5cff;
-  --color-avatar-magenta: #c05cff;
+  /* ── state ─────────────────────────────────────────────────────── */
+  --color-good: #00a092;
+  --color-good-ink: #00786e;
+  --color-good-bg: #e7f7f2;
+  --color-work: #ff5a00;
+  --color-work-ink: #c93e00;
+  --color-work-bg: #fff0e6;
+  --color-warn: #ffb300;
+  --color-warn-ink: #8a6a00;
+  --color-warn-bg: #fff6e8;
+  --color-warn-hi: #ffd400;
+  --color-warn-hi-bg: #fff8e0;
+  --color-warn-hi-ink: #4f4a38;
 
-  --color-danger: #b3261e;
+  /* ── agent identity gradients ──────────────────────────────────── */
+  --agent-guardian: linear-gradient(135deg, #ff5a00, #ff9147);
+  --agent-gridly: linear-gradient(135deg, #7c5cff, #c05cff);
+  --agent-yieldmax: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  --agent-lpilot: linear-gradient(135deg, #00b3a4, #4ade80);
+  --agent-sentinel: linear-gradient(135deg, #f59e0b, #ffd400);
+  --agent-harbor: linear-gradient(135deg, #0ea5e9, #3b82f6);
+  --agent-account: linear-gradient(135deg, #ff5a00, #ffb300);
 
-  --font-sans: 'Plus Jakarta Sans', -apple-system, system-ui, sans-serif;
+  --font-sans: var(--font-jakarta), -apple-system, system-ui, sans-serif;
 
-  /* ── the grid that backs Ask mode ── */
+  /* The background grid pitch. Everything on the ask page lands on it. */
   --aiki-grid: 72px;
 
-  /* ── stroke carries enforcement tier (design-system-brief §2.3) ──
-   * Opacity is taken by disabled/loading, colour by P&L direction. Stroke is the
-   * one channel left, and it survives greyscale and screenshots.
-   */
-  --stroke-enforced: 2px;
-  --stroke-provisional: 1.5px;
-  --stroke-observed: 1px;
+  --animate-drift: aikiDrift var(--drift-dur, 7s) ease-in-out infinite;
+  --animate-hint: aikiHint 3.8s ease-in-out infinite;
+  --animate-rise: aikiRise 0.18s ease both;
+  --animate-breathe: aikiBreathe 2.6s ease-in-out infinite;
 }
 
-@layer base {
-  * {
-    box-sizing: border-box;
-  }
-  body {
-    margin: 0;
-    background: var(--color-canvas);
-    color: var(--color-ink);
-    font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
-  }
-  a {
-    color: var(--color-ink);
-    text-decoration: none;
-  }
-  a:hover {
-    color: var(--color-orange);
-  }
-  button {
-    font-family: inherit;
-    cursor: pointer;
-    color: inherit;
-  }
-  input {
-    font-family: inherit;
-  }
-
-  /* Numbers are load-bearing. Tabular by default so columns align and live values
-     do not jitter as they tick. */
-  .tnum,
-  table td,
-  table th {
-    font-variant-numeric: tabular-nums slashed-zero;
-  }
-}
-
-/* ── the four signature animations, names kept from the design ── */
 @keyframes aikiDrift {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0);
-  }
-  50% {
-    transform: translate3d(0, -9px, 0);
-  }
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -9px, 0); }
 }
 @keyframes aikiHint {
-  0% {
-    opacity: 0;
-    transform: translateY(7px);
-  }
-  8%,
-  88% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  97% {
-    opacity: 0;
-    transform: translateY(-5px);
-  }
-  100% {
-    opacity: 0;
-  }
+  0%   { opacity: 0; transform: translateY(7px); }
+  8%   { opacity: 1; transform: translateY(0); }
+  88%  { opacity: 1; transform: translateY(0); }
+  97%  { opacity: 0; transform: translateY(-5px); }
+  100% { opacity: 0; }
 }
 @keyframes aikiRise {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes aikiBreathe {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(0.8);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
+  0%, 100% { opacity: 0.4; transform: scale(0.82); }
+  50%      { opacity: 1; transform: scale(1); }
 }
 
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: rgb(26 26 25 / 0.16);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Motion is decoration here — every animated element still reads correctly still. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }
 
-@layer components {
-  .animate-drift {
-    animation: aikiDrift var(--drift-dur, 7s) ease-in-out infinite;
-  }
-  .animate-rise {
-    animation: aikiRise 0.2s ease both;
-  }
-  .animate-breathe {
-    animation: aikiBreathe 2.6s ease-in-out infinite;
-  }
-  .animate-hint {
-    animation: aikiHint 3.8s ease-in-out infinite;
-  }
-
-  /* Enforcement tier, as stroke. */
-  .edge-enforced {
-    border: var(--stroke-enforced) solid var(--color-ink);
-  }
-  .edge-provisional {
-    border: var(--stroke-provisional) dashed var(--color-ink);
-  }
-  .edge-observed {
-    border: var(--stroke-observed) solid rgba(20, 20, 20, 0.07);
-  }
-
-  /* The card/panel shadow language the design uses throughout. */
-  .lift-sm {
-    box-shadow: 0 12px 30px -18px rgba(20, 20, 20, 0.3);
-  }
-  .lift-md {
-    box-shadow:
-      0 26px 54px -30px rgba(20, 20, 20, 0.4),
-      0 2px 6px -2px rgba(20, 20, 20, 0.06);
-  }
-  .lift-lg {
-    box-shadow: 0 34px 84px -32px rgba(20, 20, 20, 0.4);
-  }
-}
-
-@layer utilities {
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border-width: 0;
-  }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
