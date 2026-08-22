@@ -68,6 +68,44 @@ export function useIsPhone() {
   return phone
 }
 
+/**
+ * Agents you have saved.
+ *
+ * Kept in this browser rather than on a server: saving is a private act of
+ * interest in something, and shipping it anywhere would make it a signal about
+ * you. Reads and writes are guarded the same way as every other preference.
+ */
+const SAVED_KEY = 'aiki.saved'
+
+export function useSaved() {
+  const [saved, setSaved] = useState<string[]>([])
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SAVED_KEY)
+      const parsed: unknown = raw ? JSON.parse(raw) : []
+      if (Array.isArray(parsed)) setSaved(parsed.filter((x): x is string => typeof x === 'string'))
+    } catch {
+      /* nothing saved is a valid state */
+    }
+  }, [])
+
+  const toggle = useCallback((key: string) => {
+    let next: string[] = []
+    setSaved((prev) => {
+      next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+      try {
+        localStorage.setItem(SAVED_KEY, JSON.stringify(next))
+      } catch {
+        /* a save is a convenience, never a requirement */
+      }
+      return next
+    })
+  }, [])
+
+  return { saved, toggle, isSaved: (key: string) => saved.includes(key) }
+}
+
 export function useSidebar() {
   const [state, setState] = usePersisted<'open' | 'closed'>('aiki.sidebar', 'open', SIDEBAR)
   const collapsed = state === 'closed'

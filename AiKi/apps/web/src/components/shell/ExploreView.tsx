@@ -5,6 +5,7 @@ import { useMemo } from 'react'
 import { CoverageBlock } from '@/components/shell/CoverageBlock'
 import { AgentCell, Cell, DataTable, RowActions } from '@/components/shell/DataTable'
 import { PageCard } from '@/components/shell/PageCard'
+import { useSaved } from '@/components/shell/prefs'
 import { EvidenceBars } from '@/components/ui/EvidenceBars'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG } from '@/lib/agents'
@@ -17,6 +18,7 @@ export function ExploreView() {
   const q = params.get('q') ?? ''
   const say = useToast()
   const router = useRouter()
+  const { toggle, isSaved } = useSaved()
 
   const outcome = useMemo(() => search(q), [q])
   const searching = q.trim().length > 0
@@ -120,7 +122,13 @@ export function ExploreView() {
               <RowActions
                 key="e"
                 actions={[
-                  { label: 'Save', onClick: () => say(`${a.name} saved.`) },
+                  {
+                    label: isSaved(a.key) ? 'Saved' : 'Save',
+                    onClick: () => {
+                      toggle(a.key)
+                      say(isSaved(a.key) ? `${a.name} removed from saved.` : `${a.name} saved.`)
+                    },
+                  },
                   { label: 'View', primary: true, onClick: () => router.push(agentHref(a.key)) },
                 ]}
               />,

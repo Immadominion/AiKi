@@ -1,14 +1,14 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useSaved } from '@/components/shell/prefs'
 import { EvidenceBars } from '@/components/ui/EvidenceBars'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, type AgentRow } from '@/lib/agents'
 import { agentHref } from '@/lib/routes'
 
 export function MarketGrid({ agents, footnote }: { agents: AgentRow[]; footnote: string }) {
-  const [saved, setSaved] = useState<Record<string, boolean>>({})
+  const { toggle, isSaved } = useSaved()
   const say = useToast()
   const router = useRouter()
 
@@ -35,13 +35,13 @@ export function MarketGrid({ agents, footnote }: { agents: AgentRow[]; footnote:
                 type="button"
                 title="Save"
                 onClick={() => {
-                  const on = !saved[m.name]
-                  setSaved((s) => ({ ...s, [m.name]: on }))
+                  const on = !isSaved(m.key)
+                  toggle(m.key)
                   say(on ? `${m.name} saved.` : `${m.name} removed from saved.`)
                 }}
                 className="size-[30px] flex-none rounded-[10px] border-0 bg-[rgb(26_26_25_/_0.055)] text-[12px] hover:bg-[rgb(26_26_25_/_0.09)]"
               >
-                {saved[m.name] ? '♥' : '♡'}
+                {isSaved(m.key) ? '♥' : '♡'}
               </button>
             </div>
 

@@ -29,8 +29,8 @@ const GROUPS: { label: string; items: Item[] }[] = [
     label: 'Oversight',
     items: [
       { label: 'Activity', glyph: '≡', href: '/activity', count: 1 },
-      { label: 'Limits', glyph: '⊘' },
-      { label: 'Saved', glyph: '♡' },
+      { label: 'Limits', glyph: '⊘', href: '/limits' },
+      { label: 'Saved', glyph: '♡', href: '/saved' },
     ],
   },
   {
