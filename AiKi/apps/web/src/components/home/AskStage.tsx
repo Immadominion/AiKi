@@ -94,9 +94,19 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
           onPick={(t: Task) => say(`Finding agents for “${t.intent}”.`)}
         />
 
-        <div className="mt-4 text-[12.5px] font-medium text-[#767676]">
-          Tab to use suggestion · Enter to find agents
-        </div>
+        {first ? (
+          <Link
+            href={route('/welcome')}
+            className="mt-4 text-[12.5px] font-medium text-[#767676] hover:text-[#141414]"
+          >
+            New here?{' '}
+            <span className="font-bold underline underline-offset-[3px]">Take the walkthrough</span>
+          </Link>
+        ) : (
+          <div className="mt-4 text-[12.5px] font-medium text-[#767676]">
+            Tab to use suggestion · Enter to find agents
+          </div>
+        )}
       </div>
 
       <div className="pointer-events-none fixed inset-x-4 bottom-[54px] z-25 flex justify-center text-center md:inset-x-auto md:right-6 md:bottom-[18px] md:justify-end md:text-right">
