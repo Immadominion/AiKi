@@ -1,6 +1,7 @@
 'use client'
 
-import { useToast } from '@/components/ui/Toast'
+import { useRouter } from 'next/navigation'
+import { route } from '@/lib/routes'
 
 export interface Column {
   label: string
@@ -35,7 +36,7 @@ export function DataTable({
   rows: Row[]
   footnote: string
 }) {
-  const say = useToast()
+  const router = useRouter()
 
   return (
     <>
@@ -87,9 +88,7 @@ export function DataTable({
         <div className="flex-1" />
         <button
           type="button"
-          onClick={() =>
-            say('Opens the evidence layer: probes, check counts, intervals, raw transactions.')
-          }
+          onClick={() => router.push(route('/how-we-test'))}
           className="h-8 flex-none rounded-[10px] border-0 bg-[rgb(26_26_25_/_0.055)] px-3 text-[12.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)]"
         >
           How we test

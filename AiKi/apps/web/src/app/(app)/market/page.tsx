@@ -1,9 +1,9 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useLayoutPref } from '@/components/shell/layout-pref'
 import { MarketGrid } from '@/components/shell/MarketCard'
 import { PageCard } from '@/components/shell/PageCard'
+import { useLayoutPref } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
 import { AGENTS } from '@/lib/agents'
 

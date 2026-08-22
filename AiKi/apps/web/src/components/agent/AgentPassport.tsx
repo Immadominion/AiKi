@@ -8,12 +8,11 @@ import { ScoreBlock } from '@/components/agent/ScoreBlock'
 import { PageCard } from '@/components/shell/PageCard'
 import { EvidenceBars } from '@/components/ui/EvidenceBars'
 import { LIVENESS_DETAIL, LivenessBadge } from '@/components/ui/LivenessBadge'
-import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
 import { type Counts, DETAILS } from '@/lib/detail'
 import { shortAddress } from '@/lib/format'
 import { aikiProbe, measureFrom } from '@/lib/measure'
-import { hireHref } from '@/lib/routes'
+import { hireHref, route } from '@/lib/routes'
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -41,7 +40,6 @@ const Section = ({
 export function AgentPassport({ agentKey }: { agentKey: AgentKey }) {
   const row = AGENT_BY_KEY[agentKey]
   const d = DETAILS[agentKey]
-  const say = useToast()
   const router = useRouter()
 
   const m = (c: Counts) => measureFrom(c[0], c[1], aikiProbe(d.liveness.lastProbeAt))
@@ -246,8 +244,7 @@ export function AgentPassport({ agentKey }: { agentKey: AgentKey }) {
               title: 'This one is slow.',
               body: d.liveness.detail,
               cta: 'How we test',
-              onAction: () =>
-                say('Opens the evidence layer: probes, check counts, intervals, raw transactions.'),
+              onAction: () => router.push(route('/how-we-test')),
             }
           : undefined
       }

@@ -1,10 +1,11 @@
 'use client'
 
 import Image from 'next/image'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
-import { agentHref } from '@/lib/routes'
+import { agentHref, route } from '@/lib/routes'
 import type { Task } from '@/lib/tasks'
 import { AskField } from './AskField'
 import { HistoryRail } from './HistoryRail'
@@ -97,18 +98,13 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
       </div>
 
       <div className="pointer-events-none fixed right-6 bottom-[18px] z-25 flex justify-end">
-        <button
-          type="button"
-          onClick={() =>
-            say(
-              'Opens the evidence layer: probes, observation counts, intervals, raw transactions.',
-            )
-          }
+        <Link
+          href={route('/how-we-test')}
           className="pointer-events-auto border-0 bg-none text-[12.5px] font-medium text-[#767676] hover:text-[#141414]"
         >
           Every agent here is tested by AiKi itself.{' '}
           <span className="font-bold underline underline-offset-[3px]">how we test</span>
-        </button>
+        </Link>
       </div>
 
       {/* First run vs returning is normally derived from whether you have agents.

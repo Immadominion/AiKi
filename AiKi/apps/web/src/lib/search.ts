@@ -88,7 +88,12 @@ export function search(query: string): SearchOutcome {
       query: q,
       understood: null,
       results: [],
-      coverage: { indexed: INDEXED_AGENTS, matchedBeforeFilters: 0, excludedUnverified: 0, reasons: [] },
+      coverage: {
+        indexed: INDEXED_AGENTS,
+        matchedBeforeFilters: 0,
+        excludedUnverified: 0,
+        reasons: [],
+      },
     }
   }
 

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG } from '@/lib/agents'
+import { route } from '@/lib/routes'
 
 const CHIPS = [
   { label: 'Last 7 days', glyph: '◷', msg: 'Date range picker is wired in the build.' },
@@ -34,9 +35,62 @@ const LIVE = [
   },
 ]
 
+/**
+ * What is waiting for you.
+ *
+ * Ordered by what it costs to miss, not by time. An approval that expires is
+ * the only kind of notification here that has a deadline, so it sits above a
+ * blocked action that has already been handled by the limit doing its job.
+ */
+interface Note {
+  id: string
+  tone: 'warn' | 'work' | 'good'
+  title: string
+  body: string
+  when: string
+  href: string
+}
+
+const NOTES: Note[] = [
+  {
+    id: 'n1',
+    tone: 'work',
+    title: 'YieldMax is waiting on you',
+    body: 'It found 11.8% APY and needs approval before moving anything.',
+    when: '09:03',
+    href: '/jobs/job_01J8',
+  },
+  {
+    id: 'n2',
+    tone: 'warn',
+    title: 'An action was blocked overnight',
+    body: 'Guardian tried to spend $91.20 against your $80 per-action limit. Nothing was spent.',
+    when: '02:41',
+    href: '/activity',
+  },
+  {
+    id: 'n3',
+    tone: 'good',
+    title: 'Guardian finished a job',
+    body: 'Health factor 1.19 → 1.51. The receipt is signed and ready.',
+    when: '02:41',
+    href: '/receipts/rcp_01J8',
+  },
+]
+
+const DOT: Record<Note['tone'], string> = {
+  warn: 'var(--color-warn)',
+  work: 'var(--color-work)',
+  good: 'var(--color-good)',
+}
+
 export function TopBar() {
   const [open, setOpen] = useState(false)
+  const [bell, setBell] = useState(false)
+  const [read, setRead] = useState<Record<string, boolean>>({})
   const say = useToast()
+
+  const unread = NOTES.filter((n) => !read[n.id]).length
 
   return (
     <div className="flex min-w-0 flex-nowrap items-center gap-[9px] px-[2px] pt-[2px]">
@@ -73,7 +127,10 @@ export function TopBar() {
       <div className="relative">
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => {
+            setOpen((o) => !o)
+            setBell(false)
+          }}
           className="flex h-11 flex-none items-center gap-[10px] rounded-[15px] border-0 bg-white pr-2 pl-[15px] text-[14px] font-semibold whitespace-nowrap shadow-[0_1px_2px_rgb(26_26_25_/_0.06)] hover:shadow-[0_4px_14px_-4px_rgb(26_26_25_/_0.16)]"
         >
           <span className="animate-breathe bg-good size-2 rounded-full" />
@@ -154,15 +211,76 @@ export function TopBar() {
         )}
       </div>
 
-      <button
-        type="button"
-        title="Notifications"
-        onClick={() => say('One unread: an action was blocked overnight.')}
-        className="relative flex size-11 flex-none items-center justify-center rounded-[15px] border-0 bg-white shadow-[0_1px_2px_rgb(26_26_25_/_0.06)] hover:shadow-[0_4px_14px_-4px_rgb(26_26_25_/_0.16)]"
-      >
-        <span className="size-[14px] rounded-t-[6px] rounded-b-[3px] border-[1.8px] border-[#4A4A46]" />
-        <span className="bg-orange-app absolute top-[9px] right-[10px] size-2 rounded-full border-2 border-white" />
-      </button>
+      <div className="relative">
+        <button
+          type="button"
+          title={unread ? `Notifications — ${unread} unread` : 'Notifications'}
+          onClick={() => {
+            setBell((b) => !b)
+            setOpen(false)
+          }}
+          className="relative flex size-11 flex-none items-center justify-center rounded-[15px] border-0 bg-white shadow-[0_1px_2px_rgb(26_26_25_/_0.06)] hover:shadow-[0_4px_14px_-4px_rgb(26_26_25_/_0.16)]"
+        >
+          <span className="size-[14px] rounded-t-[6px] rounded-b-[3px] border-[1.8px] border-[#4A4A46]" />
+          {unread ? (
+            <span className="bg-orange-app absolute top-[9px] right-[10px] size-2 rounded-full border-2 border-white" />
+          ) : null}
+        </button>
+
+        {bell ? (
+          <div className="animate-rise absolute top-[52px] right-0 z-60 w-[376px] overflow-hidden rounded-[20px] bg-white shadow-[0_24px_60px_-20px_rgb(26_26_25_/_0.3),0_1px_2px_rgb(26_26_25_/_0.08)]">
+            <div className="flex items-center justify-between px-4 pt-[15px] pb-3">
+              <span className="text-[14.5px] font-bold">
+                {unread ? `${unread} waiting` : 'Nothing waiting'}
+              </span>
+              {unread ? (
+                <button
+                  type="button"
+                  onClick={() => setRead(Object.fromEntries(NOTES.map((n) => [n.id, true])))}
+                  className="text-muted hover:text-ink-app border-0 bg-none text-[12px] font-semibold"
+                >
+                  Mark all read
+                </button>
+              ) : null}
+            </div>
+
+            {NOTES.map((n) => (
+              <Link
+                key={n.id}
+                href={route(n.href)}
+                onClick={() => {
+                  setRead((r) => ({ ...r, [n.id]: true }))
+                  setBell(false)
+                }}
+                className="flex items-start gap-[11px] border-t border-[rgb(26_26_25_/_0.06)] px-4 py-3 hover:bg-[#FAFAF9]"
+              >
+                <span
+                  className="mt-[6px] size-[7px] flex-none rounded-full"
+                  style={{ background: read[n.id] ? 'rgb(26 26 25 / 0.15)' : DOT[n.tone] }}
+                />
+                <span className="min-w-0 flex-1">
+                  <span
+                    className="block text-[13.5px] leading-[1.35]"
+                    style={{ fontWeight: read[n.id] ? 500 : 700 }}
+                  >
+                    {n.title}
+                  </span>
+                  <span className="text-muted mt-[3px] block text-[12px] leading-[1.45] text-pretty">
+                    {n.body}
+                  </span>
+                </span>
+                <span className="text-faint mt-[2px] flex-none text-[11.5px] font-semibold tabular-nums">
+                  {n.when}
+                </span>
+              </Link>
+            ))}
+
+            <div className="text-muted border-t border-[rgb(26_26_25_/_0.06)] px-4 py-[11px] text-[11.5px] leading-[1.45]">
+              Blocked actions are kept here on purpose. They are the proof your limits hold.
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
