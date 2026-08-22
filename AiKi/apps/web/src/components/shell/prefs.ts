@@ -47,6 +47,27 @@ export function useLayoutPref() {
 
 const SIDEBAR = ['open', 'closed'] as const
 
+/**
+ * Below this the sidebar is a drawer and the ask page drops its decoration.
+ * Matches Tailwind's `md`, so the CSS and the JS never disagree about where the
+ * layout changes.
+ */
+export const PHONE_MAX = 767
+
+export function useIsPhone() {
+  const [phone, setPhone] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${PHONE_MAX}px)`)
+    const sync = () => setPhone(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
+  return phone
+}
+
 export function useSidebar() {
   const [state, setState] = usePersisted<'open' | 'closed'>('aiki.sidebar', 'open', SIDEBAR)
   const collapsed = state === 'closed'

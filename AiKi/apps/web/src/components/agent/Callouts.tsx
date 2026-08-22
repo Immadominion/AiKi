@@ -108,8 +108,10 @@ export function Fact({
   tone?: 'plain' | 'warn'
 }) {
   return (
-    <div className="flex items-start gap-3 border-t border-[rgb(26_26_25_/_0.06)] px-4 py-[12px] first:border-t-0">
-      <span className="text-muted w-[186px] flex-none text-[12.5px] font-semibold">{label}</span>
+    <div className="flex flex-col items-start gap-1 border-t border-[rgb(26_26_25_/_0.06)] px-4 py-[12px] first:border-t-0 sm:flex-row sm:gap-3">
+      <span className="text-muted w-full flex-none text-[12.5px] font-semibold sm:w-[186px]">
+        {label}
+      </span>
       <span
         className="min-w-0 flex-1 text-[13.5px] leading-[1.45] font-medium text-pretty"
         style={{ color: tone === 'warn' ? 'var(--color-warn-ink)' : 'var(--color-ink-app)' }}

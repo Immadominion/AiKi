@@ -30,8 +30,10 @@ const Section = ({
 )
 
 const Line = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div className="flex items-start gap-3 border-t border-[rgb(26_26_25_/_0.06)] px-4 py-[11px] first:border-t-0">
-    <span className="text-muted w-[168px] flex-none text-[12.5px] font-semibold">{label}</span>
+  <div className="flex flex-col items-start gap-1 border-t border-[rgb(26_26_25_/_0.06)] px-4 py-[11px] first:border-t-0 sm:flex-row sm:gap-3">
+    <span className="text-muted w-full flex-none text-[12.5px] font-semibold sm:w-[168px]">
+      {label}
+    </span>
     <span className="min-w-0 flex-1 text-[13px] leading-[1.45] text-pretty">{children}</span>
   </div>
 )
@@ -42,14 +44,14 @@ export function ReceiptView() {
   const say = useToast()
 
   const header = (
-    <div className="flex items-start gap-[14px]">
+    <div className="flex flex-wrap items-start gap-[14px]">
       <span
         className="flex size-[52px] flex-none items-center justify-center rounded-[16px] text-[20px] font-extrabold text-white"
         style={{ background: AGENT_BG.guardian }}
       >
         {row.initial}
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-[240px]">
         <div className="flex items-center gap-[10px]">
           <span className="text-[19px] font-extrabold tracking-[-0.02em]">Receipt</span>
           <StatusPill label="Signed" tone="good" />

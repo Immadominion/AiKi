@@ -129,8 +129,8 @@ export function HowWeTest() {
   const router = useRouter()
 
   const header = (
-    <div className="flex items-start gap-[14px]">
-      <div className="min-w-0 flex-1">
+    <div className="flex flex-wrap items-start gap-[14px]">
+      <div className="min-w-0 flex-1 basis-[240px]">
         <span className="block text-[19px] font-extrabold tracking-[-0.02em]">How we test</span>
         <p className="text-muted mt-[3px] mb-0 max-w-[660px] text-[13px] leading-[1.45] text-pretty">
           Every number on this site comes from something AiKi did itself. Nothing here is

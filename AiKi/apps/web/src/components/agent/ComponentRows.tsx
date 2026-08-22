@@ -19,9 +19,11 @@ export function ComponentRows({ rows }: { rows: { label: string; measure: Measur
         return (
           <div
             key={r.label}
-            className={`flex items-center gap-[14px] px-[16px] py-[13px] ${i > 0 ? 'border-t border-[rgb(26_26_25_/_0.06)]' : ''}`}
+            className={`flex items-center gap-[10px] px-[14px] py-[13px] sm:gap-[14px] sm:px-[16px] ${i > 0 ? 'border-t border-[rgb(26_26_25_/_0.06)]' : ''}`}
           >
-            <span className="w-[152px] flex-none text-[13.5px] font-semibold">{r.label}</span>
+            <span className="w-[118px] flex-none text-[13px] font-semibold sm:w-[152px] sm:text-[13.5px]">
+              {r.label}
+            </span>
 
             <span className="relative h-[8px] min-w-0 flex-1 overflow-hidden rounded-full bg-[rgb(26_26_25_/_0.06)]">
               {!none && (
@@ -44,7 +46,7 @@ export function ComponentRows({ rows }: { rows: { label: string; measure: Measur
             >
               {none ? '—' : text}
             </span>
-            <span className="text-muted w-[104px] flex-none text-right text-[12px] font-medium tabular-nums">
+            <span className="text-muted hidden w-[104px] flex-none text-right text-[12px] font-medium tabular-nums sm:block">
               {none ? 'never observed' : `${r.measure.sampleSize.toLocaleString()} checks`}
             </span>
           </div>

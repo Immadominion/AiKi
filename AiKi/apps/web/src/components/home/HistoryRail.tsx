@@ -132,12 +132,29 @@ export function HistoryRail({
 
   return (
     <>
+      {/* Phones have no room beside the field, so the trigger joins the bottom
+          row instead of sitting where the input goes. */}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={`absolute bottom-4 left-4 z-40 flex h-[34px] items-center gap-[8px] rounded-full border border-[rgb(20_20_20_/_0.06)] bg-white/80 px-[13px] backdrop-blur md:hidden ${
+          open ? 'pointer-events-none opacity-0' : 'opacity-100'
+        }`}
+      >
+        <span className="flex flex-col gap-[2px]" aria-hidden>
+          {[0, 1, 2].map((i) => (
+            <span key={i} className="block h-[2px] w-[11px] rounded-full bg-[#B4B4B0]" />
+          ))}
+        </span>
+        <span className="text-[12px] font-semibold text-[#767676]">Your asks</span>
+      </button>
+
       {/* Collapsed: a thin rail that does not compete with the field. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
         title="Your asks (⌘/)"
-        className={`absolute top-1/2 left-4 z-40 flex h-[132px] w-[34px] -translate-y-1/2 flex-col items-center justify-center gap-[7px] rounded-[14px] border border-[rgb(20_20_20_/_0.06)] bg-white/70 backdrop-blur transition-all hover:bg-white ${
+        className={`absolute top-1/2 left-4 z-40 hidden h-[132px] w-[34px] -translate-y-1/2 flex-col items-center justify-center gap-[7px] rounded-[14px] border border-[rgb(20_20_20_/_0.06)] bg-white/70 backdrop-blur transition-all hover:bg-white md:flex ${
           open ? 'pointer-events-none opacity-0' : 'opacity-100'
         }`}
       >
@@ -155,7 +172,7 @@ export function HistoryRail({
       </button>
 
       {open && (
-        <div className="animate-rise absolute top-4 bottom-4 left-4 z-46 flex w-[316px] flex-col overflow-hidden rounded-[26px] border border-[rgb(20_20_20_/_0.07)] bg-white shadow-[0_34px_84px_-32px_rgb(20_20_20_/_0.4)]">
+        <div className="animate-rise absolute inset-x-3 top-3 bottom-3 z-46 flex flex-col overflow-hidden rounded-[26px] border border-[rgb(20_20_20_/_0.07)] bg-white shadow-[0_34px_84px_-32px_rgb(20_20_20_/_0.4)] sm:inset-x-auto sm:top-4 sm:bottom-4 sm:left-4 sm:w-[316px]">
           <div className="flex flex-none items-center justify-between px-[18px] pt-[17px] pb-3">
             <span className="text-[14.5px] font-bold">Your asks</span>
             <button

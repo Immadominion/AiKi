@@ -84,7 +84,7 @@ const DOT: Record<Note['tone'], string> = {
   good: 'var(--color-good)',
 }
 
-export function TopBar() {
+export function TopBar({ onMenu }: { onMenu: () => void }) {
   const [open, setOpen] = useState(false)
   const [bell, setBell] = useState(false)
   const [read, setRead] = useState<Record<string, boolean>>({})
@@ -94,9 +94,23 @@ export function TopBar() {
 
   return (
     <div className="flex min-w-0 flex-nowrap items-center gap-[9px] px-[2px] pt-[2px]">
+      {/* The drawer handle. Only exists where the sidebar does not. */}
+      <button
+        type="button"
+        aria-label="Open navigation"
+        onClick={onMenu}
+        className="flex size-11 flex-none items-center justify-center gap-[4px] rounded-[15px] border-0 bg-white shadow-[0_1px_2px_rgb(26_26_25_/_0.06)] md:hidden"
+      >
+        <span className="flex flex-col gap-[3px]">
+          <span className="block h-[2px] w-[15px] rounded-full bg-[#4A4A46]" />
+          <span className="block h-[2px] w-[15px] rounded-full bg-[#4A4A46]" />
+          <span className="block h-[2px] w-[15px] rounded-full bg-[#4A4A46]" />
+        </span>
+      </button>
+
       <div
         title="0x7f4a…3a91"
-        className="flex h-11 flex-none items-center gap-2 rounded-[15px] bg-white px-2 shadow-[0_1px_2px_rgb(26_26_25_/_0.06)]"
+        className="hidden h-11 flex-none items-center gap-2 rounded-[15px] bg-white px-2 shadow-[0_1px_2px_rgb(26_26_25_/_0.06)] sm:flex"
       >
         <Image
           src="/aiki-logo.png"
@@ -114,7 +128,7 @@ export function TopBar() {
           type="button"
           title={c.label}
           onClick={() => say(c.msg)}
-          className="flex h-11 flex-none items-center gap-[9px] rounded-[15px] border-0 bg-[rgb(26_26_25_/_0.055)] px-3 text-[14px] font-semibold whitespace-nowrap hover:bg-[rgb(26_26_25_/_0.09)] lg:px-[15px]"
+          className="hidden h-11 flex-none items-center gap-[9px] rounded-[15px] border-0 bg-[rgb(26_26_25_/_0.055)] px-3 text-[14px] font-semibold whitespace-nowrap hover:bg-[rgb(26_26_25_/_0.09)] sm:flex lg:px-[15px]"
         >
           <span className="w-4 flex-none text-center text-[13px] text-[#77776F]">{c.glyph}</span>
           <span className="hidden whitespace-nowrap lg:inline">{c.label}</span>
@@ -143,7 +157,7 @@ export function TopBar() {
         </button>
 
         {open && (
-          <div className="animate-rise absolute top-[52px] right-0 z-60 w-[392px] overflow-hidden rounded-[20px] bg-white shadow-[0_24px_60px_-20px_rgb(26_26_25_/_0.3),0_1px_2px_rgb(26_26_25_/_0.08)]">
+          <div className="animate-rise fixed inset-x-2 top-[68px] z-60 overflow-hidden rounded-[20px] bg-white shadow-[0_24px_60px_-20px_rgb(26_26_25_/_0.3),0_1px_2px_rgb(26_26_25_/_0.08)] sm:absolute sm:inset-x-auto sm:top-[52px] sm:right-0 sm:w-[392px]">
             <div className="flex items-center justify-between px-4 pt-[15px] pb-3">
               <span className="text-[14.5px] font-bold">Working for you</span>
               <span className="text-muted text-[12px] font-semibold">
@@ -228,7 +242,7 @@ export function TopBar() {
         </button>
 
         {bell ? (
-          <div className="animate-rise absolute top-[52px] right-0 z-60 w-[376px] overflow-hidden rounded-[20px] bg-white shadow-[0_24px_60px_-20px_rgb(26_26_25_/_0.3),0_1px_2px_rgb(26_26_25_/_0.08)]">
+          <div className="animate-rise fixed inset-x-2 top-[68px] z-60 overflow-hidden rounded-[20px] bg-white shadow-[0_24px_60px_-20px_rgb(26_26_25_/_0.3),0_1px_2px_rgb(26_26_25_/_0.08)] sm:absolute sm:inset-x-auto sm:top-[52px] sm:right-0 sm:w-[376px]">
             <div className="flex items-center justify-between px-4 pt-[15px] pb-3">
               <span className="text-[14.5px] font-bold">
                 {unread ? `${unread} waiting` : 'Nothing waiting'}

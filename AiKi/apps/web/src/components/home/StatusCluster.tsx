@@ -43,26 +43,28 @@ export function StatusCluster({ first, onSay }: { first: boolean; onSay: (msg: s
   const shown = open && !first
 
   return (
-    <div className="absolute top-6 right-6 z-45 flex flex-col items-end gap-[10px]">
+    <div className="absolute top-3 right-3 z-45 flex flex-col items-end gap-[10px] md:top-6 md:right-6">
       <div className="flex items-center gap-1">
-        <Link
-          href="/explore"
-          className="flex h-9 items-center rounded-[12px] px-[13px] text-[13px] font-semibold text-[#767676] transition-colors hover:bg-[rgb(20_20_20_/_0.05)] hover:text-[#141414]"
-        >
-          Explore
-        </Link>
-        <Link
-          href="/agents"
-          className="flex h-9 items-center rounded-[12px] px-[13px] text-[13px] font-semibold text-[#767676] transition-colors hover:bg-[rgb(20_20_20_/_0.05)] hover:text-[#141414]"
-        >
-          My agents
-        </Link>
-        <Link
-          href="/activity"
-          className="flex h-9 items-center rounded-[12px] px-[13px] text-[13px] font-semibold text-[#767676] transition-colors hover:bg-[rgb(20_20_20_/_0.05)] hover:text-[#141414]"
-        >
-          Activity
-        </Link>
+        <div className="hidden items-center gap-1 lg:flex">
+          <Link
+            href="/explore"
+            className="flex h-9 items-center rounded-[12px] px-[13px] text-[13px] font-semibold text-[#767676] transition-colors hover:bg-[rgb(20_20_20_/_0.05)] hover:text-[#141414]"
+          >
+            Explore
+          </Link>
+          <Link
+            href="/agents"
+            className="flex h-9 items-center rounded-[12px] px-[13px] text-[13px] font-semibold text-[#767676] transition-colors hover:bg-[rgb(20_20_20_/_0.05)] hover:text-[#141414]"
+          >
+            My agents
+          </Link>
+          <Link
+            href="/activity"
+            className="flex h-9 items-center rounded-[12px] px-[13px] text-[13px] font-semibold text-[#767676] transition-colors hover:bg-[rgb(20_20_20_/_0.05)] hover:text-[#141414]"
+          >
+            Activity
+          </Link>
+        </div>
 
         <button
           type="button"
@@ -73,13 +75,16 @@ export function StatusCluster({ first, onSay }: { first: boolean; onSay: (msg: s
             }
             setOpen((o) => !o)
           }}
-          className="ml-[6px] flex h-10 items-center gap-[9px] rounded-full border border-[rgb(20_20_20_/_0.07)] bg-white pr-2 pl-[14px] text-[13px] font-semibold shadow-[0_12px_30px_-18px_rgb(20_20_20_/_0.3)] hover:shadow-[0_16px_36px_-18px_rgb(20_20_20_/_0.38)]"
+          className="ml-[6px] flex h-10 items-center gap-[9px] rounded-full border border-[rgb(20_20_20_/_0.07)] bg-white pr-2 pl-[14px] text-[13px] font-semibold whitespace-nowrap shadow-[0_12px_30px_-18px_rgb(20_20_20_/_0.3)] hover:shadow-[0_16px_36px_-18px_rgb(20_20_20_/_0.38)]"
         >
           <span
             className="animate-breathe size-[7px] rounded-full"
             style={{ background: first ? '#C9C9C9' : '#00A092' }}
           />
-          {first ? 'No agents yet' : '2 agents · all good'}
+          <span className="whitespace-nowrap">
+            {first ? 'No agents yet' : '2 agents'}
+            <span className="hidden sm:inline">{first ? '' : ' · all good'}</span>
+          </span>
           <span className="flex size-[26px] items-center justify-center rounded-full bg-[#F3F3F1] text-[11px] text-[#6B6B6B]">
             {shown ? '×' : '⌄'}
           </span>
@@ -96,7 +101,7 @@ export function StatusCluster({ first, onSay }: { first: boolean; onSay: (msg: s
       </div>
 
       {shown && (
-        <div className="animate-rise w-[368px] overflow-hidden rounded-[26px] border border-[rgb(20_20_20_/_0.07)] bg-white shadow-[0_34px_84px_-32px_rgb(20_20_20_/_0.4)]">
+        <div className="animate-rise w-[min(368px,calc(100vw-24px))] overflow-hidden rounded-[26px] border border-[rgb(20_20_20_/_0.07)] bg-white shadow-[0_34px_84px_-32px_rgb(20_20_20_/_0.4)]">
           {LIVE.map((a, i) => (
             <div key={a.name}>
               {i > 0 && <div className="mx-4 h-px bg-[rgb(20_20_20_/_0.06)]" />}

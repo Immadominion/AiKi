@@ -51,7 +51,7 @@ export function PageCard({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] bg-white shadow-[0_1px_2px_rgb(26_26_25_/_0.06)]">
-      <div className="flex-none px-[22px] pt-[18px]">
+      <div className="flex-none px-4 pt-[18px] md:px-[22px]">
         {back ? (
           <Link
             href={route(back.href)}
@@ -61,7 +61,7 @@ export function PageCard({
           </Link>
         ) : null}
         {headerSlot ?? (
-          <div className="flex items-baseline gap-[9px]">
+          <div className="flex flex-wrap items-baseline gap-x-[9px] gap-y-2">
             <span className="text-[19px] font-extrabold tracking-[-0.02em]">{title}</span>
             <span className="text-faint-2 text-[13px] font-semibold">·</span>
             <span className="text-muted text-[13.5px] font-semibold">{count}</span>
@@ -77,12 +77,12 @@ export function PageCard({
             ) : null}
           </div>
         )}
-        <div className="-mx-[22px] mt-4 h-px bg-[rgb(26_26_25_/_0.07)]" />
+        <div className="-mx-4 mt-4 h-px bg-[rgb(26_26_25_/_0.07)] md:-mx-[22px]" />
       </div>
 
       {tabs.length > 0 ? (
-        <div className="flex flex-none items-center gap-[14px] px-[22px] pt-4">
-          <div className="flex gap-[3px] rounded-[14px] bg-[rgb(26_26_25_/_0.05)] p-1">
+        <div className="flex flex-none items-center gap-[14px] overflow-x-auto px-4 pt-4 md:px-[22px]">
+          <div className="flex flex-none gap-[3px] rounded-[14px] bg-[rgb(26_26_25_/_0.05)] p-1">
             {tabs.map((t, i) => (
               <button
                 key={t}
@@ -94,7 +94,7 @@ export function PageCard({
                       `“${t}” filtering is wired in the build — this pass shows the default view.`,
                     )
                 }}
-                className="h-9 rounded-[11px] border-0 px-[18px] text-[14px]"
+                className="h-9 rounded-[11px] border-0 px-3 text-[13.5px] whitespace-nowrap md:px-[18px] md:text-[14px]"
                 style={
                   tab === i
                     ? {
@@ -116,7 +116,7 @@ export function PageCard({
       ) : null}
 
       {banner ? (
-        <div className="mx-[22px] mt-4 flex-none rounded-2xl bg-[linear-gradient(90deg,#FF5A00,#A855F7_55%,#3B82F6)] p-[1.5px]">
+        <div className="mx-4 mt-4 flex-none rounded-2xl md:mx-[22px] bg-[linear-gradient(90deg,#FF5A00,#A855F7_55%,#3B82F6)] p-[1.5px]">
           <div className="flex items-center gap-[11px] rounded-[14.5px] bg-white px-[15px] py-[13px]">
             <span className="flex-none text-[15px] text-[#A855F7]">✦</span>
             <span className="text-body-2 min-w-0 flex-1 text-[13.5px] leading-[1.45]">
@@ -136,7 +136,7 @@ export function PageCard({
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-[22px] pt-4 pb-[22px]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-[22px] md:px-[22px]">
         {panels ? panels[tab] : children}
       </div>
     </div>

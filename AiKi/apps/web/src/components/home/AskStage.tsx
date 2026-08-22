@@ -40,7 +40,7 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
   }
 
   return (
-    <div className="relative h-screen min-h-[520px] w-screen min-w-[880px] overflow-hidden bg-canvas">
+    <div className="bg-canvas relative h-[100dvh] w-full overflow-hidden md:min-h-[520px]">
       {/* Grid — everything on this page lands on its 72px pitch. */}
       <div
         className="pointer-events-none absolute inset-0 z-1"
@@ -53,8 +53,8 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
       />
 
       {/* Warm light, bottom-right and top-left. Blurred so it reads as light, not shape. */}
-      <div className="pointer-events-none absolute -right-[160px] -bottom-[190px] z-2 h-[560px] w-[620px] rounded-[48%_52%_44%_56%] bg-[radial-gradient(ellipse_at_40%_40%,rgb(255_77_0_/_0.5),rgb(255_90_20_/_0.34)_45%,rgb(255_120_40_/_0)_72%)] blur-[28px]" />
-      <div className="pointer-events-none absolute -top-[110px] -left-[90px] z-2 h-[300px] w-[340px] bg-[radial-gradient(ellipse_at_60%_60%,rgb(255_77_0_/_0.3),rgb(255_150_60_/_0)_70%)] blur-[26px]" />
+      <div className="pointer-events-none absolute -right-[100px] -bottom-[120px] z-2 h-[320px] w-[340px] rounded-[48%_52%_44%_56%] bg-[radial-gradient(ellipse_at_40%_40%,rgb(255_77_0_/_0.5),rgb(255_90_20_/_0.34)_45%,rgb(255_120_40_/_0)_72%)] blur-[28px] md:-right-[160px] md:-bottom-[190px] md:h-[560px] md:w-[620px]" />
+      <div className="pointer-events-none absolute -top-[70px] -left-[60px] z-2 h-[190px] w-[210px] bg-[radial-gradient(ellipse_at_60%_60%,rgb(255_77_0_/_0.3),rgb(255_150_60_/_0)_70%)] blur-[26px] md:-top-[110px] md:-left-[90px] md:h-[300px] md:w-[340px]" />
 
       <div className="pointer-events-none absolute top-[46%] left-1/2 z-3 h-[min(46vh,340px)] w-[min(46vw,600px)] -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgb(250_250_248_/_0.96)_0%,rgb(250_250_248_/_0.8)_45%,rgb(250_250_248_/_0.4)_70%,rgb(250_250_248_/_0)_90%)]" />
 
@@ -68,7 +68,7 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
         width={120}
         height={120}
         priority
-        className="absolute top-4 left-6 z-40 h-[50px] w-auto"
+        className="absolute top-3 left-4 z-40 h-[38px] w-auto md:top-4 md:left-6 md:h-[50px]"
       />
 
       <StatusCluster first={first} onSay={say} />
@@ -80,11 +80,11 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
         }}
       />
 
-      <div className="absolute top-[46%] left-1/2 z-30 flex w-[clamp(420px,calc(100vw-700px),660px)] -translate-x-1/2 -translate-y-[52%] flex-col items-center">
+      <div className="absolute top-[46%] left-1/2 z-30 flex w-[calc(100vw-32px)] max-w-[660px] -translate-x-1/2 -translate-y-[52%] flex-col items-center lg:w-[clamp(420px,calc(100vw-700px),660px)]">
         <div className="text-[14px] leading-[1.4] font-semibold whitespace-nowrap text-[#8A8A8A]">
           {first ? `Welcome to AiKi, ${userName}` : `Good morning, ${userName}`}
         </div>
-        <h1 className="mt-[9px] max-w-full text-center text-[clamp(36px,3.8vw,54px)] leading-[1.02] font-extrabold tracking-[-0.036em] text-balance">
+        <h1 className="mt-[9px] max-w-full text-center text-[clamp(30px,7vw,54px)] leading-[1.02] font-extrabold tracking-[-0.036em] text-balance">
           What do you need done?
         </h1>
 
@@ -99,7 +99,7 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
         </div>
       </div>
 
-      <div className="pointer-events-none fixed right-6 bottom-[18px] z-25 flex justify-end">
+      <div className="pointer-events-none fixed inset-x-4 bottom-[54px] z-25 flex justify-center text-center md:inset-x-auto md:right-6 md:bottom-[18px] md:justify-end md:text-right">
         <Link
           href={route('/how-we-test')}
           className="pointer-events-auto border-0 bg-none text-[12.5px] font-medium text-[#767676] hover:text-[#141414]"
@@ -112,7 +112,7 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
       {/* First run vs returning is normally derived from whether you have agents.
           It stays switchable here so the difference can be shown, not described. */}
       <div
-        className="fixed bottom-4 left-6 z-46 flex gap-[2px] rounded-[12px] bg-[rgb(20_20_20_/_0.05)] p-[3px] transition-opacity"
+        className="fixed right-3 bottom-4 z-46 flex gap-[2px] rounded-[12px] bg-[rgb(20_20_20_/_0.05)] p-[3px] transition-opacity md:right-auto md:left-6"
         style={historyOpen ? { opacity: 0, pointerEvents: 'none' } : undefined}
       >
         {(['returning', 'first'] as const).map((k) => (

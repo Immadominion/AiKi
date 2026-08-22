@@ -85,7 +85,7 @@ export function CompareView() {
   const perDay = DETAILS[thinKey].checks[1] / daysKnown
 
   const header = (
-    <div className="flex items-start gap-[14px]">
+    <div className="flex flex-wrap items-start gap-[14px]">
       <div className="flex flex-none items-center">
         {keys.map((k, i) => (
           <span
@@ -97,7 +97,7 @@ export function CompareView() {
           </span>
         ))}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-[240px]">
         <span className="block text-[19px] font-extrabold tracking-[-0.02em]">
           {keys.map((k) => AGENT_BY_KEY[k].name).join(' vs ')}
         </span>
@@ -131,7 +131,7 @@ export function CompareView() {
             >
               {tied ? '=' : '✓'}
             </span>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 basis-[240px]">
               <div
                 className="text-[15px] font-bold"
                 style={{ color: tied ? '#6B5A34' : 'var(--color-good-ink)' }}

@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import { usePalette } from '@/components/shell/CommandPalette'
 import { useToast } from '@/components/ui/Toast'
 import { route } from '@/lib/routes'
-import { useLayoutPref, useSidebar } from './prefs'
+import { useIsPhone, useLayoutPref } from './prefs'
 
 interface Item {
   label: string
@@ -44,18 +44,29 @@ const GROUPS: { label: string; items: Item[] }[] = [
   },
 ]
 
-export function Sidebar({ userName = 'Dominion' }: { userName?: string }) {
+export function Sidebar({
+  userName = 'Dominion',
+  collapsed: collapsedPref,
+  onToggle,
+  onNavigate,
+}: {
+  userName?: string
+  collapsed: boolean
+  onToggle: () => void
+  onNavigate: () => void
+}) {
   const path = usePathname()
   const say = useToast()
   const openPalette = usePalette()
   const { layout, setLayout } = useLayoutPref()
-  const { collapsed, toggle } = useSidebar()
+  const onPhone = useIsPhone()
+
+  // The collapse preference belongs to the desktop column. In the drawer the
+  // sidebar is always full width, so the rail never appears on touch.
+  const collapsed = collapsedPref && !onPhone
 
   return (
-    <div
-      className="flex min-h-0 flex-none flex-col px-1 pt-[6px] pb-1 transition-[width] duration-150"
-      style={{ width: collapsed ? 60 : 'clamp(196px,19vw,252px)' }}
-    >
+    <div className="flex h-full min-h-0 flex-col px-1 pt-[6px] pb-1">
       <div
         className={`flex pr-2 pl-[6px] ${
           collapsed ? 'flex-col items-center gap-[6px]' : 'items-center justify-between'
@@ -75,8 +86,8 @@ export function Sidebar({ userName = 'Dominion' }: { userName?: string }) {
         </div>
         <button
           type="button"
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          onClick={toggle}
+          title={onPhone ? 'Close navigation' : collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={onPhone ? onNavigate : onToggle}
           className="flex size-7 flex-none items-center justify-center rounded-lg border-0 bg-none hover:bg-[rgb(26_26_25_/_0.06)]"
         >
           <span className="relative block h-[14px] w-[15px] rounded-[4px] border-[1.7px] border-[#6B6B66]">
@@ -95,7 +106,10 @@ export function Sidebar({ userName = 'Dominion' }: { userName?: string }) {
       <button
         type="button"
         title="Search — ⌘K"
-        onClick={openPalette}
+        onClick={() => {
+          onNavigate()
+          openPalette()
+        }}
         className={`mt-4 flex h-[42px] items-center gap-[10px] rounded-[14px] border-0 bg-[rgb(26_26_25_/_0.055)] text-left hover:bg-[rgb(26_26_25_/_0.085)] ${
           collapsed ? 'justify-center px-0' : 'pr-[10px] pl-[13px]'
         }`}
@@ -173,6 +187,7 @@ export function Sidebar({ userName = 'Dominion' }: { userName?: string }) {
                   <Link
                     key={item.label}
                     href={route(item.href)}
+                    onClick={onNavigate}
                     title={collapsed ? item.label : undefined}
                     className={`${cls} ${on ? '' : 'hover:bg-[rgb(26_26_25_/_0.055)]'}`}
                     style={style}

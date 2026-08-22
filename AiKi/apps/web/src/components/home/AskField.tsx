@@ -44,7 +44,7 @@ export function AskField({
   return (
     <div className="relative mt-7 w-full">
       <div
-        className="flex h-[72px] items-center gap-3 rounded-full border bg-white pr-[10px] pl-[26px] transition-[border-color,box-shadow] duration-200"
+        className="flex h-[62px] items-center gap-3 rounded-full border bg-white pr-[8px] pl-[20px] transition-[border-color,box-shadow] duration-200 md:h-[72px] md:pr-[10px] md:pl-[26px]"
         style={{
           borderColor: focused ? 'rgb(20 20 20 / 0.16)' : 'rgb(20 20 20 / 0.08)',
           boxShadow: focused
@@ -68,14 +68,14 @@ export function AskField({
               }
               if (e.key === 'Enter') onSubmit(q.trim())
             }}
-            className="relative z-2 h-full w-full border-0 bg-none text-[18px] font-medium text-[#141414] outline-none"
+            className="relative z-2 h-full w-full border-0 bg-none text-[16px] font-medium text-[#141414] outline-none md:text-[18px]"
           />
           {!q && (
             <span className="pointer-events-none absolute inset-x-0 z-1 flex items-center gap-[10px]">
-              <span className="animate-hint overflow-hidden text-[18px] font-medium text-ellipsis whitespace-nowrap text-[#9A9A9A]">
+              <span className="animate-hint overflow-hidden text-[16px] font-medium text-ellipsis whitespace-nowrap text-[#9A9A9A] md:text-[18px]">
                 {hint}
               </span>
-              <span className="flex-none rounded-[7px] bg-[#F4F4F2] px-[7px] py-1 text-[10.5px] font-bold tracking-[0.03em] text-[#8A8A8A]">
+              <span className="hidden flex-none rounded-[7px] bg-[#F4F4F2] px-[7px] py-1 text-[10.5px] font-bold tracking-[0.03em] text-[#8A8A8A] md:inline">
                 TAB
               </span>
             </span>
@@ -85,7 +85,7 @@ export function AskField({
           type="button"
           title="Find agents"
           onClick={() => onSubmit(q.trim())}
-          className="flex size-[54px] flex-none items-center justify-center rounded-full border-0 bg-[linear-gradient(135deg,#FF4D00,#FF7A2E)] text-[19px] text-white shadow-[0_14px_28px_-12px_rgb(255_77_0_/_0.7)] transition-transform duration-150 hover:scale-105 active:scale-[0.97]"
+          className="flex size-[46px] flex-none items-center justify-center rounded-full border-0 bg-[linear-gradient(135deg,#FF4D00,#FF7A2E)] text-[19px] text-white shadow-[0_14px_28px_-12px_rgb(255_77_0_/_0.7)] transition-transform duration-150 hover:scale-105 active:scale-[0.97] md:size-[54px]"
         >
           →
         </button>

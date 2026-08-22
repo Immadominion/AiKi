@@ -25,14 +25,14 @@ export function MissionControl() {
   const onApproval = useCallback((e: Approval) => setApproval(e), [])
 
   const header = (
-    <div className="flex items-start gap-[14px]">
+    <div className="flex flex-wrap items-start gap-[14px]">
       <span
         className="flex size-[52px] flex-none items-center justify-center rounded-[16px] text-[20px] font-extrabold text-white"
         style={{ background: AGENT_BG[JOB.agentKey] }}
       >
         {row.initial}
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-[240px]">
         <div className="flex items-center gap-[10px]">
           <span className="text-[19px] font-extrabold tracking-[-0.02em]">
             {row.name} is working
@@ -46,14 +46,14 @@ export function MissionControl() {
           {JOB.title} · {JOB.jobId}
         </p>
       </div>
-      <div className="flex flex-none gap-[6px]">
+      <div className="flex w-full flex-none gap-[6px] sm:w-auto">
         <button
           type="button"
           onClick={() => {
             setPaused((p) => !p)
             say(paused ? `${row.name} resumed.` : `${row.name} is paused. It stops within seconds.`)
           }}
-          className="text-ink-app h-[38px] rounded-xl border-0 bg-[rgb(26_26_25_/_0.055)] px-4 text-[13.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)]"
+          className="text-ink-app h-[42px] flex-1 rounded-xl border-0 bg-[rgb(26_26_25_/_0.055)] px-4 text-[13.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)] sm:h-[38px] sm:flex-none"
         >
           {paused ? 'Resume' : 'Pause'}
         </button>
@@ -62,7 +62,7 @@ export function MissionControl() {
           onClick={() =>
             say('Revoking sends a transaction. It costs gas, and it cannot be undone.')
           }
-          className="bg-ink-app hover:bg-orange-app h-[38px] rounded-xl border-0 px-4 text-[13.5px] font-bold text-white transition-colors"
+          className="bg-ink-app hover:bg-orange-app h-[42px] flex-1 rounded-xl border-0 px-4 text-[13.5px] font-bold text-white transition-colors sm:h-[38px] sm:flex-none"
         >
           Revoke
         </button>
@@ -83,11 +83,11 @@ export function MissionControl() {
           It has a deadline, and a missed deadline is a missed action. */}
       {approval ? (
         <div className="mb-[18px] rounded-[18px] border-[1.5px] border-[var(--color-warn)] bg-[var(--color-warn-bg)] px-[18px] py-4">
-          <div className="flex items-start gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <span className="bg-warn mt-px flex size-[22px] flex-none items-center justify-center rounded-[8px] text-[12px] font-extrabold text-white">
               ?
             </span>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 basis-[240px]">
               <div className="text-[14px] font-bold text-[#6B5A34]">{approval.prompt}</div>
               <div className="mt-[4px] text-[12.5px] text-[#6B5A34]">
                 ${approval.amount.displayUsd} · expires{' '}
@@ -98,14 +98,14 @@ export function MissionControl() {
                 . If you do nothing, it does nothing.
               </div>
             </div>
-            <div className="flex flex-none gap-[6px]">
+            <div className="flex w-full flex-none gap-[6px] sm:w-auto">
               <button
                 type="button"
                 onClick={() => {
                   setApproval(null)
                   say('Declined. Nothing was spent.')
                 }}
-                className="text-ink-app h-9 rounded-[11px] border-0 bg-white px-[14px] text-[13px] font-bold"
+                className="text-ink-app h-10 flex-1 rounded-[11px] border-0 bg-white px-[14px] text-[13px] font-bold sm:h-9 sm:flex-none"
               >
                 No
               </button>
@@ -115,7 +115,7 @@ export function MissionControl() {
                   setApproval(null)
                   say('Approved. Guardian is repaying now.')
                 }}
-                className="bg-ink-app h-9 rounded-[11px] border-0 px-[14px] text-[13px] font-bold text-white"
+                className="bg-ink-app h-10 flex-1 rounded-[11px] border-0 px-[14px] text-[13px] font-bold text-white sm:h-9 sm:flex-none"
               >
                 Go ahead
               </button>

@@ -46,14 +46,14 @@ export function AgentPassport({ agentKey }: { agentKey: AgentKey }) {
   const overall = m(d.checks)
 
   const header = (
-    <div className="flex items-start gap-[14px]">
+    <div className="flex flex-wrap items-start gap-[14px]">
       <span
         className="flex size-[52px] flex-none items-center justify-center rounded-[16px] text-[20px] font-extrabold text-white"
         style={{ background: AGENT_BG[agentKey] }}
       >
         {row.initial}
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-[240px]">
         <div className="flex items-center gap-[10px]">
           <span className="text-[19px] font-extrabold tracking-[-0.02em]">{row.name}</span>
           <LivenessBadge state={d.liveness.state} />
@@ -62,7 +62,7 @@ export function AgentPassport({ agentKey }: { agentKey: AgentKey }) {
           {d.tagline}
         </p>
       </div>
-      <div className="flex flex-none items-center gap-[14px]">
+      <div className="flex w-full flex-none items-center justify-between gap-[14px] sm:w-auto sm:justify-end">
         <span className="text-right">
           <span className="block text-[15px] font-extrabold tabular-nums">{row.price}</span>
           <span className="text-muted mt-px block text-[11.5px] font-medium">
