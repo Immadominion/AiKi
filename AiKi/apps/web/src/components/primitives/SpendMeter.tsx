@@ -54,13 +54,19 @@ export function SpendMeter({
         <span className="text-[11px] font-medium text-grey-500">{PERIOD_COPY[period]}</span>
       </div>
 
+      {/* Visually a bar; semantically a meter, so assistive tech gets the value.
+          The native <meter> is visually hidden and the styled track mirrors it. */}
+      <meter
+        className="sr-only"
+        min={0}
+        max={100}
+        value={Math.round(ratio * 100)}
+        aria-label={`${formatMoney(spent)} of ${formatMoney(cap)} ${cap.asset} used`}
+      />
       <div
+        aria-hidden
         className="relative mt-2 overflow-hidden rounded-full"
         style={{ height: 6, background: 'var(--color-muted-bg)' }}
-        role="meter"
-        aria-valuenow={Math.round(ratio * 100)}
-        aria-valuemin={0}
-        aria-valuemax={100}
       >
         <span
           className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500"

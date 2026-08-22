@@ -7,9 +7,15 @@ import { cn } from '@/lib/cn'
  * "3 of 20" is not. Fixed length is the whole point: the EMPTY cells do the work,
  * because the reader sees what is missing rather than what is present.
  *
- * Chunky outlined squares, so it reads as brand rather than as a progress bar — and
- * so it is never mistaken for "setup incomplete".
+ * Drawn with repeating gradients rather than N elements: one node instead of twenty,
+ * scales to any target, and the cells are decorative so they carry no semantics worth
+ * putting in the DOM. The accessible value lives on the wrapper's aria-label.
  */
+
+const CELL = 9
+const GAP = 3
+const PITCH = CELL + GAP
+
 export function EvidenceStrip({
   observed,
   target = 20,
@@ -21,29 +27,44 @@ export function EvidenceStrip({
   label?: string
   className?: string
 }) {
-  const filled = Math.min(observed, target)
+  const filled = Math.max(0, Math.min(observed, target))
   const complete = observed >= target
+
+  const cells = (color: string) =>
+    `repeating-linear-gradient(to right, ${color} 0 ${CELL}px, transparent ${CELL}px ${PITCH}px)`
 
   return (
     <div className={cn('min-w-0', className)}>
       <div
-        className="flex flex-wrap gap-[3px]"
         role="img"
         aria-label={`${observed} of ${target} observations`}
+        className="relative"
+        style={{ width: target * PITCH - GAP, height: 12 }}
       >
-        {Array.from({ length: target }, (_, i) => (
+        {/* empty cells — outlined, so absence is visible */}
+        <span
+          aria-hidden
+          className="absolute inset-0 rounded-[1px]"
+          style={{
+            background: cells('rgba(20,20,20,.10)'),
+            // hollow the cells so they read as outlines rather than blocks
+            maskImage: cells('#000'),
+            WebkitMaskImage: cells('#000'),
+          }}
+        />
+        {/* filled cells, clipped to the observed count */}
+        <span
+          aria-hidden
+          className="absolute inset-y-0 left-0 overflow-hidden"
+          style={{ width: filled * PITCH - (filled ? GAP : 0) }}
+        >
           <span
-            key={i}
-            className="rounded-[3px]"
-            style={{
-              width: 9,
-              height: 12,
-              background: i < filled ? 'var(--color-ink)' : 'transparent',
-              border: i < filled ? 'none' : '1px solid rgba(20,20,20,.14)',
-            }}
+            className="absolute inset-0"
+            style={{ background: cells('var(--color-ink)') }}
           />
-        ))}
+        </span>
       </div>
+
       <div className="mt-1.5 text-[11px] font-medium text-grey-500">
         {label ??
           (complete ? (
