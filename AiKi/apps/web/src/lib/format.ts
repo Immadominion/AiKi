@@ -28,13 +28,6 @@ export function evidenceLabel(m: Measure): string {
   return `${m.sampleSize.toLocaleString()} observation${m.sampleSize === 1 ? '' : 's'}`
 }
 
-/** Which stroke a value earns, per §2.3. */
-export function strokeFor(confidence: number): 'enforced' | 'provisional' | 'observed' {
-  if (confidence >= 0.85) return 'enforced'
-  if (confidence >= 0.5) return 'provisional'
-  return 'observed'
-}
-
 /** Truncate an address. EVM hex has no O/I/l — the real confusables are 8/B, 5/S. */
 export const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 

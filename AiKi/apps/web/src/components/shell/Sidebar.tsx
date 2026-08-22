@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useToast } from '@/components/ui/Toast'
+import { route } from '@/lib/routes'
 import { useLayoutPref } from './layout-pref'
 
 interface Item {
@@ -130,7 +131,7 @@ export function Sidebar({ userName = 'Dominion' }: { userName?: string }) {
                 return item.href ? (
                   <Link
                     key={item.label}
-                    href={item.href as '/'}
+                    href={route(item.href)}
                     className={`${cls} ${on ? '' : 'hover:bg-[rgb(26_26_25_/_0.055)]'}`}
                     style={style}
                   >

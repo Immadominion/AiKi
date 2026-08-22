@@ -1,13 +1,16 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { EvidenceBars } from '@/components/ui/EvidenceBars'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, type AgentRow } from '@/lib/agents'
+import { agentHref } from '@/lib/routes'
 
 export function MarketGrid({ agents, footnote }: { agents: AgentRow[]; footnote: string }) {
   const [saved, setSaved] = useState<Record<string, boolean>>({})
   const say = useToast()
+  const router = useRouter()
 
   return (
     <>
@@ -56,7 +59,7 @@ export function MarketGrid({ agents, footnote }: { agents: AgentRow[]; footnote:
 
             <button
               type="button"
-              onClick={() => say(`${m.name}'s page and the hiring flow come next in the journey.`)}
+              onClick={() => router.push(agentHref(m.key))}
               className="bg-ink-app hover:bg-orange-app mt-3 h-[38px] rounded-xl border-0 text-[13.5px] font-bold text-white transition-colors"
             >
               View agent

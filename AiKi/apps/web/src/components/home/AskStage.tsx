@@ -4,6 +4,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
+import { agentHref } from '@/lib/routes'
 import { AskField, type Task } from './AskField'
 import { HistoryRail } from './HistoryRail'
 import { ShardField } from './ShardField'
@@ -54,10 +55,7 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
 
       <div className="pointer-events-none absolute top-[46%] left-1/2 z-3 h-[min(46vh,340px)] w-[min(46vw,600px)] -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgb(250_250_248_/_0.96)_0%,rgb(250_250_248_/_0.8)_45%,rgb(250_250_248_/_0.4)_70%,rgb(250_250_248_/_0)_90%)]" />
 
-      <ShardField
-        shards={shards}
-        onPick={(name) => say(`${name}: the agent page and hiring flow come next in the journey.`)}
-      />
+      <ShardField shards={shards} onPick={(name) => router.push(agentHref(name.toLowerCase()))} />
 
       <div className="pointer-events-none absolute top-[46%] left-1/2 z-20 h-[min(52vh,400px)] w-[min(52vw,700px)] -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgb(250_250_248_/_0.97)_0%,rgb(250_250_248_/_0.9)_38%,rgb(250_250_248_/_0.55)_62%,rgb(250_250_248_/_0)_86%)]" />
 

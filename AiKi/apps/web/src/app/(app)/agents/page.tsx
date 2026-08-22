@@ -1,11 +1,13 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { AgentCell, Cell, DataTable, RowActions } from '@/components/shell/DataTable'
 import { PageCard } from '@/components/shell/PageCard'
 import { SpendMeter } from '@/components/ui/SpendMeter'
 import { StatusPill, type Tone } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, type AgentKey } from '@/lib/agents'
+import { agentHref, jobHref } from '@/lib/routes'
 
 interface Hired {
   key: AgentKey
@@ -22,6 +24,8 @@ interface Hired {
   positionStrong?: boolean
   action: string
   actionMsg: string
+  /** Present while the agent is actually working, so Open lands on the live job. */
+  jobId?: string
 }
 
 const HIRED: Hired[] = [
@@ -73,6 +77,7 @@ const HIRED: Hired[] = [
 
 export default function AgentsPage() {
   const say = useToast()
+  const router = useRouter()
 
   return (
     <PageCard
@@ -129,7 +134,8 @@ export default function AgentsPage() {
                 {
                   label: 'Open',
                   primary: true,
-                  onClick: () => say('The agent detail page comes next in the journey.'),
+                  onClick: () =>
+                    router.push(h.jobId ? jobHref(h.jobId) : agentHref(h.key)),
                 },
               ]}
             />,

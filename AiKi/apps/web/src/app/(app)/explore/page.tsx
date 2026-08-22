@@ -1,13 +1,16 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { AgentCell, Cell, DataTable, RowActions } from '@/components/shell/DataTable'
 import { PageCard } from '@/components/shell/PageCard'
 import { EvidenceBars } from '@/components/ui/EvidenceBars'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, AGENTS } from '@/lib/agents'
+import { agentHref } from '@/lib/routes'
 
 export default function ExplorePage() {
   const say = useToast()
+  const router = useRouter()
 
   return (
     <PageCard
@@ -53,12 +56,7 @@ export default function ExplorePage() {
               key="e"
               actions={[
                 { label: 'Save', onClick: () => say(`${a.name} saved.`) },
-                {
-                  label: 'View',
-                  primary: true,
-                  onClick: () =>
-                    say(`${a.name}'s page and the hiring flow come next in the journey.`),
-                },
+                { label: 'View', primary: true, onClick: () => router.push(agentHref(a.key)) },
               ]}
             />,
           ],
