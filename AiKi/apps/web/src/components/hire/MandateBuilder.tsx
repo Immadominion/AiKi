@@ -361,7 +361,7 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
         <div className="xl:sticky xl:top-0 xl:self-start">
           <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] p-[18px]">
             <div className="text-muted text-[12.5px] font-semibold">
-              Strongest thing holding this
+              Weakest link in this mandate
             </div>
             <div className="mt-[6px] flex items-baseline gap-[9px]">
               <span

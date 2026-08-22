@@ -140,44 +140,57 @@ loading and skeleton states · error and degraded states · stale-data treatment
 
 ## 5. Build order
 
-Progressive by construction: tokens first, then primitives, then the two shells, then
-screens. Onboarding and flow changes slot in later without rework because the shells are
-independent of what fills them.
+Progressive by construction: tokens first, then the two shells ported faithfully from the
+reference, then the screens the reference does not cover — each drawn from the same system
+rather than invented. Onboarding and flow changes slot in later without rework because the
+shells are independent of what fills them.
 
-### Phase 0 — foundations
-Tokens as CSS variables from §3. Plus Jakarta Sans. The four animations. `AppShell`
-(sidebar + top bar) and `AskShell` (fullscreen + vignette) as independent layouts. Layout
-preference persisted, read at `/`.
+### Phase 0 — foundations · **done**
+Tokens as CSS variables read out of the reference files rather than approximated. Plus
+Jakarta Sans via `next/font`. The four animations under their original names. `AskStage`
+(fullscreen, grid, glows, twin vignettes) and `AppShell` (sidebar + top bar + card) as
+independent layouts. Layout preference persisted per browser, read defensively.
 
-### Phase 1 — primitives
-The pieces every screen needs, built against fixtures so they can be exercised in every
-state before a screen exists:
+### Phase 1 — the two reference screens · **done**
+`AiKi Home v3.dc.html` → `/`. The shard field with its trapezoid warp, drift, mask and
+smear; the 72px pill with rotating TAB-accept hint; fuzzy matching over the four
+categories; the honest no-match panel; the status cluster with the policy-denial callout.
 
-`AgentAvatar` (gradient + initial) · `StatusPill` (breathing dot) · `LivenessBadge` (all
-seven states) · `ProofScore` (precision clamped to confidence) · `EvidenceStrip` ·
-`EnforcementCell` (T0–T3) · `SpendMeter` (renewing vs lifetime, structurally different) ·
-`MoneyValue` · `AddressChip` · `FreshnessIndicator` · `Toast` · `Panel`
+`AiKi App.dc.html` → `/explore`, `/agents`, `/activity`, `/market`. Sidebar with three nav
+groups, top bar, page card with tabs and gradient banner, the data table, market cards.
 
-### Phase 2 — Ask mode
-The shard field (3D trapezoid warp, drift, mask, smear) · hero + 72px pill input · rotating
-hint with TAB-accept · fuzzy task matching over the four categories · results panel ·
-the honest no-match state · recent-asks control · status panel with the policy-denial
-callout.
+Primitives were extracted from these screens rather than invented ahead of them: `Avatar`,
+`StatusPill`, `LivenessBadge` (all seven states in plain language), `EvidenceBars`,
+`SpendMeter`, `Toast`.
 
-### Phase 3 — Market mode
-Sidebar with the three nav groups · top bar (wallet chip, status, notifications) · Explore
-with tabs and the agent table · the banner states.
+### Phase 2 — the ask history panel · **done**
+A collapsible rail on the left edge of Ask mode. Every ask, grouped Today / Yesterday /
+Earlier, each row carrying its outcome and each one resumable. Opens on the rail or `⌘/`.
+Unmet asks are kept deliberately — they are the record of what to build next.
 
-### Phase 4 — the decision surfaces
-**Agent Passport** · **Compare** including the statistically-indistinguishable state.
+### Phase 3 — the decision surfaces · **done**
+**Agent Passport** at `/agent/[key]`, with four panels: evidence, capabilities and where
+each limit is held, identity, risks. Every score is computed from the counts behind it at
+render time, so nothing on screen can drift from its evidence.
 
-### Phase 5 — the loop closes
-**Mandate Builder** · **Mission Control** · **Receipt**. The hard three. Budget the most
-time here — the Mandate Builder alone deserves more than any two other screens.
+Still open here: **Compare**, including the statistically-indistinguishable state.
 
-### Phase 6 — reality
-Every empty, loading, error, stale and unverified state. The market as it actually looks
-against real data. Mobile for approvals, pause and revoke.
+### Phase 4 — the loop closes · **done**
+**Mandate Builder** at `/agent/[key]/hire`. Reads what the agent can actually enforce off
+its passport, so choosing a period the agent's session module cannot hold visibly
+downgrades that limit and says why. The headline is the weakest link.
+
+**Mission Control** at `/jobs/[id]`. Replays the event stream in SSE's own shape. A policy
+denial is the loudest thing on the page; an allow is nearly silent.
+
+**Receipt** at `/receipts/[id]`. Every action including the refused one, costs split by who
+took what, the mandate hash binding the work to its authority, and a signature verifiable
+without going through AiKi.
+
+### Phase 5 — reality · **next**
+Wire the screens to `apps/api` through the contract. Every empty, loading, error, stale and
+unverified state. The market as it actually looks against real data — where LIVE is 0% and
+a third of the registry is IMPOSTOR_STATIC. Compare. Mobile for approvals, pause and revoke.
 
 ### Later, unblocked by the above
 Onboarding (which sets the layout preference) · Arena · Workspaces · Provider console.
@@ -193,4 +206,9 @@ Onboarding (which sets the layout preference) · Arena · Workspaces · Provider
 4. UI orange is `#FF4D00`. The logo file is left alone.
 5. Purple stays, confined to agent avatars.
 6. Shells are independent of screens, so onboarding and flow changes are additive.
-7. Primitives are built against fixtures in every state before screens consume them.
+7. Primitives are extracted from the screens that need them, not built speculatively
+   ahead of them. A gallery of components nobody has placed is not progress.
+8. Measured values are stored as the counts behind them and computed at render time. A
+   score in a fixture file would be a number nobody could trace back to evidence.
+9. Dynamic hrefs are cast in `lib/routes.ts` and nowhere else, so `typedRoutes` stays
+   useful instead of being worked around in every component.
