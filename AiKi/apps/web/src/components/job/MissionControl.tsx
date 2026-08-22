@@ -4,6 +4,7 @@ import type { JobEvent } from '@aiki/contracts'
 import { useRouter } from 'next/navigation'
 import { useCallback, useState } from 'react'
 import { PageCard } from '@/components/shell/PageCard'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { SpendMeter } from '@/components/ui/SpendMeter'
 import { StatusPill } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
@@ -21,6 +22,7 @@ export function MissionControl() {
 
   const [approval, setApproval] = useState<Approval | null>(null)
   const [paused, setPaused] = useState(false)
+  const [revoking, setRevoking] = useState(false)
 
   const onApproval = useCallback((e: Approval) => setApproval(e), [])
 
@@ -122,6 +124,26 @@ export function MissionControl() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {revoking ? (
+        <ConfirmDialog
+          title={`Revoke ${row.name}?`}
+          body="This sends a transaction that removes the authority from the chain. It costs gas, it cannot be undone, and this job stops where it is."
+          alternative="If you only want it to stop for now, pause instead — instant, free, and reversible."
+          alternativeLabel="Pause instead"
+          confirmLabel="Revoke on chain"
+          onCancel={() => setRevoking(false)}
+          onAlternative={() => {
+            setRevoking(false)
+            setPaused(true)
+            say(`${row.name} paused. It stops within seconds.`)
+          }}
+          onConfirm={() => {
+            setRevoking(false)
+            say(`Sign the transaction to revoke ${row.name}.`)
+          }}
+        />
       ) : null}
 
       <div className="grid gap-[18px] xl:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">

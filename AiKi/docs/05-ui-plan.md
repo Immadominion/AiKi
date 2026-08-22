@@ -187,10 +187,41 @@ denial is the loudest thing on the page; an allow is nearly silent.
 took what, the mandate hash binding the work to its authority, and a signature verifiable
 without going through AiKi.
 
-### Phase 5 — reality · **next**
-Wire the screens to `apps/api` through the contract. Every empty, loading, error, stale and
-unverified state. The market as it actually looks against real data — where LIVE is 0% and
-a third of the registry is IMPOSTOR_STATIC. Compare. Mobile for approvals, pause and revoke.
+### Phase 5 — the rest of the frontend · **done**
+
+**Search results.** Explore reads the query the ask page sends it, and every
+results page carries what was left out and why, using our own sweep proportions.
+A query we did not understand reports nothing matched rather than inventing a
+count.
+
+**Compare** at `/compare`. Two agents are indistinguishable when their intervals
+overlap; when they do the page says so and computes what would settle it.
+
+**How we test** at `/how-we-test` — the sweep, the detection rules in plain
+language, why a score is never a raw percentage, and what the method cannot do.
+
+**Limits** at `/limits`, leading with the weakest link across everything
+authorised. **Saved** at `/saved`, kept in the browser. **Settings** at
+`/settings`. **Onboarding** at `/welcome`, which is where the layout preference
+is actually chosen.
+
+**The shell**: ⌘K palette, a sidebar that collapses and remembers it, a real
+notifications panel, an account menu.
+
+**Mobile**, verified over CDP with real device metrics: sidebar becomes a
+drawer, detail headers stack, tabs scroll, and pause, revoke and approvals go
+full width. Twenty routes, two widths, no horizontal overflow.
+
+**The four data states**: skeletons shaped like what is coming, a freshness
+indicator with NO DATA separate from STALE, an error boundary that leads with
+what did *not* happen, and a not-found that explains transferred identities.
+
+### Phase 6 — the seam · **next, and not ours**
+Wiring these screens to `apps/api` through the contract. The frontend builds
+against fixtures shaped exactly like the contract, so this is a change of import
+per screen rather than a rewrite. Once real data lands: the market as it
+actually looks, where LIVE is 0% and a third of the registry is
+IMPOSTOR_STATIC.
 
 ### Later, unblocked by the above
 Onboarding (which sets the layout preference) · Arena · Workspaces · Provider console.

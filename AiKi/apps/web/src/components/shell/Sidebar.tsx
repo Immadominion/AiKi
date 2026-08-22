@@ -17,6 +17,8 @@ interface Item {
   tag?: string
 }
 
+const ADDRESS = '0x7f4a2b91c0de44a1f8e37b25d90ac6183f4a3a91'
+
 const GROUPS: { label: string; items: Item[] }[] = [
   {
     label: 'General',
@@ -38,9 +40,9 @@ const GROUPS: { label: string; items: Item[] }[] = [
     label: 'Settings',
     items: [
       { label: 'How we test', glyph: '⌗', href: '/how-we-test' },
-      { label: 'Wallet', glyph: '▤' },
-      { label: 'Notifications', glyph: '◔' },
-      { label: 'Evidence API', glyph: '⌗', tag: 'Beta' },
+      { label: 'Wallet', glyph: '▤', href: '/settings#wallet' },
+      { label: 'Notifications', glyph: '◔', href: '/settings#notifications' },
+      { label: 'Evidence API', glyph: '⌗', href: '/settings#api', tag: 'Beta' },
     ],
   },
 ]
@@ -140,7 +142,7 @@ export function Sidebar({
             )}
             <div className="flex flex-col gap-[2px]">
               {g.items.map((item) => {
-                const on = item.href === path
+                const on = item.href?.split('#')[0] === path && !item.href.includes('#')
                 const inner = (
                   <>
                     <span
@@ -272,11 +274,21 @@ export function Sidebar({
               <div className="px-[14px] pt-[13px] pb-[10px]">
                 <div className="text-[13px] font-bold">{userName}</div>
                 <div className="text-muted mt-[2px] font-mono text-[11.5px] leading-[1.5] break-all">
-                  0x7f4a2b91c0de44a1f8e37b25d90ac6183f4a3a91
+                  {ADDRESS}
                 </div>
               </div>
               {[
-                ['Copy address', () => say('Address copied.')],
+                [
+                  'Copy address',
+                  () => {
+                    // Clipboard access can be refused outright, so the failure
+                    // has to say something other than "copied".
+                    navigator.clipboard
+                      ?.writeText(ADDRESS)
+                      .then(() => say('Address copied.'))
+                      .catch(() => say('Your browser would not let us copy. The address is above.'))
+                  },
+                ],
                 ['Take the walkthrough', () => router.push(route('/welcome'))],
                 ['Your limits', () => router.push(route('/limits'))],
                 [

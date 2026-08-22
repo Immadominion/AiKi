@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { TIER_MEANS, TIER_WORD, weakest } from '@/components/hire/mandate'
 import { PageCard } from '@/components/shell/PageCard'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { SpendMeter } from '@/components/ui/SpendMeter'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
@@ -35,6 +36,7 @@ export function LimitsView() {
   const say = useToast()
   const router = useRouter()
   const [confirming, setConfirming] = useState<AgentKey | null>(null)
+  const [paused, setPaused] = useState<Partial<Record<AgentKey, boolean>>>({})
 
   const allTiers = HIRED.flatMap((h) => DETAILS[h.key].enforcement.map((e) => e.tier))
   const overall = weakest(allTiers)
@@ -53,7 +55,11 @@ export function LimitsView() {
       </div>
       <button
         type="button"
-        onClick={() => say('Pausing every agent is instant and free. Revoking is per agent.')}
+        onClick={() => {
+          const all = Object.fromEntries(HIRED.map((h) => [h.key, true]))
+          setPaused(all)
+          say('All three paused. Nothing was sent, nothing was spent, and nothing costs gas.')
+        }}
         className="text-ink-app h-[38px] w-full flex-none rounded-xl border-0 bg-[rgb(26_26_25_/_0.055)] px-4 text-[13.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)] sm:w-auto"
       >
         Pause everything
@@ -116,7 +122,8 @@ export function LimitsView() {
                 <span className="min-w-0 flex-1 basis-[160px]">
                   <span className="block text-[14px] font-bold">{row.name}</span>
                   <span className="text-muted mt-px block text-[12px]">
-                    Stops on its own · {h.expires}
+                    {paused[h.key] ? 'Paused by you · ' : 'Stops on its own · '}
+                    {h.expires}
                   </span>
                 </span>
                 <span className="w-full min-w-[160px] sm:w-[200px]">
@@ -180,56 +187,25 @@ export function LimitsView() {
       </div>
 
       {confirming ? (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
-          <button
-            type="button"
-            aria-label="Cancel"
-            onClick={() => setConfirming(null)}
-            className="absolute inset-0 cursor-default border-0 bg-[rgb(26_26_25_/_0.35)]"
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Confirm revoke"
-            className="animate-rise relative w-[min(420px,100%)] rounded-[20px] bg-white p-[22px] shadow-[0_40px_90px_-30px_rgb(26_26_25_/_0.5)]"
-          >
-            <div className="text-[16px] font-extrabold">
-              Revoke {AGENT_BY_KEY[confirming].name}?
-            </div>
-            <p className="text-muted mt-[8px] mb-0 text-[13px] leading-[1.55] text-pretty">
-              This sends a transaction that removes the authority from the chain. It costs gas, it
-              cannot be undone, and {AGENT_BY_KEY[confirming].name} stops for good.
-            </p>
-            <p className="text-muted mt-[10px] mb-0 text-[13px] leading-[1.55] text-pretty">
-              If you only want it to stop for now, <b className="text-ink-app font-bold">pause</b>{' '}
-              instead — instant, free, and reversible.
-            </p>
-            <div className="mt-[18px] flex gap-[8px]">
-              <button
-                type="button"
-                onClick={() => {
-                  const name = AGENT_BY_KEY[confirming].name
-                  setConfirming(null)
-                  say(`${name} paused. Nothing was sent, nothing was spent.`)
-                }}
-                className="text-ink-app h-[42px] flex-1 rounded-xl border-0 bg-[rgb(26_26_25_/_0.055)] text-[13.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)]"
-              >
-                Pause instead
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const name = AGENT_BY_KEY[confirming].name
-                  setConfirming(null)
-                  say(`Sign the transaction to revoke ${name}.`)
-                }}
-                className="bg-ink-app hover:bg-orange-app h-[42px] flex-1 rounded-xl border-0 text-[13.5px] font-bold text-white transition-colors"
-              >
-                Revoke on chain
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={`Revoke ${AGENT_BY_KEY[confirming].name}?`}
+          body={`This sends a transaction that removes the authority from the chain. It costs gas, it cannot be undone, and ${AGENT_BY_KEY[confirming].name} stops for good.`}
+          alternative="If you only want it to stop for now, pause instead — instant, free, and reversible."
+          alternativeLabel="Pause instead"
+          confirmLabel="Revoke on chain"
+          onCancel={() => setConfirming(null)}
+          onAlternative={() => {
+            const name = AGENT_BY_KEY[confirming].name
+            setConfirming(null)
+            setPaused((p) => ({ ...p, [confirming]: true }))
+            say(`${name} paused. Nothing was sent, nothing was spent.`)
+          }}
+          onConfirm={() => {
+            const name = AGENT_BY_KEY[confirming].name
+            setConfirming(null)
+            say(`Sign the transaction to revoke ${name}.`)
+          }}
+        />
       ) : null}
     </PageCard>
   )
