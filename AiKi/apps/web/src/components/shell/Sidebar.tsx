@@ -57,20 +57,22 @@ export function Sidebar({ userName = 'Dominion' }: { userName?: string }) {
       style={{ width: collapsed ? 60 : 'clamp(196px,19vw,252px)' }}
     >
       <div
-        className={`flex items-center pr-2 pl-[6px] ${collapsed ? 'justify-center' : 'justify-between'}`}
+        className={`flex pr-2 pl-[6px] ${
+          collapsed ? 'flex-col items-center gap-[6px]' : 'items-center justify-between'
+        }`}
       >
-        {collapsed ? null : (
-          <div className="flex items-center gap-[9px]">
-            <Image
-              src="/aiki-logo.png"
-              alt=""
-              width={68}
-              height={68}
-              className="size-[34px] object-contain"
-            />
+        <div className="flex items-center gap-[9px]">
+          <Image
+            src="/aiki-logo.png"
+            alt="AiKi"
+            width={68}
+            height={68}
+            className="size-[34px] object-contain"
+          />
+          {collapsed ? null : (
             <span className="text-[19px] font-extrabold tracking-[-0.02em]">AiKi</span>
-          </div>
-        )}
+          )}
+        </div>
         <button
           type="button"
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}

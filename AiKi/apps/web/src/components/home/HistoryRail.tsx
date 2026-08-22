@@ -103,8 +103,18 @@ const DOT: Record<Ask['tone'], string> = {
   warn: '#FFD400',
 }
 
-export function HistoryRail({ onResume }: { onResume: (ask: string) => void }) {
+export function HistoryRail({
+  onResume,
+  onOpenChange,
+}: {
+  onResume: (ask: string) => void
+  onOpenChange?: (open: boolean) => void
+}) {
   const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    onOpenChange?.(open)
+  }, [open, onOpenChange])
 
   // ⌘/ opens it from anywhere, because reaching for history should never mean
   // hunting for a control on a page whose whole point is a single input.

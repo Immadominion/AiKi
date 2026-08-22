@@ -24,6 +24,7 @@ import { SHARDS_FIRST, SHARDS_RETURNING } from './shards'
 export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
   const [view, setView] = useState<'returning' | 'first'>('returning')
   const [resumed, setResumed] = useState(0)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const say = useToast()
   const router = useRouter()
 
@@ -72,6 +73,7 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
 
       <StatusCluster first={first} onSay={say} />
       <HistoryRail
+        onOpenChange={setHistoryOpen}
         onResume={(ask) => {
           setResumed((n) => n + 1)
           say(`Reopening “${ask}”.`)
@@ -109,7 +111,10 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
 
       {/* First run vs returning is normally derived from whether you have agents.
           It stays switchable here so the difference can be shown, not described. */}
-      <div className="fixed bottom-4 left-6 z-46 flex gap-[2px] rounded-[12px] bg-[rgb(20_20_20_/_0.05)] p-[3px]">
+      <div
+        className="fixed bottom-4 left-6 z-46 flex gap-[2px] rounded-[12px] bg-[rgb(20_20_20_/_0.05)] p-[3px] transition-opacity"
+        style={historyOpen ? { opacity: 0, pointerEvents: 'none' } : undefined}
+      >
         {(['returning', 'first'] as const).map((k) => (
           <button
             key={k}
