@@ -1,6 +1,6 @@
 import type { LivenessState } from '@aiki/contracts'
 import { AGENTS, type AgentRow } from './agents'
-import { matchTasks } from './tasks'
+import { AGENTS_FOR, matchTasks } from './tasks'
 
 /**
  * What the registry actually looks like.
@@ -77,7 +77,7 @@ export function search(query: string): SearchOutcome {
   // name — someone asking to avoid liquidation should not be shown an agent
   // called "Liquidator".
   const results = tasks.length
-    ? AGENTS.filter((a) => tasks.some((t) => TASK_AGENTS[t.key]?.includes(a.key)))
+    ? AGENTS.filter((a) => tasks.some((t) => AGENTS_FOR[t.key]?.includes(a.key)))
     : []
 
   // Nothing understood means nothing matched, so there is nothing to report
@@ -98,12 +98,4 @@ export function search(query: string): SearchOutcome {
   }
 
   return { query: q, understood, results, coverage: coverageFor(results.length, seedOf(q)) }
-}
-
-/** Which agents claim which kind of work. */
-const TASK_AGENTS: Record<string, AgentRow['key'][]> = {
-  health_factor: ['guardian', 'sentinel'],
-  rebalancing: ['lpilot'],
-  yield_optimisation: ['yieldmax', 'harbor'],
-  grid_trading: ['gridly'],
 }

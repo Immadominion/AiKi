@@ -80,7 +80,10 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
         }}
       />
 
-      <div className="absolute top-[46%] left-1/2 z-30 flex w-[calc(100vw-32px)] max-w-[660px] -translate-x-1/2 -translate-y-[52%] flex-col items-center lg:w-[clamp(420px,calc(100vw-700px),660px)]">
+      <main
+        id="main"
+        className="absolute top-[46%] left-1/2 z-30 flex w-[calc(100vw-32px)] max-w-[660px] -translate-x-1/2 -translate-y-[52%] flex-col items-center lg:w-[clamp(420px,calc(100vw-700px),660px)]"
+      >
         <div className="text-[14px] leading-[1.4] font-semibold whitespace-nowrap text-[#8A8A8A]">
           {first ? `Welcome to AiKi, ${userName}` : `Good morning, ${userName}`}
         </div>
@@ -107,7 +110,7 @@ export function AskStage({ userName = 'Dominion' }: { userName?: string }) {
             Tab to use suggestion · Enter to find agents
           </div>
         )}
-      </div>
+      </main>
 
       <div className="pointer-events-none fixed inset-x-4 bottom-[54px] z-25 flex justify-center text-center md:inset-x-auto md:right-6 md:bottom-[18px] md:justify-end md:text-right">
         <Link

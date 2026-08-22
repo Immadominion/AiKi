@@ -43,7 +43,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="flex min-w-0 flex-1 flex-col gap-2 md:gap-3">
           <TopBar onMenu={() => setNavOpen(true)} />
-          {children}
+          <main id="main" className="flex min-h-0 flex-1 flex-col">
+            {children}
+          </main>
         </div>
       </div>
     </PaletteProvider>

@@ -71,6 +71,19 @@ export function AgentPassport({ agentKey }: { agentKey: AgentKey }) {
         </span>
         <button
           type="button"
+          onClick={() =>
+            router.push(
+              route(
+                `/compare?agents=${agentKey},${agentKey === 'guardian' ? 'sentinel' : 'guardian'}`,
+              ),
+            )
+          }
+          className="text-ink-app h-[38px] rounded-xl border-0 bg-[rgb(26_26_25_/_0.055)] px-4 text-[13.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)]"
+        >
+          Compare
+        </button>
+        <button
+          type="button"
           onClick={() => router.push(hireHref(agentKey))}
           className="bg-ink-app hover:bg-orange-app h-[38px] rounded-xl border-0 px-4 text-[13.5px] font-bold text-white transition-colors"
         >

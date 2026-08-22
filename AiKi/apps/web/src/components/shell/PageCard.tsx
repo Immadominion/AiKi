@@ -40,7 +40,8 @@ export function PageCard({
   headerSlot?: React.ReactNode | undefined
   back?: { href: string; label: string } | undefined
   tabs: string[]
-  tabHint: React.ReactNode
+  /** One hint, or one per tab when the tabs change what is shown. */
+  tabHint: React.ReactNode | React.ReactNode[]
   banner?: Banner | undefined
   /** One node per tab. When given, tabs switch panels instead of announcing. */
   panels?: React.ReactNode[] | undefined
@@ -111,7 +112,9 @@ export function PageCard({
             ))}
           </div>
           <div className="flex-1" />
-          <span className="text-muted text-[12.5px] font-semibold">{tabHint}</span>
+          <span className="text-muted text-[12.5px] font-semibold">
+            {Array.isArray(tabHint) ? tabHint[tab] : tabHint}
+          </span>
         </div>
       ) : null}
 

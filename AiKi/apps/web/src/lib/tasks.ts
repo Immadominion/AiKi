@@ -11,9 +11,30 @@ export interface Task {
   sub: string
   glyph: string
   bg: string
+  /** Derived, never written by hand — see AGENTS_FOR. */
   meta: string
   intent: string
   keys: string[]
+}
+
+/**
+ * Which agents claim which kind of work.
+ *
+ * Lives here rather than in the search module because the ask page advertises a
+ * count from it and the results page filters on it. Two copies of that fact
+ * drift, and the number people see before clicking is exactly the wrong place
+ * to be optimistic.
+ */
+export const AGENTS_FOR: Record<string, string[]> = {
+  health_factor: ['guardian', 'sentinel'],
+  rebalancing: ['lpilot'],
+  yield_optimisation: ['yieldmax', 'harbor'],
+  grid_trading: ['gridly'],
+}
+
+const countFor = (key: string) => {
+  const n = AGENTS_FOR[key]?.length ?? 0
+  return `${n} agent${n === 1 ? '' : 's'}`
 }
 
 export const TASKS: Task[] = [
@@ -23,7 +44,7 @@ export const TASKS: Task[] = [
     sub: 'Watches positions, repays debt before danger',
     glyph: 'G',
     bg: 'linear-gradient(135deg,#FF4D00,#FF8A3D)',
-    meta: '4 agents',
+    meta: countFor('health_factor'),
     intent: 'Protect me from liquidation on Venus',
     keys: [
       'protect',
@@ -43,7 +64,7 @@ export const TASKS: Task[] = [
     sub: 'Adjusts concentrated liquidity as price moves',
     glyph: 'L',
     bg: 'linear-gradient(135deg,#00B3A4,#4ADE80)',
-    meta: '2 agents',
+    meta: countFor('rebalancing'),
     intent: 'Keep my BNB / USDT position in range',
     keys: ['lp', 'liquidity', 'range', 'pool', 'rebalance', 'position'],
   },
@@ -53,7 +74,7 @@ export const TASKS: Task[] = [
     sub: 'Finds a better rate, moves in, shows receipts',
     glyph: 'Y',
     bg: 'linear-gradient(135deg,#3B82F6,#8B5CF6)',
-    meta: '3 agents',
+    meta: countFor('yield_optimisation'),
     intent: 'Find better yield for 2 BNB',
     keys: ['yield', 'earn', 'apy', 'idle', 'move', 'interest', 'stake', 'better'],
   },
@@ -63,7 +84,7 @@ export const TASKS: Task[] = [
     sub: 'Grid strategy between two prices you set',
     glyph: 'G',
     bg: 'linear-gradient(135deg,#7C5CFF,#C05CFF)',
-    meta: '2 agents',
+    meta: countFor('grid_trading'),
     intent: 'Run a grid strategy on BNB',
     keys: ['trade', 'grid', 'price', 'buy', 'sell'],
   },
