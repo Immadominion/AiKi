@@ -3,3 +3,4 @@
 !AiKi/
 !AiKi/**
 !.gitignore
+.gstack/
