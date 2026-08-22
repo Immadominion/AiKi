@@ -156,7 +156,13 @@ export async function fetchWindow(
   toBlock: number,
 ): Promise<RegisteredEvent[]> {
   const logs = await rpc<
-    { topics: string[]; data: string; blockNumber: string; logIndex: string; transactionHash: string }[]
+    {
+      topics: string[]
+      data: string
+      blockNumber: string
+      logIndex: string
+      transactionHash: string
+    }[]
   >(url, 'eth_getLogs', [
     {
       address: REGISTRY,

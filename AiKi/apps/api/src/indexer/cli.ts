@@ -6,11 +6,11 @@
  */
 
 import {
-  type RegisteredEvent,
   blockNumber,
   indexRegistry,
   probeMaxSpan,
   REGISTRY,
+  type RegisteredEvent,
 } from './registry.js'
 
 const RPC = process.env.BSC_RPC_URL ?? 'https://bsc-rpc.publicnode.com'
@@ -42,7 +42,9 @@ async function main() {
   const t0 = Date.now()
 
   for await (const batch of indexRegistry({ url: RPC }, from, (c) => {
-    process.stdout.write(`\r  block ${c.lastIndexedBlock.toLocaleString()}  agents ${c.agentsSeen}   `)
+    process.stdout.write(
+      `\r  block ${c.lastIndexedBlock.toLocaleString()}  agents ${c.agentsSeen}   `,
+    )
   })) {
     all.push(...batch)
   }
@@ -66,7 +68,10 @@ async function main() {
     schemes.set(s, (schemes.get(s) ?? 0) + 1)
   }
 
-  const blocksSpanned = all[all.length - 1]!.blockNumber - all[0]!.blockNumber + 1
+  const first = all[0]
+  const last = all[all.length - 1]
+  if (!first || !last) throw new Error('No events in range — nothing to summarise.')
+  const blocksSpanned = last.blockNumber - first.blockNumber + 1
   const perDay = (all.length / (blocksSpanned * 0.45)) * 86_400
 
   console.log(`agentId range     ${ids[0]} … ${ids[ids.length - 1]}`)
@@ -82,7 +87,9 @@ async function main() {
   )
   console.log('agentURI schemes:')
   for (const [s, n] of [...schemes].sort((a, b) => b[1] - a[1])) {
-    console.log(`  ${s.padEnd(10)} ${String(n).padStart(5)}  ${((n / all.length) * 100).toFixed(1)}%`)
+    console.log(
+      `  ${s.padEnd(10)} ${String(n).padStart(5)}  ${((n / all.length) * 100).toFixed(1)}%`,
+    )
   }
 
   // Bulk-mint signature: few owners holding many identities.

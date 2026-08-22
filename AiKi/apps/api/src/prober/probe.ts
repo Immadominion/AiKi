@@ -8,13 +8,13 @@
  */
 
 import {
-  type DeclaredService,
-  type ProbeSample,
-  type ProbeVerdict,
   classify,
+  type DeclaredService,
   d4_isZeroCostUri,
   d8_reciprocalProof,
   md5,
+  type ProbeSample,
+  type ProbeVerdict,
 } from './detect.js'
 
 export const USER_AGENT = 'AiKi-Prober/0.1 (+https://github.com/Immadominion/AiKi)'
@@ -127,9 +127,7 @@ async function fetchOnceRaw(url: string): Promise<FetchResult> {
  * claim the endpoint is agent-specific.
  */
 export function d1Variants(endpoint: string): { label: ProbeSample['label']; url: string }[] {
-  const out: { label: ProbeSample['label']; url: string }[] = [
-    { label: 'valid', url: endpoint },
-  ]
+  const out: { label: ProbeSample['label']; url: string }[] = [{ label: 'valid', url: endpoint }]
 
   let url: URL
   try {
@@ -138,7 +136,9 @@ export function d1Variants(endpoint: string): { label: ProbeSample['label']; url
     return out
   }
 
-  const idParam = [...url.searchParams.keys()].find((k) => /^(id|agentid|agent_id|token_id)$/i.test(k))
+  const idParam = [...url.searchParams.keys()].find((k) =>
+    /^(id|agentid|agent_id|token_id)$/i.test(k),
+  )
 
   if (idParam) {
     const nonsense = new URL(url)

@@ -13,15 +13,15 @@
 import { writeFileSync } from 'node:fs'
 import type { LivenessState } from '@aiki/contracts'
 import type { DeclaredService } from './detect.js'
-import { type ProbeAgentResult, mapLimit, probeAgent } from './probe.js'
+import { mapLimit, type ProbeAgentResult, probeAgent } from './probe.js'
 import {
-  CHAIN_ID,
-  REGISTRY,
-  type ScanAgent,
   budgetRemaining,
+  CHAIN_ID,
   getAgent,
   hasKey,
   listAgents,
+  REGISTRY,
+  type ScanAgent,
 } from './scan-client.js'
 
 /**
@@ -98,7 +98,10 @@ async function inspectOne(tokenId: string) {
     const t = Array.isArray(v) ? `array[${v.length}]` : v === null ? 'null' : typeof v
     console.log(`  ${k.padEnd(28)} ${t.padEnd(9)} ${JSON.stringify(v)?.slice(0, 90) ?? ''}`)
   }
-  console.log('\n  offchain_content:', JSON.stringify(d.raw_metadata?.offchain_content)?.slice(0, 400))
+  console.log(
+    '\n  offchain_content:',
+    JSON.stringify(d.raw_metadata?.offchain_content)?.slice(0, 400),
+  )
   console.log()
 }
 
@@ -170,7 +173,9 @@ async function main() {
   console.log(`sample drawn from ${blocks} distinct 1k-id blocks`)
   console.log(line)
   for (const [state, n] of [...byState.entries()].sort((a, b) => b[1] - a[1])) {
-    console.log(`  ${state.padEnd(17)} ${String(n).padStart(4)}  ${((n / results.length) * 100).toFixed(1).padStart(5)}%`)
+    console.log(
+      `  ${state.padEnd(17)} ${String(n).padStart(4)}  ${((n / results.length) * 100).toFixed(1).padStart(5)}%`,
+    )
   }
   console.log(line)
   console.log(`  genuinely LIVE          ${live}  (${((live / results.length) * 100).toFixed(1)}%)`)

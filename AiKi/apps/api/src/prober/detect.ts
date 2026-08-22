@@ -198,7 +198,10 @@ export function d8_reciprocalProof(
   const doc = wellKnown as { registrations?: { agentId?: unknown; agentRegistry?: unknown }[] }
   const regs = doc?.registrations
   if (!Array.isArray(regs)) {
-    return { verified: false, detail: 'No registrations array at /.well-known/agent-registration.json' }
+    return {
+      verified: false,
+      detail: 'No registrations array at /.well-known/agent-registration.json',
+    }
   }
 
   const match = regs.some(
@@ -208,7 +211,10 @@ export function d8_reciprocalProof(
   )
 
   return match
-    ? { verified: true, detail: 'Reciprocal proof verified: endpoint domain acknowledges this agent.' }
+    ? {
+        verified: true,
+        detail: 'Reciprocal proof verified: endpoint domain acknowledges this agent.',
+      }
     : {
         verified: false,
         detail: 'The /.well-known file exists but does not reference this agent id and registry.',

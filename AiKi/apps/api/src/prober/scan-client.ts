@@ -52,7 +52,13 @@ export interface AgentDetail {
   raw_metadata?: {
     offchain_content?: {
       name?: string
-      services?: { name?: string; type?: string; endpoint?: string; version?: string; transport?: string }[]
+      services?: {
+        name?: string
+        type?: string
+        endpoint?: string
+        version?: string
+        transport?: string
+      }[]
       supportedTrust?: string[]
       active?: boolean
     }
