@@ -3,7 +3,7 @@ import { decodeRegistered } from './registry.js'
 
 function encodedString(value: string): string {
   const content = Buffer.from(value, 'utf8').toString('hex')
-  return `0x${(32n).toString(16).padStart(64, '0')}${BigInt(value.length).toString(16).padStart(64, '0')}${content.padEnd(Math.ceil(content.length / 64) * 64, '0')}`
+  return `0x${32n.toString(16).padStart(64, '0')}${BigInt(value.length).toString(16).padStart(64, '0')}${content.padEnd(Math.ceil(content.length / 64) * 64, '0')}`
 }
 
 describe('decodeRegistered', () => {
@@ -11,7 +11,7 @@ describe('decodeRegistered', () => {
     const decoded = decodeRegistered({
       topics: [
         '0xca52e62c367d81bb2e328eb795f7c7ba24afb478408a26c0e201d155c449bc4a',
-        `0x${(42n).toString(16).padStart(64, '0')}`,
+        `0x${42n.toString(16).padStart(64, '0')}`,
         '0x0000000000000000000000001234567890123456789012345678901234567890',
       ],
       data: encodedString('https://agent.example/registration.json'),

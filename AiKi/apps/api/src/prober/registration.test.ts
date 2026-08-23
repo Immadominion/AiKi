@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { REGISTRATION_TYPE, resolveRegistration } from './registration.js'
 
-function data(value: unknown): string { return `data:application/json;base64,${Buffer.from(JSON.stringify(value)).toString('base64')}` }
+function data(value: unknown): string {
+  return `data:application/json;base64,${Buffer.from(JSON.stringify(value)).toString('base64')}`
+}
 const valid = {
   type: REGISTRATION_TYPE,
   name: 'Guardian',
@@ -25,6 +27,9 @@ describe('resolveRegistration', () => {
   })
   it('does not treat a self-declared registration as identity proof', async () => {
     const result = await resolveRegistration(data(valid))
-    expect(result.manifest?.registrations[0]).toEqual({ agentId: '42', agentRegistry: 'eip155:56:0x8004' })
+    expect(result.manifest?.registrations[0]).toEqual({
+      agentId: '42',
+      agentRegistry: 'eip155:56:0x8004',
+    })
   })
 })

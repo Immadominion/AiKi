@@ -1,6 +1,54 @@
 import Fastify from 'fastify'
 import { BSC_MAINNET } from '../../config/chains.js'
 import type { EvidenceStore } from '../../evidence/types.js'
-import { persistYieldAssessment } from './evidence-sink.js'
 import type { YieldReader } from './client.js'
-export function createYieldServer(options: { reader: YieldReader; agentId?: string; evidenceStore?: EvidenceStore }) { const app = Fastify({ logger: process.env.NODE_ENV === 'production' }); app.get('/healthz', async () => ({ ok: true, service: 'aiki-yield-optimizer' })); app.get<{ Querystring: { markets?: string; rateOnly?: string } }>('/v1/reference/yield', async (request, reply) => { const markets = request.query.markets?.split(',').filter(Boolean) as `0x${string}`[] | undefined; if (!markets?.length) return { capability: 'venus-yield-route-assessment', category: 'yield_optimisation', input: { markets: 'comma-separated Venus market addresses', rateOnly: 'optional true; remains explicitly non-optimising' }, readOnly: true }; try { const assessment = await options.reader.assess(markets, request.query.rateOnly === 'true'); const persisted = options.agentId && options.evidenceStore ? (await persistYieldAssessment(options.evidenceStore, { agentId: options.agentId, assessment, registry: BSC_MAINNET.contracts.erc8004Identity, chainId: 56 })).inserted : false; return { assessment, evidence: { persisted } } } catch (error) { return reply.code(400).send({ error: { code: 'YIELD_ASSESSMENT_FAILED', message: error instanceof Error ? error.message : 'Yield assessment failed.' } }) } }); return app }
+import { persistYieldAssessment } from './evidence-sink.js'
+export function createYieldServer(options: {
+  reader: YieldReader
+  agentId?: string
+  evidenceStore?: EvidenceStore
+}) {
+  const app = Fastify({ logger: process.env.NODE_ENV === 'production' })
+  app.get('/healthz', async () => ({ ok: true, service: 'aiki-yield-optimizer' }))
+  app.get<{ Querystring: { markets?: string; rateOnly?: string } }>(
+    '/v1/reference/yield',
+    async (request, reply) => {
+      const markets = request.query.markets?.split(',').filter(Boolean) as
+        | `0x${string}`[]
+        | undefined
+      if (!markets?.length)
+        return {
+          capability: 'venus-yield-route-assessment',
+          category: 'yield_optimisation',
+          input: {
+            markets: 'comma-separated Venus market addresses',
+            rateOnly: 'optional true; remains explicitly non-optimising',
+          },
+          readOnly: true,
+        }
+      try {
+        const assessment = await options.reader.assess(markets, request.query.rateOnly === 'true')
+        const persisted =
+          options.agentId && options.evidenceStore
+            ? (
+                await persistYieldAssessment(options.evidenceStore, {
+                  agentId: options.agentId,
+                  assessment,
+                  registry: BSC_MAINNET.contracts.erc8004Identity,
+                  chainId: 56,
+                })
+              ).inserted
+            : false
+        return { assessment, evidence: { persisted } }
+      } catch (error) {
+        return reply.code(400).send({
+          error: {
+            code: 'YIELD_ASSESSMENT_FAILED',
+            message: error instanceof Error ? error.message : 'Yield assessment failed.',
+          },
+        })
+      }
+    },
+  )
+  return app
+}

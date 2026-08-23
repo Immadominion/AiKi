@@ -1,6 +1,45 @@
 import { afterEach, expect, it } from 'vitest'
 import { InMemoryEvidenceStore } from '../evidence/store.js'
 import { createApiServer } from './server.js'
+
 const apps: ReturnType<typeof createApiServer>[] = []
-afterEach(async () => { await Promise.all(apps.splice(0).map((app) => app.close())) })
-it('serves evidence-first passport and requires idempotency for jobs', async () => { const store = new InMemoryEvidenceStore(); await store.append({ subject: { type: 'agent', chainId: 56, registry: '0x8004', agentId: '1' }, predicate: 'agent.liveness_verdict', value: { state: 'LIVE' }, validAt: '2026-01-01T00:00:00.000Z', observedAt: '2026-01-01T00:00:00.000Z', source: 'test', method: 'test', evidenceClass: 'B', dedupeKey: '1' }); const app = createApiServer({ observations: () => store.observations }); apps.push(app); expect((await app.inject('/v1/agents/1/passport')).json().liveness).toBe('LIVE'); const auth = await app.inject({ method: 'POST', url: '/v1/authorizations', payload: { constraints: [{ kind: 'session_total_cap', label: 'cap', value: '10', tier: 'T2' }] } }); const noKey = await app.inject({ method: 'POST', url: '/v1/jobs', payload: { authorizationId: auth.json().id } }); expect(noKey.statusCode).toBe(400); const job = await app.inject({ method: 'POST', url: '/v1/jobs', headers: { 'idempotency-key': 'one' }, payload: { authorizationId: auth.json().id } }); expect(job.statusCode).toBe(200) })
+afterEach(async () => {
+  await Promise.all(apps.splice(0).map((app) => app.close()))
+})
+it('serves evidence-first passport and requires idempotency for jobs', async () => {
+  const store = new InMemoryEvidenceStore()
+  await store.append({
+    subject: { type: 'agent', chainId: 56, registry: '0x8004', agentId: '1' },
+    predicate: 'agent.liveness_verdict',
+    value: { state: 'LIVE' },
+    validAt: '2026-01-01T00:00:00.000Z',
+    observedAt: '2026-01-01T00:00:00.000Z',
+    source: 'test',
+    method: 'test',
+    evidenceClass: 'B',
+    dedupeKey: '1',
+  })
+  const app = createApiServer({ observations: () => store.observations })
+  apps.push(app)
+  expect((await app.inject('/v1/agents/1/passport')).json().liveness).toBe('LIVE')
+  const auth = await app.inject({
+    method: 'POST',
+    url: '/v1/authorizations',
+    payload: {
+      constraints: [{ kind: 'session_total_cap', label: 'cap', value: '10', tier: 'T2' }],
+    },
+  })
+  const noKey = await app.inject({
+    method: 'POST',
+    url: '/v1/jobs',
+    payload: { authorizationId: auth.json().id },
+  })
+  expect(noKey.statusCode).toBe(400)
+  const job = await app.inject({
+    method: 'POST',
+    url: '/v1/jobs',
+    headers: { 'idempotency-key': 'one' },
+    payload: { authorizationId: auth.json().id },
+  })
+  expect(job.statusCode).toBe(200)
+})

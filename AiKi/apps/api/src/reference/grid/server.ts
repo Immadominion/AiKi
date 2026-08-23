@@ -1,6 +1,58 @@
 import Fastify from 'fastify'
 import { BSC_MAINNET } from '../../config/chains.js'
 import type { EvidenceStore } from '../../evidence/types.js'
-import { persistGridAssessment } from './evidence-sink.js'
 import type { GridReader } from './client.js'
-export function createGridServer(options: { reader: GridReader; agentId?: string; evidenceStore?: EvidenceStore }) { const app = Fastify({ logger: process.env.NODE_ENV === 'production' }); app.get('/healthz', async () => ({ ok: true, service: 'aiki-pancakeswap-grid-trader' })); app.get<{ Querystring: { pool?: `0x${string}`; tickLower?: string; tickUpper?: string; spacing?: string } }>('/v1/reference/pancake/grid', async (request, reply) => { const { pool, tickLower, tickUpper, spacing } = request.query; if (!pool || !tickLower || !tickUpper || !spacing) return { capability: 'pancakeswap-v3-grid-assessment', category: 'grid_trading', input: { pool: 'v3 pool address', tickLower: 'integer', tickUpper: 'integer', spacing: 'integer' }, readOnly: true }; try { const assessment = await options.reader.assess({ pool, tickLower: Number(tickLower), tickUpper: Number(tickUpper), spacing: Number(spacing) }); const persisted = options.agentId && options.evidenceStore ? (await persistGridAssessment(options.evidenceStore, { agentId: options.agentId, assessment, registry: BSC_MAINNET.contracts.erc8004Identity, chainId: 56 })).inserted : false; return { assessment, evidence: { persisted } } } catch (error) { return reply.code(400).send({ error: { code: 'GRID_ASSESSMENT_FAILED', message: error instanceof Error ? error.message : 'Grid assessment failed.' } }) } }); return app }
+import { persistGridAssessment } from './evidence-sink.js'
+export function createGridServer(options: {
+  reader: GridReader
+  agentId?: string
+  evidenceStore?: EvidenceStore
+}) {
+  const app = Fastify({ logger: process.env.NODE_ENV === 'production' })
+  app.get('/healthz', async () => ({ ok: true, service: 'aiki-pancakeswap-grid-trader' }))
+  app.get<{
+    Querystring: { pool?: `0x${string}`; tickLower?: string; tickUpper?: string; spacing?: string }
+  }>('/v1/reference/pancake/grid', async (request, reply) => {
+    const { pool, tickLower, tickUpper, spacing } = request.query
+    if (!pool || !tickLower || !tickUpper || !spacing)
+      return {
+        capability: 'pancakeswap-v3-grid-assessment',
+        category: 'grid_trading',
+        input: {
+          pool: 'v3 pool address',
+          tickLower: 'integer',
+          tickUpper: 'integer',
+          spacing: 'integer',
+        },
+        readOnly: true,
+      }
+    try {
+      const assessment = await options.reader.assess({
+        pool,
+        tickLower: Number(tickLower),
+        tickUpper: Number(tickUpper),
+        spacing: Number(spacing),
+      })
+      const persisted =
+        options.agentId && options.evidenceStore
+          ? (
+              await persistGridAssessment(options.evidenceStore, {
+                agentId: options.agentId,
+                assessment,
+                registry: BSC_MAINNET.contracts.erc8004Identity,
+                chainId: 56,
+              })
+            ).inserted
+          : false
+      return { assessment, evidence: { persisted } }
+    } catch (error) {
+      return reply.code(400).send({
+        error: {
+          code: 'GRID_ASSESSMENT_FAILED',
+          message: error instanceof Error ? error.message : 'Grid assessment failed.',
+        },
+      })
+    }
+  })
+  return app
+}

@@ -17,7 +17,13 @@ export interface VenusAccountSnapshot {
   markets: VenusMarketSnapshot[]
 }
 
-export type HealthStatus = 'NO_POSITION' | 'NO_DEBT' | 'SAFE' | 'AT_RISK' | 'LIQUIDATABLE' | 'INCONSISTENT'
+export type HealthStatus =
+  | 'NO_POSITION'
+  | 'NO_DEBT'
+  | 'SAFE'
+  | 'AT_RISK'
+  | 'LIQUIDATABLE'
+  | 'INCONSISTENT'
 
 export interface Amount {
   amount: string

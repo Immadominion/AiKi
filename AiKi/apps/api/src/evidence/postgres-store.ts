@@ -5,7 +5,9 @@ import type { AppendResult, EvidenceStore, IndexerCheckpoint, NewObservation } f
 /** PostgreSQL-backed evidence store. The migration enforces append-only observations. */
 export class PostgresEvidenceStore implements EvidenceStore {
   private readonly sql: postgres.Sql
-  constructor(databaseUrl: string) { this.sql = postgres(databaseUrl, { max: 10, idle_timeout: 20 }) }
+  constructor(databaseUrl: string) {
+    this.sql = postgres(databaseUrl, { max: 10, idle_timeout: 20 })
+  }
   async append(input: NewObservation): Promise<AppendResult> {
     const observation = materializeObservation(input)
     const rows = await this.sql<{ id: string }[]>`
@@ -16,11 +18,16 @@ export class PostgresEvidenceStore implements EvidenceStore {
     return { observation, inserted: rows.length === 1 }
   }
   async getCheckpoint(stream: string): Promise<IndexerCheckpoint | null> {
-    const rows = await this.sql<IndexerCheckpoint[]>`SELECT stream, last_indexed_block AS "lastIndexedBlock", updated_at AS "updatedAt" FROM indexer_checkpoints WHERE stream = ${stream}`
+    const rows = await this.sql<
+      IndexerCheckpoint[]
+    >`SELECT stream, last_indexed_block AS "lastIndexedBlock", updated_at AS "updatedAt" FROM indexer_checkpoints WHERE stream = ${stream}`
     return rows[0] ?? null
   }
   async saveCheckpoint(checkpoint: IndexerCheckpoint): Promise<void> {
-    await this.sql`INSERT INTO indexer_checkpoints (stream, last_indexed_block, updated_at) VALUES (${checkpoint.stream}, ${checkpoint.lastIndexedBlock}, ${checkpoint.updatedAt}) ON CONFLICT (stream) DO UPDATE SET last_indexed_block = EXCLUDED.last_indexed_block, updated_at = EXCLUDED.updated_at`
+    await this
+      .sql`INSERT INTO indexer_checkpoints (stream, last_indexed_block, updated_at) VALUES (${checkpoint.stream}, ${checkpoint.lastIndexedBlock}, ${checkpoint.updatedAt}) ON CONFLICT (stream) DO UPDATE SET last_indexed_block = EXCLUDED.last_indexed_block, updated_at = EXCLUDED.updated_at`
   }
-  async close(): Promise<void> { await this.sql.end() }
+  async close(): Promise<void> {
+    await this.sql.end()
+  }
 }

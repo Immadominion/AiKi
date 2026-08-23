@@ -15,7 +15,11 @@ export interface PancakePositionSnapshot {
 }
 
 export type RebalanceState = 'IN_RANGE' | 'BELOW_RANGE' | 'ABOVE_RANGE' | 'EMPTY_LIQUIDITY'
-export type RebalanceRecommendation = 'HOLD' | 'REBALANCE_UPWARD' | 'REBALANCE_DOWNWARD' | 'NO_ACTION'
+export type RebalanceRecommendation =
+  | 'HOLD'
+  | 'REBALANCE_UPWARD'
+  | 'REBALANCE_DOWNWARD'
+  | 'NO_ACTION'
 
 export interface PancakeRebalanceAssessment extends PancakePositionSnapshot {
   category: 'rebalancing'

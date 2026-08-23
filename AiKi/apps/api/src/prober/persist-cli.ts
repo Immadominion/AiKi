@@ -1,8 +1,8 @@
 import { PostgresEvidenceStore } from '../evidence/postgres-store.js'
-import { getAgent, CHAIN_ID, REGISTRY } from './scan-client.js'
 import { persistVerification } from './evidence-sink.js'
 import { probeAgent } from './probe.js'
 import { resolveRegistration } from './registration.js'
+import { CHAIN_ID, getAgent, REGISTRY } from './scan-client.js'
 
 const databaseUrl = process.env.DATABASE_URL
 if (!databaseUrl) throw new Error('DATABASE_URL is required.')
@@ -21,8 +21,26 @@ const probe = await probeAgent({
 })
 const store = new PostgresEvidenceStore(databaseUrl)
 try {
-  const result = await persistVerification(store, { chainId: CHAIN_ID, registry: REGISTRY, agentId, registration, probe, identityVerified: true })
-  console.log(JSON.stringify({ agentId, runId: result.runId, observationsInserted: result.observationsInserted, readiness: result.readiness }, null, 2))
+  const result = await persistVerification(store, {
+    chainId: CHAIN_ID,
+    registry: REGISTRY,
+    agentId,
+    registration,
+    probe,
+    identityVerified: true,
+  })
+  console.log(
+    JSON.stringify(
+      {
+        agentId,
+        runId: result.runId,
+        observationsInserted: result.observationsInserted,
+        readiness: result.readiness,
+      },
+      null,
+      2,
+    ),
+  )
 } finally {
   await store.close()
 }

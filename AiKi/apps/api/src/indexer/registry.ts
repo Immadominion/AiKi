@@ -196,7 +196,8 @@ export async function* indexRegistry(
 ): AsyncGenerator<RegisteredEvent[]> {
   const span = cfg.maxSpan ?? (await probeMaxSpan(cfg.url))
   const finalizedHead = await blockNumber(cfg.url, 'finalized')
-  const finalized = cfg.stopAtBlock === undefined ? finalizedHead : Math.min(cfg.stopAtBlock, finalizedHead)
+  const finalized =
+    cfg.stopAtBlock === undefined ? finalizedHead : Math.min(cfg.stopAtBlock, finalizedHead)
 
   let cursor = fromBlock
   let seen = 0

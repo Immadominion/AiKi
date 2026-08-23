@@ -1,14 +1,32 @@
 import { randomUUID } from 'node:crypto'
-import type { AppendResult, EvidenceStore, IndexerCheckpoint, NewObservation, Observation } from './types.js'
+import type {
+  AppendResult,
+  EvidenceStore,
+  IndexerCheckpoint,
+  NewObservation,
+  Observation,
+} from './types.js'
 
-function isIsoTimestamp(value: string): boolean { return !Number.isNaN(Date.parse(value)) }
+function isIsoTimestamp(value: string): boolean {
+  return !Number.isNaN(Date.parse(value))
+}
 
 /** Validate invariants before a fact can enter any store implementation. */
-export function materializeObservation(input: NewObservation, now = new Date().toISOString()): Observation {
+export function materializeObservation(
+  input: NewObservation,
+  now = new Date().toISOString(),
+): Observation {
   const recordedAt = input.recordedAt ?? now
-  if (!input.predicate || !input.source || !input.method || !input.dedupeKey) throw new Error('Observation predicate, source, method, and dedupeKey are required.')
-  if (!isIsoTimestamp(input.validAt) || !isIsoTimestamp(input.observedAt) || !isIsoTimestamp(recordedAt)) throw new Error('Observation timestamps must be ISO 8601 values.')
-  if (Date.parse(recordedAt) < Date.parse(input.observedAt)) throw new Error('Observation recordedAt cannot precede observedAt.')
+  if (!input.predicate || !input.source || !input.method || !input.dedupeKey)
+    throw new Error('Observation predicate, source, method, and dedupeKey are required.')
+  if (
+    !isIsoTimestamp(input.validAt) ||
+    !isIsoTimestamp(input.observedAt) ||
+    !isIsoTimestamp(recordedAt)
+  )
+    throw new Error('Observation timestamps must be ISO 8601 values.')
+  if (Date.parse(recordedAt) < Date.parse(input.observedAt))
+    throw new Error('Observation recordedAt cannot precede observedAt.')
   return { ...input, id: input.id ?? randomUUID(), recordedAt }
 }
 
@@ -25,6 +43,10 @@ export class InMemoryEvidenceStore implements EvidenceStore {
     this.byDedupeKey.set(observation.dedupeKey, observation)
     return { observation, inserted: true }
   }
-  async getCheckpoint(stream: string): Promise<IndexerCheckpoint | null> { return this.checkpoints.get(stream) ?? null }
-  async saveCheckpoint(checkpoint: IndexerCheckpoint): Promise<void> { this.checkpoints.set(checkpoint.stream, { ...checkpoint }) }
+  async getCheckpoint(stream: string): Promise<IndexerCheckpoint | null> {
+    return this.checkpoints.get(stream) ?? null
+  }
+  async saveCheckpoint(checkpoint: IndexerCheckpoint): Promise<void> {
+    this.checkpoints.set(checkpoint.stream, { ...checkpoint })
+  }
 }

@@ -45,9 +45,11 @@ async function main() {
   console.log(`registry  ${REGISTRY}`)
   console.log(`latest    ${latest.toLocaleString()}`)
   console.log(`finalized ${finalized.toLocaleString()}  (lag ${latest - finalized})`)
-  if (!Number.isSafeInteger(blocks) || blocks < 1) throw new Error('--blocks must be a positive integer')
+  if (!Number.isSafeInteger(blocks) || blocks < 1)
+    throw new Error('--blocks must be a positive integer')
   const from = explicitFrom === undefined ? finalized - blocks + 1 : Number(explicitFrom)
-  if (!Number.isSafeInteger(from) || from < 0) throw new Error('--from-block must be a non-negative integer')
+  if (!Number.isSafeInteger(from) || from < 0)
+    throw new Error('--from-block must be a non-negative integer')
   const to = Math.min(from + blocks - 1, finalized)
   console.log(`scanning blocks ${from.toLocaleString()}–${to.toLocaleString()}…\n`)
 

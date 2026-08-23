@@ -1,14 +1,109 @@
+import { type Address, createPublicClient, http, type PublicClient, parseAbi } from 'viem'
 import { bsc } from 'viem/chains'
-import { createPublicClient, http, parseAbi, type Address, type PublicClient } from 'viem'
 
-const poolAbi = parseAbi(['function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint32 feeProtocol, bool unlocked)', 'function liquidity() view returns (uint128)'])
-export interface GridPolicy { pool: `0x${string}`; tickLower: number; tickUpper: number; spacing: number }
-export interface GridAssessment extends GridPolicy { category: 'grid_trading'; assessmentVersion: 'pancake-v3-grid/v1'; currentTick: number; activeGridIndex?: number; activeBand?: { lower: number; upper: number }; state: 'IN_GRID' | 'BELOW_GRID' | 'ABOVE_GRID' | 'NO_LIQUIDITY'; recommendation: 'WAIT' | 'SHIFT_GRID_UP' | 'SHIFT_GRID_DOWN' | 'NO_ACTION'; poolLiquidity: string; observedAt: string; caveats: string[] }
-export function assessGrid(policy: GridPolicy, currentTick: number, poolLiquidity: bigint, observedAt = new Date().toISOString()): GridAssessment {
-  if (!Number.isInteger(policy.tickLower) || !Number.isInteger(policy.tickUpper) || !Number.isInteger(policy.spacing) || policy.tickLower >= policy.tickUpper || policy.spacing <= 0 || (policy.tickUpper - policy.tickLower) % policy.spacing !== 0) throw new Error('Grid ticks must be ordered integer multiples of spacing.')
-  const state = poolLiquidity === 0n ? 'NO_LIQUIDITY' : currentTick < policy.tickLower ? 'BELOW_GRID' : currentTick >= policy.tickUpper ? 'ABOVE_GRID' : 'IN_GRID'
-  const index = state === 'IN_GRID' ? Math.floor((currentTick - policy.tickLower) / policy.spacing) : undefined
-  return { ...policy, category: 'grid_trading', assessmentVersion: 'pancake-v3-grid/v1', currentTick, ...(index === undefined ? {} : { activeGridIndex: index, activeBand: { lower: policy.tickLower + index * policy.spacing, upper: policy.tickLower + (index + 1) * policy.spacing } }), state, recommendation: state === 'IN_GRID' ? 'WAIT' : state === 'BELOW_GRID' ? 'SHIFT_GRID_DOWN' : state === 'ABOVE_GRID' ? 'SHIFT_GRID_UP' : 'NO_ACTION', poolLiquidity: poolLiquidity.toString(), observedAt, caveats: ['The grid range and spacing are caller-supplied policy inputs, not market advice.', 'Read-only assessment: no order, swap, liquidity, or position transaction is initiated.'] }
+const poolAbi = parseAbi([
+  'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint32 feeProtocol, bool unlocked)',
+  'function liquidity() view returns (uint128)',
+])
+export interface GridPolicy {
+  pool: `0x${string}`
+  tickLower: number
+  tickUpper: number
+  spacing: number
 }
-export interface GridReader { assess(policy: GridPolicy): Promise<GridAssessment> }
-export class PancakeGridClient implements GridReader { private readonly client: PublicClient; constructor(rpcUrl: string, client?: PublicClient) { this.client = client ?? createPublicClient({ chain: bsc, transport: http(rpcUrl) }) } async assess(policy: GridPolicy) { const [slotRaw, liquidityRaw] = await Promise.all([this.client.readContract({ address: policy.pool as Address, abi: poolAbi, functionName: 'slot0' }), this.client.readContract({ address: policy.pool as Address, abi: poolAbi, functionName: 'liquidity' })]); return assessGrid(policy, (slotRaw as readonly [bigint, number, number, number, number, number, boolean])[1], liquidityRaw as bigint) } }
+export interface GridAssessment extends GridPolicy {
+  category: 'grid_trading'
+  assessmentVersion: 'pancake-v3-grid/v1'
+  currentTick: number
+  activeGridIndex?: number
+  activeBand?: { lower: number; upper: number }
+  state: 'IN_GRID' | 'BELOW_GRID' | 'ABOVE_GRID' | 'NO_LIQUIDITY'
+  recommendation: 'WAIT' | 'SHIFT_GRID_UP' | 'SHIFT_GRID_DOWN' | 'NO_ACTION'
+  poolLiquidity: string
+  observedAt: string
+  caveats: string[]
+}
+export function assessGrid(
+  policy: GridPolicy,
+  currentTick: number,
+  poolLiquidity: bigint,
+  observedAt = new Date().toISOString(),
+): GridAssessment {
+  if (
+    !Number.isInteger(policy.tickLower) ||
+    !Number.isInteger(policy.tickUpper) ||
+    !Number.isInteger(policy.spacing) ||
+    policy.tickLower >= policy.tickUpper ||
+    policy.spacing <= 0 ||
+    (policy.tickUpper - policy.tickLower) % policy.spacing !== 0
+  )
+    throw new Error('Grid ticks must be ordered integer multiples of spacing.')
+  const state =
+    poolLiquidity === 0n
+      ? 'NO_LIQUIDITY'
+      : currentTick < policy.tickLower
+        ? 'BELOW_GRID'
+        : currentTick >= policy.tickUpper
+          ? 'ABOVE_GRID'
+          : 'IN_GRID'
+  const index =
+    state === 'IN_GRID' ? Math.floor((currentTick - policy.tickLower) / policy.spacing) : undefined
+  return {
+    ...policy,
+    category: 'grid_trading',
+    assessmentVersion: 'pancake-v3-grid/v1',
+    currentTick,
+    ...(index === undefined
+      ? {}
+      : {
+          activeGridIndex: index,
+          activeBand: {
+            lower: policy.tickLower + index * policy.spacing,
+            upper: policy.tickLower + (index + 1) * policy.spacing,
+          },
+        }),
+    state,
+    recommendation:
+      state === 'IN_GRID'
+        ? 'WAIT'
+        : state === 'BELOW_GRID'
+          ? 'SHIFT_GRID_DOWN'
+          : state === 'ABOVE_GRID'
+            ? 'SHIFT_GRID_UP'
+            : 'NO_ACTION',
+    poolLiquidity: poolLiquidity.toString(),
+    observedAt,
+    caveats: [
+      'The grid range and spacing are caller-supplied policy inputs, not market advice.',
+      'Read-only assessment: no order, swap, liquidity, or position transaction is initiated.',
+    ],
+  }
+}
+export interface GridReader {
+  assess(policy: GridPolicy): Promise<GridAssessment>
+}
+export class PancakeGridClient implements GridReader {
+  private readonly client: PublicClient
+  constructor(rpcUrl: string, client?: PublicClient) {
+    this.client = client ?? createPublicClient({ chain: bsc, transport: http(rpcUrl) })
+  }
+  async assess(policy: GridPolicy) {
+    const [slotRaw, liquidityRaw] = await Promise.all([
+      this.client.readContract({
+        address: policy.pool as Address,
+        abi: poolAbi,
+        functionName: 'slot0',
+      }),
+      this.client.readContract({
+        address: policy.pool as Address,
+        abi: poolAbi,
+        functionName: 'liquidity',
+      }),
+    ])
+    return assessGrid(
+      policy,
+      (slotRaw as readonly [bigint, number, number, number, number, number, boolean])[1],
+      liquidityRaw as bigint,
+    )
+  }
+}
