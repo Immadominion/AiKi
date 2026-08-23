@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "assert:chain": "tsx src/config/cli.ts",
+    "start": "tsx src/main.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "index:persist": "tsx src/indexer/persist-cli.ts",
     "probe": "tsx src/prober/cli.ts",
