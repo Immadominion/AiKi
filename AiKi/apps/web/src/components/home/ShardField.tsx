@@ -1,6 +1,6 @@
 'use client'
 
-import { type ShardSpec, shardStyles } from './shards'
+import { type Frame, SCREEN, type ShardSpec, shardStyles } from './shards'
 
 /**
  * The floating agent cards either side of the hero.
@@ -12,29 +12,45 @@ import { type ShardSpec, shardStyles } from './shards'
 export function ShardField({
   shards,
   onPick,
+  frame = SCREEN,
+  hideBelow = 'lg',
 }: {
   shards: ShardSpec[]
   onPick: (name: string) => void
+  /** Which box the cluster is measured against. */
+  frame?: Frame
+  hideBelow?: 'lg' | 'xl'
 }) {
   return (
-    <div className="pointer-events-none absolute inset-0 z-6 hidden lg:block">
+    <div
+      className={`pointer-events-none absolute inset-0 z-6 hidden ${hideBelow === 'lg' ? 'lg:block' : 'xl:block'}`}
+    >
       {shards.map((s) => {
-        const st = shardStyles(s)
+        const st = shardStyles(s, frame)
         return (
-          <div key={`${s.name}-${s.top}-${s.side}`} style={st.wrap}>
-            <span aria-hidden style={st.smear} />
+          <div key={`${s.name}-${s.top}-${s.side}`} className="group" style={st.wrap}>
+            <span
+              aria-hidden
+              className="transition-opacity duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-70"
+              style={st.smear}
+            />
             <button
               type="button"
               onClick={() => onPick(s.name)}
-              className="group relative block w-full border-0 bg-none p-0"
+              className="relative block w-full border-0 bg-none p-0"
               style={st.button}
             >
+              {/* A card you can click should answer when you reach for it. The
+                  lift is on the inner span so the warp transform on the wrapper
+                  is left alone, and the mask edge brightens at the same time so
+                  the whole shard reads as coming forward rather than just
+                  growing. */}
               <span
-                className="flex w-full items-center gap-3 rounded-[20px] border border-[rgb(20_20_20_/_0.06)] bg-white px-4 py-[14px] text-left shadow-[0_26px_54px_-30px_rgb(20_20_20_/_0.4),0_2px_6px_-2px_rgb(20_20_20_/_0.06)] transition-shadow group-hover:shadow-[0_34px_66px_-28px_rgb(20_20_20_/_0.5),0_2px_6px_-2px_rgb(20_20_20_/_0.08)]"
+                className="flex w-full items-center gap-3 rounded-[20px] border border-[rgb(20_20_20_/_0.06)] bg-white px-4 py-[14px] text-left shadow-[0_26px_54px_-30px_rgb(20_20_20_/_0.4),0_2px_6px_-2px_rgb(20_20_20_/_0.06)] group-hover:[--shard-mid:1] group-hover:[--shard-near:1] group-hover:-translate-y-[3px] group-hover:scale-[1.022] group-hover:border-[rgb(255_77_0_/_0.18)] group-hover:shadow-[0_38px_72px_-26px_rgb(20_20_20_/_0.42),0_0_0_1px_rgb(255_77_0_/_0.06),0_2px_8px_-2px_rgb(255_77_0_/_0.18)] group-active:scale-[0.995] group-active:duration-150"
                 style={st.card}
               >
                 <span
-                  className="flex size-10 flex-none items-center justify-center rounded-full text-[15px] font-extrabold text-white"
+                  className="flex size-10 flex-none items-center justify-center rounded-full text-[15px] font-extrabold text-white transition-[box-shadow,transform] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-[1.04]"
                   style={{ background: s.bg, boxShadow: `0 8px 18px -8px ${s.glow}` }}
                 >
                   {s.initial}

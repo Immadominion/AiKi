@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { PageCard } from '@/components/shell/PageCard'
-import { useAccount, useLayoutPref } from '@/components/shell/prefs'
+import { useAccount, useModeNavigation } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
 import { route } from '@/lib/routes'
 
@@ -61,7 +61,7 @@ const Section = ({
 export function SettingsView() {
   const say = useToast()
   const router = useRouter()
-  const { layout, setLayout } = useLayoutPref()
+  const { layout, switchMode } = useModeNavigation()
   const { connected, connect, disconnect } = useAccount()
 
   const header = (
@@ -82,7 +82,7 @@ export function SettingsView() {
         <Section
           id="wallet"
           title="Wallet"
-          note="Connecting lets AiKi read. It never grants the ability to move anything — that only comes from an authority you sign per agent, with limits you set."
+          note="Connecting lets AiKi read. It never grants the ability to move anything. That only comes from an authority you sign per agent, with limits you set."
         >
           <Row
             title={connected ? 'Connected wallet' : 'No wallet connected'}
@@ -103,14 +103,14 @@ export function SettingsView() {
             title={connected ? 'Disconnect' : 'Connect'}
             body={
               connected
-                ? 'Stops AiKi reading your balances. Authorities already signed stay on the chain until you revoke them — disconnecting is not revoking, and pretending otherwise would be dangerous.'
+                ? 'Stops AiKi reading your balances. Authorities already signed stay on the chain until you revoke them. Disconnecting is not revoking, and pretending otherwise would be dangerous.'
                 : 'Lets AiKi read your balances and positions so it can suggest work worth doing. It grants nothing on its own.'
             }
             action={connected ? 'Disconnect' : 'Connect'}
             onAction={() => {
               if (connected) {
                 disconnect()
-                say('Disconnected. Revoke each authority from Limits — that is a separate thing.')
+                say('Disconnected. Revoke each authority from Limits, which is a separate thing.')
               } else {
                 connect()
                 say('Connected. AiKi can read your balances; it still cannot move anything.')
@@ -126,7 +126,7 @@ export function SettingsView() {
         >
           <Row
             title="Approval requests"
-            body="Always on. An approval has a deadline, and a missed deadline is a missed action — this is the one thing we will not let you silence."
+            body="Always on. An approval has a deadline, and a missed deadline is a missed action. This is the one thing we will not let you silence."
           />
           <Row
             title="Blocked actions"
@@ -143,25 +143,25 @@ export function SettingsView() {
         </Section>
 
         <Section
-          id="home"
-          title="Home"
-          note="Which surface AiKi opens on. Both reach everything; this only decides what fills the screen when you arrive."
+          id="mode"
+          title="Mode"
+          note="Choose the active home. Switching opens it now and keeps it as the default next time."
         >
           <div className="flex flex-wrap items-center gap-[12px] px-4 py-[14px]">
             <span className="min-w-0 flex-1 basis-[260px]">
-              <span className="block text-[13.5px] font-bold">Opening layout</span>
+              <span className="block text-[13.5px] font-bold">Current mode</span>
               <span className="text-muted mt-[3px] block text-[12.5px] leading-[1.5]">
-                {layout === 'ask'
-                  ? 'A single question fills the screen.'
-                  : 'You land in the agent market.'}
+                {layout === 'fast'
+                  ? 'Fast. One question fills the screen.'
+                  : 'Manual. You browse the market and pick.'}
               </span>
             </span>
             <div className="flex flex-none gap-[3px] rounded-[12px] bg-[rgb(26_26_25_/_0.05)] p-[3px]">
-              {(['ask', 'market'] as const).map((k) => (
+              {(['fast', 'manual'] as const).map((k) => (
                 <button
                   key={k}
                   type="button"
-                  onClick={() => setLayout(k)}
+                  onClick={() => switchMode(k)}
                   className="h-[31px] rounded-[9px] border-0 px-[14px] text-[12.5px]"
                   style={
                     layout === k
@@ -173,7 +173,7 @@ export function SettingsView() {
                         }
                   }
                 >
-                  {k === 'ask' ? 'One ask' : 'Market'}
+                  {k === 'fast' ? 'Fast' : 'Manual'}
                 </button>
               ))}
             </div>
@@ -183,13 +183,13 @@ export function SettingsView() {
         <Section
           id="api"
           title="Evidence API"
-          note="The measurements behind every number on this site, served raw. Not a summary of our opinion — the probe results, counts and intervals themselves, so anyone can recompute a score and disagree with us in public."
+          note="The measurements behind every number on this site, served raw. Not a summary of our opinion, but the probe results, counts and intervals themselves, so anyone can recompute a score and disagree with us in public."
         >
           <Row
             title="Not open yet"
             body="It goes out once the numbers it would serve are stable enough that changing them would be a breaking change rather than a bug fix."
             action="How we test"
-            onAction={() => router.push(route('/how-we-test'))}
+            onAction={() => router.push(route('/docs/how-we-test'))}
           />
         </Section>
 
@@ -200,7 +200,7 @@ export function SettingsView() {
         >
           <Row
             title="In this browser"
-            body="Your home layout, whether the sidebar is collapsed, and which agents you saved. None of it leaves the device."
+            body="Your mode, whether the sidebar is collapsed, and which agents you saved. None of it leaves the device."
             action="Clear"
             onAction={() => {
               try {
@@ -213,7 +213,7 @@ export function SettingsView() {
           />
           <Row
             title="Kept by AiKi"
-            body="Every ask, including ones no agent could take — those are how we know what to build next — and every action an agent took for you, because a receipt nobody kept is not a receipt."
+            body="Every ask, including ones no agent could take, because those are how we know what to build next. And every action an agent took for you, because a receipt nobody kept is not a receipt."
           />
         </Section>
       </div>

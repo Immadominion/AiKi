@@ -1,6 +1,9 @@
 'use client'
 
+import { XIcon } from '@animateicons/react/lucide'
 import { useEffect, useState } from 'react'
+import { IconButton, TraceBorder } from '@/components/ui/AnimatedIcon'
+import { useEscapeLayer } from '@/lib/escape'
 
 interface Ask {
   id: string
@@ -103,18 +106,8 @@ const DOT: Record<Ask['tone'], string> = {
   warn: '#FFD400',
 }
 
-export function HistoryRail({
-  onResume,
-  onOpenChange,
-}: {
-  onResume: (ask: string) => void
-  onOpenChange?: (open: boolean) => void
-}) {
+export function HistoryRail({ onResume }: { onResume: (ask: string) => void }) {
   const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    onOpenChange?.(open)
-  }, [open, onOpenChange])
 
   // ⌘/ opens it from anywhere, because reaching for history should never mean
   // hunting for a control on a page whose whole point is a single input.
@@ -124,11 +117,14 @@ export function HistoryRail({
         e.preventDefault()
         setOpen((o) => !o)
       }
-      if (e.key === 'Escape') setOpen(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  // Escape is layered: closing History must not also drop you out of full
+  // screen in the same keystroke.
+  useEscapeLayer(open, () => setOpen(false))
 
   return (
     <>
@@ -146,42 +142,48 @@ export function HistoryRail({
             <span key={i} className="block h-[2px] w-[11px] rounded-full bg-[#B4B4B0]" />
           ))}
         </span>
-        <span className="text-[12px] font-semibold text-[#767676]">Your asks</span>
+        <span className="text-[12px] font-semibold text-[#767676]">History</span>
       </button>
 
-      {/* Collapsed: a thin rail that does not compete with the field. */}
+      {/* Collapsed: an edge tab, on the same pattern as the MOCK control —
+          flush to the side rather than floating with a margin, and parked low
+          rather than centred, since centred is exactly where the shard cards
+          sit. A rail hovering mid-screen was landing on top of them. */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        title="Your asks (⌘/)"
-        className={`absolute top-1/2 left-4 z-40 hidden h-[132px] w-[34px] -translate-y-1/2 flex-col items-center justify-center gap-[7px] rounded-[14px] border border-[rgb(20_20_20_/_0.06)] bg-white/70 backdrop-blur transition-all hover:bg-white md:flex ${
+        data-tour="history"
+        title="History (⌘/)"
+        className={`absolute bottom-[15%] left-0 z-40 hidden h-[84px] w-[27px] flex-col items-center justify-center gap-[6px] rounded-r-[12px] border border-l-0 border-[rgb(20_20_20_/_0.07)] bg-white/85 backdrop-blur transition-all hover:bg-white md:flex ${
           open ? 'pointer-events-none opacity-0' : 'opacity-100'
         }`}
       >
         <span className="flex flex-col gap-[3px]" aria-hidden>
           {[0, 1, 2].map((i) => (
-            <span key={i} className="block h-[2px] w-[13px] rounded-full bg-[#B4B4B0]" />
+            <span key={i} className="block h-[2px] w-[10px] rounded-full bg-[#B4B4B0]" />
           ))}
         </span>
         <span
-          className="text-[10.5px] font-bold tracking-[0.08em] text-[#8A8A8A]"
+          className="text-[10px] font-bold tracking-[0.08em] text-[#8A8A8A]"
           style={{ writingMode: 'vertical-rl' }}
         >
-          YOUR ASKS
+          HISTORY
         </span>
       </button>
 
       {open && (
         <div className="animate-rise absolute inset-x-3 top-3 bottom-3 z-46 flex flex-col overflow-hidden rounded-[26px] border border-[rgb(20_20_20_/_0.07)] bg-white shadow-[0_34px_84px_-32px_rgb(20_20_20_/_0.4)] sm:inset-x-auto sm:top-4 sm:bottom-4 sm:left-4 sm:w-[316px]">
+          <TraceBorder radius={26} />
           <div className="flex flex-none items-center justify-between px-[18px] pt-[17px] pb-3">
-            <span className="text-[14.5px] font-bold">Your asks</span>
-            <button
-              type="button"
+            <span className="text-[14.5px] font-bold">History</span>
+            <IconButton
+              icon={XIcon}
+              label="Close history"
+              tone="warm"
+              size={14}
+              className="size-[28px]"
               onClick={() => setOpen(false)}
-              className="flex size-[26px] items-center justify-center rounded-full border-0 bg-[#F3F3F1] text-[11px] text-[#6B6B6B] hover:bg-[#EAEAE7]"
-            >
-              ×
-            </button>
+            />
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-[10px] pb-3">

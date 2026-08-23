@@ -1,51 +1,164 @@
 'use client'
 
+import {
+  ActivityIcon,
+  BellIcon,
+  BookOpenIcon,
+  CodeIcon,
+  CompassIcon,
+  HeartIcon,
+  HouseIcon,
+  LayoutGridIcon,
+  ShieldCheckIcon,
+  WalletIcon,
+} from '@animateicons/react/lucide'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { usePalette } from '@/components/shell/CommandPalette'
+import { useHoverIcon } from '@/components/ui/AnimatedIcon'
 import { useToast } from '@/components/ui/Toast'
 import { route } from '@/lib/routes'
-import { useAccount, useIsPhone, useLayoutPref } from './prefs'
+import { useAccount, useIsPhone, useModeNavigation, useTour } from './prefs'
 
 interface Item {
   label: string
-  glyph: string
+  icon: NavIconComponent
   href?: string
   count?: number
   tag?: string
 }
 
+type NavIconComponent = React.ForwardRefExoticComponent<
+  { size?: number; color?: string } & React.RefAttributes<{
+    startAnimation: () => void
+    stopAnimation: () => void
+  }>
+>
+
 const ADDRESS = '0x7f4a2b91c0de44a1f8e37b25d90ac6183f4a3a91'
 
+/**
+ * Home is whichever mode you picked.
+ *
+ * Sending someone in Manual mode to the full-screen question is not a shortcut,
+ * it is a mode switch they did not ask for.
+ */
 const GROUPS: { label: string; items: Item[] }[] = [
   {
     label: 'General',
     items: [
-      { label: 'Home', glyph: '⌂', href: '/' },
-      { label: 'Explore', glyph: '⌕', href: '/explore' },
-      { label: 'My agents', glyph: '▣', href: '/agents', count: 2 },
+      { label: 'Home', icon: HouseIcon },
+      { label: 'Explore', icon: CompassIcon, href: '/explore' },
+      { label: 'My agents', icon: LayoutGridIcon, href: '/agents', count: 2 },
     ],
   },
   {
     label: 'Oversight',
     items: [
-      { label: 'Activity', glyph: '≡', href: '/activity', count: 1 },
-      { label: 'Limits', glyph: '⊘', href: '/limits' },
-      { label: 'Saved', glyph: '♡', href: '/saved' },
+      { label: 'Activity', icon: ActivityIcon, href: '/activity', count: 1 },
+      { label: 'Limits', icon: ShieldCheckIcon, href: '/limits' },
+      { label: 'Saved', icon: HeartIcon, href: '/saved' },
     ],
   },
   {
     label: 'Settings',
     items: [
-      { label: 'How we test', glyph: '⌗', href: '/how-we-test' },
-      { label: 'Wallet', glyph: '▤', href: '/settings#wallet' },
-      { label: 'Notifications', glyph: '◔', href: '/settings#notifications' },
-      { label: 'Evidence API', glyph: '⌗', href: '/settings#api', tag: 'Beta' },
+      { label: 'Docs', icon: BookOpenIcon, href: '/docs/getting-started' },
+      { label: 'Wallet', icon: WalletIcon, href: '/settings#wallet' },
+      { label: 'Notifications', icon: BellIcon, href: '/settings#notifications' },
+      { label: 'Evidence API', icon: CodeIcon, href: '/settings#api', tag: 'Beta' },
     ],
   },
 ]
+
+function NavRow({
+  item,
+  path,
+  collapsed,
+  connected,
+  onNavigate,
+  onUnbuilt,
+}: {
+  item: Item
+  path: string
+  collapsed: boolean
+  connected: boolean
+  onNavigate: () => void
+  onUnbuilt: (msg: string) => void
+}) {
+  const { ref, hoverProps } = useHoverIcon()
+  const on = item.href?.split('#')[0] === path && !item.href.includes('#')
+  const Icon = item.icon
+
+  const inner = (
+    <>
+      <span
+        className="flex w-[20px] flex-none items-center justify-center [&_svg]:stroke-[2.25]"
+        style={{ color: on ? 'var(--color-ink-app)' : 'var(--color-muted)' }}
+      >
+        <Icon ref={ref} size={18} color="currentColor" />
+      </span>
+      {collapsed ? null : (
+        <>
+          <span
+            className="flex-1 truncate text-[14.5px]"
+            style={{
+              fontWeight: on ? 700 : 500,
+              color: on ? 'var(--color-ink-app)' : 'var(--color-body)',
+            }}
+          >
+            {item.label}
+          </span>
+          {connected && item.count ? (
+            <span className="bg-orange-app flex h-[21px] min-w-[21px] flex-none items-center justify-center rounded-full px-[6px] text-[11.5px] font-bold text-white">
+              {item.count}
+            </span>
+          ) : null}
+          {item.tag ? (
+            <span className="flex-none rounded-full bg-[#E8EEFF] px-2 py-[3px] text-[11px] font-bold text-[#3B6BE0]">
+              {item.tag}
+            </span>
+          ) : null}
+        </>
+      )}
+      {/* Collapsed, a count has nowhere to sit beside the label, so it becomes
+          a dot on the icon rather than disappearing. */}
+      {connected && collapsed && item.count ? (
+        <span className="bg-orange-app absolute top-[7px] right-[7px] size-[7px] rounded-full" />
+      ) : null}
+    </>
+  )
+
+  const cls = `relative flex h-[42px] w-full items-center gap-3 rounded-[13px] border-0 text-left transition-colors ${
+    collapsed ? 'justify-center px-0' : 'px-[11px]'
+  }`
+  const style = on ? { background: '#fff', boxShadow: '0 1px 2px rgb(26 26 25 / 0.09)' } : undefined
+
+  return item.href ? (
+    <Link
+      href={route(item.href)}
+      onClick={onNavigate}
+      title={collapsed ? item.label : undefined}
+      className={`${cls} ${on ? '' : 'hover:bg-[rgb(26_26_25_/_0.055)]'}`}
+      style={style}
+      {...hoverProps}
+    >
+      {inner}
+    </Link>
+  ) : (
+    <button
+      type="button"
+      title={collapsed ? item.label : undefined}
+      onClick={() => onUnbuilt(`${item.label} comes later in the journey.`)}
+      className={`${cls} bg-transparent hover:bg-[rgb(26_26_25_/_0.055)]`}
+      {...hoverProps}
+    >
+      {inner}
+    </button>
+  )
+}
 
 export function Sidebar({
   userName = 'Dominion',
@@ -62,10 +175,11 @@ export function Sidebar({
   const router = useRouter()
   const say = useToast()
   const openPalette = usePalette()
-  const { layout, setLayout } = useLayoutPref()
+  const { layout, switchMode } = useModeNavigation()
   const onPhone = useIsPhone()
   const [accountOpen, setAccountOpen] = useState(false)
-  const { connected, disconnect } = useAccount()
+  const { connected, connect, disconnect } = useAccount()
+  const { replay } = useTour(layout)
 
   // The collapse preference belongs to the desktop column. In the drawer the
   // sidebar is always full width, so the rail never appears on touch.
@@ -111,7 +225,7 @@ export function Sidebar({
 
       <button
         type="button"
-        title="Search — ⌘K"
+        title="Search (⌘K)"
         onClick={() => {
           onNavigate()
           openPalette()
@@ -135,109 +249,66 @@ export function Sidebar({
 
       <div className="mt-5 flex-1 overflow-y-auto overflow-x-hidden pr-[2px]">
         {GROUPS.map((g) => (
-          <div key={g.label} className="mb-[22px]">
+          <div
+            key={g.label}
+            className="mb-[22px]"
+            data-tour={g.label === 'General' ? 'manual-nav' : undefined}
+          >
             {collapsed ? (
               <div className="mx-auto mb-[9px] h-px w-[26px] bg-[rgb(26_26_25_/_0.09)]" />
             ) : (
               <div className="text-muted-3 px-2 pb-2 text-[12px] font-semibold">{g.label}</div>
             )}
             <div className="flex flex-col gap-[2px]">
-              {g.items.map((item) => {
-                const on = item.href?.split('#')[0] === path && !item.href.includes('#')
-                const inner = (
-                  <>
-                    <span
-                      className="flex w-[19px] flex-none items-center justify-center text-[14px] font-semibold"
-                      style={{ color: on ? 'var(--color-ink-app)' : 'var(--color-muted)' }}
-                    >
-                      {item.glyph}
-                    </span>
-                    {collapsed ? null : (
-                      <>
-                        <span
-                          className="flex-1 truncate text-[14.5px]"
-                          style={{
-                            fontWeight: on ? 700 : 500,
-                            color: on ? 'var(--color-ink-app)' : 'var(--color-body)',
-                          }}
-                        >
-                          {item.label}
-                        </span>
-                        {connected && item.count ? (
-                          <span className="bg-orange-app flex h-[21px] min-w-[21px] flex-none items-center justify-center rounded-full px-[6px] text-[11.5px] font-bold text-white">
-                            {item.count}
-                          </span>
-                        ) : null}
-                        {item.tag ? (
-                          <span className="flex-none rounded-full bg-[#E8EEFF] px-2 py-[3px] text-[11px] font-bold text-[#3B6BE0]">
-                            {item.tag}
-                          </span>
-                        ) : null}
-                      </>
-                    )}
-                    {/* Collapsed, a count has nowhere to sit beside the label, so
-                        it becomes a dot on the icon rather than disappearing. */}
-                    {connected && collapsed && item.count ? (
-                      <span className="bg-orange-app absolute top-[7px] right-[7px] size-[7px] rounded-full" />
-                    ) : null}
-                  </>
-                )
-                const cls = `relative flex h-[42px] w-full items-center gap-3 rounded-[13px] border-0 text-left transition-colors ${
-                  collapsed ? 'justify-center px-0' : 'px-[11px]'
-                }`
-                const style = on
-                  ? { background: '#fff', boxShadow: '0 1px 2px rgb(26 26 25 / 0.09)' }
-                  : undefined
-
-                return item.href ? (
-                  <Link
-                    key={item.label}
-                    href={route(item.href)}
-                    onClick={onNavigate}
-                    title={collapsed ? item.label : undefined}
-                    className={`${cls} ${on ? '' : 'hover:bg-[rgb(26_26_25_/_0.055)]'}`}
-                    style={style}
-                  >
-                    {inner}
-                  </Link>
-                ) : (
-                  <button
-                    key={item.label}
-                    type="button"
-                    title={collapsed ? item.label : undefined}
-                    onClick={() => say(`${item.label} comes later in the journey.`)}
-                    className={`${cls} bg-transparent hover:bg-[rgb(26_26_25_/_0.055)]`}
-                  >
-                    {inner}
-                  </button>
-                )
-              })}
+              {g.items.map((raw) => (
+                <NavRow
+                  key={raw.label}
+                  item={
+                    raw.label === 'Home'
+                      ? { ...raw, href: layout === 'fast' ? '/' : '/market' }
+                      : raw
+                  }
+                  path={path}
+                  collapsed={collapsed}
+                  connected={connected}
+                  onNavigate={onNavigate}
+                  onUnbuilt={say}
+                />
+              ))}
             </div>
           </div>
         ))}
       </div>
 
-      {/* The layout choice lives here and nowhere else — it is a preference, not
-          a navigation control, and putting it in the chrome would make it feel
-          like one. Collapsed, it becomes a single toggle rather than vanishing. */}
+      {/* Changing mode changes both the preference and the active home. Leaving
+          either one behind makes the control look broken until Home is clicked. */}
       {collapsed ? (
         <button
           type="button"
-          title={layout === 'ask' ? 'Home: one ask' : 'Home: market'}
-          onClick={() => setLayout(layout === 'ask' ? 'market' : 'ask')}
+          title={layout === 'fast' ? 'Switch to Manual mode' : 'Switch to Fast mode'}
+          onClick={() => {
+            onNavigate()
+            switchMode(layout === 'fast' ? 'manual' : 'fast')
+          }}
           className="mx-auto mt-2 flex size-[42px] flex-none items-center justify-center rounded-[13px] border-0 bg-white text-[13px] font-bold shadow-[0_1px_2px_rgb(26_26_25_/_0.05)]"
         >
-          {layout === 'ask' ? '◍' : '▤'}
+          {layout === 'fast' ? '◍' : '▤'}
         </button>
       ) : (
-        <div className="mx-1 mt-2 flex-none rounded-[18px] bg-white px-3 pt-3 pb-[13px] shadow-[0_1px_2px_rgb(26_26_25_/_0.05)]">
-          <div className="text-muted text-[12px] font-semibold">Home layout</div>
+        <div
+          data-tour="manual-mode"
+          className="mx-1 mt-2 flex-none rounded-[18px] bg-white px-3 pt-3 pb-[13px] shadow-[0_1px_2px_rgb(26_26_25_/_0.05)]"
+        >
+          <div className="text-muted text-[12px] font-semibold">Mode</div>
           <div className="mt-[9px] flex gap-[3px] rounded-[12px] bg-[rgb(26_26_25_/_0.05)] p-[3px]">
-            {(['ask', 'market'] as const).map((k) => (
+            {(['fast', 'manual'] as const).map((k) => (
               <button
                 key={k}
                 type="button"
-                onClick={() => setLayout(k)}
+                onClick={() => {
+                  onNavigate()
+                  switchMode(k)
+                }}
                 className="h-[31px] flex-1 rounded-[9px] border-0 text-[12.5px] whitespace-nowrap"
                 style={
                   layout === k
@@ -250,14 +321,14 @@ export function Sidebar({
                     : { background: 'transparent', color: 'var(--color-muted-2)', fontWeight: 600 }
                 }
               >
-                {k === 'ask' ? 'One ask' : 'Market'}
+                {k === 'fast' ? 'Fast' : 'Manual'}
               </button>
             ))}
           </div>
           <div className="text-muted mt-2 text-[11.5px] leading-[1.45]">
-            {layout === 'ask'
-              ? 'A single question fills the screen. Chosen during onboarding.'
-              : 'You land in the agent market. Chosen during onboarding.'}
+            {layout === 'fast'
+              ? 'One question fills the screen. Say what you need and AiKi finds who can do it.'
+              : 'You browse the agent market yourself and pick.'}
           </div>
         </div>
       )}
@@ -290,14 +361,20 @@ export function Sidebar({
                       .catch(() => say('Your browser would not let us copy. The address is above.'))
                   },
                 ],
-                ['Take the walkthrough', () => router.push(route('/welcome'))],
+                [
+                  'Show me around',
+                  () => {
+                    replay()
+                    router.push(route(layout === 'fast' ? '/' : '/market'))
+                  },
+                ],
                 ['Your limits', () => router.push(route('/limits'))],
                 [
                   'Disconnect',
                   () => {
                     disconnect()
                     say(
-                      'Disconnected. AiKi has stopped reading your wallet — authorities stay on chain until revoked.',
+                      'Disconnected. AiKi has stopped reading your wallet. Authorities stay on chain until revoked.',
                     )
                   },
                 ],
@@ -346,9 +423,12 @@ export function Sidebar({
             )}
           </button>
         ) : (
-          <Link
-            href={route('/welcome')}
-            onClick={onNavigate}
+          <button
+            type="button"
+            onClick={() => {
+              connect()
+              onNavigate()
+            }}
             title={collapsed ? 'Connect a wallet' : undefined}
             className={`flex w-full items-center gap-[11px] rounded-2xl border-0 py-[9px] text-left hover:bg-[rgb(26_26_25_/_0.055)] ${
               collapsed ? 'justify-center px-0' : 'px-[10px]'
@@ -365,7 +445,7 @@ export function Sidebar({
                 </span>
               </span>
             )}
-          </Link>
+          </button>
         )}
       </div>
     </div>

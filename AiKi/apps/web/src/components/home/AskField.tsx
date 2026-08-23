@@ -44,11 +44,14 @@ export function AskField({
   return (
     <div className="relative mt-7 w-full">
       <div
+        data-tour="field"
         className="flex h-[62px] items-center gap-3 rounded-full border bg-white pr-[8px] pl-[20px] transition-[border-color,box-shadow] duration-200 md:h-[72px] md:pr-[10px] md:pl-[26px]"
         style={{
-          borderColor: focused ? 'rgb(20 20 20 / 0.16)' : 'rgb(20 20 20 / 0.08)',
+          // The whole pill takes the focus treatment, at low opacity. A ring on
+          // the input would draw a rectangle inside a cylinder.
+          borderColor: focused ? 'rgb(255 77 0 / 0.34)' : 'rgb(20 20 20 / 0.08)',
           boxShadow: focused
-            ? '0 30px 72px -26px rgb(20 20 20 / 0.32)'
+            ? '0 0 0 4px rgb(255 77 0 / 0.1), 0 30px 72px -26px rgb(20 20 20 / 0.32)'
             : '0 24px 60px -30px rgb(20 20 20 / 0.26)',
         }}
       >
@@ -68,15 +71,18 @@ export function AskField({
               }
               if (e.key === 'Enter') onSubmit(q.trim())
             }}
+            data-ring="self"
             className="relative z-2 h-full w-full border-0 bg-none text-[16px] font-medium text-[#141414] outline-none md:text-[18px]"
           />
           {!q && (
             <span className="pointer-events-none absolute inset-x-0 z-1 flex items-center gap-[10px]">
-              <span className="animate-hint overflow-hidden text-[16px] font-medium text-ellipsis whitespace-nowrap text-[#9A9A9A] md:text-[18px]">
-                {hint}
-              </span>
+              {/* The key comes first, because it is the instruction and the
+                  suggestion is only the thing it acts on. */}
               <span className="hidden flex-none rounded-[7px] bg-[#F4F4F2] px-[7px] py-1 text-[10.5px] font-bold tracking-[0.03em] text-[#8A8A8A] md:inline">
                 TAB
+              </span>
+              <span className="animate-hint min-w-0 overflow-hidden text-[16px] font-medium text-ellipsis whitespace-nowrap text-[#9A9A9A] md:text-[18px]">
+                {hint}
               </span>
             </span>
           )}

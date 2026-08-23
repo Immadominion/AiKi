@@ -38,7 +38,7 @@ export function CoverageBlock({ coverage }: { coverage: Coverage }) {
         <>
           <p className="text-muted mt-[7px] mb-0 text-[12.5px] leading-[1.55] text-pretty">
             <b className="text-ink-app font-bold">{excludedUnverified} were left out</b> because we
-            could not verify them ourselves. They are counted here rather than deleted — an agent we
+            could not verify them ourselves. They are counted here rather than deleted. An agent we
             cannot test is a fact about the registry, not an absence.
           </p>
 

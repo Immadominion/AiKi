@@ -29,7 +29,7 @@ export default function ErrorBoundary({
           </div>
 
           <p className="text-muted mt-[10px] mb-0 text-[13.5px] leading-[1.55] text-pretty">
-            Nothing was changed and nothing was spent — this is a read that failed, not an action.
+            Nothing was changed and nothing was spent. This is a read that failed, not an action.
             Your agents keep running to the limits you already set, whether or not this screen
             works.
           </p>

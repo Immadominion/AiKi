@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation'
 import { MarketGrid } from '@/components/shell/MarketCard'
 import { PageCard } from '@/components/shell/PageCard'
 import { useLayoutPref } from '@/components/shell/prefs'
-import { useToast } from '@/components/ui/Toast'
 import { AGENTS } from '@/lib/agents'
 
 /**
@@ -15,26 +14,17 @@ import { AGENTS } from '@/lib/agents'
  */
 export function MarketView() {
   const { layout } = useLayoutPref()
-  const say = useToast()
   const router = useRouter()
-  const ask = layout === 'ask'
+  const fast = layout === 'fast'
 
   return (
     <PageCard
       title="Home"
-      count={ask ? 'One ask layout' : 'Market layout'}
-      primary={ask ? 'Open one-ask' : 'Hire agent'}
-      onPrimary={ask ? () => router.push('/') : undefined}
+      count={fast ? 'Fast mode is your home' : 'Manual mode is your home'}
+      primary={fast ? 'Open Fast mode' : 'Hire agent'}
+      onPrimary={fast ? () => router.push('/') : undefined}
       tabs={['All agents', 'For your positions', 'New']}
       tabHint="12 agents claim work today"
-      banner={{
-        title: `Your layout is set to ${ask ? '“One ask”.' : '“Market”.'}`,
-        body: ask
-          ? 'The full-screen ask page is your home — this market view stays one click away.'
-          : 'You browse the market first. Switch back whenever you want the single question.',
-        cta: 'Change',
-        onAction: () => say('Switch layouts from the Home layout control in the sidebar.'),
-      }}
     >
       <MarketGrid
         agents={AGENTS}

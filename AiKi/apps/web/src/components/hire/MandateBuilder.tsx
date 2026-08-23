@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
 import { DETAILS } from '@/lib/detail'
 import { jobHref } from '@/lib/routes'
+import { useMock } from '@/mock/store'
 import { capabilitiesOf, capTier, TIER_MEANS, TIER_WORD, weakest } from './mandate'
 
 const PER_ACTION = [40, 80, 150] as const
@@ -135,6 +136,7 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
   const caps = useMemo(() => capabilitiesOf(d), [d])
   const say = useToast()
   const router = useRouter()
+  const { hire } = useMock()
 
   const [perAction, setPerAction] = useState<number>(80)
   const [budget, setBudget] = useState<number>(250)
@@ -248,7 +250,7 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
                 title="Most it can spend altogether"
                 note={
                   period === 'total'
-                    ? 'A lifetime cap. It does not refill — when it is gone, the agent stops.'
+                    ? 'A lifetime cap. It does not refill, so when it is gone the agent stops.'
                     : 'A renewing cap. It refills at the start of each period.'
                 }
                 badge={{
@@ -313,7 +315,7 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
 
           <Control
             title="When it should ask you"
-            note="Approval is a speed choice, not a safety one — the limits above hold either way."
+            note="Approval is a speed choice, not a safety one. The limits above hold either way."
             badge={{
               word: 'AiKi only',
               weak: true,
@@ -398,8 +400,18 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
             <button
               type="button"
               onClick={() => {
-                say(`${row.name} is hired. Sign once to put the limits on chain.`)
-                router.push(jobHref('job_01J8'))
+                // The limits you just set are the ones the job runs under, so
+                // the refusal you are about to see happens at YOUR number.
+                const jobId = hire({
+                  key: agentKey,
+                  perActionCents: spends ? perAction * 100 : 0,
+                  capCents: budget * 100,
+                  period,
+                  days,
+                  approval,
+                })
+                say(`${row.name} is hired and starting now.`)
+                router.push(jobHref(jobId))
               }}
               className="bg-ink-app hover:bg-orange-app mt-[16px] h-[42px] w-full rounded-xl border-0 text-[13.5px] font-bold text-white transition-colors"
             >

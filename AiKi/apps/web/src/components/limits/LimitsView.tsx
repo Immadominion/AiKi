@@ -5,47 +5,34 @@ import { useState } from 'react'
 import { TIER_MEANS, TIER_WORD, weakest } from '@/components/hire/mandate'
 import { EmptyState, NoWallet } from '@/components/shell/EmptyState'
 import { PageCard } from '@/components/shell/PageCard'
-import { useAccount } from '@/components/shell/prefs'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import { SpendMeter } from '@/components/ui/SpendMeter'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
 import { DETAILS } from '@/lib/detail'
+import { hiredRows } from '@/lib/present'
 import { agentHref, route } from '@/lib/routes'
+import { useMock } from '@/mock/store'
+import { usd } from '@/mock/types'
 
-/** What each hired agent is currently allowed to do, and what it has used. */
-const HIRED: {
-  key: AgentKey
-  spent: string
-  cap: string
-  pct: string
-  hot?: boolean
-  expires: string
-}[] = [
-  { key: 'guardian', spent: '$14.20', cap: '$250', pct: '5.7%', expires: '30 September 2026' },
-  {
-    key: 'gridly',
-    spent: '$31.80',
-    cap: '$120',
-    pct: '26.5%',
-    hot: true,
-    expires: '12 October 2026',
-  },
-  { key: 'sentinel', spent: '$0.00', cap: '$40', pct: '0%', expires: '3 November 2026' },
-]
+const PERIOD_WORD = {
+  per_transaction: 'in one action',
+  per_month: 'a month',
+  per_year: 'a year',
+  total: 'in total, ever',
+} as const
 
 export function LimitsView() {
   const say = useToast()
   const router = useRouter()
-  const { connected, ready } = useAccount()
+  const { state, ready, pause, revoke } = useMock()
   const [confirming, setConfirming] = useState<AgentKey | null>(null)
-  const [paused, setPaused] = useState<Partial<Record<AgentKey, boolean>>>({})
 
-  const hired = connected ? HIRED : []
-  const allTiers = hired.flatMap((h) => DETAILS[h.key].enforcement.map((e) => e.tier))
+  const rows = hiredRows(state.hires, state.jobs)
+  const allTiers = state.hires.flatMap((h) => DETAILS[h.key].enforcement.map((e) => e.tier))
   const overall = weakest(allTiers)
-  const softCount = hired.flatMap((h) =>
+  const softCount = state.hires.flatMap((h) =>
     DETAILS[h.key].enforcement.filter((e) => e.tier !== 'T0' || !e.verified),
   ).length
 
@@ -55,17 +42,16 @@ export function LimitsView() {
         <span className="block text-[19px] font-extrabold tracking-[-0.02em]">Limits</span>
         <p className="text-muted mt-[3px] mb-0 max-w-[640px] text-[13px] leading-[1.45] text-pretty">
           Every rule you have handed out, and who actually holds it. Nothing on this page is a
-          setting the agent can read — these are refusals.
+          setting the agent can read. These are refusals.
         </p>
       </div>
       <button
         type="button"
-        disabled={!hired.length}
+        disabled={!rows.length}
         onClick={() => {
-          const all = Object.fromEntries(hired.map((h) => [h.key, true]))
-          setPaused(all)
+          for (const h of state.hires) pause(h.key)
           say(
-            `All ${hired.length} paused. Nothing was sent, nothing was spent, and nothing costs gas.`,
+            `All ${rows.length} paused. Nothing was sent, nothing was spent, and nothing costs gas.`,
           )
         }}
         className="text-ink-app h-[38px] w-full flex-none rounded-xl border-0 bg-[rgb(26_26_25_/_0.055)] px-4 text-[13.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)] disabled:opacity-40 sm:w-auto"
@@ -90,14 +76,14 @@ export function LimitsView() {
               title: `${softCount} of your limits are not held by the chain.`,
               body: 'They still hold against a buggy agent. They do not hold against a compromised AiKi, and it would be dishonest to draw them the same way.',
               cta: 'How we test',
-              onAction: () => router.push(route('/how-we-test')),
+              onAction: () => router.push(route('/docs/how-we-test')),
             }
           : undefined
       }
     >
       <div className="max-w-[900px]">
-        {!hired.length ? (
-          !connected ? (
+        {!rows.length ? (
+          !state.connected ? (
             <NoWallet what="every limit you have handed out" />
           ) : (
             <EmptyState
@@ -129,9 +115,12 @@ export function LimitsView() {
               </p>
             </div>
 
-            {hired.map((h) => {
+            {state.hires.map((h) => {
               const d = DETAILS[h.key]
-              const row = AGENT_BY_KEY[h.key]
+              const agent = AGENT_BY_KEY[h.key]
+              const row = rows.find((r) => r.key === h.key)
+              if (!row) return null
+
               return (
                 <div
                   key={h.key}
@@ -142,17 +131,17 @@ export function LimitsView() {
                       className="flex size-9 flex-none items-center justify-center rounded-xl text-[14px] font-extrabold text-white"
                       style={{ background: AGENT_BG[h.key] }}
                     >
-                      {row.initial}
+                      {agent.initial}
                     </span>
                     <span className="min-w-0 flex-1 basis-[160px]">
-                      <span className="block text-[14px] font-bold">{row.name}</span>
+                      <span className="block text-[14px] font-bold">{agent.name}</span>
                       <span className="text-muted mt-px block text-[12px]">
-                        {paused[h.key] ? 'Paused by you · ' : 'Stops on its own · '}
-                        {h.expires}
+                        {h.status === 'paused' ? 'Paused by you · stops ' : 'Stops on its own · '}
+                        {row.expires}
                       </span>
                     </span>
                     <span className="w-full min-w-[160px] sm:w-[200px]">
-                      <SpendMeter value={h.spent} cap={h.cap} pct={h.pct} hot={h.hot} />
+                      <SpendMeter value={row.spent} cap={row.cap} pct={row.pct} hot={row.hot} />
                     </span>
                     <span className="flex w-full flex-none gap-[6px] sm:w-auto">
                       <button
@@ -169,6 +158,18 @@ export function LimitsView() {
                       >
                         Revoke
                       </button>
+                    </span>
+                  </div>
+
+                  {/* The caps you actually chose, not the ones the passport
+                      advertises — those are two different claims. */}
+                  <div className="flex flex-wrap items-start gap-[11px] border-b border-[rgb(26_26_25_/_0.05)] px-4 py-[12px]">
+                    <span className="min-w-0 flex-1 basis-[220px] text-[13px] leading-[1.45] font-semibold text-pretty">
+                      Never more than {usd(h.mandate.perActionCents)} in one action, or{' '}
+                      {usd(h.mandate.capCents)} {PERIOD_WORD[h.mandate.period]}
+                    </span>
+                    <span className="text-muted flex-none rounded-full bg-[rgb(26_26_25_/_0.05)] px-[9px] py-[3px] text-[11px] font-bold">
+                      Yours
                     </span>
                   </div>
 
@@ -209,7 +210,7 @@ export function LimitsView() {
 
             <p className="text-muted mt-[16px] mb-0 max-w-[680px] text-[12.5px] leading-[1.5] text-pretty">
               Pausing is instant and costs nothing, because it only stops AiKi relaying. Revoking
-              sends a transaction that removes the authority from the chain — slower, costs gas, and
+              sends a transaction that removes the authority from the chain. Slower, costs gas, and
               the only one of the two that survives AiKi disappearing.
             </p>
           </>
@@ -220,20 +221,21 @@ export function LimitsView() {
         <ConfirmDialog
           title={`Revoke ${AGENT_BY_KEY[confirming].name}?`}
           body={`This sends a transaction that removes the authority from the chain. It costs gas, it cannot be undone, and ${AGENT_BY_KEY[confirming].name} stops for good.`}
-          alternative="If you only want it to stop for now, pause instead — instant, free, and reversible."
+          alternative="If you only want it to stop for now, pause instead. That is instant, free, and reversible."
           alternativeLabel="Pause instead"
           confirmLabel="Revoke on chain"
           onCancel={() => setConfirming(null)}
           onAlternative={() => {
             const name = AGENT_BY_KEY[confirming].name
+            pause(confirming)
             setConfirming(null)
-            setPaused((p) => ({ ...p, [confirming]: true }))
             say(`${name} paused. Nothing was sent, nothing was spent.`)
           }}
           onConfirm={() => {
             const name = AGENT_BY_KEY[confirming].name
+            revoke(confirming)
             setConfirming(null)
-            say(`Sign the transaction to revoke ${name}.`)
+            say(`${name} revoked on chain. Its authority is gone.`)
           }}
         />
       ) : null}

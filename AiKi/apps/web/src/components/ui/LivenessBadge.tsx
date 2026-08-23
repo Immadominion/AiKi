@@ -28,8 +28,7 @@ export const LIVENESS_DETAIL: Record<LivenessState, string> = {
   UNREACHABLE: 'Nothing answered at the address it published.',
   IMPOSTOR_STATIC:
     'It returns the same bytes whatever you ask it, including for positions that do not exist. It is a page, not an agent.',
-  PLACEHOLDER_URL:
-    'The address it registered is a placeholder — localhost, example.com, or similar.',
+  PLACEHOLDER_URL: 'The address it registered is a placeholder like localhost or example.com.',
   NOT_REMOTE: 'It declared a local transport. There is nothing to call over the network.',
   DECLARED_ONLY: 'It registered an identity but published no endpoint at all.',
   UNPROBED: 'We have not run our own checks against this one yet.',

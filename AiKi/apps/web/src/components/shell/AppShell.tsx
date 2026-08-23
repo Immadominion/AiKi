@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { ManualRun } from '@/components/onboarding/ManualRun'
 import { PaletteProvider } from './CommandPalette'
 import { useSidebar } from './prefs'
 import { Sidebar } from './Sidebar'
@@ -20,7 +21,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <PaletteProvider>
-      <div className="bg-tray text-ink-app flex h-[100dvh] min-h-0 w-full min-w-0 gap-0 p-2 md:gap-3 md:p-3">
+      {/* The tray is the same surface Fast mode uses, so it carries the same
+          grid. It only shows in the margins and behind the sidebar, because
+          every panel sitting on it is opaque. */}
+      <div
+        className="bg-tray text-ink-app flex h-[100dvh] min-h-0 w-full min-w-0 gap-0 p-2 md:gap-3 md:p-3"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgb(120 118 112 / 0.11) 1px,transparent 1px),linear-gradient(90deg,rgb(120 118 112 / 0.11) 1px,transparent 1px)',
+          backgroundSize: 'var(--aiki-grid) var(--aiki-grid)',
+          backgroundPosition: 'center center',
+        }}
+      >
         {navOpen ? (
           <button
             type="button"
@@ -31,22 +43,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         ) : null}
 
         <div
-          className={`bg-tray fixed inset-y-2 left-2 z-70 w-[264px] flex-none rounded-[20px] shadow-[0_24px_60px_-20px_rgb(26_26_25_/_0.4)] transition-transform duration-200 md:static md:z-auto md:inset-auto md:rounded-none md:shadow-none md:transition-[width] ${
+          data-shell-chrome
+          className={`bg-tray md:bg-transparent fixed inset-y-2 left-2 z-70 w-[264px] flex-none rounded-[20px] shadow-[0_24px_60px_-20px_rgb(26_26_25_/_0.4)] transition-transform duration-200 md:static md:z-auto md:inset-auto md:w-[var(--sb-w)] md:rounded-none md:shadow-none md:transition-[width] md:duration-300 md:ease-[cubic-bezier(0.22,1,0.36,1)] ${
             navOpen ? 'translate-x-0' : '-translate-x-[110%] md:translate-x-0'
           }`}
           style={{ ['--sb-w' as string]: collapsed ? '60px' : 'clamp(196px,19vw,252px)' }}
         >
-          <div className="h-full w-full md:w-[var(--sb-w)]">
+          {/* The width lives on the flex child above, not here. With it on an
+              inner div the column stayed 264px and collapsing moved nothing. */}
+          <div className="h-full w-full overflow-hidden">
             <Sidebar collapsed={collapsed} onToggle={toggle} onNavigate={() => setNavOpen(false)} />
           </div>
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-2 md:gap-3">
-          <TopBar onMenu={() => setNavOpen(true)} />
+          <div data-shell-chrome>
+            <TopBar onMenu={() => setNavOpen(true)} />
+          </div>
           <main id="main" className="flex min-h-0 flex-1 flex-col">
             {children}
           </main>
         </div>
+        <ManualRun />
       </div>
     </PaletteProvider>
   )

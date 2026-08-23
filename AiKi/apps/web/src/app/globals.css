@@ -16,6 +16,8 @@
   --color-ink: #141414;
   --color-orange: #ff4d00;
   --color-orange-lit: #ff7a2e;
+  --color-orange-soft: #ff9a5c;
+  --color-orange-wash: rgb(255 77 0 / 0.1);
   --color-orange-warm: #ff8a3d;
 
   /* ── app surface ───────────────────────────────────────────────── */
@@ -69,6 +71,24 @@
   --animate-breathe: aikiBreathe 2.6s ease-in-out infinite;
 }
 
+/*
+ * Registering these makes them animatable.
+ *
+ * A mask-image gradient cannot be transitioned, but a custom property inside
+ * one can, provided the browser knows its type. So the mask is written once
+ * with two variables in it and the hover just moves the numbers.
+ */
+@property --shard-near {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0.22;
+}
+@property --shard-mid {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0.8;
+}
+
 @keyframes aikiDrift {
   0%, 100% { transform: translate3d(0, 0, 0); }
   50%      { transform: translate3d(0, -9px, 0); }
@@ -84,9 +104,49 @@
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+/*
+ * A stroke that runs the border once.
+ *
+ * Starts as a short arc and lengthens as it travels, finishing exactly where it
+ * began so the orbit closes. Growth is monotonic on purpose: an earlier version
+ * grew then shrank, which read as two animations bolted together.
+ *
+ * pathLength="100" on the rect makes these numbers percentages of the
+ * perimeter, so one set of values is correct at any panel size. The dash pair
+ * always sums to 100, which is what keeps exactly one arc on the path.
+ */
+@keyframes aikiTrace {
+  from {
+    stroke-dasharray: 3 97;
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dasharray: 42 58;
+    stroke-dashoffset: 0;
+  }
+}
+
+/*
+ * Opacity is a separate, linear track. Riding the same ease-out curve made the
+ * arc vanish while the geometry was still visibly moving, which is why the loop
+ * looked like it stopped half way round.
+ */
+@keyframes aikiTraceFade {
+  0%   { opacity: 0; }
+  10%  { opacity: 1; }
+  86%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 @keyframes aikiBreathe {
   0%, 100% { opacity: 0.4; transform: scale(0.82); }
   50%      { opacity: 1; transform: scale(1); }
+}
+
+/* The shard cards lift and settle rather than snapping. */
+@keyframes aikiSettle {
+  from { transform: translateY(0) scale(1); }
+  to   { transform: translateY(-3px) scale(1.018); }
 }
 
 html, body { height: 100%; }
@@ -119,6 +179,15 @@ body {
   outline: 2px solid var(--color-orange);
   outline-offset: 2px;
   border-radius: 6px;
+}
+
+/*
+ * Some controls draw their own focus treatment on a wrapper, because a ring on
+ * the inner input would trace a rectangle inside a pill. Those opt out here
+ * rather than fighting the global rule.
+ */
+[data-ring='self']:focus-visible {
+  outline: none;
 }
 
 /* Pointer users get nothing; keyboard users get the ring above. */

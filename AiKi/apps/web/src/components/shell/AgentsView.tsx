@@ -4,86 +4,26 @@ import { useRouter } from 'next/navigation'
 import { AgentCell, Cell, DataTable, RowActions } from '@/components/shell/DataTable'
 import { EmptyState, NoWallet } from '@/components/shell/EmptyState'
 import { PageCard } from '@/components/shell/PageCard'
-import { useAccount } from '@/components/shell/prefs'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import { SpendMeter } from '@/components/ui/SpendMeter'
-import { StatusPill, type Tone } from '@/components/ui/StatusPill'
+import { StatusPill } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
-import { AGENT_BG, type AgentKey } from '@/lib/agents'
-import { agentHref, jobHref, route } from '@/lib/routes'
-
-interface Hired {
-  key: AgentKey
-  initial: string
-  name: string
-  sub: string
-  status: string
-  tone: Tone
-  spent: string
-  cap: string
-  pct: string
-  hot?: boolean
-  position: string
-  positionStrong?: boolean
-  action: string
-  actionMsg: string
-  /** Present while the agent is actually working, so Open lands on the live job. */
-  jobId?: string
-}
-
-const HIRED: Hired[] = [
-  {
-    key: 'guardian',
-    initial: 'G',
-    name: 'Guardian',
-    sub: 'Protecting your Venus loan',
-    status: 'All good',
-    tone: 'good',
-    spent: '$14.20',
-    cap: '$250',
-    pct: '5.7%',
-    position: 'Health factor 1.82',
-    positionStrong: true,
-    action: 'Pause',
-    actionMsg: 'Pause is instant and free — Guardian stops within seconds.',
-  },
-  {
-    key: 'gridly',
-    initial: 'G',
-    name: 'Gridly',
-    sub: 'Managing BNB / USDT',
-    status: 'Rebalancing',
-    tone: 'work',
-    spent: '$31.80',
-    cap: '$120',
-    pct: '26.5%',
-    hot: true,
-    position: 'In range · acted 18m ago',
-    action: 'Pause',
-    actionMsg: 'Pause is instant and free — Gridly stops within seconds.',
-  },
-  {
-    key: 'sentinel',
-    initial: 'S',
-    name: 'Sentinel',
-    sub: 'Alerts only, no spending',
-    status: 'Paused by you',
-    tone: 'idle',
-    spent: '$0.00',
-    cap: '$40',
-    pct: '0%',
-    position: 'Paused 3 days ago',
-    action: 'Resume',
-    actionMsg: 'Resuming asks you to confirm the limits again first.',
-  },
-]
+import { AGENT_BG } from '@/lib/agents'
+import { type HiredRow, hiredRows } from '@/lib/present'
+import { jobHref, route } from '@/lib/routes'
+import { useMock } from '@/mock/store'
 
 export function AgentsView() {
   const say = useToast()
   const router = useRouter()
-  const { connected, ready } = useAccount()
+  const { state, ready, pause, resume } = useMock()
 
-  const table = (rows: Hired[]) => (
+  const rows = hiredRows(state.hires, state.jobs)
+  const working = rows.filter((r) => r.tone !== 'idle')
+  const paused = rows.filter((r) => r.tone === 'idle')
+  const blocked = state.jobs.filter((j) => j.blockedOnce).length
+
+  const table = (data: HiredRow[]) => (
     <DataTable
       cols="minmax(200px,1.4fr) 132px minmax(160px,1.2fr) minmax(130px,1fr) 146px"
       minWidth="780px"
@@ -94,7 +34,7 @@ export function AgentsView() {
         { label: 'Position', glyph: '⊞' },
         { label: '', glyph: '', align: 'end' },
       ]}
-      rows={rows.map((h) => ({
+      rows={data.map((h) => ({
         id: h.key,
         cells: [
           <AgentCell key="a" initial={h.initial} name={h.name} sub={h.sub} bg={AGENT_BG[h.key]} />,
@@ -116,12 +56,19 @@ export function AgentsView() {
           <RowActions
             key="e"
             actions={[
-              { label: h.action, onClick: () => say(h.actionMsg) },
               {
-                label: 'Open',
-                primary: true,
-                onClick: () => router.push(h.jobId ? jobHref(h.jobId) : agentHref(h.key)),
+                label: h.action,
+                onClick: () => {
+                  if (h.action === 'Pause') {
+                    pause(h.key)
+                    say(`${h.name} paused. It stops within seconds and it costs nothing.`)
+                  } else {
+                    resume(h.key)
+                    say(`${h.name} resumed under the same limits.`)
+                  }
+                },
               },
+              { label: 'Open', primary: true, onClick: () => router.push(jobHref(h.jobId)) },
             ]}
           />,
         ],
@@ -130,11 +77,7 @@ export function AgentsView() {
     />
   )
 
-  const hired = connected ? HIRED : []
-  const working = hired.filter((h) => h.tone !== 'idle')
-  const paused = hired.filter((h) => h.tone === 'idle')
-
-  const nothing = !connected ? (
+  const nothing = !state.connected ? (
     <NoWallet what="anything working for you" />
   ) : (
     <EmptyState
@@ -150,20 +93,20 @@ export function AgentsView() {
   return (
     <PageCard
       title="My agents"
-      count={hired.length ? `${working.length} working · ${paused.length} paused` : ''}
+      count={rows.length ? `${working.length} working · ${paused.length} paused` : ''}
       primary="Hire agent"
       onPrimary={() => router.push(route('/explore'))}
       tabs={['Working', 'Paused', 'All']}
       tabHint={[
-        'Spend resets on the 1st',
+        'Caps reset at the start of each period',
         'Paused agents cannot act and cannot spend',
-        `${HIRED.length} authorised in total`,
+        `${rows.length} authorised in total`,
       ]}
       banner={
-        hired.length
+        blocked
           ? {
-              title: 'One action was blocked overnight.',
-              body: 'Guardian tried to spend $91.20 against your $80 per-action limit. Nothing was spent.',
+              title: `${blocked === 1 ? 'An action was' : `${blocked} actions were`} blocked.`,
+              body: 'An agent asked for more than you allowed and the mandate refused it. Nothing was signed and nothing was spent.',
               cta: 'See it',
               onAction: () => router.push(route('/activity')),
             }
@@ -171,8 +114,18 @@ export function AgentsView() {
       }
       panels={[
         working.length ? table(working) : nothing,
-        paused.length ? table(paused) : nothing,
-        hired.length ? table(hired) : nothing,
+        paused.length ? (
+          table(paused)
+        ) : rows.length ? (
+          <EmptyState
+            key="np"
+            title="Nothing is paused."
+            body="Everything you have hired is currently allowed to act, inside the limits you set."
+          />
+        ) : (
+          nothing
+        ),
+        rows.length ? table(rows) : nothing,
       ]}
     />
   )

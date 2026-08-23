@@ -84,7 +84,7 @@ export function capTier(c: Capabilities, period: CapPeriod): TierVerdict {
         verified: true,
         by: 'aiki:policy-service',
         caveat:
-          'This agent’s session module holds lifetime caps only. A renewing cap here is counted by AiKi and reset by AiKi — the chain does not know about it.',
+          'This agent’s session module holds lifetime caps only. A renewing cap here is counted by AiKi and reset by AiKi. The chain does not know about it.',
       }
 }
 

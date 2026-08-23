@@ -178,7 +178,7 @@ export function CompareView() {
                     ) : (
                       <>
                         About <b className="font-bold tabular-nums">{sep.checksNeeded}</b> more
-                        checks on {AGENT_BY_KEY[thinKey].name} — {timeFor(sep.checksNeeded, perDay)}{' '}
+                        checks on {AGENT_BY_KEY[thinKey].name}, {timeFor(sep.checksNeeded, perDay)}{' '}
                         at the {perDay.toFixed(1)} a day we have actually seen. If its current rate
                         holds it would land {sep.wouldLand} {AGENT_BY_KEY[fatKey].name}, but that is
                         a projection, not a result.
@@ -263,8 +263,8 @@ export function CompareView() {
 
         <p className="text-muted mt-[14px] mb-0 max-w-[680px] text-[12.5px] leading-[1.5] text-pretty">
           Every figure is the lower end of a range, computed from the checks behind it. A blank
-          means we have never seen that agent do that thing — it is not a zero, and we will not
-          print one.
+          means we have never seen that agent do that thing. It is not a zero, and we will not print
+          one.
         </p>
 
         <div className="mt-[18px] flex flex-wrap items-center gap-[8px]">

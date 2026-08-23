@@ -1,3 +1,5 @@
+import { AGENT_BY_KEY } from '@/lib/agents'
+import { DETAILS } from '@/lib/detail'
 /**
  * Shard placement maths, ported from the design reference.
  *
@@ -9,7 +11,67 @@
  * absolutely, so the cluster hugs the hero and tucks under it at any width.
  */
 
-export const HERO_W = 'clamp(420px, 100vw - 700px, 660px)'
+/**
+ * The same maths, measured against two different boxes.
+ *
+ * Full screen the cluster is sized in viewport units. Embedded in a panel it has
+ * to be sized against the panel, so the unit swaps to `cqw` and the container
+ * declares `container-type: inline-size`. Everything else is identical, which is
+ * the point: one composition, two homes.
+ */
+export interface Frame {
+  unit: 'vw' | 'cqw'
+  hero: string
+  /** Distance from the centre line for the two flat cards. */
+  innerGap: string
+  /** Distance for the four raked cards. */
+  outerGap: number
+  cardW: number
+  /**
+   * Presentation, kept here rather than in the component, because every one of
+   * these is the same measurement expressed for a different box. Splitting them
+   * across two files is how the two variants drift apart.
+   *
+   * These are literal class strings so Tailwind's scanner still sees them.
+   */
+  heroClass: string
+  titleClass: string
+  greetClass: string
+  vignetteInner: string
+  vignetteOuter: string
+  /** Below this the cluster has no room either side of the hero. */
+  hideBelow: 'lg' | 'xl'
+}
+
+export const SCREEN: Frame = {
+  unit: 'vw',
+  hero: 'clamp(420px, 100vw - 700px, 660px)',
+  innerGap: 'calc(clamp(420px, 100vw - 700px, 660px) / 2 + 26px)',
+  outerGap: 268,
+  cardW: 246,
+  heroClass: 'w-[calc(100vw-32px)] max-w-[660px] lg:w-[clamp(420px,calc(100vw-700px),660px)]',
+  titleClass: 'text-[clamp(30px,7vw,54px)]',
+  greetClass: 'text-[14px]',
+  vignetteInner: 'h-[min(46%,340px)] w-[min(46%,600px)]',
+  vignetteOuter: 'h-[min(52%,400px)] w-[min(52%,700px)]',
+  hideBelow: 'lg',
+}
+
+export const PANEL: Frame = {
+  unit: 'cqw',
+  hero: 'clamp(300px, 100cqw - 520px, 540px)',
+  innerGap: 'calc(clamp(300px, 100cqw - 520px, 540px) / 2 + 20px)',
+  outerGap: 214,
+  cardW: 216,
+  heroClass: 'w-[calc(100cqw-32px)] max-w-[540px] xl:w-[clamp(300px,calc(100cqw-520px),540px)]',
+  titleClass: 'text-[clamp(26px,4.6cqw,40px)]',
+  greetClass: 'text-[13px]',
+  vignetteInner: 'h-[min(46%,300px)] w-[min(46%,520px)]',
+  vignetteOuter: 'h-[min(52%,360px)] w-[min(52%,600px)]',
+  hideBelow: 'xl',
+}
+
+export const HERO_W = SCREEN.hero
 
 export type Side = 'l' | 'r'
 
@@ -43,11 +105,24 @@ export interface ShardStyle {
 
 const px = (g: number | string) => (typeof g === 'number' ? `${g}px` : g)
 
-export function shardStyles(s: ShardSpec, warp = 1, motion = true): ShardStyle {
+export function shardStyles(
+  s: ShardSpec,
+  frame: Frame = SCREEN,
+  warp = 1,
+  motion = true,
+): ShardStyle {
   const l = s.side === 'l'
   const ry = (l ? 1 : -1) * 26 * warp
   const rz = (l ? -1 : 1) * s.rotZ * warp
-  const gap = px(s.gap)
+  // Slot gaps are authored against the screen frame, so they scale with it.
+  const gap =
+    s.gap === '@inner'
+      ? frame.innerGap
+      : typeof s.gap === 'number'
+        ? `${Math.round(s.gap * (frame.outerGap / SCREEN.outerGap))}px`
+        : px(s.gap)
+  const w = Math.round(s.w * (frame.cardW / SCREEN.cardW))
+  const u = frame.unit
 
   return {
     wrap: {
@@ -56,18 +131,18 @@ export function shardStyles(s: ShardSpec, warp = 1, motion = true): ShardStyle {
         ? { left: 'auto', right: `calc(50% + ${gap})` }
         : { left: `calc(50% + ${gap})`, right: 'auto' }),
       top: `${s.top}%`,
-      width: `min(${s.w}px, calc(50vw - ${gap} - 14px))`,
+      width: `min(${w}px, calc(50${u} - ${gap} - 14px))`,
       transform: `translateY(-50%) perspective(520px) rotateY(${ry}deg) rotateZ(${rz}deg)`,
       transformStyle: 'preserve-3d',
     },
     smear: {
       position: 'absolute',
       ...(l
-        ? { left: 'auto', right: `${Math.round(s.w * 0.34)}px` }
-        : { left: `${Math.round(s.w * 0.34)}px`, right: 'auto' }),
+        ? { left: 'auto', right: `${Math.round(w * 0.34)}px` }
+        : { left: `${Math.round(w * 0.34)}px`, right: 'auto' }),
       top: 8,
       bottom: 8,
-      width: `min(${Math.round(s.w * 0.5)}px, calc(25vw - 134px))`,
+      width: `min(${Math.round(w * 0.5)}px, calc(25${u} - 134px))`,
       background: `linear-gradient(${l ? 'to left' : 'to right'},rgb(20 20 20 / 0),rgb(20 20 20 / 0.1))`,
       filter: 'blur(13px)',
       opacity: 0.38,
@@ -83,13 +158,21 @@ export function shardStyles(s: ShardSpec, warp = 1, motion = true): ShardStyle {
       animationIterationCount: 'infinite',
     },
     card: {
-      WebkitMaskImage: `linear-gradient(${l ? '270deg' : '90deg'},rgb(0 0 0 / 0.22) 0%,rgb(0 0 0 / 0.8) 30%,#000 60%)`,
-      maskImage: `linear-gradient(${l ? '270deg' : '90deg'},rgb(0 0 0 / 0.22) 0%,rgb(0 0 0 / 0.8) 30%,#000 60%)`,
+      // The fade is what makes a shard look warped away from you. It has to
+      // lift when you reach for the card, or you are being asked to click
+      // something you cannot read.
+      ['--shard-dir' as string]: l ? '270deg' : '90deg',
+      WebkitMaskImage:
+        'linear-gradient(var(--shard-dir),rgb(0 0 0 / var(--shard-near)) 0%,rgb(0 0 0 / var(--shard-mid)) 30%,#000 60%)',
+      maskImage:
+        'linear-gradient(var(--shard-dir),rgb(0 0 0 / var(--shard-near)) 0%,rgb(0 0 0 / var(--shard-mid)) 30%,#000 60%)',
+      transition:
+        'transform 420ms cubic-bezier(0.22,1,0.36,1), box-shadow 420ms cubic-bezier(0.22,1,0.36,1), border-color 420ms cubic-bezier(0.22,1,0.36,1), --shard-near 380ms cubic-bezier(0.22,1,0.36,1), --shard-mid 380ms cubic-bezier(0.22,1,0.36,1)',
     },
   }
 }
 
-const inner = `calc(${HERO_W} / 2 + 26px)`
+const inner = '@inner'
 
 /**
  * Six fixed slots. Position, warp and drift belong to the slot; who occupies it
@@ -163,23 +246,43 @@ const seat = (occupants: Occupant[]): ShardSpec[] =>
 export const SHARDS_RETURNING: ShardSpec[] = seat([
   {
     ...GUARDIAN,
-    state: 'Protected your position · 2m ago',
+    state: 'Protected your position, 2m ago',
     stateDot: '#00A092',
     stateColor: '#00857A',
   },
   { ...GRIDLY, state: 'Rebalancing now', stateDot: '#FF4D00', stateColor: '#C93E00' },
-  { ...YIELDMAX, state: 'Found 11.8% APY · just now', stateDot: '#3B82F6', stateColor: '#2563EB' },
-  { ...LPILOT, state: 'Ready to work · $0.12 / run', stateDot: '#00A092', stateColor: '#5C5C5C' },
+  { ...YIELDMAX, state: 'Found 11.8% APY, just now', stateDot: '#3B82F6', stateColor: '#2563EB' },
+  { ...LPILOT, state: 'Ready to work, $0.12 / run', stateDot: '#00A092', stateColor: '#5C5C5C' },
   { ...SENTINEL, state: 'Not enough history yet', stateDot: '#FFD400', stateColor: '#8A7400' },
   { ...HARBOR, state: 'Worth hiring next', stateDot: '#3B82F6', stateColor: '#5C5C5C' },
 ])
 
-/** First run: nothing has happened yet, so each shard says what it offers. */
-export const SHARDS_FIRST: ShardSpec[] = seat([
-  { ...GUARDIAN, state: 'Available', stateDot: '#00A092', stateColor: '#00857A' },
-  { ...YIELDMAX, state: '12 opportunities', stateDot: '#3B82F6', stateColor: '#2563EB' },
-  { ...LPILOT, state: 'Available', stateDot: '#00A092', stateColor: '#00857A' },
-  { ...GRIDLY, state: '$0.12 / run', stateDot: '#7C5CFF', stateColor: '#6D4AE0' },
-  { ...SENTINEL, state: 'New, still being tested', stateDot: '#FFD400', stateColor: '#8A7400' },
-  { ...HARBOR, state: '96 checks so far', stateDot: '#3B82F6', stateColor: '#2563EB' },
-])
+/**
+ * Nothing hired yet, so the cards become discovery.
+ *
+ * Ranked by how much we have actually tested each one, not by popularity. We
+ * have no usage data, and inventing a trending list would be the first lie the
+ * product tells. Check counts we do have, so those rank the cluster and each
+ * card says its own count out loud.
+ */
+const BY_EVIDENCE = [
+  { agent: GUARDIAN, key: 'guardian' as const },
+  { agent: LPILOT, key: 'lpilot' as const },
+  { agent: YIELDMAX, key: 'yieldmax' as const },
+  { agent: GRIDLY, key: 'gridly' as const },
+  { agent: HARBOR, key: 'harbor' as const },
+  { agent: SENTINEL, key: 'sentinel' as const },
+].sort((a, b) => DETAILS[b.key].checks[1] - DETAILS[a.key].checks[1])
+
+export const SHARDS_DISCOVER: ShardSpec[] = seat(
+  BY_EVIDENCE.map(({ agent, key }) => {
+    const row = AGENT_BY_KEY[key]
+    const tone =
+      row.evidenceTone === 'strong'
+        ? { stateDot: '#00A092', stateColor: '#00857A' }
+        : row.evidenceTone === 'fair'
+          ? { stateDot: '#3B82F6', stateColor: '#5C5C5C' }
+          : { stateDot: '#FFD400', stateColor: '#8A7400' }
+    return { ...agent, state: row.evidence, ...tone }
+  }),
+)

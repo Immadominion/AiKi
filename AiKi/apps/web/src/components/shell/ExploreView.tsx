@@ -76,7 +76,7 @@ export function ExploreView() {
           />,
         ],
       }))}
-      footnote="Each bar is one batch of checks AiKi ran itself, not a rating and not self-reported uptime. Empty bars mean missing evidence — a new agent is not a bad agent."
+      footnote="Each bar is one batch of checks AiKi ran itself, not a rating and not self-reported uptime. Empty bars mean missing evidence. A new agent is not a bad agent."
     />
   )
 
@@ -90,8 +90,8 @@ export function ExploreView() {
           <div className="text-[14.5px] font-bold">No agent here can do that yet.</div>
           <p className="text-muted mt-[5px] mb-0 max-w-[620px] text-[13px] leading-[1.55] text-pretty">
             AiKi claims four kinds of work today. We would rather tell you that than show you agents
-            that cannot do this — and the ask is logged, because unmet asks are how we know what to
-            add next.
+            that cannot do this. The ask is logged, because unmet asks are how we know what to add
+            next.
           </p>
           <div className="mt-[14px] flex flex-wrap gap-[8px]">
             {TASKS.map((t) => (
@@ -143,7 +143,7 @@ export function ExploreView() {
           ? undefined
           : {
               title: 'Suggested for your positions.',
-              body: 'You hold a Venus loan and a BNB / USDT pool — these agents claim exactly that work.',
+              body: 'You hold a Venus loan and a BNB / USDT pool, and these agents claim exactly that work.',
               cta: 'Why these',
               onAction: () =>
                 say('Ranked on your open positions and the evidence AiKi collected itself.'),

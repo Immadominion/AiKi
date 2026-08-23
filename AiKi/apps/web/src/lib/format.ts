@@ -15,7 +15,7 @@ import type { Measure } from '@aiki/contracts'
  */
 export function formatScore(m: Measure): { text: string; withheld: boolean } {
   const { value, confidence } = m
-  if (confidence < 0.4) return { text: '—', withheld: true }
+  if (confidence < 0.4) return { text: 'n/a', withheld: true }
   if (confidence >= 0.85) return { text: value.toFixed(0), withheld: false }
   if (confidence >= 0.6)
     return { text: `≈${(Math.round(value / 5) * 5).toFixed(0)}`, withheld: false }

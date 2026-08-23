@@ -17,7 +17,7 @@ export function SavedView() {
       <div className="min-w-0 flex-1 basis-[240px]">
         <span className="block text-[19px] font-extrabold tracking-[-0.02em]">Saved</span>
         <p className="text-muted mt-[3px] mb-0 max-w-[620px] text-[13px] leading-[1.45] text-pretty">
-          Agents you wanted to come back to. Kept in this browser and nowhere else — what you are
+          Agents you wanted to come back to. Kept in this browser and nowhere else. What you are
           interested in is not something we need to know.
         </p>
       </div>
@@ -43,7 +43,7 @@ export function SavedView() {
         <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-[22px]">
           <div className="text-[14.5px] font-bold">Nothing saved yet.</div>
           <p className="text-muted mt-[5px] mb-0 max-w-[560px] text-[13px] leading-[1.55] text-pretty">
-            Saving an agent is a bookmark, not a commitment — it does not hire anything, grant
+            Saving an agent is a bookmark, not a commitment. It does not hire anything, grant
             anything, or tell the agent you looked.
           </p>
           <button

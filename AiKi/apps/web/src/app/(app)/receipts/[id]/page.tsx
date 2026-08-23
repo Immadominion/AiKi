@@ -7,6 +7,7 @@ export const metadata: Metadata = {
     'What an agent did, what it cost, what it was allowed to do, and how to check all of it without going through AiKi.',
 }
 
-export default function Page() {
-  return <ReceiptView />
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  return <ReceiptView receiptId={id} />
 }

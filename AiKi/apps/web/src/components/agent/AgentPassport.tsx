@@ -110,7 +110,7 @@ export function AgentPassport({ agentKey }: { agentKey: AgentKey }) {
             })}
           </Fact>
           <Fact label="Regions probed">
-            {d.liveness.regionsProbed} — so a network fault cannot be mistaken for a dead agent
+            {d.liveness.regionsProbed}, so a network fault cannot be mistaken for a dead agent
           </Fact>
           {d.liveness.p95LatencyMs ? (
             <Fact
@@ -180,7 +180,7 @@ export function AgentPassport({ agentKey }: { agentKey: AgentKey }) {
 
       <Section
         title="Where its limits are held"
-        note="Not whether a limit exists — every agent claims limits. Where the limit actually lives, and what would have to break for it to fail."
+        note="Not whether a limit exists, because every agent claims limits. Where the limit actually lives, and what would have to break for it to fail."
       >
         <EnforcementList lines={d.enforcement} />
       </Section>
@@ -197,23 +197,23 @@ export function AgentPassport({ agentKey }: { agentKey: AgentKey }) {
         <Fact label="Owner">{shortAddress(d.owner)}</Fact>
         <Fact label="Owner proved the wallet" tone={d.agentWalletProven ? 'plain' : 'warn'}>
           {d.agentWalletProven
-            ? 'Yes — signed, and checked by us. This is the only field ERC-8004 proves cryptographically.'
+            ? 'Yes. Signed, and checked by us. This is the only field ERC-8004 proves cryptographically.'
             : 'No. The registry names a wallet; nothing proves the owner controls it.'}
         </Fact>
         <Fact label="Domain links back" tone={d.reciprocalProofVerified ? 'plain' : 'warn'}>
           {d.reciprocalProofVerified
-            ? 'Yes — the endpoint serves a matching /.well-known file.'
-            : 'No. Around 0.04% of agents on BNB Chain do, so this is normal rather than damning — it just means the domain is not evidence.'}
+            ? 'Yes. The endpoint serves a matching /.well-known file.'
+            : 'No. Around 0.04% of agents on BNB Chain do, so this is normal rather than damning. It just means the domain is not evidence.'}
         </Fact>
         <Fact label="Registration file">
           {d.uriScheme === 'data'
-            ? 'Stored inline as a data: URI — resolving it costs no network call, so resolving it proves nothing.'
+            ? 'Stored inline as a data: URI, so resolving it costs no network call and proves nothing.'
             : `Served over ${d.uriScheme}, and it resolved when we asked.`}
         </Fact>
         <Fact label="Trust models declared" tone={d.supportedTrust.length ? 'plain' : 'warn'}>
           {d.supportedTrust.length
             ? d.supportedTrust.join(', ')
-            : 'None. The registry entry is discovery only — it makes no trust claim at all.'}
+            : 'None. The registry entry is discovery only, and makes no trust claim at all.'}
         </Fact>
         <Fact label="Changed hands" tone={d.ownershipTransfers ? 'warn' : 'plain'}>
           {d.ownershipTransfers === 0
@@ -257,7 +257,7 @@ export function AgentPassport({ agentKey }: { agentKey: AgentKey }) {
               title: 'This one is slow.',
               body: d.liveness.detail,
               cta: 'How we test',
-              onAction: () => router.push(route('/how-we-test')),
+              onAction: () => router.push(route('/docs/how-we-test')),
             }
           : undefined
       }

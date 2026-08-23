@@ -3,8 +3,10 @@
 import { useRouter } from 'next/navigation'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { AGENT_BG, AGENTS } from '@/lib/agents'
+import { useEscapeLayer } from '@/lib/escape'
 import { agentHref, route } from '@/lib/routes'
 import { rankTask, TASKS } from '@/lib/tasks'
+import { useModeNavigation } from './prefs'
 
 interface Item {
   id: string
@@ -17,7 +19,13 @@ interface Item {
 }
 
 const DESTINATIONS = [
-  { label: 'Home', sub: 'The one ask', href: '/', glyph: '⌂', keys: ['home', 'ask', 'start'] },
+  {
+    label: 'Fast mode',
+    sub: 'One question, full screen',
+    href: '/',
+    glyph: '⌂',
+    keys: ['home', 'fast', 'ask', 'start'],
+  },
   {
     label: 'Explore',
     sub: 'Every agent we index',
@@ -26,11 +34,11 @@ const DESTINATIONS = [
     keys: ['explore', 'browse', 'find', 'search', 'agents'],
   },
   {
-    label: 'Market',
-    sub: 'The browsing home',
+    label: 'Manual mode',
+    sub: 'Browse the market yourself',
     href: '/market',
     glyph: '▤',
-    keys: ['market', 'cards', 'browse'],
+    keys: ['manual', 'market', 'cards', 'browse'],
   },
   {
     label: 'My agents',
@@ -54,11 +62,18 @@ const DESTINATIONS = [
     keys: ['compare', 'versus', 'vs'],
   },
   {
-    label: 'How we test',
-    sub: 'The evidence layer',
-    href: '/how-we-test',
+    label: 'Docs',
+    sub: 'How it works, and how to build on it',
+    href: '/docs/getting-started',
     glyph: '⌗',
-    keys: ['how', 'test', 'evidence', 'probe', 'method', 'proof'],
+    keys: ['docs', 'help', 'how', 'test', 'evidence', 'probe', 'method', 'proof', 'mcp', 'api'],
+  },
+  {
+    label: 'Settings',
+    sub: 'Wallet, notifications, mode',
+    href: '/settings',
+    glyph: '⚙',
+    keys: ['settings', 'wallet', 'mode', 'preferences'],
   },
 ]
 
@@ -89,6 +104,7 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
   const [cursor, setCursor] = useState(0)
   const input = useRef<HTMLInputElement>(null)
   const router = useRouter()
+  const { switchMode } = useModeNavigation()
 
   const openPalette = useCallback(() => setOpen(true), [])
 
@@ -104,11 +120,12 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
         e.preventDefault()
         setOpen((o) => !o)
       }
-      if (e.key === 'Escape') close()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [close])
+  }, [])
+
+  useEscapeLayer(open, close)
 
   useEffect(() => {
     if (open) input.current?.focus()
@@ -125,7 +142,11 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
           label: d.label,
           sub: d.sub,
           glyph: d.glyph,
-          run: () => router.push(route(d.href)),
+          run: () => {
+            if (d.href === '/') switchMode('fast')
+            else if (d.href === '/market') switchMode('manual')
+            else router.push(route(d.href))
+          },
         })
       }
     }
@@ -170,7 +191,7 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
     }
 
     return out
-  }, [q, router])
+  }, [q, router, switchMode])
 
   // Clamp rather than reset, so typing does not throw the cursor to the top.
   const active = Math.min(cursor, Math.max(items.length - 1, 0))

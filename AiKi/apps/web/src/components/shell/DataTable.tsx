@@ -88,7 +88,7 @@ export function DataTable({
         <div className="flex-1" />
         <button
           type="button"
-          onClick={() => router.push(route('/how-we-test'))}
+          onClick={() => router.push(route('/docs/how-we-test'))}
           className="h-8 flex-none rounded-[10px] border-0 bg-[rgb(26_26_25_/_0.055)] px-3 text-[12.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)]"
         >
           How we test

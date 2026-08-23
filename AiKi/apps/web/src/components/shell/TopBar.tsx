@@ -1,48 +1,59 @@
 'use client'
 
+import { CalendarIcon, ChevronDownIcon, LayersIcon } from '@animateicons/react/lucide'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
-import { useAccount } from '@/components/shell/prefs'
+import { useHoverIcon } from '@/components/ui/AnimatedIcon'
 import { Freshness } from '@/components/ui/Freshness'
 import { useToast } from '@/components/ui/Toast'
-import { AGENT_BG } from '@/lib/agents'
+import { AGENT_BG, AGENT_BY_KEY } from '@/lib/agents'
+import { hiredRows } from '@/lib/present'
 import { route } from '@/lib/routes'
+import { useMock } from '@/mock/store'
+import { type MockState, usd } from '@/mock/types'
 
 const CHIPS = [
-  { label: 'Last 7 days', glyph: '◷', msg: 'Date range picker is wired in the build.' },
-  { label: 'All protocols', glyph: '⊞', msg: 'Protocol filter is wired in the build.' },
+  { label: 'Last 7 days', icon: CalendarIcon, msg: 'Date range picker is wired in the build.' },
+  { label: 'All protocols', icon: LayersIcon, msg: 'Protocol filter is wired in the build.' },
 ]
 
-const LIVE = [
-  {
-    initial: 'G',
-    name: 'Guardian',
-    state: 'All good',
-    pillBg: 'var(--color-good-bg)',
-    pillFg: 'var(--color-good-ink)',
-    detail: 'Health factor 1.82 · $14.20 of $250',
-    pct: '5.7%',
-    bg: AGENT_BG.guardian,
-  },
-  {
-    initial: 'G',
-    name: 'Gridly',
-    state: 'Rebalancing',
-    pillBg: 'var(--color-work-bg)',
-    pillFg: 'var(--color-work-ink)',
-    detail: 'In range · $31.80 of $120',
-    pct: '26.5%',
-    bg: AGENT_BG.gridly,
-  },
-]
+/** A filter chip. Owns its icon ref, because the chip is the hover target. */
+function Chip({
+  label,
+  icon: Icon,
+  onClick,
+}: {
+  label: string
+  icon: typeof CalendarIcon
+  onClick: () => void
+}) {
+  const { ref, hoverProps } = useHoverIcon()
+  return (
+    <button
+      type="button"
+      title={label}
+      onClick={onClick}
+      className="hidden h-11 flex-none items-center gap-[9px] rounded-[15px] border-0 bg-[rgb(26_26_25_/_0.055)] px-3 text-[14px] font-semibold whitespace-nowrap hover:bg-[rgb(26_26_25_/_0.09)] sm:flex lg:px-[15px]"
+      {...hoverProps}
+    >
+      <span className="flex flex-none items-center justify-center text-[#57574F] [&_svg]:stroke-[2.25]">
+        <Icon ref={ref} size={17} color="currentColor" />
+      </span>
+      <span className="hidden whitespace-nowrap lg:inline">{label}</span>
+      <span className="text-muted hidden flex-none lg:inline [&_svg]:stroke-[2.5]">
+        <ChevronDownIcon size={13} color="currentColor" />
+      </span>
+    </button>
+  )
+}
 
 /**
  * What is waiting for you.
  *
- * Ordered by what it costs to miss, not by time. An approval that expires is
- * the only kind of notification here that has a deadline, so it sits above a
- * blocked action that has already been handled by the limit doing its job.
+ * Derived, and ordered by what it costs to miss rather than by time. An
+ * approval is the only kind here with a deadline, so it sits above a refusal
+ * that has already been handled by the limit doing its job.
  */
 interface Note {
   id: string
@@ -53,47 +64,70 @@ interface Note {
   href: string
 }
 
-const NOTES: Note[] = [
-  {
-    id: 'n1',
-    tone: 'work',
-    title: 'YieldMax is waiting on you',
-    body: 'It found 11.8% APY and needs approval before moving anything.',
-    when: '09:03',
-    href: '/jobs/job_01J8',
-  },
-  {
-    id: 'n2',
-    tone: 'warn',
-    title: 'An action was blocked overnight',
-    body: 'Guardian tried to spend $91.20 against your $80 per-action limit. Nothing was spent.',
-    when: '02:41',
-    href: '/activity',
-  },
-  {
-    id: 'n3',
-    tone: 'good',
-    title: 'Guardian finished a job',
-    body: 'Health factor 1.19 → 1.51. The receipt is signed and ready.',
-    when: '02:41',
-    href: '/receipts/rcp_01J8',
-  },
-]
-
 const DOT: Record<Note['tone'], string> = {
   warn: 'var(--color-warn)',
   work: 'var(--color-work)',
   good: 'var(--color-good)',
 }
 
+const clock = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+
+function notesFrom(state: MockState): Note[] {
+  const waiting: Note[] = state.jobs
+    .filter((j) => j.approval)
+    .map((j) => ({
+      id: `n-${j.id}`,
+      tone: 'work' as const,
+      title: `${AGENT_BY_KEY[j.key].name} is waiting on you`,
+      body: j.approval?.prompt ?? '',
+      when: clock(j.updatedAt),
+      href: `/jobs/${j.id}`,
+    }))
+
+  const blocked: Note[] = state.events
+    .filter((e) => e.result === 'Blocked')
+    .slice(-3)
+    .reverse()
+    .map((e) => ({
+      id: `n-${e.id}`,
+      tone: 'warn' as const,
+      title: 'An action was blocked',
+      body: e.what,
+      when: clock(e.at),
+      href: '/activity',
+    }))
+
+  const done: Note[] = state.receipts
+    .slice(-2)
+    .reverse()
+    .map((r) => ({
+      id: `n-${r.id}`,
+      tone: 'good' as const,
+      title: `${AGENT_BY_KEY[r.key].name} finished a job`,
+      body: `${r.summary} The receipt is signed and ready.`,
+      when: clock(r.completedAt),
+      href: `/receipts/${r.id}`,
+    }))
+
+  return [...waiting, ...blocked, ...done]
+}
+
 export function TopBar({ onMenu }: { onMenu: () => void }) {
-  const { connected } = useAccount()
+  const { state, connect } = useMock()
+  const connected = state.connected
   const [open, setOpen] = useState(false)
   const [bell, setBell] = useState(false)
   const [read, setRead] = useState<Record<string, boolean>>({})
   const say = useToast()
+  const { pause } = useMock()
 
-  const unread = NOTES.filter((n) => !read[n.id]).length
+  const notes = connected ? notesFrom(state) : []
+  const unread = notes.filter((n) => !read[n.id]).length
+  const live = hiredRows(state.hires, state.jobs).filter((h) => h.tone !== 'idle')
+  const spentCents = state.events.reduce((n, e) => n + e.costCents, 0)
+  const allowedCents = state.hires.reduce((n, h) => n + h.mandate.capCents, 0)
+  const anyWaiting = state.jobs.some((j) => j.approval)
 
   return (
     <div className="flex min-w-0 flex-nowrap items-center gap-[9px] px-[2px] pt-[2px]">
@@ -128,26 +162,20 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           </span>
         </div>
       ) : (
-        <Link
-          href={route('/welcome')}
+        <button
+          type="button"
+          onClick={() => {
+            connect()
+            say('Connected. AiKi can read your balances; it still cannot move anything.')
+          }}
           className="bg-ink-app hover:bg-orange-app hidden h-11 flex-none items-center rounded-[15px] px-4 text-[13.5px] font-bold whitespace-nowrap text-white transition-colors sm:flex"
         >
           Connect wallet
-        </Link>
+        </button>
       )}
 
       {CHIPS.map((c) => (
-        <button
-          key={c.label}
-          type="button"
-          title={c.label}
-          onClick={() => say(c.msg)}
-          className="hidden h-11 flex-none items-center gap-[9px] rounded-[15px] border-0 bg-[rgb(26_26_25_/_0.055)] px-3 text-[14px] font-semibold whitespace-nowrap hover:bg-[rgb(26_26_25_/_0.09)] sm:flex lg:px-[15px]"
-        >
-          <span className="w-4 flex-none text-center text-[13px] text-[#77776F]">{c.glyph}</span>
-          <span className="hidden whitespace-nowrap lg:inline">{c.label}</span>
-          <span className="text-muted hidden text-[11px] lg:inline">⌄</span>
-        </button>
+        <Chip key={c.label} label={c.label} icon={c.icon} onClick={() => say(c.msg)} />
       ))}
 
       {/* Nothing is being read, so nothing has an age. */}
@@ -163,7 +191,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
         <button
           type="button"
           onClick={() => {
-            if (!connected) return
+            if (!connected || !live.length) return
             setOpen((o) => !o)
             setBell(false)
           }}
@@ -172,20 +200,29 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           <span
             className="size-2 rounded-full"
             style={{
-              background: connected ? 'var(--color-good)' : 'var(--color-faint)',
-              animation: connected ? 'aikiBreathe 2.6s ease-in-out infinite' : 'none',
+              background:
+                !connected || !live.length
+                  ? 'var(--color-faint)'
+                  : anyWaiting
+                    ? 'var(--color-warn)'
+                    : 'var(--color-good)',
+              animation:
+                connected && live.length ? 'aikiBreathe 2.6s ease-in-out infinite' : 'none',
             }}
           />
           <span className="whitespace-nowrap">
-            {connected ? (
-              <>
-                2 agents<span className="hidden lg:inline"> · all good</span>
-              </>
-            ) : (
+            {!connected || !live.length ? (
               'No agents yet'
+            ) : (
+              <>
+                {live.length} agent{live.length === 1 ? '' : 's'}
+                <span className="hidden lg:inline">
+                  {anyWaiting ? ' · one needs you' : ' · all good'}
+                </span>
+              </>
             )}
           </span>
-          {connected ? (
+          {connected && live.length ? (
             <span className="flex size-[26px] items-center justify-center rounded-[9px] bg-[rgb(26_26_25_/_0.055)] text-[11px] text-[#77776F]">
               {open ? '×' : '⌄'}
             </span>
@@ -197,18 +234,18 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
             <div className="flex items-center justify-between px-4 pt-[15px] pb-3">
               <span className="text-[14.5px] font-bold">Working for you</span>
               <span className="text-muted text-[12px] font-semibold">
-                $46.00 of $370 this month
+                {usd(spentCents)} of {usd(allowedCents)}
               </span>
             </div>
 
-            {LIVE.map((a) => (
+            {live.map((a) => (
               <div
                 key={a.name}
                 className="flex items-center gap-3 border-t border-[rgb(26_26_25_/_0.06)] px-4 py-3"
               >
                 <span
                   className="flex size-[38px] flex-none items-center justify-center rounded-xl text-[15px] font-extrabold text-white"
-                  style={{ background: a.bg }}
+                  style={{ background: AGENT_BG[a.key] }}
                 >
                   {a.initial}
                 </span>
@@ -217,12 +254,20 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
                     <span className="text-[14px] font-bold">{a.name}</span>
                     <span
                       className="rounded-full px-[7px] py-[2px] text-[10.5px] font-bold"
-                      style={{ background: a.pillBg, color: a.pillFg }}
+                      style={
+                        a.tone === 'warn'
+                          ? { background: 'var(--color-warn-bg)', color: 'var(--color-warn-ink)' }
+                          : a.tone === 'good'
+                            ? { background: 'var(--color-good-bg)', color: 'var(--color-good-ink)' }
+                            : { background: 'var(--color-work-bg)', color: 'var(--color-work-ink)' }
+                      }
                     >
-                      {a.state}
+                      {a.status}
                     </span>
                   </span>
-                  <span className="text-muted mt-[3px] block text-[12px]">{a.detail}</span>
+                  <span className="text-muted mt-[3px] block text-[12px]">
+                    {a.spent} of {a.cap} · {a.position}
+                  </span>
                   <span className="mt-[7px] block h-[5px] overflow-hidden rounded-full bg-[rgb(26_26_25_/_0.07)]">
                     <span
                       className="bg-orange-app block h-full rounded-full"
@@ -232,7 +277,10 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
                 </span>
                 <button
                   type="button"
-                  onClick={() => say(`Pause is instant and free — ${a.name} stops within seconds.`)}
+                  onClick={() => {
+                    pause(a.key)
+                    say(`${a.name} paused. It stops within seconds and it costs nothing.`)
+                  }}
                   className="h-8 flex-none rounded-[10px] border-0 bg-[rgb(26_26_25_/_0.055)] px-[13px] text-[12.5px] font-semibold hover:bg-[rgb(26_26_25_/_0.09)]"
                 >
                   Pause
@@ -240,15 +288,16 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
               </div>
             ))}
 
-            <div className="bg-warn-bg mx-4 mt-3 mb-[14px] flex items-start gap-[10px] rounded-[15px] px-[13px] py-3">
-              <span className="bg-warn flex size-[19px] flex-none items-center justify-center rounded-[7px] text-[11px] font-extrabold text-white">
-                !
-              </span>
-              <span className="text-[12px] leading-[1.5] text-[#6B5A34]">
-                Overnight, Guardian tried to spend <b>$91.20</b> — over your $80 per-action limit.
-                AiKi stopped it. Nothing was spent.
-              </span>
-            </div>
+            {notes.some((n) => n.tone === 'warn') ? (
+              <div className="bg-warn-bg mx-4 mt-3 mb-[14px] flex items-start gap-[10px] rounded-[15px] px-[13px] py-3">
+                <span className="bg-warn flex size-[19px] flex-none items-center justify-center rounded-[7px] text-[11px] font-extrabold text-white">
+                  !
+                </span>
+                <span className="text-[12px] leading-[1.5] text-[#6B5A34]">
+                  {notes.find((n) => n.tone === 'warn')?.body}
+                </span>
+              </div>
+            ) : null}
 
             <Link
               href="/activity"
@@ -264,7 +313,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
       <div className="relative">
         <button
           type="button"
-          title={unread ? `Notifications — ${unread} unread` : 'Notifications'}
+          title={unread ? `Notifications (${unread} unread)` : 'Notifications'}
           onClick={() => {
             setBell((b) => !b)
             setOpen(false)
@@ -281,12 +330,12 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           <div className="animate-rise fixed inset-x-2 top-[68px] z-60 overflow-hidden rounded-[20px] bg-white shadow-[0_24px_60px_-20px_rgb(26_26_25_/_0.3),0_1px_2px_rgb(26_26_25_/_0.08)] sm:absolute sm:inset-x-auto sm:top-[52px] sm:right-0 sm:w-[376px]">
             <div className="flex items-center justify-between px-4 pt-[15px] pb-3">
               <span className="text-[14.5px] font-bold">
-                {!connected ? 'Nothing yet' : unread ? `${unread} waiting` : 'Nothing waiting'}
+                {!notes.length ? 'Nothing yet' : unread ? `${unread} waiting` : 'Nothing waiting'}
               </span>
               {unread ? (
                 <button
                   type="button"
-                  onClick={() => setRead(Object.fromEntries(NOTES.map((n) => [n.id, true])))}
+                  onClick={() => setRead(Object.fromEntries(notes.map((n) => [n.id, true])))}
                   className="text-muted hover:text-ink-app border-0 bg-none text-[12px] font-semibold"
                 >
                   Mark all read
@@ -294,7 +343,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
               ) : null}
             </div>
 
-            {(connected ? NOTES : []).map((n) => (
+            {notes.map((n) => (
               <Link
                 key={n.id}
                 href={route(n.href)}
@@ -326,9 +375,9 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
             ))}
 
             <div className="text-muted border-t border-[rgb(26_26_25_/_0.06)] px-4 py-[11px] text-[11.5px] leading-[1.45]">
-              {connected
-                ? 'Blocked actions are kept here on purpose. They are the proof your limits hold.'
-                : 'Once an agent is working, anything that needs you — or was refused — appears here.'}
+              {notes.length
+                ? 'Refusals are kept here on purpose. They are the proof your limits hold.'
+                : 'Once an agent is working, anything that needs you, or was refused, appears here.'}
             </div>
           </div>
         ) : null}

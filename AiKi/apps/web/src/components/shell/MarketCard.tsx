@@ -15,9 +15,10 @@ export function MarketGrid({ agents, footnote }: { agents: AgentRow[]; footnote:
   return (
     <>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(268px,1fr))] gap-[14px]">
-        {agents.map((m) => (
+        {agents.map((m, i) => (
           <div
             key={m.key}
+            data-tour={i === 0 ? 'manual-evidence' : undefined}
             className="flex flex-col rounded-[18px] border border-[rgb(26_26_25_/_0.08)] p-4 transition-[box-shadow,border-color] hover:border-[rgb(26_26_25_/_0.16)] hover:shadow-[0_12px_30px_-14px_rgb(26_26_25_/_0.2)]"
           >
             <div className="flex items-start gap-[11px]">

@@ -44,7 +44,7 @@ export function ComponentRows({ rows }: { rows: { label: string; measure: Measur
               className="w-[42px] flex-none text-right text-[14px] font-bold tabular-nums"
               style={{ color: withheld || none ? 'var(--color-faint)' : 'var(--color-ink-app)' }}
             >
-              {none ? '—' : text}
+              {none ? 'n/a' : text}
             </span>
             <span className="text-muted hidden w-[104px] flex-none text-right text-[12px] font-medium tabular-nums sm:block">
               {none ? 'never observed' : `${r.measure.sampleSize.toLocaleString()} checks`}

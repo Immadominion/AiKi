@@ -101,7 +101,7 @@ export const AGENTS: AgentRow[] = [
     name: 'Sentinel',
     works: 'Venus',
     does: 'Watches risk, alerts only',
-    blurb: 'Same job as Guardian, cheaper — but barely tested so far.',
+    blurb: 'Same job as Guardian and cheaper, but barely tested so far.',
     bars: 1,
     evidence: 'Not enough history yet',
     evidenceTone: 'thin',

@@ -1,10 +1,14 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { PageCard } from '@/components/shell/PageCard'
+import { PageSkeleton } from '@/components/ui/Skeleton'
 import { StatusPill } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, AGENT_BY_KEY } from '@/lib/agents'
-import { RECEIPT } from '@/lib/receipt'
+import { route } from '@/lib/routes'
+import { useMock } from '@/mock/store'
+import { usd } from '@/mock/types'
 
 const stamp = (iso: string) =>
   new Date(iso).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'medium' })
@@ -38,34 +42,67 @@ const Line = ({ label, children }: { label: string; children: React.ReactNode })
   </div>
 )
 
-export function ReceiptView() {
-  const r = RECEIPT
-  const row = AGENT_BY_KEY.guardian
+export function ReceiptView({ receiptId }: { receiptId: string }) {
+  const { state, ready } = useMock()
   const say = useToast()
+  const router = useRouter()
+
+  const r = state.receipts.find((x) => x.id === receiptId)
+
+  if (!ready) return <PageSkeleton rows={4} />
+
+  if (!r) {
+    return (
+      <PageCard
+        title="Receipt"
+        count=""
+        back={{ href: '/activity', label: 'Activity' }}
+        tabs={[]}
+        tabHint=""
+      >
+        <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-[24px]">
+          <div className="text-[14.5px] font-bold">No receipt with that id.</div>
+          <p className="text-muted mt-[6px] mb-0 max-w-[560px] text-[13px] leading-[1.55] text-pretty">
+            A receipt is written when a job finishes. If the job is still running, or its authority
+            was revoked partway, there is nothing signed to show yet.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push(route('/activity'))}
+            className="bg-ink-app hover:bg-orange-app mt-[16px] h-[38px] rounded-xl border-0 px-4 text-[13.5px] font-bold text-white transition-colors"
+          >
+            Back to activity
+          </button>
+        </div>
+      </PageCard>
+    )
+  }
+
+  const agent = AGENT_BY_KEY[r.key]
+  const total = r.providerCents + r.platformCents + r.networkCents
+  const verifyUrl = `https://useaiki.xyz/verify/${r.id}`
 
   const header = (
     <div className="flex flex-wrap items-start gap-[14px]">
       <span
         className="flex size-[52px] flex-none items-center justify-center rounded-[16px] text-[20px] font-extrabold text-white"
-        style={{ background: AGENT_BG.guardian }}
+        style={{ background: AGENT_BG[r.key] }}
       >
-        {row.initial}
+        {agent.initial}
       </span>
       <div className="min-w-0 flex-1 basis-[240px]">
-        <div className="flex items-center gap-[10px]">
+        <div className="flex flex-wrap items-center gap-[10px]">
           <span className="text-[19px] font-extrabold tracking-[-0.02em]">Receipt</span>
           <StatusPill label="Signed" tone="good" />
         </div>
         <p className="text-muted mt-[3px] mb-0 text-[13px] leading-[1.45]">
-          {r.agent.name} {r.agentVersion} · {stamp(r.startedAt)} → {stamp(r.completedAt)}
+          {agent.name} · {stamp(r.startedAt)} → {stamp(r.completedAt)}
         </p>
       </div>
       <button
         type="button"
-        onClick={() =>
-          say(`Verification opens ${r.signature.verifyUrl} — it does not go through AiKi.`)
-        }
-        className="bg-ink-app hover:bg-orange-app h-[38px] flex-none rounded-xl border-0 px-4 text-[13.5px] font-bold text-white transition-colors"
+        onClick={() => say(`Verification opens ${verifyUrl}. It does not go through AiKi.`)}
+        className="bg-ink-app hover:bg-orange-app h-[38px] w-full flex-none rounded-xl border-0 px-4 text-[13.5px] font-bold text-white transition-colors sm:w-auto"
       >
         Verify this yourself
       </button>
@@ -84,7 +121,7 @@ export function ReceiptView() {
       <div className="max-w-[860px]">
         <Section
           title="What it did"
-          note="Every action, including the one that was refused. A receipt listing only what succeeded would be a brochure."
+          note="Every action, including the ones that were refused. A receipt listing only what succeeded would be a brochure."
         >
           <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)]">
             {r.actions.map((a) => (
@@ -94,22 +131,16 @@ export function ReceiptView() {
               >
                 <span
                   className="mt-[6px] size-[7px] flex-none rounded-full"
-                  style={{
-                    background:
-                      a.policyDecision === 'deny' ? 'var(--color-work)' : 'var(--color-good)',
-                  }}
+                  style={{ background: a.allowed ? 'var(--color-good)' : 'var(--color-work)' }}
                 />
                 <span className="min-w-0 flex-1">
                   <span
                     className="block text-[13.5px] font-semibold text-pretty"
                     style={{
-                      color:
-                        a.policyDecision === 'deny'
-                          ? 'var(--color-work-ink)'
-                          : 'var(--color-ink-app)',
+                      color: a.allowed ? 'var(--color-ink-app)' : 'var(--color-work-ink)',
                     }}
                   >
-                    {a.type}
+                    {a.what}
                   </span>
                   <span className="text-muted mt-[4px] flex flex-wrap items-center gap-x-[12px] gap-y-[2px] text-[11.5px]">
                     <span className="tabular-nums">{stamp(a.at)}</span>
@@ -118,7 +149,7 @@ export function ReceiptView() {
                     ) : (
                       <span>never signed, never broadcast</span>
                     )}
-                    {a.gas ? <span>gas ${a.gas.displayUsd}</span> : null}
+                    {a.gasCents ? <span>gas {usd(a.gasCents)}</span> : null}
                   </span>
                 </span>
               </div>
@@ -131,20 +162,12 @@ export function ReceiptView() {
           note="Split out, because “fees” as one number hides who took what."
         >
           <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)]">
-            <Line label="The agent">
-              ${r.cost.provider.displayUsd} · {r.cost.provider.asset}
-            </Line>
-            <Line label="AiKi">
-              ${r.cost.platform.displayUsd} · {r.cost.platform.asset}
-            </Line>
-            <Line label="The network">
-              ${r.cost.network.displayUsd} · {r.cost.network.asset} gas
-            </Line>
+            <Line label="The agent">{usd(r.providerCents)}</Line>
+            <Line label="AiKi">{usd(r.platformCents)}</Line>
+            <Line label="The network">{usd(r.networkCents)} in gas</Line>
             <div className="flex items-baseline justify-between border-t-[1.5px] border-[rgb(26_26_25_/_0.1)] px-4 py-[13px]">
               <span className="text-[13px] font-bold">Total</span>
-              <span className="text-[16px] font-extrabold tabular-nums">
-                ${r.cost.total.displayUsd}
-              </span>
+              <span className="text-[16px] font-extrabold tabular-nums">{usd(total)}</span>
             </div>
           </div>
         </Section>
@@ -157,50 +180,28 @@ export function ReceiptView() {
             <Line label="Mandate">
               <Mono>{r.mandateHash}</Mono>
             </Line>
-            <Line label="Authorisation">{r.authorizationId}</Line>
-            <Line label="Agent identity">
-              ERC-8004 token {r.agent.agentId} on BNB Chain · <Mono>{r.agent.registry}</Mono>
-            </Line>
-            <Line label="Agent version">{r.agentVersion}</Line>
+            <Line label="Job">{r.jobId}</Line>
+            <Line label="Agent identity">ERC-8004 token on BNB Chain · {agent.name}</Line>
           </div>
         </Section>
 
-        {r.output ? (
-          <Section
-            title="What came of it"
-            note="The outcome, and the hash of the record behind it."
-          >
-            <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)]">
-              <Line label="Result">{r.output.summary}</Line>
-              <Line label="Evidence">
-                <Mono>{r.output.artifactHash}</Mono>
-              </Line>
-              {r.evaluation ? (
-                <Line label="Checked by">
-                  {r.evaluation.evaluator} {r.evaluation.evaluatorVersion} — {r.evaluation.status}
-                </Line>
-              ) : null}
-              {r.settlement ? (
-                <Line label="Paid">
-                  ${r.settlement.amount.displayUsd}, {r.settlement.status} ·{' '}
-                  <Mono>{r.settlement.txHash}</Mono>
-                </Line>
-              ) : null}
-            </div>
-          </Section>
-        ) : null}
+        <Section title="What came of it" note="The outcome, in the words you would use.">
+          <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)]">
+            <Line label="Result">{r.summary}</Line>
+          </div>
+        </Section>
 
         <Section
           title="Check it without us"
           note="Signed with a standard algorithm in a standard format, so verification never has to go through AiKi. Anyone can check this, including someone who thinks we are lying."
         >
           <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)]">
-            <Line label="Algorithm">{r.signature.alg} · COSE receipt, SCITT profile</Line>
+            <Line label="Algorithm">ES256 · COSE receipt, SCITT profile</Line>
             <Line label="Signature">
-              <Mono>{r.signature.value}</Mono>
+              <Mono>{r.signature}</Mono>
             </Line>
             <Line label="Verify at">
-              <span className="font-semibold">{r.signature.verifyUrl}</span>
+              <span className="font-semibold">{verifyUrl}</span>
             </Line>
           </div>
         </Section>

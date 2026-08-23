@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Plus_Jakarta_Sans } from 'next/font/google'
+import { DevPanel } from '@/mock/DevPanel'
+import { MockProvider } from '@/mock/store'
 import './globals.css'
 
 const jakarta = Plus_Jakarta_Sans({
@@ -16,7 +18,7 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://useaiki.xyz'),
   title: {
     // Every page names itself; the product name comes after, once.
-    default: 'AiKi — put agents to work',
+    default: 'AiKi: put agents to work',
     template: '%s · AiKi',
   },
   description: DESCRIPTION,
@@ -24,13 +26,13 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     siteName: 'AiKi',
-    title: 'AiKi — put agents to work',
+    title: 'AiKi: put agents to work',
     description: DESCRIPTION,
     url: 'https://useaiki.xyz',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'AiKi — put agents to work',
+    title: 'AiKi: put agents to work',
     description: DESCRIPTION,
   },
   robots: { index: true, follow: true },
@@ -55,7 +57,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Skip to content
         </a>
-        {children}
+        <MockProvider>
+          {children}
+          <DevPanel />
+        </MockProvider>
       </body>
     </html>
   )

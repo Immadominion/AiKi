@@ -54,9 +54,9 @@ export function NoWallet({ what }: { what: string }) {
   return (
     <EmptyState
       title="No wallet connected."
-      body={`Connect one and ${what} appears here. Connecting only lets AiKi read your balances — no agent can touch anything until you sign an authority with limits you set yourself.`}
+      body={`Connect one and ${what} appears here. Connecting only lets AiKi read your balances. No agent can touch anything until you sign an authority with limits you set yourself.`}
       action="Connect a wallet"
-      href="/welcome"
+      href="/settings#wallet"
       secondary="You can browse every agent we index without connecting anything."
     />
   )

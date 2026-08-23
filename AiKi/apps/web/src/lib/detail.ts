@@ -146,13 +146,14 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
       {
         cls: 'B',
         count: 174,
-        summary: 'AiKi probes — capability, liveness and impostor detection.',
+        summary: 'AiKi probes for capability, liveness and impostor detection.',
       },
       { cls: 'A', count: 91, summary: 'On-chain actions, all finalised.' },
       {
         cls: 'D',
         count: 19,
-        summary: 'Registry feedback. Ingested, weighted near zero — none carries payment proof.',
+        summary:
+          'Registry feedback. Ingested, weighted near zero, because none carries payment proof.',
       },
     ],
   },
@@ -234,7 +235,7 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
       {
         cls: 'B',
         count: 96,
-        summary: 'AiKi probes — capability, liveness and impostor detection.',
+        summary: 'AiKi probes for capability, liveness and impostor detection.',
       },
       { cls: 'A', count: 54, summary: 'On-chain actions, all finalised.' },
       { cls: 'D', count: 9, summary: 'Registry feedback. Ingested, weighted near zero.' },
@@ -409,7 +410,7 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
       {
         cls: 'B',
         count: 48,
-        summary: 'AiKi probes — capability, liveness and impostor detection.',
+        summary: 'AiKi probes for capability, liveness and impostor detection.',
       },
       { cls: 'A', count: 34, summary: 'On-chain actions, all finalised.' },
       { cls: 'D', count: 7, summary: 'Registry feedback. Ingested, weighted near zero.' },
@@ -495,7 +496,7 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
       },
     ],
     evidence: [
-      { cls: 'B', count: 22, summary: 'AiKi probes — 4 timed out.' },
+      { cls: 'B', count: 22, summary: 'AiKi probes, 4 of which timed out.' },
       { cls: 'A', count: 10, summary: 'On-chain actions, all finalised.' },
       { cls: 'D', count: 1, summary: 'Registry feedback. One entry, no payment proof.' },
     ],
@@ -503,7 +504,7 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
 
   sentinel: {
     key: 'sentinel',
-    tagline: 'Same job as Guardian, cheaper — but barely tested so far.',
+    tagline: 'Same job as Guardian and cheaper, but barely tested so far.',
     owner: '0x2ab7f406e91c58d3b70a4e16f9c82d05b3e7401a',
     ownerVerified: true,
     agentWalletProven: true,

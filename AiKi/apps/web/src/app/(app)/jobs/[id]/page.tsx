@@ -7,6 +7,7 @@ export const metadata: Metadata = {
     'What an agent is doing right now, what it was refused, and a stop button that costs nothing.',
 }
 
-export default function Page() {
-  return <MissionControl />
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  return <MissionControl jobId={id} />
 }

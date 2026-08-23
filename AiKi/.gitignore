@@ -15,3 +15,6 @@ apps/api/probe-sweep-*.json
 # Next 16 auto-generates these; agentRules:false stops it, this is belt-and-braces.
 AGENTS.md
 CLAUDE.md
+
+# Local mock state — yours to tweak, not to push
+apps/web/src/mock/local.*

@@ -1,6 +1,15 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import { useMock } from '@/mock/store'
+
+const PREFERENCE_CHANGE = 'aiki:preference-change'
+
+interface PreferenceChange {
+  key: string
+  value: string
+}
 
 /**
  * Per-browser preferences.
@@ -18,14 +27,37 @@ function usePersisted<T extends string>(key: string, fallback: T, valid: readonl
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(key)
-      if (stored && (valid as readonly string[]).includes(stored)) setValue(stored as T)
-    } catch {
-      /* no stored value is a valid state */
+    const read = () => {
+      try {
+        const stored = localStorage.getItem(key)
+        setValue(stored && (valid as readonly string[]).includes(stored) ? (stored as T) : fallback)
+      } catch {
+        /* no stored value is a valid state */
+      }
     }
+
+    const onPreferenceChange = (event: Event) => {
+      const change = (event as CustomEvent<PreferenceChange>).detail
+      if (change?.key === key && (valid as readonly string[]).includes(change.value)) {
+        setValue(change.value as T)
+      }
+    }
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== key) return
+      const next = event.newValue
+      setValue(next && (valid as readonly string[]).includes(next) ? (next as T) : fallback)
+    }
+
+    read()
     setReady(true)
-  }, [key, valid])
+    window.addEventListener(PREFERENCE_CHANGE, onPreferenceChange)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener(PREFERENCE_CHANGE, onPreferenceChange)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [fallback, key, valid])
 
   const set = useCallback(
     (next: T) => {
@@ -35,6 +67,9 @@ function usePersisted<T extends string>(key: string, fallback: T, valid: readonl
       } catch {
         /* a preference is never a requirement */
       }
+      window.dispatchEvent(
+        new CustomEvent<PreferenceChange>(PREFERENCE_CHANGE, { detail: { key, value: next } }),
+      )
     },
     [key],
   )
@@ -42,35 +77,57 @@ function usePersisted<T extends string>(key: string, fallback: T, valid: readonl
   return [value, set, ready] as const
 }
 
-export type HomeLayout = 'ask' | 'market'
-const LAYOUTS = ['ask', 'market'] as const
+export type HomeLayout = 'fast' | 'manual'
+const LAYOUTS = ['fast', 'manual'] as const
 
 export function useLayoutPref() {
-  const [layout, setLayout] = usePersisted<HomeLayout>('aiki.home-layout', 'ask', LAYOUTS)
+  const [layout, setLayout] = usePersisted<HomeLayout>('aiki.home-layout', 'fast', LAYOUTS)
   return { layout, setLayout }
 }
 
-const WALLET = ['connected', 'disconnected'] as const
+/** A mode change replaces the current home instead of leaving route and preference split. */
+export function useModeNavigation() {
+  const { layout, setLayout } = useLayoutPref()
+  const router = useRouter()
+
+  const switchMode = useCallback(
+    (next: HomeLayout) => {
+      setLayout(next)
+      router.replace(next === 'fast' ? '/' : '/market')
+    },
+    [router, setLayout],
+  )
+
+  return { layout, switchMode }
+}
 
 /**
- * Whether a wallet is connected.
- *
- * This is the difference between the app having anything to show and having
- * nothing, so it is the one preference every surface reads. Connecting grants
- * nothing on its own — it is what lets AiKi read, and what makes an empty
- * dashboard honest rather than a lie about someone else's agents.
+ * Wallet connection, delegated to the mock store so the app has exactly one
+ * answer to "is anything connected". When apps/api lands this is the hook that
+ * changes; nothing that calls it does.
  */
 export function useAccount() {
-  const [state, setState, ready] = usePersisted<'connected' | 'disconnected'>(
-    'aiki.wallet',
-    'disconnected',
-    WALLET,
-  )
+  const { state, ready, connect, disconnect } = useMock()
+  return { connected: state.connected, ready, connect, disconnect }
+}
+
+const TOUR = ['pending', 'done'] as const
+
+/**
+ * Each mode gets its own walkthrough.
+ *
+ * Fast mode and Manual mode are different products wearing the same brand, and
+ * a tour of one teaches you nothing about the other. Choosing Manual at the end
+ * of the Fast tour hands you straight to Manual's, rather than dropping you in
+ * a layout nobody has explained.
+ */
+export function useTour(mode: 'fast' | 'manual' = 'fast') {
+  const key = mode === 'fast' ? 'aiki.tour.fast' : 'aiki.tour.manual'
+  const [state, setState, ready] = usePersisted<'pending' | 'done'>(key, 'pending', TOUR)
   return {
-    connected: state === 'connected',
-    ready,
-    connect: () => setState('connected'),
-    disconnect: () => setState('disconnected'),
+    seen: !ready || state === 'done',
+    finish: () => setState('done'),
+    replay: () => setState('pending'),
   }
 }
 
