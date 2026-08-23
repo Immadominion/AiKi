@@ -15,6 +15,15 @@ import {
 
 const RPC = process.env.BSC_RPC_URL ?? 'https://bsc-rpc.publicnode.com'
 
+/** Never write credential-bearing RPC URLs to a terminal, log aggregator, or screenshot. */
+function rpcLabel(endpoint: string): string {
+  try {
+    return new URL(endpoint).host
+  } catch {
+    return 'configured RPC endpoint'
+  }
+}
+
 async function main() {
   const arg = (f: string) => {
     const i = process.argv.indexOf(f)
@@ -28,20 +37,24 @@ async function main() {
   }
 
   const blocks = Number(arg('--blocks') ?? 5000)
+  const explicitFrom = arg('--from-block')
   const latest = await blockNumber(RPC, 'latest')
   const finalized = await blockNumber(RPC, 'finalized')
 
-  console.log(`RPC       ${RPC}`)
+  console.log(`RPC host  ${rpcLabel(RPC)}`)
   console.log(`registry  ${REGISTRY}`)
   console.log(`latest    ${latest.toLocaleString()}`)
   console.log(`finalized ${finalized.toLocaleString()}  (lag ${latest - finalized})`)
-  console.log(`scanning last ${blocks.toLocaleString()} blocks to finalized head…\n`)
+  if (!Number.isSafeInteger(blocks) || blocks < 1) throw new Error('--blocks must be a positive integer')
+  const from = explicitFrom === undefined ? finalized - blocks + 1 : Number(explicitFrom)
+  if (!Number.isSafeInteger(from) || from < 0) throw new Error('--from-block must be a non-negative integer')
+  const to = Math.min(from + blocks - 1, finalized)
+  console.log(`scanning blocks ${from.toLocaleString()}–${to.toLocaleString()}…\n`)
 
-  const from = finalized - blocks + 1
   const all: RegisteredEvent[] = []
   const t0 = Date.now()
 
-  for await (const batch of indexRegistry({ url: RPC }, from, (c) => {
+  for await (const batch of indexRegistry({ url: RPC, stopAtBlock: to }, from, (c) => {
     process.stdout.write(`\r  block ${c.lastIndexedBlock.toLocaleString()}  agents ${c.agentsSeen}   `)
   })) {
     all.push(...batch)

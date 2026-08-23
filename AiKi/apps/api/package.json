@@ -4,13 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "assert:chain": "tsx src/config/cli.ts",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "index:persist": "tsx src/indexer/persist-cli.ts",
     "probe": "tsx src/prober/cli.ts",
+    "probe:persist": "tsx src/prober/persist-cli.ts",
+    "reference:venus": "tsx src/reference/venus/cli.ts",
+    "reference:rebalancer": "tsx src/reference/rebalancer/cli.ts",
+    "reference:grid": "tsx src/reference/grid/cli.ts",
+    "reference:yield": "tsx src/reference/yield/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "index": "tsx src/indexer/cli.ts"
   },
   "dependencies": {
-    "@aiki/contracts": "workspace:*"
+    "@aiki/contracts": "workspace:*",
+    "fastify": "^5.6.0",
+    "postgres": "^3.4.7",
+    "viem": "^2.44.1"
   },
   "devDependencies": {
     "@types/node": "^24",
