@@ -7,6 +7,7 @@
  * being a bad citizen would be both rude and a fast route to being blocked.
  */
 
+import { guardedFetch } from '../net/guard.js'
 import {
   classify,
   type DeclaredService,
@@ -77,10 +78,12 @@ export function fetchOnce(url: string): Promise<FetchResult> {
 async function fetchOnceRaw(url: string): Promise<FetchResult> {
   const started = Date.now()
   try {
-    const res = await fetch(url, {
+    // Declared endpoints are attacker input; guardedFetch validates every
+    // redirect hop, where a bare `redirect: 'follow'` would glide from a
+    // public host straight into private address space.
+    const res = await guardedFetch(url, {
       method: 'GET',
       headers: { 'user-agent': USER_AGENT, accept: '*/*' },
-      redirect: 'follow',
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
 

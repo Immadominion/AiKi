@@ -1,5 +1,6 @@
 /** Resolve and validate an ERC-8004 registration file without trusting its self-declared identity. */
 
+import { guardedFetch } from '../net/guard.js'
 import type { DeclaredService } from './detect.js'
 
 export type RegistrationScheme = 'https' | 'ipfs' | 'data' | 'unsupported'
@@ -123,15 +124,46 @@ function decodeDataUri(uri: string): string {
     : decodeURIComponent(body)
 }
 
+/**
+ * ipfs://<CID>[/path…] with a strict charset, so the path can never smuggle
+ * traversal or query segments into the gateway URL we build from it.
+ */
+function ipfsGatewayPath(uri: string): string {
+  const rest = uri.slice('ipfs://'.length)
+  const segments = rest.split('/')
+  const cid = segments[0] ?? ''
+  if (!/^[A-Za-z0-9]{20,}$/.test(cid)) throw new Error('Malformed ipfs CID.')
+  for (const seg of segments.slice(1)) {
+    if (!/^[A-Za-z0-9._-]+$/.test(seg) || seg === '..') throw new Error('Malformed ipfs path.')
+  }
+  return segments.join('/')
+}
+
 async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url, {
+  // guardedFetch validates every hop against private address space; the
+  // registry is permissionless, so this URL is attacker input by definition.
+  const response = await guardedFetch(url, {
     headers: { accept: 'application/json, application/ld+json;q=0.9' },
     signal: AbortSignal.timeout(15_000),
   })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  const body = await response.arrayBuffer()
-  if (body.byteLength > MAX_BYTES) throw new Error(`Registration exceeds ${MAX_BYTES} byte limit.`)
-  return new TextDecoder().decode(body)
+  // Enforce the cap while reading. Buffering first and checking after would
+  // let one hostile endpoint hold gigabytes of our memory before the check.
+  const reader = response.body?.getReader()
+  if (!reader) return ''
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > MAX_BYTES) {
+      await reader.cancel()
+      throw new Error(`Registration exceeds ${MAX_BYTES} byte limit.`)
+    }
+    chunks.push(value)
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks))
 }
 
 /**
@@ -159,9 +191,7 @@ export async function resolveRegistration(
       scheme === 'data'
         ? decodeDataUri(uri)
         : await fetchText(
-            scheme === 'ipfs'
-              ? `${ipfsGateway.replace(/\/$/, '')}/${uri.slice('ipfs://'.length)}`
-              : uri,
+            scheme === 'ipfs' ? `${ipfsGateway.replace(/\/$/, '')}/${ipfsGatewayPath(uri)}` : uri,
           )
     return { uri, scheme, fetchedAt, zeroCost, ...parseManifest(text) }
   } catch (error) {
