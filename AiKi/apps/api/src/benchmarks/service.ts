@@ -39,3 +39,19 @@ export function benchmarkEvidence(run: BenchmarkRun) {
     indistinguishable: agent.lower <= baseline.upper,
   }
 }
+export class BenchmarkService {
+  private readonly runs = new Map<string, BenchmarkRun>()
+  add(input: Omit<BenchmarkRun, 'id' | 'completedAt' | 'methodology'>) {
+    const run = completeBenchmark(input)
+    this.runs.set(run.id, run)
+    return run
+  }
+  get(id: string) {
+    const run = this.runs.get(id)
+    if (!run) throw new Error('Arena run not found.')
+    return run
+  }
+  list() {
+    return [...this.runs.values()]
+  }
+}

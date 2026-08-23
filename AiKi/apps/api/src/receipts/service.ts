@@ -14,6 +14,7 @@ export interface ExecutionReceipt {
 const canonical = (v: unknown) => JSON.stringify(v)
 export class ReceiptService {
   private readonly keys = generateKeyPairSync('ed25519')
+  private readonly receipts = new Map<string, ExecutionReceipt>()
   create(
     input: Omit<ExecutionReceipt, 'receiptId' | 'payloadHash' | 'signature' | 'alg' | 'profile'>,
   ): ExecutionReceipt {
@@ -31,7 +32,14 @@ export class ReceiptService {
     const signature = sign(null, Buffer.from(payloadHash), this.keys.privateKey).toString(
       'base64url',
     )
-    return { ...body, payloadHash, signature }
+    const receipt = { ...body, payloadHash, signature }
+    this.receipts.set(receiptId, receipt)
+    return receipt
+  }
+  get(id: string) {
+    const receipt = this.receipts.get(id)
+    if (!receipt) throw new Error('Receipt not found.')
+    return receipt
   }
   verify(receipt: ExecutionReceipt) {
     const { payloadHash, signature, ...body } = receipt

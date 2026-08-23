@@ -43,3 +43,71 @@ it('serves evidence-first passport and requires idempotency for jobs', async () 
   })
   expect(job.statusCode).toBe(200)
 })
+
+it('serves intent, search, quote, SSE snapshot, receipt retrieval, and Arena endpoints', async () => {
+  const store = new InMemoryEvidenceStore()
+  await store.append({
+    subject: { type: 'agent', chainId: 56, registry: '0x8004', agentId: 'venus-1' },
+    predicate: 'agent.liveness_verdict',
+    value: { state: 'LIVE' },
+    validAt: '2026-01-01T00:00:00.000Z',
+    observedAt: '2026-01-01T00:00:00.000Z',
+    source: 'test',
+    method: 'test',
+    evidenceClass: 'B',
+    dedupeKey: 'live',
+  })
+  const app = createApiServer({ observations: () => store.observations })
+  apps.push(app)
+  expect(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/v1/intent',
+        payload: { text: 'monitor my Venus health factor' },
+      })
+    ).json().parsed.category,
+  ).toBe('health_factor')
+  expect(
+    (await app.inject({ method: 'POST', url: '/v1/search', payload: { query: 'live' } }))
+      .statusCode,
+  ).toBe(200)
+  expect(
+    (await app.inject({ method: 'POST', url: '/v1/quotes', payload: { agentId: 'venus-1' } }))
+      .statusCode,
+  ).toBe(200)
+  const auth = await app.inject({
+    method: 'POST',
+    url: '/v1/authorizations',
+    payload: {
+      constraints: [{ kind: 'session_total_cap', label: 'cap', value: '10', tier: 'T2' }],
+    },
+  })
+  const job = await app.inject({
+    method: 'POST',
+    url: '/v1/jobs',
+    headers: { 'idempotency-key': 'sse' },
+    payload: { authorizationId: auth.json().id },
+  })
+  const jobId = job.json().id
+  expect((await app.inject(`/v1/jobs/${jobId}/events`)).headers['content-type']).toContain(
+    'text/event-stream',
+  )
+  const receipt = await app.inject({ method: 'POST', url: `/v1/jobs/${jobId}/receipt` })
+  expect((await app.inject(`/v1/receipts/${receipt.json().receiptId}`)).statusCode).toBe(200)
+  const arena = await app.inject({
+    method: 'POST',
+    url: '/v1/arena/runs',
+    payload: {
+      scenarioId: 'health-threshold',
+      scenarioVersion: '1',
+      forkBlock: 1,
+      agentId: 'venus-1',
+      baselineSuccesses: 1,
+      agentSuccesses: 2,
+      trials: 3,
+      startedAt: '2026-01-01T00:00:00.000Z',
+    },
+  })
+  expect((await app.inject(`/v1/arena/runs/${arena.json().id}`)).json().evidence).toBeDefined()
+})
