@@ -22,7 +22,9 @@
  *    provisional.
  */
 
-const REGISTRY = '0x8004A169FB4a3325136EB29fA0ceB6D2e539a432'
+import { BSC_MAINNET } from '../config/chains.js'
+
+const REGISTRY = BSC_MAINNET.contracts.erc8004Identity
 const TOPIC_REGISTERED = '0xca52e62c367d81bb2e328eb795f7c7ba24afb478408a26c0e201d155c449bc4a'
 
 /** Worst-case honest reorg depth: one validator turn (turnLength = 8). */
@@ -41,6 +43,8 @@ export interface RpcConfig {
   url: string
   /** Max block span per eth_getLogs call. Probed at startup if omitted. */
   maxSpan?: number
+  /** Optional inclusive ceiling for safe bounded historical verification. */
+  stopAtBlock?: number
 }
 
 /** Thrown when the provider serves the tip but gates historical state. */
@@ -191,7 +195,8 @@ export async function* indexRegistry(
   onProgress?: (c: Checkpoint) => void,
 ): AsyncGenerator<RegisteredEvent[]> {
   const span = cfg.maxSpan ?? (await probeMaxSpan(cfg.url))
-  const finalized = await blockNumber(cfg.url, 'finalized')
+  const finalizedHead = await blockNumber(cfg.url, 'finalized')
+  const finalized = cfg.stopAtBlock === undefined ? finalizedHead : Math.min(cfg.stopAtBlock, finalizedHead)
 
   let cursor = fromBlock
   let seen = 0
