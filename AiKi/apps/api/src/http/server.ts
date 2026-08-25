@@ -124,11 +124,11 @@ export function createApiServer(input: {
     }
   })
   app.post<{ Body: { constraints: Constraint[] } }>('/v1/authorizations', async (request) => {
-    const authorization = jobs.authorize(request.body.constraints)
+    const authorization = await jobs.authorize(request.body.constraints)
     return { ...authorization, spent: authorization.spent.toString() }
   })
   app.post<{ Params: { id: string } }>('/v1/authorizations/:id/revoke', async (request) => {
-    const authorization = jobs.revoke(request.params.id)
+    const authorization = await jobs.revoke(request.params.id)
     return { ...authorization, spent: authorization.spent.toString() }
   })
   app.post<{ Body: { authorizationId: string } }>('/v1/jobs', async (request, reply) => {
@@ -148,7 +148,7 @@ export function createApiServer(input: {
     jobs.getJob(request.params.id),
   )
   app.get<{ Params: { id: string } }>('/v1/jobs/:id/events', async (request, reply) => {
-    const job = jobs.getJob(request.params.id)
+    const job = await jobs.getJob(request.params.id)
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',
@@ -160,10 +160,11 @@ export function createApiServer(input: {
     return reply
   })
   app.post<{ Params: { id: string } }>('/v1/jobs/:id/receipt', async (request) => {
-    const job = jobs.getJob(request.params.id)
+    const job = await jobs.getJob(request.params.id)
+    const authorization = await jobs.getAuthorization(job.authorizationId)
     return receipts.create({
       jobId: job.id,
-      mandateHash: jobs.getAuthorization(job.authorizationId).policy.hash,
+      mandateHash: authorization.policy.hash,
       actions: job.events,
       startedAt: job.createdAt,
       completedAt: new Date().toISOString(),

@@ -1,123 +1,127 @@
 import { randomUUID } from 'node:crypto'
+import { type Action, type Constraint, compilePolicy, evaluatePolicy } from '../authority/policy.js'
 import {
-  type Action,
-  type CompiledPolicy,
-  type Constraint,
-  compilePolicy,
-  evaluatePolicy,
-} from '../authority/policy.js'
-export type AuthorizationStatus = 'pending' | 'active' | 'revoked' | 'expired'
-export type JobStatus =
-  | 'AUTHORIZED'
-  | 'DISPATCHED'
-  | 'RUNNING'
-  | 'COMPLETED'
-  | 'REJECTED'
-  | 'CANCELLED'
-export interface AuthorizationRecord {
-  id: string
-  policy: CompiledPolicy
-  status: AuthorizationStatus
-  spent: bigint
-  createdAt: string
-  revokedAt?: string
-}
-export interface JobEvent {
-  type: 'status' | 'policy' | 'spend'
-  at: string
-  detail: string
-}
-export interface JobRecord {
-  id: string
-  authorizationId: string
-  status: JobStatus
-  events: JobEvent[]
-  idempotencyKey: string
-  createdAt: string
-}
+  type AuthorizationRecord,
+  InMemoryJobStore,
+  type JobEvent,
+  type JobRecord,
+  type JobStatus,
+  type JobStore,
+} from './store.js'
+
+export type {
+  AuthorizationRecord,
+  AuthorizationStatus,
+  JobEvent,
+  JobRecord,
+  JobStatus,
+} from './store.js'
+
+/**
+ * Mandates and the work done under them.
+ *
+ * The service owns policy; the store owns durability and atomicity. Everything
+ * is async because the real store is a database: a mandate that vanishes when
+ * the process restarts is not a mandate, it is a session.
+ */
 export class JobService {
-  private readonly authorizations = new Map<string, AuthorizationRecord>()
-  private readonly jobs = new Map<string, JobRecord>()
-  private readonly idempotency = new Map<string, string>()
-  authorize(constraints: Constraint[]) {
-    const now = new Date().toISOString()
+  private readonly store: JobStore
+
+  constructor(store: JobStore = new InMemoryJobStore()) {
+    this.store = store
+  }
+
+  async authorize(constraints: Constraint[]): Promise<AuthorizationRecord> {
     const record: AuthorizationRecord = {
       id: randomUUID(),
       policy: compilePolicy(constraints),
       status: 'active',
       spent: 0n,
-      createdAt: now,
+      createdAt: new Date().toISOString(),
     }
-    this.authorizations.set(record.id, record)
+    return this.store.createAuthorization(record)
+  }
+
+  async revoke(id: string): Promise<AuthorizationRecord> {
+    const record = await this.store.revokeAuthorization(id, new Date().toISOString())
+    if (!record) throw new Error('Authorization not found.')
     return record
   }
-  revoke(id: string) {
-    const record = this.requireAuth(id)
-    record.status = 'revoked'
-    record.revokedAt = new Date().toISOString()
-    return record
-  }
-  createJob(authorizationId: string, idempotencyKey: string) {
+
+  async createJob(authorizationId: string, idempotencyKey: string): Promise<JobRecord> {
     if (!idempotencyKey) throw new Error('Idempotency-Key is required.')
-    const old = this.idempotency.get(idempotencyKey)
-    if (old) return this.jobs.get(old) as JobRecord
-    const auth = this.requireAuth(authorizationId)
+    const existing = await this.store.jobByIdempotencyKey(idempotencyKey)
+    if (existing) return existing
+
+    const auth = await this.getAuthorization(authorizationId)
     if (auth.status !== 'active') throw new Error(`Authorization is ${auth.status}.`)
+
+    const now = new Date().toISOString()
     const job: JobRecord = {
       id: randomUUID(),
       authorizationId,
       status: 'AUTHORIZED',
-      events: [{ type: 'status', at: new Date().toISOString(), detail: 'AUTHORIZED' }],
+      events: [{ type: 'status', at: now, detail: 'AUTHORIZED' }],
       idempotencyKey,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     }
-    this.jobs.set(job.id, job)
-    this.idempotency.set(idempotencyKey, job.id)
-    return job
-  }
-  attempt(jobId: string, action: Action) {
-    const job = this.requireJob(jobId)
-    const auth = this.requireAuth(job.authorizationId)
-    if (auth.status !== 'active') {
-      this.event(job, 'policy', `deny: authorization ${auth.status}`)
-      return {
-        allow: false,
-        rule: 'authorization_status',
-        reason: `Authorization is ${auth.status}.`,
-      }
+    try {
+      return await this.store.createJob(job)
+    } catch (error) {
+      // Two requests can race past the lookup above with the same key; the
+      // unique index is what actually decides, so the loser returns the winner's
+      // job rather than surfacing a constraint violation.
+      const winner = await this.store.jobByIdempotencyKey(idempotencyKey)
+      if (winner) return winner
+      throw error
     }
-    const verdict = evaluatePolicy(auth.policy, action, auth.spent)
-    this.event(
-      job,
-      'policy',
-      `${verdict.allow ? 'allow' : 'deny'}: ${verdict.rule}: ${verdict.reason}`,
-    )
-    if (!verdict.allow) {
-      job.status = 'REJECTED'
-      return verdict
+  }
+
+  async attempt(jobId: string, action: Action) {
+    const job = await this.getJob(jobId)
+    const at = new Date().toISOString()
+
+    const verdict = await this.store.attemptSpend(job.authorizationId, (auth) => {
+      if (auth.status !== 'active')
+        return {
+          allow: false,
+          rule: 'authorization_status',
+          reason: `Authorization is ${auth.status}.`,
+          spend: 0n,
+        }
+      const decision = evaluatePolicy(auth.policy, action, auth.spent)
+      return { ...decision, spend: decision.allow ? action.amount : 0n }
+    })
+    if (!verdict) throw new Error('Authorization not found.')
+
+    const events: JobEvent[] = [
+      {
+        type: 'policy',
+        at,
+        detail: `${verdict.allow ? 'allow' : 'deny'}: ${verdict.rule}: ${verdict.reason}`,
+      },
+    ]
+    let status: JobStatus
+    if (verdict.allow) {
+      events.push({ type: 'spend', at, detail: action.amount.toString() })
+      status = 'RUNNING'
+    } else {
+      status = 'REJECTED'
     }
-    auth.spent += action.amount
-    job.status = 'RUNNING'
-    this.event(job, 'spend', action.amount.toString())
-    return verdict
+    await this.store.appendEvents(jobId, events, status)
+
+    return { allow: verdict.allow, rule: verdict.rule, reason: verdict.reason }
   }
-  getAuthorization(id: string) {
-    return this.requireAuth(id)
+
+  async getAuthorization(id: string): Promise<AuthorizationRecord> {
+    const record = await this.store.getAuthorization(id)
+    if (!record) throw new Error('Authorization not found.')
+    return record
   }
-  getJob(id: string) {
-    return this.requireJob(id)
-  }
-  private event(job: JobRecord, type: JobEvent['type'], detail: string) {
-    job.events.push({ type, detail, at: new Date().toISOString() })
-  }
-  private requireAuth(id: string) {
-    const value = this.authorizations.get(id)
-    if (!value) throw new Error('Authorization not found.')
-    return value
-  }
-  private requireJob(id: string) {
-    const value = this.jobs.get(id)
-    if (!value) throw new Error('Job not found.')
-    return value
+
+  async getJob(id: string): Promise<JobRecord> {
+    const record = await this.store.getJob(id)
+    if (!record) throw new Error('Job not found.')
+    return record
   }
 }

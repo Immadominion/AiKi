@@ -6,6 +6,7 @@ import {
   sign,
   verify,
 } from 'node:crypto'
+import { InMemoryReceiptStore, type ReceiptStore } from './store.js'
 export interface ExecutionReceipt {
   receiptId: string
   jobId: string
@@ -51,6 +52,7 @@ function keysFromSeed(seedHex: string) {
 
 export class ReceiptService {
   private readonly keys: ReturnType<typeof keysFromSeed>
+  private readonly store: ReceiptStore
 
   /**
    * A receipt outlives the process that signed it, so the signing key must
@@ -58,8 +60,9 @@ export class ReceiptService {
    * Without one the key is ephemeral and every restart orphans old receipts —
    * acceptable only where the receipts are as disposable as the process.
    */
-  constructor(seedHex?: string) {
+  constructor(seedHex?: string, store: ReceiptStore = new InMemoryReceiptStore()) {
     this.keys = seedHex ? keysFromSeed(seedHex) : generateKeyPairSync('ed25519')
+    this.store = store
   }
 
   /** Raw 32-byte Ed25519 public key, base64url: what a verifier pins. */
@@ -67,10 +70,9 @@ export class ReceiptService {
     const spki = this.keys.publicKey.export({ format: 'der', type: 'spki' })
     return Buffer.from(spki.subarray(spki.length - 32)).toString('base64url')
   }
-  private readonly receipts = new Map<string, ExecutionReceipt>()
-  create(
+  async create(
     input: Omit<ExecutionReceipt, 'receiptId' | 'payloadHash' | 'signature' | 'alg' | 'profile'>,
-  ): ExecutionReceipt {
+  ): Promise<ExecutionReceipt> {
     const receiptId = createHash('sha256')
       .update(`${input.jobId}:${input.completedAt}`)
       .digest('hex')
@@ -86,11 +88,11 @@ export class ReceiptService {
       'base64url',
     )
     const receipt = { ...body, payloadHash, signature }
-    this.receipts.set(receiptId, receipt)
+    await this.store.put(receipt)
     return receipt
   }
-  get(id: string) {
-    const receipt = this.receipts.get(id)
+  async get(id: string) {
+    const receipt = await this.store.get(id)
     if (!receipt) throw new Error('Receipt not found.')
     return receipt
   }

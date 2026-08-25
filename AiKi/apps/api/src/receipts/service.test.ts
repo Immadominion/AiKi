@@ -1,9 +1,9 @@
 import { expect, it } from 'vitest'
 import { ReceiptService } from './service.js'
 
-it('binds a receipt to a mandate and detects tampering', () => {
+it('binds a receipt to a mandate and detects tampering', async () => {
   const service = new ReceiptService()
-  const receipt = service.create({
+  const receipt = await service.create({
     jobId: 'j',
     mandateHash: 'm',
     actions: [],
@@ -14,10 +14,10 @@ it('binds a receipt to a mandate and detects tampering', () => {
   expect(service.verify({ ...receipt, mandateHash: 'other' })).toBe(false)
 })
 
-it('derives a stable key from a seed, so receipts survive restarts', () => {
+it('derives a stable key from a seed, so receipts survive restarts', async () => {
   const seed = 'ab'.repeat(32)
   const first = new ReceiptService(seed)
-  const receipt = first.create({
+  const receipt = await first.create({
     jobId: 'job-1',
     mandateHash: 'hash',
     actions: [],

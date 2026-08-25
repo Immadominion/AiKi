@@ -1,6 +1,10 @@
 /** One production process: marketplace API plus all first-party reference-agent routes. */
 import { PostgresEvidenceStore } from './evidence/postgres-store.js'
 import { createApiServer } from './http/server.js'
+import { PostgresJobStore } from './jobs/postgres-store.js'
+import { JobService } from './jobs/service.js'
+import { PostgresReceiptStore } from './receipts/postgres-store.js'
+import { ReceiptService } from './receipts/service.js'
 import { PancakeGridClient } from './reference/grid/client.js'
 import { createGridServer } from './reference/grid/server.js'
 import { PancakeV3Client } from './reference/rebalancer/client.js'
@@ -14,12 +18,25 @@ const rpcUrl = process.env.BSC_RPC_URL
 const databaseUrl = process.env.DATABASE_URL
 if (!rpcUrl || !databaseUrl) throw new Error('BSC_RPC_URL and DATABASE_URL are required.')
 const store = new PostgresEvidenceStore(databaseUrl)
+const jobStore = new PostgresJobStore(databaseUrl)
+const receiptStore = new PostgresReceiptStore(databaseUrl)
+// A receipt outlives the process that signed it, so a deployment without a
+// stable seed would orphan every receipt it ever issued on its next restart.
+const receiptSeed = process.env.RECEIPT_SIGNING_KEY
+if (!receiptSeed)
+  throw new Error(
+    'RECEIPT_SIGNING_KEY is required: without a stable key, every restart invalidates all prior receipts.',
+  )
 const base = process.env.REFERENCE_AGENT_BASE_URL
 const venusId = process.env.VENUS_GUARDIAN_AGENT_ID
 const rebalancerId = process.env.PANCAKE_REBALANCER_AGENT_ID
 const gridId = process.env.PANCAKE_GRID_AGENT_ID
 const yieldId = process.env.YIELD_OPTIMIZER_AGENT_ID
-const app = createApiServer({ observations: () => store.list() })
+const app = createApiServer({
+  observations: () => store.list(),
+  jobs: new JobService(jobStore),
+  receipts: new ReceiptService(receiptSeed, receiptStore),
+})
 const venus = createVenusReferenceServer({
   reader: new VenusClient(rpcUrl),
   ...(base && venusId ? { registration: { publicBaseUrl: base, agentId: venusId } } : {}),
@@ -92,6 +109,6 @@ app.get('/.well-known/agent-registration.json', async (_request, reply) => {
 })
 app.addHook('onClose', async () => {
   await Promise.all([venus.close(), rebalancer.close(), grid.close(), yieldAgent.close()])
-  await store.close()
+  await Promise.all([store.close(), jobStore.close(), receiptStore.close()])
 })
 await app.listen({ host: '0.0.0.0', port: Number(process.env.PORT ?? '3000') })
