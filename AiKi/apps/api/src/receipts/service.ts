@@ -18,7 +18,22 @@ export interface ExecutionReceipt {
   alg: 'Ed25519'
   profile: 'aiki-scitt-cose/v1'
 }
-const canonical = (v: unknown) => JSON.stringify(v)
+/**
+ * aiki-scitt-cose/v1 canonical form: JSON with all object keys sorted, deeply.
+ * Key order must never matter — a verifier rebuilds this from the wire receipt
+ * without knowing what order the signer's runtime happened to use.
+ */
+function sortDeep(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(sortDeep)
+  if (v && typeof v === 'object')
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([key, value]) => [key, sortDeep(value)]),
+    )
+  return v
+}
+const canonical = (v: unknown) => JSON.stringify(sortDeep(v))
 
 /** RFC 8410 PKCS#8 wrapper for a raw Ed25519 seed. */
 const PKCS8_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex')
