@@ -13,13 +13,14 @@ import { api } from './api'
  * invented ones — and the block says which of the two it is showing.
  */
 export interface RegistryCoverage {
-  indexed: number
+  /** Null when no chain-indexer evidence exists yet; probing alone cannot fake it. */
+  indexed: number | null
   probed: number
   /** LIVE + DEGRADED: everything that answered like an agent at all. */
   answering: number
   reasons: { state: LivenessState; count: number }[]
   freshness: 'live' | 'cached'
-  sweptAt: string
+  sweptAt: string | null
 }
 
 export const SWEEP_COVERAGE: RegistryCoverage = {
@@ -47,7 +48,7 @@ async function load(): Promise<RegistryCoverage> {
     .map(([state, count]) => ({ state, count }))
     .sort((a, b) => b.count - a.count)
   return {
-    indexed: stats.indexed.totalAgents,
+    indexed: stats.indexed?.totalAgents ?? null,
     probed: stats.probed.agentsProbed,
     answering,
     reasons,

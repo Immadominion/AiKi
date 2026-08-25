@@ -1,6 +1,8 @@
 import type { LivenessState } from '@aiki/contracts'
+import Link from 'next/link'
 import { LIVENESS_DETAIL } from '@/components/ui/LivenessBadge'
 import type { RegistryCoverage } from '@/lib/live'
+import { route } from '@/lib/routes'
 
 const WHY: Partial<Record<LivenessState, string>> = {
   DECLARED_ONLY: 'registered a name and published nothing to call',
@@ -31,15 +33,29 @@ export function CoverageBlock({ shown, coverage }: { shown: number; coverage: Re
       <div className="flex flex-wrap items-baseline gap-x-[10px] gap-y-1">
         <span className="text-[14px] font-bold">{shown} shown for this ask</span>
         <span className="text-muted text-[12.5px] font-semibold">
-          behind them, a registry of {coverage.indexed.toLocaleString()} agents on BNB Chain
+          {coverage.indexed === null
+            ? `behind them, the ${coverage.probed.toLocaleString()} agents AiKi probed on BNB Chain`
+            : `behind them, a registry of ${coverage.indexed.toLocaleString()} agents on BNB Chain`}
         </span>
       </div>
 
       <p className="text-muted mt-[7px] mb-0 text-[12.5px] leading-[1.55] text-pretty">
-        AiKi probed <b className="text-ink-app font-bold">{coverage.probed.toLocaleString()}</b> of
-        them itself. <b className="text-ink-app font-bold">{coverage.answering}</b> answered like an
-        agent at all. The rest are counted here rather than deleted, because an agent we cannot test
-        is a fact about the registry, not an absence.
+        {coverage.indexed === null ? (
+          <>Probed by AiKi itself, with our own checks. </>
+        ) : (
+          <>
+            AiKi probed <b className="text-ink-app font-bold">{coverage.probed.toLocaleString()}</b>{' '}
+            of them itself.{' '}
+          </>
+        )}
+        <Link
+          href={route('/registry')}
+          className="text-ink-app font-bold underline decoration-[rgb(26_26_25_/_0.25)] underline-offset-2 hover:decoration-current"
+        >
+          {coverage.answering} answered like an agent at all
+        </Link>
+        . The rest are counted here rather than deleted, because an agent we cannot test is a fact
+        about the registry, not an absence.
       </p>
 
       {excluded > 0 ? (
@@ -60,8 +76,8 @@ export function CoverageBlock({ shown, coverage }: { shown: number; coverage: Re
 
       <p className="text-muted-3 mt-[10px] mb-0 text-[11.5px] leading-[1.45]">
         {coverage.freshness === 'live'
-          ? `Live from AiKi's evidence API · last sweep ${sweepDay(coverage.sweptAt)}`
-          : `From AiKi's probe sweep of ${sweepDay(coverage.sweptAt)} · live numbers unreachable right now`}
+          ? `Live from AiKi's evidence API${coverage.sweptAt ? ` · last sweep ${sweepDay(coverage.sweptAt)}` : ''}`
+          : `From AiKi's probe sweep${coverage.sweptAt ? ` of ${sweepDay(coverage.sweptAt)}` : ''} · live numbers unreachable right now`}
       </p>
     </div>
   )

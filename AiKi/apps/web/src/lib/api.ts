@@ -6,7 +6,12 @@
  * the seam, and both sides build against it.
  */
 
-import type { EcosystemStats, Passport, SearchRequest, SearchResponse } from '@aiki/contracts'
+import type {
+  EcosystemStats,
+  ProjectedPassport,
+  ProjectedSearchResponse,
+  SearchRequest,
+} from '@aiki/contracts'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4700'
 
@@ -46,6 +51,6 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   stats: () => req<EcosystemStats>('/v1/stats'),
   search: (body: SearchRequest) =>
-    req<SearchResponse>('/v1/search', { method: 'POST', body: JSON.stringify(body) }),
-  passport: (id: string) => req<Passport>(`/v1/agents/${id}/passport`),
+    req<ProjectedSearchResponse>('/v1/search', { method: 'POST', body: JSON.stringify(body) }),
+  passport: (id: string) => req<ProjectedPassport>(`/v1/agents/${id}/passport`),
 }
