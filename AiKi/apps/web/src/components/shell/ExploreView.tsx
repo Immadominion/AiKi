@@ -10,6 +10,7 @@ import { EvidenceBars } from '@/components/ui/EvidenceBars'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, AGENTS } from '@/lib/agents'
 import { DETAILS } from '@/lib/detail'
+import { useRegistryCoverage } from '@/lib/live'
 import { agentHref, route } from '@/lib/routes'
 import { search } from '@/lib/search'
 import { TASKS } from '@/lib/tasks'
@@ -22,6 +23,7 @@ export function ExploreView() {
   const { toggle, isSaved } = useSaved()
 
   const outcome = useMemo(() => search(q), [q])
+  const registry = useRegistryCoverage()
   const searching = q.trim().length > 0
   const nothing = searching && outcome.results.length === 0
 
@@ -154,7 +156,7 @@ export function ExploreView() {
       {searching ? (
         <>
           <div className="mb-[18px]">
-            <CoverageBlock coverage={outcome.coverage} />
+            <CoverageBlock shown={outcome.results.length} coverage={registry} />
           </div>
           {nothing ? noMatch : table(outcome.results)}
         </>
