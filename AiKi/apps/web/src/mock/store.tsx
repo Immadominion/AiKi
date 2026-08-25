@@ -3,6 +3,7 @@
 import type { ApprovalMode, CapPeriod } from '@aiki/contracts'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentKey } from '@/lib/agents'
+import { connectInjected, watchAccounts } from '@/lib/wallet'
 import { buildReceipt, runStep } from './script'
 import { demoState, freshState } from './seed'
 import { EMPTY, type Hire, type Job, MOCK_VERSION, type MockState } from './types'
@@ -21,7 +22,7 @@ const KEY = 'aiki.mock.v1'
 interface MockApi {
   state: MockState
   ready: boolean
-  connect: () => void
+  connect: () => Promise<'injected' | 'simulated' | 'rejected'>
   disconnect: () => void
   hire: (input: {
     key: AgentKey
@@ -94,6 +95,15 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
     [commit],
   )
 
+  useEffect(() => {
+    return watchAccounts((accounts) => {
+      const current = stateRef.current
+      if (!current.connected || current.walletKind !== 'injected') return
+      const address = accounts[0]
+      commit(address ? { ...current, address } : { ...current, connected: false, chainId: null })
+    })
+  }, [commit])
+
   const api = useMemo<MockApi>(() => {
     const setHire = (s: MockState, key: AgentKey, fn: (h: Hire) => Hire): MockState => ({
       ...s,
@@ -108,8 +118,34 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
       state,
       ready,
 
-      connect: () => patch((s) => ({ ...s, connected: true })),
-      disconnect: () => patch((s) => ({ ...s, connected: false })),
+      connect: () =>
+        connectInjected().then((result) => {
+          if (result.kind === 'connected') {
+            patch((s) => ({
+              ...s,
+              connected: true,
+              walletKind: 'injected',
+              address: result.address,
+              chainId: result.chainId,
+            }))
+            return 'injected' as const
+          }
+          if (result.kind === 'no_wallet') {
+            // No extension: the demo stays walkable, and every surface that
+            // shows the address labels it simulated.
+            patch((s) => ({
+              ...s,
+              connected: true,
+              walletKind: 'simulated',
+              address: EMPTY.address,
+              chainId: null,
+            }))
+            return 'simulated' as const
+          }
+          // A rejection is an answer; nothing changes and nothing pretends.
+          return 'rejected' as const
+        }),
+      disconnect: () => patch((s) => ({ ...s, connected: false, chainId: null })),
 
       hire: (input) => {
         const jobId = nextId('job')

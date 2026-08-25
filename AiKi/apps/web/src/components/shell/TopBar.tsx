@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, AGENT_BY_KEY } from '@/lib/agents'
 import { hiredRows } from '@/lib/present'
 import { route } from '@/lib/routes'
+import { CONNECT_TOAST, shortAddress } from '@/lib/wallet'
 import { useMock } from '@/mock/store'
 import { type MockState, usd } from '@/mock/types'
 
@@ -147,7 +148,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
 
       {connected ? (
         <div
-          title="0x7f4a…3a91"
+          title={state.address}
           className="hidden h-11 flex-none items-center gap-2 rounded-[15px] bg-white px-2 shadow-[0_1px_2px_rgb(26_26_25_/_0.06)] sm:flex"
         >
           <Image
@@ -158,15 +159,17 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
             className="size-7 object-contain"
           />
           <span className="hidden text-[14px] font-bold whitespace-nowrap lg:block">
-            0x7f4a…3a91
+            {shortAddress(state.address)}
+            {state.walletKind === 'simulated' ? (
+              <span className="text-muted font-semibold"> · simulated</span>
+            ) : null}
           </span>
         </div>
       ) : (
         <button
           type="button"
           onClick={() => {
-            connect()
-            say('Connected. AiKi can read your balances; it still cannot move anything.')
+            void connect().then((outcome) => say(CONNECT_TOAST[outcome]))
           }}
           className="bg-ink-app hover:bg-orange-app hidden h-11 flex-none items-center rounded-[15px] px-4 text-[13.5px] font-bold whitespace-nowrap text-white transition-colors sm:flex"
         >

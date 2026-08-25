@@ -20,6 +20,7 @@ import { usePalette } from '@/components/shell/CommandPalette'
 import { useHoverIcon } from '@/components/ui/AnimatedIcon'
 import { useToast } from '@/components/ui/Toast'
 import { route } from '@/lib/routes'
+import { shortAddress } from '@/lib/wallet'
 import { useAccount, useIsPhone, useModeNavigation, useTour } from './prefs'
 
 interface Item {
@@ -36,8 +37,6 @@ type NavIconComponent = React.ForwardRefExoticComponent<
     stopAnimation: () => void
   }>
 >
-
-const ADDRESS = '0x7f4a2b91c0de44a1f8e37b25d90ac6183f4a3a91'
 
 /**
  * Home is whichever mode you picked.
@@ -178,7 +177,7 @@ export function Sidebar({
   const { layout, switchMode } = useModeNavigation()
   const onPhone = useIsPhone()
   const [accountOpen, setAccountOpen] = useState(false)
-  const { connected, connect, disconnect } = useAccount()
+  const { connected, connect, disconnect, address, walletKind } = useAccount()
   const { replay } = useTour(layout)
 
   // The collapse preference belongs to the desktop column. In the drawer the
@@ -346,7 +345,7 @@ export function Sidebar({
               <div className="px-[14px] pt-[13px] pb-[10px]">
                 <div className="text-[13px] font-bold">{userName}</div>
                 <div className="text-muted mt-[2px] font-mono text-[11.5px] leading-[1.5] break-all">
-                  {ADDRESS}
+                  {address}
                 </div>
               </div>
               {[
@@ -356,7 +355,7 @@ export function Sidebar({
                     // Clipboard access can be refused outright, so the failure
                     // has to say something other than "copied".
                     navigator.clipboard
-                      ?.writeText(ADDRESS)
+                      ?.writeText(address)
                       .then(() => say('Address copied.'))
                       .catch(() => say('Your browser would not let us copy. The address is above.'))
                   },
@@ -400,7 +399,7 @@ export function Sidebar({
         {connected ? (
           <button
             type="button"
-            title={collapsed ? `${userName} · 0x7f4a…3a91` : undefined}
+            title={collapsed ? `${userName} · ${shortAddress(address)}` : undefined}
             onClick={() => setAccountOpen((o) => !o)}
             className={`flex w-full items-center gap-[11px] rounded-2xl border-0 bg-none py-[9px] text-left hover:bg-[rgb(26_26_25_/_0.055)] ${
               collapsed ? 'justify-center px-0' : 'px-[10px]'
@@ -416,7 +415,10 @@ export function Sidebar({
               <>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13.5px] font-bold">{userName}</span>
-                  <span className="text-muted mt-px block text-[11.5px]">0x7f4a…3a91</span>
+                  <span className="text-muted mt-px block text-[11.5px]">
+                    {shortAddress(address)}
+                    {walletKind === 'simulated' ? ' · simulated' : ''}
+                  </span>
                 </span>
                 <span className="text-muted flex-none text-[13px]">{accountOpen ? '×' : '⌄'}</span>
               </>

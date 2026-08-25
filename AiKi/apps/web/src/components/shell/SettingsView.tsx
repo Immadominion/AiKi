@@ -5,8 +5,7 @@ import { PageCard } from '@/components/shell/PageCard'
 import { useAccount, useModeNavigation } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
 import { route } from '@/lib/routes'
-
-const ADDRESS = '0x7f4a2b91c0de44a1f8e37b25d90ac6183f4a3a91'
+import { CONNECT_TOAST } from '@/lib/wallet'
 
 const Row = ({
   title,
@@ -62,7 +61,7 @@ export function SettingsView() {
   const say = useToast()
   const router = useRouter()
   const { layout, switchMode } = useModeNavigation()
-  const { connected, connect, disconnect } = useAccount()
+  const { connected, connect, disconnect, address, walletKind } = useAccount()
 
   const header = (
     <div className="flex flex-wrap items-start gap-[14px]">
@@ -86,11 +85,17 @@ export function SettingsView() {
         >
           <Row
             title={connected ? 'Connected wallet' : 'No wallet connected'}
-            body={connected ? ADDRESS : 'AiKi cannot see any balances or positions right now.'}
+            body={
+              connected
+                ? walletKind === 'simulated'
+                  ? `${address} · a simulated wallet, not a real connection`
+                  : address
+                : 'AiKi cannot see any balances or positions right now.'
+            }
             action="Copy"
             onAction={() => {
               navigator.clipboard
-                ?.writeText(ADDRESS)
+                ?.writeText(address)
                 .then(() => say('Address copied.'))
                 .catch(() => say('Your browser would not let us copy.'))
             }}
@@ -112,8 +117,7 @@ export function SettingsView() {
                 disconnect()
                 say('Disconnected. Revoke each authority from Limits, which is a separate thing.')
               } else {
-                connect()
-                say('Connected. AiKi can read your balances; it still cannot move anything.')
+                void connect().then((outcome) => say(CONNECT_TOAST[outcome]))
               }
             }}
           />

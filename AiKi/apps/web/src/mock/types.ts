@@ -13,7 +13,7 @@ import type { AgentKey } from '@/lib/agents'
  *  - ids are sequential, not opaque. When you are walking a flow by hand you
  *    want to recognise the thing you just made.
  */
-export const MOCK_VERSION = 1
+export const MOCK_VERSION = 2
 
 export type JobStatus = 'RUNNING' | 'WAITING' | 'PAUSED' | 'DONE'
 
@@ -98,6 +98,9 @@ export interface Receipt {
 export interface MockState {
   version: number
   connected: boolean
+  /** 'injected' is a real EIP-1193 wallet; 'simulated' is the demo fallback and is always labelled. */
+  walletKind: 'injected' | 'simulated'
+  chainId: number | null
   address: string
   hires: Hire[]
   jobs: Job[]
@@ -113,6 +116,8 @@ export const usd = (cents: number) =>
 export const EMPTY: MockState = {
   version: MOCK_VERSION,
   connected: false,
+  walletKind: 'simulated',
+  chainId: null,
   address: '0x7f4a2b91c0de44a1f8e37b25d90ac6183f4a3a91',
   hires: [],
   jobs: [],

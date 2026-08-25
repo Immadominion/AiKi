@@ -9,6 +9,7 @@ import { IconButton } from '@/components/ui/AnimatedIcon'
 import { useToast } from '@/components/ui/Toast'
 import { useEscapeLayer } from '@/lib/escape'
 import { route } from '@/lib/routes'
+import { CONNECT_TOAST } from '@/lib/wallet'
 import { FastCore, FastDecor } from './FastCore'
 import { HoverNav } from './HoverNav'
 import { PANEL, SCREEN } from './shards'
@@ -90,8 +91,7 @@ export function AskPanel() {
             <button
               type="button"
               onClick={() => {
-                connect()
-                say('Connected. AiKi can read your balances; it still cannot move anything.')
+                void connect().then((outcome) => say(CONNECT_TOAST[outcome]))
               }}
               className="mt-[14px] border-0 bg-none text-[12.5px] font-medium text-[#767676] hover:text-[#141414]"
             >

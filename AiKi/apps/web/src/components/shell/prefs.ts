@@ -108,7 +108,14 @@ export function useModeNavigation() {
  */
 export function useAccount() {
   const { state, ready, connect, disconnect } = useMock()
-  return { connected: state.connected, ready, connect, disconnect }
+  return {
+    connected: state.connected,
+    address: state.address,
+    walletKind: state.walletKind,
+    ready,
+    connect,
+    disconnect,
+  }
 }
 
 const TOUR = ['pending', 'done'] as const
