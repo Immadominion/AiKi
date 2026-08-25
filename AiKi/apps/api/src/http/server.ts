@@ -6,6 +6,7 @@ import type { Observation } from '../evidence/types.js'
 import { parseIntent } from '../intent/parser.js'
 import { JobService } from '../jobs/service.js'
 import { comparePassports, projectPassport } from '../projections/passport.js'
+import { projectStats } from '../projections/stats.js'
 import { ReceiptService } from '../receipts/service.js'
 
 export function createApiServer(input: {
@@ -16,7 +17,7 @@ export function createApiServer(input: {
 }) {
   const app = Fastify({ logger: process.env.NODE_ENV === 'production' })
   const jobs = input.jobs ?? new JobService()
-  const receipts = input.receipts ?? new ReceiptService()
+  const receipts = input.receipts ?? new ReceiptService(process.env.RECEIPT_SIGNING_KEY)
   const benchmarks = input.benchmarks ?? new BenchmarkService()
   app.addHook('onRequest', async (request, reply) => {
     const id = request.headers['x-request-id']?.toString() ?? randomUUID()
@@ -33,21 +34,7 @@ export function createApiServer(input: {
       },
     }),
   )
-  app.get('/v1/stats', async () => {
-    const observations = await input.observations()
-    const verdicts = observations.filter((o) => o.predicate === 'agent.liveness_verdict')
-    return {
-      indexedAgents: new Set(observations.map((o) => o.subject.agentId)).size,
-      observations: observations.length,
-      liveness: Object.fromEntries(
-        verdicts.reduce((out, row) => {
-          const state = String(row.value.state ?? 'UNPROBED')
-          out.set(state, (out.get(state) ?? 0) + 1)
-          return out
-        }, new Map<string, number>()),
-      ),
-    }
-  })
+  app.get('/v1/stats', async () => projectStats(await input.observations()))
   app.get<{ Params: { agentId: string } }>('/v1/agents/:agentId/passport', async (request) =>
     projectPassport(request.params.agentId, await input.observations()),
   )
@@ -74,29 +61,42 @@ export function createApiServer(input: {
     const observations = await input.observations()
     const ids = [...new Set(observations.map((o) => o.subject.agentId))]
     const query = request.body.query?.toLowerCase()
-    const limit = Math.min(Math.max(request.body.limit ?? 20, 1), 100)
-    const results = ids
+    const rawLimit = request.body.limit
+    const limit =
+      typeof rawLimit === 'number' && Number.isFinite(rawLimit)
+        ? Math.min(Math.max(Math.floor(rawLimit), 1), 100)
+        : 20
+    const matched = ids
       .map((id) => projectPassport(id, observations))
       .filter(
         (passport) =>
           !query ||
           passport.agentId.toLowerCase().includes(query) ||
+          (passport.name?.toLowerCase().includes(query) ?? false) ||
           passport.liveness.toLowerCase().includes(query),
       )
-      .filter(
-        (passport) =>
-          !request.body.filters?.liveness ||
-          request.body.filters.liveness.includes(passport.liveness),
-      )
-      .slice(0, limit)
+    // The contract's documented default: unverified agents are hidden but
+    // counted. Passing filters.liveness explicitly overrides it.
+    const wanted = request.body.filters?.liveness ?? ['LIVE', 'DEGRADED']
+    const kept = matched.filter((p) => wanted.includes(p.liveness))
+    // The honesty block: what the filter removed, counted by why — and
+    // excludedUnverified counts only the unverified among them, since a LIVE
+    // agent removed by an explicit filter was excluded, not unverified.
+    const exclusionReasons: Partial<Record<string, number>> = {}
+    let excludedUnverified = 0
+    for (const passport of matched) {
+      if (wanted.includes(passport.liveness)) continue
+      exclusionReasons[passport.liveness] = (exclusionReasons[passport.liveness] ?? 0) + 1
+      if (passport.liveness !== 'LIVE' && passport.liveness !== 'DEGRADED') excludedUnverified += 1
+    }
     return {
-      results,
-      total: results.length,
+      results: kept.slice(0, limit),
+      total: kept.length,
       coverage: {
         indexedAgents: ids.length,
-        matchedBeforeFilters: ids.length,
-        excludedUnverified: ids.length - results.length,
-        exclusionReasons: {},
+        matchedBeforeFilters: matched.length,
+        excludedUnverified,
+        exclusionReasons,
       },
     }
   })
@@ -172,6 +172,12 @@ export function createApiServer(input: {
   app.get<{ Params: { id: string } }>('/v1/receipts/:id', async (request) =>
     receipts.get(request.params.id),
   )
+  // What a verifier pins: checking a receipt must not require trusting us.
+  app.get('/v1/receipts/key', async () => ({
+    alg: 'Ed25519',
+    publicKey: receipts.publicKey(),
+    profile: 'aiki-scitt-cose/v1',
+  }))
   app.post<{ Body: Omit<BenchmarkRun, 'id' | 'completedAt' | 'methodology'> }>(
     '/v1/arena/runs',
     async (request) => benchmarks.add(request.body),

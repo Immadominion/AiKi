@@ -3,6 +3,13 @@ import { materializeObservation } from './store.js'
 import type { AppendResult, EvidenceStore, IndexerCheckpoint, NewObservation } from './types.js'
 
 /** PostgreSQL-backed evidence store. The migration enforces append-only observations. */
+/**
+ * The postgres driver hands timestamptz columns back as Date objects; every
+ * projection downstream compares observedAt as an ISO string, so timestamps
+ * are normalized at the boundary or sorting silently breaks.
+ */
+const iso = (value: string | Date): string => (value instanceof Date ? value.toISOString() : value)
+
 export class PostgresEvidenceStore implements EvidenceStore {
   private readonly sql: postgres.Sql
   constructor(databaseUrl: string) {
@@ -41,9 +48,9 @@ export class PostgresEvidenceStore implements EvidenceStore {
         agent_id: string
         predicate: string
         value: Record<string, unknown>
-        valid_at: string
-        observed_at: string
-        recorded_at: string
+        valid_at: string | Date
+        observed_at: string | Date
+        recorded_at: string | Date
         source: string
         method: string
         evidence_class: 'A' | 'B' | 'C' | 'D'
@@ -66,9 +73,9 @@ export class PostgresEvidenceStore implements EvidenceStore {
       },
       predicate: row.predicate,
       value: row.value,
-      validAt: row.valid_at,
-      observedAt: row.observed_at,
-      recordedAt: row.recorded_at,
+      validAt: iso(row.valid_at),
+      observedAt: iso(row.observed_at),
+      recordedAt: iso(row.recorded_at),
       source: row.source,
       method: row.method,
       evidenceClass: row.evidence_class,

@@ -111,3 +111,36 @@ it('serves intent, search, quote, SSE snapshot, receipt retrieval, and Arena end
   })
   expect((await app.inject(`/v1/arena/runs/${arena.json().id}`)).json().evidence).toBeDefined()
 })
+
+it('search coverage names what the liveness filter excluded, and total survives the limit', async () => {
+  const store = new InMemoryEvidenceStore()
+  const states = ['LIVE', 'DECLARED_ONLY', 'IMPOSTOR_STATIC', 'LIVE']
+  for (const [index, state] of states.entries())
+    await store.append({
+      subject: { type: 'agent', chainId: 56, registry: '0x8004', agentId: `a${index}` },
+      predicate: 'agent.liveness_verdict',
+      value: { state },
+      validAt: '2026-01-01T00:00:00.000Z',
+      observedAt: '2026-01-01T00:00:00.000Z',
+      source: 'test',
+      method: 'test',
+      evidenceClass: 'B',
+      dedupeKey: `cov-${index}`,
+    })
+  const app = createApiServer({ observations: () => store.observations })
+  apps.push(app)
+  const response = await app.inject({
+    method: 'POST',
+    url: '/v1/search',
+    payload: { filters: { liveness: ['LIVE'] }, limit: 1 },
+  })
+  const body = response.json()
+  expect(body.total).toBe(2)
+  expect(body.results).toHaveLength(1)
+  expect(body.coverage).toEqual({
+    indexedAgents: 4,
+    matchedBeforeFilters: 4,
+    excludedUnverified: 2,
+    exclusionReasons: { DECLARED_ONLY: 1, IMPOSTOR_STATIC: 1 },
+  })
+})

@@ -573,24 +573,27 @@ export interface Receipt {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface EcosystemStats {
+  /** Null until chain-indexer evidence exists — never derived from probe rows. */
   indexed: {
     totalAgents: number
     bscAgents: number
     lastIndexedBlock: number
     lastIndexedAt: Timestamp
-  }
+  } | null
   probed: {
     agentsProbed: number
     /** The headline finding. */
     byState: Partial<Record<LivenessState, number>>
-    lastProbeSweepAt: Timestamp
+    /** Null when nothing has been probed — never an epoch sentinel. */
+    lastProbeSweepAt: Timestamp | null
   }
+  /** Null until feedback is actually ingested; zeros would claim a measurement. */
   reputation: {
     totalFeedback: number
     withPaymentProof: number
     sybilFlaggedPct: number
     uniqueReviewers: number
-  }
+  } | null
   categories: Partial<Record<Category, { agents: number; live: number }>>
   /** We correct stale ecosystem statistics here, with sources. */
   corrections?: { claim: string; actual: string; source: string }[]
@@ -623,4 +626,80 @@ export interface Freshness {
   /** The source's declared heartbeat — freshness is a contract it publishes. */
   heartbeatMs?: number
   ageMs?: number
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Projected passport — what the evidence API can actually serve today
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The passport as projected purely from stored observations. This is the wire
+ * shape of GET /v1/agents/:id/passport and of search results, shared by the
+ * API and the frontend so neither can drift from the other.
+ *
+ * Distinct from `Passport` above deliberately: `Passport` is the full product
+ * contract, and serving it today would require inventing the fields we have no
+ * evidence for. Every nullable field here is null exactly when unmeasured.
+ */
+export interface ProjectedCounts {
+  successes: number
+  trials: number
+}
+
+export interface ProjectedRisk {
+  code: string
+  label: string
+  severity: 'info' | 'warn' | 'critical'
+  detail: string
+}
+
+export interface ProjectedPassport {
+  agentId: string
+  chainId: number | null
+  registry: string | null
+  /** From the resolved registration manifest; agents without one have no name. */
+  name: string | null
+  liveness: LivenessState
+  livenessDetail: string | null
+  lastProbeAt: Timestamp | null
+  p95LatencyMs: number | null
+  proofScore: {
+    value: number
+    confidence: number
+    interval: [number, number]
+    sampleSize: number
+    method: string
+  }
+  /** Overall: did it answer as an agent, across every probe we ran. */
+  checks: ProjectedCounts
+  components: {
+    liveness: ProjectedCounts
+    executionReliability: ProjectedCounts | null
+    outcomeQuality: ProjectedCounts | null
+    reputation: ProjectedCounts | null
+    safety: ProjectedCounts | null
+  }
+  identity: {
+    tokenId: string
+    owner: string | null
+    createdAt: Timestamp | null
+    registrationFile: {
+      resolved: boolean | null
+      uriScheme: 'https' | 'ipfs' | 'data' | null
+      /** True = proven, false = evaluated and absent, null = never evaluated. */
+      reciprocalProofVerified: boolean | null
+      zeroCost: boolean | null
+    }
+  }
+  risks: ProjectedRisk[]
+  evidence: { predicate: string; count: number; latestAt: Timestamp }[]
+  /** Null when we hold no observations at all — never an epoch sentinel. */
+  updatedAt: Timestamp | null
+  insufficientEvidence: boolean
+}
+
+export interface ProjectedSearchResponse {
+  results: ProjectedPassport[]
+  total: number
+  coverage: SearchCoverage
 }

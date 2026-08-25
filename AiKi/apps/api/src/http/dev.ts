@@ -41,7 +41,13 @@ function loadSweeps(root: string): Observation[] {
     }
     if (!Array.isArray(sweep.results)) continue
     for (const result of sweep.results) {
-      if (!result?.agentId || typeof result.verdict?.state !== 'string') continue
+      if (
+        !result?.agentId ||
+        typeof result.verdict?.state !== 'string' ||
+        typeof result.probedAt !== 'string' ||
+        Number.isNaN(Date.parse(result.probedAt))
+      )
+        continue
       const subject = {
         type: 'agent' as const,
         chainId: sweep.chainId ?? 56,
@@ -67,7 +73,10 @@ function loadSweeps(root: string): Observation[] {
           state: result.verdict.state,
           detail: result.verdict.detail,
           evidence: result.verdict.evidence,
-          registrationWasZeroCost: result.registrationWasZeroCost ?? false,
+          // Only stored when the sweep measured it; a missing flag is not false.
+          ...(typeof result.registrationWasZeroCost === 'boolean'
+            ? { registrationWasZeroCost: result.registrationWasZeroCost }
+            : {}),
         },
         dedupeKey: `prober:${runKey}:verdict`,
       })
