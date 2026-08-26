@@ -146,19 +146,25 @@ down is an audit that did not happen.
 - The balance-delta `afterHook` charges any outflow of the asset during the execution, including
   one the execution did not cause, so the on-chain counter can run ahead of the mirror's.
 
-**Test coverage, unresolved:**
+**Test coverage: closed.** All six are now covered by `test/AuditGaps.t.sol`, and each was
+mutation-checked by deleting the guard it claims to test:
 
-- `disableDelegationWithSig`'s signature check has no negative test; deleting it keeps the suite
-  green.
-- The headline session-cap invariant is vacuous: the cap is unreachable by construction.
-- `AmountLib`'s fail-closed path for a missing calldata word is untested, so a short read priced
-  as zero would pass every cap.
-- The enforcer-level snapshot lock, claimed as the second reentrancy defence, is never exercised.
-- `redeemDelegations` with more than one execution per call is untested, which is the same
-  cap-multiplication surface the batch-mode rejection is meant to close.
-- The parity corpus has no case for a policy the mirror accepts and the chain cannot represent.
+| guard | deleting it fails |
+|---|---|
+| `disableDelegationWithSig`'s signature check | 2 tests |
+| the enforcer-level snapshot lock | 2 tests |
+| `CapTermsLib`'s fail-closed undecodable amount | 2 tests |
+| the session cap, reached and stopped at its limit | covered |
+| `redeemDelegations` with several executions per call | covered |
+| `afterHook` with no snapshot | covered |
 
-None of this is a reason to deploy. It is a reason not to.
+The undecodable-amount case is worth recording. The obvious test refuses, but from the
+asset-scope enforcer, which sits earlier in the caveat list and cannot decode the call either,
+so `CapTermsLib`'s own branch stayed unexecuted and mutating it left the suite green. A second
+test uses a mandate with no asset-scope caveat so the cap itself is asked to read the amount.
+A test that passes for the wrong reason is the failure mode this table exists to prevent.
+
+The three semantic findings above remain open. They are a reason not to deploy.
 
 ## What is NOT enforced on chain
 

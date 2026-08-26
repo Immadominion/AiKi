@@ -107,6 +107,12 @@ abstract contract Fixture is Test {
         return EncoderLib.toDigest(manager.domainSeparator(), EncoderLib.hashDelegation(d));
     }
 
+    /// @dev Sign an already-computed digest, for the paths that do not sign a Delegation.
+    function signRaw(uint256 pk, bytes32 digest) internal pure returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
+        return abi.encodePacked(r, s, v);
+    }
+
     function signAs(uint256 pk, Delegation memory d) internal view returns (bytes memory) {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digestOf(d));
         return abi.encodePacked(r, s, v);
