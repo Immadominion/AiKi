@@ -38,4 +38,6 @@ bracket_spacing = false
 int_types = "long"
 
 [rpc_endpoints]
-bsc = "https://bsc-dataseed.bnbchain.org"
+# An archive endpoint: forking needs historical state, and the public dataseeds
+# prune it ("missing trie node"). Override with BSC_FORK_RPC if this one rate-limits.
+bsc = "https://bsc.drpc.org"

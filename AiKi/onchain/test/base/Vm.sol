@@ -5,6 +5,8 @@ pragma solidity ^0.8.24;
 /// @dev This repository has zero external Solidity dependencies, including forge-std. Only the
 ///      cheatcodes these tests actually use are declared.
 interface Vm {
+    function createSelectFork(string calldata urlOrAlias) external returns (uint256);
+    function createSelectFork(string calldata urlOrAlias, uint256 blockNumber) external returns (uint256);
     function warp(uint256 newTimestamp) external;
     function prank(address sender) external;
     function startPrank(address sender) external;

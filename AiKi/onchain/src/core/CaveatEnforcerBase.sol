@@ -29,6 +29,22 @@ abstract contract CaveatEnforcerBase is ICaveatEnforcer {
         _;
     }
 
+    /// @dev No-ops. All enforcement in this suite is per-execution, so the batch-level pair
+    ///      exists to be callable by the real manager, not to decide anything.
+    function beforeAllHook(
+        bytes calldata,
+        bytes calldata,
+        bytes32,
+        bytes calldata,
+        bytes32,
+        address,
+        address
+    ) external virtual {}
+
+    function afterAllHook(bytes calldata, bytes calldata, bytes32, bytes calldata, bytes32, address, address)
+        external
+        virtual {}
+
     function beforeHook(bytes calldata, bytes calldata, bytes32, bytes calldata, bytes32, address, address)
         external
         virtual {}
