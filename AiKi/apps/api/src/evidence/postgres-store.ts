@@ -34,6 +34,51 @@ export class PostgresEvidenceStore implements EvidenceStore {
     await this
       .sql`INSERT INTO indexer_checkpoints (stream, last_indexed_block, updated_at) VALUES (${checkpoint.stream}, ${checkpoint.lastIndexedBlock}, ${checkpoint.updatedAt}) ON CONFLICT (stream) DO UPDATE SET last_indexed_block = EXCLUDED.last_indexed_block, updated_at = EXCLUDED.updated_at`
   }
+  /**
+   * Agents that should be probed next: never probed first, then stalest.
+   *
+   * Registration and probing are joined on the full subject, not just the token
+   * id, because a token id is only unique within its own registry.
+   */
+  async dueForProbe(limit: number, staleAfterHours: number) {
+    return this.sql<
+      {
+        chain_id: number
+        registry_address: string
+        agent_id: string
+        agent_uri: string
+        last_probed_at: string | Date | null
+      }[]
+    >`
+      WITH registered AS (
+        SELECT DISTINCT ON (chain_id, registry_address, agent_id)
+          chain_id, registry_address, agent_id, value->>'agentURI' AS agent_uri
+        FROM observations
+        WHERE predicate = 'erc8004.agent_registered'
+        ORDER BY chain_id, registry_address, agent_id, observed_at DESC
+      ),
+      probed AS (
+        SELECT chain_id, registry_address, agent_id, MAX(observed_at) AS last_probed_at
+        FROM observations
+        WHERE predicate = 'agent.liveness_verdict'
+        GROUP BY chain_id, registry_address, agent_id
+      )
+      SELECT r.chain_id, r.registry_address, r.agent_id, r.agent_uri, p.last_probed_at
+      FROM registered r
+      LEFT JOIN probed p
+        ON p.chain_id = r.chain_id
+       AND p.registry_address = r.registry_address
+       AND p.agent_id = r.agent_id
+      WHERE r.agent_uri IS NOT NULL
+        AND (
+          p.last_probed_at IS NULL
+          OR p.last_probed_at < now() - ${`${staleAfterHours} hours`}::interval
+        )
+      ORDER BY p.last_probed_at ASC NULLS FIRST
+      LIMIT ${limit}
+    `
+  }
+
   async close(): Promise<void> {
     await this.sql.end()
   }

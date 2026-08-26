@@ -11,6 +11,8 @@
     "index:persist": "tsx src/indexer/persist-cli.ts",
     "probe": "tsx src/prober/cli.ts",
     "probe:persist": "tsx src/prober/persist-cli.ts",
+    "probe:sweep": "tsx src/prober/sweep-cli.ts",
+    "scheduler": "tsx src/scheduler.ts",
     "reference:venus": "tsx src/reference/venus/cli.ts",
     "reference:rebalancer": "tsx src/reference/rebalancer/cli.ts",
     "reference:grid": "tsx src/reference/grid/cli.ts",
