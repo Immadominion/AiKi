@@ -2,7 +2,7 @@
 import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
 import { PostgresNonceStore } from './auth/nonce-store.js'
-import { SessionSigner } from './auth/session.js'
+import { describeCookieMismatch, SessionSigner } from './auth/session.js'
 import { PostgresEvidenceStore } from './evidence/postgres-store.js'
 import { createApiServer } from './http/server.js'
 import { PostgresJobStore } from './jobs/postgres-store.js'
@@ -39,6 +39,11 @@ if (!authDomain)
   throw new Error(
     'AUTH_DOMAIN is required: a signed-in message must name this host, or a signature for another site would be accepted here.',
   )
+const webOrigin = process.env.WEB_ORIGIN
+if (!webOrigin)
+  throw new Error('WEB_ORIGIN is required: it is the one browser origin allowed to hold a session.')
+const cookieMismatch = describeCookieMismatch(authDomain, webOrigin)
+if (cookieMismatch) throw new Error(cookieMismatch)
 const nonceStore = new PostgresNonceStore(databaseUrl)
 const base = process.env.REFERENCE_AGENT_BASE_URL
 const venusId = process.env.VENUS_GUARDIAN_AGENT_ID

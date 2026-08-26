@@ -94,3 +94,46 @@ export function serializeCookie(
   if (options.secure) parts.push('Secure')
   return parts.join('; ')
 }
+
+/**
+ * The registrable site of a host, near enough for a startup check.
+ *
+ * "localhost" and any bare hostname are their own site; everything else is its
+ * last two labels. This is not a public-suffix list and is not trying to be:
+ * it exists to catch the deployment mistake below, not to make a security
+ * decision.
+ */
+const siteOf = (host: string): string => {
+  const name = host.split(':')[0]?.toLowerCase() ?? ''
+  const labels = name.split('.')
+  return labels.length <= 2 ? name : labels.slice(-2).join('.')
+}
+
+/**
+ * A session cookie is SameSite=Lax, so the browser only sends it to the API
+ * when the app and the API are the same site. Getting this wrong does not throw
+ * anywhere: sign-in appears to succeed and then every authenticated request is
+ * quietly a 401, which is a genuinely miserable afternoon.
+ *
+ * Returns a description of the problem, or null when the pairing is workable.
+ */
+export function describeCookieMismatch(authDomain: string, webOrigin: string): string | null {
+  let originHost: string
+  try {
+    originHost = new URL(webOrigin).host
+  } catch {
+    return `WEB_ORIGIN is not a valid URL: ${webOrigin}`
+  }
+  if (authDomain.toLowerCase() !== originHost.toLowerCase())
+    return `AUTH_DOMAIN (${authDomain}) is not the host of WEB_ORIGIN (${originHost}). The sign-in message must name the site the user is actually on, or every signature will be refused.`
+  return null
+}
+
+/** True when the API's own public host can receive the app's session cookie. */
+export function apiIsSameSite(apiHost: string, webOrigin: string): boolean {
+  try {
+    return siteOf(apiHost) === siteOf(new URL(webOrigin).host)
+  } catch {
+    return false
+  }
+}

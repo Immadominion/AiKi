@@ -5,7 +5,11 @@ out/
 .turbo/
 *.tsbuildinfo
 .env
-.env.local
+.env.*
+!.env.example
+*.key
+*.pem
+keystore/
 .DS_Store
 
 probe-sweep-*.json
