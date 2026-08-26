@@ -92,10 +92,14 @@ it('serves intent, search, quote, SSE snapshot, receipt retrieval, and Arena end
     (await app.inject({ method: 'POST', url: '/v1/search', payload: { query: 'live' } }))
       .statusCode,
   ).toBe(200)
-  expect(
-    (await app.inject({ method: 'POST', url: '/v1/quotes', payload: { agentId: 'venus-1' } }))
-      .statusCode,
-  ).toBe(200)
+  // A LIVE agent that publishes no price is refused rather than quoted at zero.
+  const unpriced = await app.inject({
+    method: 'POST',
+    url: '/v1/quotes',
+    payload: { agentId: 'venus-1' },
+  })
+  expect(unpriced.statusCode).toBe(422)
+  expect(unpriced.json().error.code).toBe('AGENT_HAS_NO_PUBLISHED_PRICE')
   const auth = await app.inject({
     method: 'POST',
     url: '/v1/authorizations',

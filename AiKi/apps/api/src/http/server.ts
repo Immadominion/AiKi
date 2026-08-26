@@ -12,6 +12,8 @@ import { JobService } from '../jobs/service.js'
 import { comparePassports, projectPassport } from '../projections/passport.js'
 import { projectStats } from '../projections/stats.js'
 import { ReceiptService } from '../receipts/service.js'
+import { buildQuote } from '../settlement/pricing.js'
+import { publishedPrice } from '../settlement/published-price.js'
 
 export function createApiServer(input: {
   observations: () => Observation[] | Promise<Observation[]>
@@ -155,27 +157,27 @@ export function createApiServer(input: {
     }
   })
   app.post<{ Body: { agentId: string } }>('/v1/quotes', async (request, reply) => {
-    const passport = projectPassport(request.body.agentId, await input.observations())
-    if (passport.liveness !== 'LIVE')
-      return reply.code(422).send({
-        error: {
-          code: 'AGENT_NOT_QUOTABLE',
-          message: 'Only LIVE agents may issue a marketplace quote.',
-          retryable: false,
-          requestId: request.headers['x-request-id'],
-        },
+    const observations = await input.observations()
+    const passport = projectPassport(request.body.agentId, observations)
+    const fail = (code: string, message: string) =>
+      reply.code(422).send({
+        error: { code, message, retryable: false, requestId: request.headers['x-request-id'] },
       })
-    const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString()
-    return {
-      quoteId: randomUUID(),
-      agentId: request.body.agentId,
-      price: { amount: '0', asset: 'U', decimals: 18 },
-      platformFee: { amount: '0', asset: 'U', decimals: 18 },
-      estimatedGas: { amount: '0', asset: 'BNB', decimals: 18 },
-      expiresAt,
-      protocol: 'offchain',
-      caveat: 'Reference-agent assessment quote; no settlement is requested.',
-    }
+
+    if (passport.liveness !== 'LIVE')
+      return fail('AGENT_NOT_QUOTABLE', 'Only LIVE agents may issue a marketplace quote.')
+
+    const price = publishedPrice(request.body.agentId, observations)
+    // A price we do not have is not a price of zero. Quoting free work that is
+    // not free is the same class of mistake as reporting an unmeasured field as
+    // a measurement, and this endpoint used to do exactly that.
+    if (price === null)
+      return fail(
+        'AGENT_HAS_NO_PUBLISHED_PRICE',
+        'This agent publishes no price in its registration, so there is nothing to quote.',
+      )
+
+    return buildQuote({ quoteId: randomUUID(), agentId: request.body.agentId, price })
   })
   app.post<{ Body: { constraints: Constraint[] } }>(
     '/v1/authorizations',
