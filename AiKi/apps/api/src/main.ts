@@ -1,4 +1,8 @@
 /** One production process: marketplace API plus all first-party reference-agent routes. */
+import { createPublicClient, http } from 'viem'
+import { bsc } from 'viem/chains'
+import { PostgresNonceStore } from './auth/nonce-store.js'
+import { SessionSigner } from './auth/session.js'
 import { PostgresEvidenceStore } from './evidence/postgres-store.js'
 import { createApiServer } from './http/server.js'
 import { PostgresJobStore } from './jobs/postgres-store.js'
@@ -27,6 +31,15 @@ if (!receiptSeed)
   throw new Error(
     'RECEIPT_SIGNING_KEY is required: without a stable key, every restart invalidates all prior receipts.',
   )
+const sessionSecret = process.env.SESSION_SECRET
+if (!sessionSecret)
+  throw new Error('SESSION_SECRET is required: it is what makes a session cookie unforgeable.')
+const authDomain = process.env.AUTH_DOMAIN
+if (!authDomain)
+  throw new Error(
+    'AUTH_DOMAIN is required: a signed-in message must name this host, or a signature for another site would be accepted here.',
+  )
+const nonceStore = new PostgresNonceStore(databaseUrl)
 const base = process.env.REFERENCE_AGENT_BASE_URL
 const venusId = process.env.VENUS_GUARDIAN_AGENT_ID
 const rebalancerId = process.env.PANCAKE_REBALANCER_AGENT_ID
@@ -36,6 +49,13 @@ const app = createApiServer({
   observations: () => store.list(),
   jobs: new JobService(jobStore),
   receipts: new ReceiptService(receiptSeed, receiptStore),
+  auth: {
+    signer: new SessionSigner(sessionSecret),
+    nonces: nonceStore,
+    domain: authDomain,
+    secureCookies: true,
+    client: createPublicClient({ chain: bsc, transport: http(rpcUrl) }),
+  },
 })
 const venus = createVenusReferenceServer({
   reader: new VenusClient(rpcUrl),
@@ -109,6 +129,6 @@ app.get('/.well-known/agent-registration.json', async (_request, reply) => {
 })
 app.addHook('onClose', async () => {
   await Promise.all([venus.close(), rebalancer.close(), grid.close(), yieldAgent.close()])
-  await Promise.all([store.close(), jobStore.close(), receiptStore.close()])
+  await Promise.all([store.close(), jobStore.close(), receiptStore.close(), nonceStore.close()])
 })
 await app.listen({ host: '0.0.0.0', port: Number(process.env.PORT ?? '3000') })

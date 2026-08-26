@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import Fastify from 'fastify'
+import { requireOwner, requireSession } from '../auth/guard.js'
+import type { AuthConfig } from '../auth/routes.js'
+import { registerAuthRoutes } from '../auth/routes.js'
+import { readCookie, SESSION_COOKIE } from '../auth/session.js'
 import type { Constraint } from '../authority/policy.js'
 import { type BenchmarkRun, BenchmarkService, benchmarkEvidence } from '../benchmarks/service.js'
 import type { Observation } from '../evidence/types.js'
@@ -14,6 +18,8 @@ export function createApiServer(input: {
   jobs?: JobService
   receipts?: ReceiptService
   benchmarks?: BenchmarkService
+  /** Omitted only in tests of the public surface; every mandate route needs it. */
+  auth?: AuthConfig
 }) {
   const app = Fastify({ logger: process.env.NODE_ENV === 'production' })
   const jobs = input.jobs ?? new JobService()
@@ -23,7 +29,11 @@ export function createApiServer(input: {
     const id = request.headers['x-request-id']?.toString() ?? randomUUID()
     request.headers['x-request-id'] = id
     reply.header('x-request-id', id)
+    if (input.auth)
+      request.session =
+        input.auth.signer.verify(readCookie(request.headers.cookie, SESSION_COOKIE)) ?? undefined
   })
+  if (input.auth) registerAuthRoutes(app, input.auth)
   app.setErrorHandler((error, request, reply) =>
     reply.code(400).send({
       error: {
@@ -34,6 +44,32 @@ export function createApiServer(input: {
       },
     }),
   )
+
+  /**
+   * A job belongs to whoever owns its authorization. Deriving it rather than
+   * copying it onto the job means the two can never disagree.
+   */
+  async function ownedJob(
+    request: Parameters<typeof requireSession>[0],
+    reply: Parameters<typeof requireSession>[1],
+    address: string,
+    jobId: string,
+  ) {
+    const job = await jobs.getJob(jobId)
+    const authorization = await jobs.getAuthorization(job.authorizationId)
+    if (authorization.owner?.toLowerCase() !== address.toLowerCase()) {
+      reply.code(404).send({
+        error: {
+          code: 'NOT_FOUND',
+          message: 'No such job.',
+          retryable: false,
+          requestId: request.headers['x-request-id'],
+        },
+      })
+      return null
+    }
+    return job
+  }
   app.get('/v1/stats', async () => projectStats(await input.observations()))
   app.get<{ Params: { agentId: string } }>('/v1/agents/:agentId/passport', async (request) =>
     projectPassport(request.params.agentId, await input.observations()),
@@ -123,15 +159,26 @@ export function createApiServer(input: {
       caveat: 'Reference-agent assessment quote; no settlement is requested.',
     }
   })
-  app.post<{ Body: { constraints: Constraint[] } }>('/v1/authorizations', async (request) => {
-    const authorization = await jobs.authorize(request.body.constraints)
-    return { ...authorization, spent: authorization.spent.toString() }
-  })
-  app.post<{ Params: { id: string } }>('/v1/authorizations/:id/revoke', async (request) => {
+  app.post<{ Body: { constraints: Constraint[] } }>(
+    '/v1/authorizations',
+    async (request, reply) => {
+      const session = requireSession(request, reply)
+      if (!session) return reply
+      const authorization = await jobs.authorize(request.body.constraints, session.address)
+      return { ...authorization, spent: authorization.spent.toString() }
+    },
+  )
+  app.post<{ Params: { id: string } }>('/v1/authorizations/:id/revoke', async (request, reply) => {
+    const session = requireSession(request, reply)
+    if (!session) return reply
+    const existing = await jobs.getAuthorization(request.params.id)
+    if (!requireOwner(request, reply, session, existing.owner, 'authorization')) return reply
     const authorization = await jobs.revoke(request.params.id)
     return { ...authorization, spent: authorization.spent.toString() }
   })
   app.post<{ Body: { authorizationId: string } }>('/v1/jobs', async (request, reply) => {
+    const session = requireSession(request, reply)
+    if (!session) return reply
     const key = request.headers['idempotency-key']?.toString()
     if (!key)
       return reply.code(400).send({
@@ -142,13 +189,20 @@ export function createApiServer(input: {
           requestId: request.headers['x-request-id'],
         },
       })
+    const authorization = await jobs.getAuthorization(request.body.authorizationId)
+    if (!requireOwner(request, reply, session, authorization.owner, 'authorization')) return reply
     return jobs.createJob(request.body.authorizationId, key)
   })
-  app.get<{ Params: { id: string } }>('/v1/jobs/:id', async (request) =>
-    jobs.getJob(request.params.id),
-  )
+  app.get<{ Params: { id: string } }>('/v1/jobs/:id', async (request, reply) => {
+    const session = requireSession(request, reply)
+    if (!session) return reply
+    return ownedJob(request, reply, session.address, request.params.id)
+  })
   app.get<{ Params: { id: string } }>('/v1/jobs/:id/events', async (request, reply) => {
-    const job = await jobs.getJob(request.params.id)
+    const session = requireSession(request, reply)
+    if (!session) return reply
+    const job = await ownedJob(request, reply, session.address, request.params.id)
+    if (!job) return reply
     reply.raw.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',
@@ -159,8 +213,11 @@ export function createApiServer(input: {
     reply.raw.end()
     return reply
   })
-  app.post<{ Params: { id: string } }>('/v1/jobs/:id/receipt', async (request) => {
-    const job = await jobs.getJob(request.params.id)
+  app.post<{ Params: { id: string } }>('/v1/jobs/:id/receipt', async (request, reply) => {
+    const session = requireSession(request, reply)
+    if (!session) return reply
+    const job = await ownedJob(request, reply, session.address, request.params.id)
+    if (!job) return reply
     const authorization = await jobs.getAuthorization(job.authorizationId)
     return receipts.create({
       jobId: job.id,

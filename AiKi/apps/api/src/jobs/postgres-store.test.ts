@@ -29,10 +29,13 @@ describe.skipIf(!url)('PostgresJobStore', () => {
 
   it('survives a restart: a mandate outlives the process that made it', async () => {
     const before = new JobService(store())
-    const auth = await before.authorize([
-      { kind: 'session_total_cap', label: 'total', value: '1000', tier: 'T2' },
-      { kind: 'per_action_cap', label: 'each', value: '400', tier: 'T2' },
-    ])
+    const auth = await before.authorize(
+      [
+        { kind: 'session_total_cap', label: 'total', value: '1000', tier: 'T2' },
+        { kind: 'per_action_cap', label: 'each', value: '400', tier: 'T2' },
+      ],
+      '0xowner',
+    )
     const job = await before.createJob(auth.id, 'restart-key')
     await before.attempt(job.id, {
       target: '0xabc',
@@ -60,9 +63,10 @@ describe.skipIf(!url)('PostgresJobStore', () => {
   it('holds the line under concurrency: a cap cannot be double-spent', async () => {
     const service = new JobService(store())
     // Ten actions of 100 against a cap of 550: exactly five may pass.
-    const auth = await service.authorize([
-      { kind: 'session_total_cap', label: 'total', value: '550', tier: 'T2' },
-    ])
+    const auth = await service.authorize(
+      [{ kind: 'session_total_cap', label: 'total', value: '550', tier: 'T2' }],
+      '0xowner',
+    )
     const jobs = await Promise.all(
       Array.from({ length: 10 }, (_, i) => service.createJob(auth.id, `race-${i}`)),
     )
@@ -84,9 +88,10 @@ describe.skipIf(!url)('PostgresJobStore', () => {
     // Larger than a signed 64-bit integer: a BIGINT column would have thrown or
     // silently wrapped, which is how caps quietly stop meaning anything.
     const huge = 2n ** 200n
-    const auth = await service.authorize([
-      { kind: 'session_total_cap', label: 'total', value: (huge * 2n).toString(), tier: 'T2' },
-    ])
+    const auth = await service.authorize(
+      [{ kind: 'session_total_cap', label: 'total', value: (huge * 2n).toString(), tier: 'T2' }],
+      '0xowner',
+    )
     const job = await service.createJob(auth.id, 'uint256-key')
     const verdict = await service.attempt(job.id, {
       target: '0xabc',

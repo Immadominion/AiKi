@@ -19,6 +19,7 @@ interface AuthorizationRow {
   spent: string
   created_at: string | Date
   revoked_at: string | Date | null
+  owner: string | null
 }
 
 interface JobRow {
@@ -43,6 +44,7 @@ const toAuthorization = (row: AuthorizationRow): AuthorizationRecord => ({
   // a float; BigInt is the only safe destination for it.
   spent: BigInt(row.spent),
   createdAt: iso(row.created_at),
+  owner: row.owner,
   ...(row.revoked_at ? { revokedAt: iso(row.revoked_at) } : {}),
 })
 
@@ -56,7 +58,7 @@ export class PostgresJobStore implements JobStore {
 
   async createAuthorization(record: AuthorizationRecord) {
     await this.sql`
-      INSERT INTO authorizations (id, policy_hash, policy, weakest_tier, status, spent, expires_at, created_at)
+      INSERT INTO authorizations (id, policy_hash, policy, weakest_tier, status, spent, expires_at, created_at, owner)
       VALUES (
         ${record.id},
         ${record.policy.hash},
@@ -65,7 +67,8 @@ export class PostgresJobStore implements JobStore {
         ${record.status},
         ${record.spent.toString()},
         ${record.policy.expiresAt ?? null},
-        ${record.createdAt}
+        ${record.createdAt},
+        ${record.owner}
       )
     `
     return record

@@ -31,13 +31,14 @@ export class JobService {
     this.store = store
   }
 
-  async authorize(constraints: Constraint[]): Promise<AuthorizationRecord> {
+  async authorize(constraints: Constraint[], owner: string | null): Promise<AuthorizationRecord> {
     const record: AuthorizationRecord = {
       id: randomUUID(),
       policy: compilePolicy(constraints),
       status: 'active',
       spent: 0n,
       createdAt: new Date().toISOString(),
+      owner: owner ? owner.toLowerCase() : null,
     }
     return this.store.createAuthorization(record)
   }

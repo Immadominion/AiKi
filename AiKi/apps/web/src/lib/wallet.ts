@@ -1,3 +1,6 @@
+import { getAddress } from 'viem'
+import { createSiweMessage } from 'viem/siwe'
+
 /**
  * The thinnest possible bridge to an injected EIP-1193 wallet.
  *
@@ -61,11 +64,70 @@ export function watchAccounts(onChange: (accounts: string[]) => void): () => voi
   return () => eth.removeListener?.('accountsChanged', handler)
 }
 
+const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4700'
+
+/**
+ * Proving the address, not just reading it.
+ *
+ * Connecting shows AiKi which address you hold. Signing in proves you control
+ * it, which is what every mandate route requires: without this step the API
+ * would be taking a caller's word for whose money it is about to limit.
+ */
+export async function signIn(address: string, chainId: number): Promise<'signed-in' | 'declined'> {
+  const eth = provider()
+  if (!eth) return 'declined'
+  const { nonce } = (await (
+    await fetch(`${API}/v1/auth/nonce`, { method: 'POST', credentials: 'include' })
+  ).json()) as { nonce: string }
+
+  // getAddress applies EIP-55 checksumming, which EIP-4361 requires and wallets
+  // return without; createSiweMessage builds the rest to spec, so the exact
+  // bytes the wallet shows are the bytes the server re-parses.
+  const message = createSiweMessage({
+    domain: window.location.host,
+    address: getAddress(address),
+    statement:
+      'Sign in to AiKi. This proves you control this address. It grants no permission to move funds.',
+    uri: window.location.origin,
+    version: '1',
+    chainId,
+    nonce,
+    issuedAt: new Date(),
+  })
+
+  let signature: string
+  try {
+    signature = (await eth.request({
+      method: 'personal_sign',
+      params: [message, address],
+    })) as string
+  } catch {
+    return 'declined'
+  }
+
+  const verified = await fetch(`${API}/v1/auth/verify`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ message, signature }),
+  })
+  return verified.ok ? 'signed-in' : 'declined'
+}
+
+export async function signOut() {
+  await fetch(`${API}/v1/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {})
+}
+
 export const shortAddress = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`
 
 /** One voice for the three connect outcomes, wherever the button lives. */
-export const CONNECT_TOAST: Record<'injected' | 'simulated' | 'rejected', string> = {
-  injected: 'Wallet connected. AiKi can read your balances; it still cannot move anything.',
+export const CONNECT_TOAST: Record<ConnectOutcome, string> = {
+  injected:
+    'Wallet connected and signed in. AiKi can read your balances; it still cannot move anything.',
+  unsigned:
+    'Wallet connected, but you did not finish signing in. You can browse; hiring an agent needs the signature.',
   simulated: 'No wallet extension found, so this is a simulated wallet. Every screen says so.',
   rejected: 'The wallet declined the connection. Nothing was connected.',
 }
+
+export type ConnectOutcome = 'injected' | 'unsigned' | 'simulated' | 'rejected'

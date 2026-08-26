@@ -31,6 +31,8 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: { 'content-type': 'application/json', ...init?.headers },
+    // The session is an HttpOnly cookie, so it only travels when asked for.
+    credentials: 'include',
     cache: 'no-store',
   })
 

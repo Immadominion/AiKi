@@ -87,6 +87,9 @@ importers:
       tailwind-merge:
         specifier: 3.6.0
         version: 3.6.0
+      viem:
+        specifier: 2.55.19
+        version: 2.55.19(typescript@6.0.3)
     devDependencies:
       '@tailwindcss/postcss':
         specifier: 4.3.3

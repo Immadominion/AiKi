@@ -6,8 +6,14 @@
  * the projections the frontend sees here are the ones production will serve —
  * over genuinely measured agents, not fixtures.
  */
+
+import { randomBytes } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { createPublicClient, http } from 'viem'
+import { bsc } from 'viem/chains'
+import { InMemoryNonceStore } from '../auth/nonce-store.js'
+import { SessionSigner } from '../auth/session.js'
 import type { Observation } from '../evidence/types.js'
 import { createApiServer } from './server.js'
 
@@ -106,12 +112,31 @@ function loadSweeps(root: string): Observation[] {
 
 const observations = loadSweeps(process.cwd())
 const agents = new Set(observations.map((o) => o.subject.agentId)).size
-const app = createApiServer({ observations: () => observations })
+// Sign-in works here exactly as it does in production, against the same SIWE
+// path. The secret is per-process, so restarting the dev server signs you out.
+const app = createApiServer({
+  observations: () => observations,
+  auth: {
+    signer: new SessionSigner(process.env.SESSION_SECRET ?? randomBytes(24).toString('hex')),
+    nonces: new InMemoryNonceStore(),
+    domain: process.env.AUTH_DOMAIN ?? 'localhost:4747',
+    secureCookies: false,
+    client: createPublicClient({
+      chain: bsc,
+      transport: http(process.env.BSC_RPC_URL ?? 'https://bsc-dataseed.bnbchain.org'),
+    }),
+  },
+})
 
 // The web app runs on another localhost port; production CORS policy is the
 // deployment's decision, not this harness's.
+const WEB_ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:4747'
 app.addHook('onRequest', async (request, reply) => {
-  reply.header('access-control-allow-origin', '*')
+  // A wildcard origin cannot carry credentials, and the session is a cookie, so
+  // the dev server names the one origin it trusts.
+  reply.header('access-control-allow-origin', WEB_ORIGIN)
+  reply.header('access-control-allow-credentials', 'true')
+  reply.header('vary', 'origin')
   reply.header('access-control-allow-headers', 'content-type, idempotency-key')
   reply.header('access-control-allow-methods', 'GET, POST, OPTIONS')
   if (request.method === 'OPTIONS') return reply.code(204).send()

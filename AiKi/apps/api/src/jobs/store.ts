@@ -16,6 +16,8 @@ export interface AuthorizationRecord {
   spent: bigint
   createdAt: string
   revokedAt?: string
+  /** The address that signed for this mandate. Null only for rows written before authentication existed. */
+  owner: string | null
 }
 
 export interface JobEvent {

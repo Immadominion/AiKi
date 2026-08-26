@@ -3,7 +3,7 @@
 import type { ApprovalMode, CapPeriod } from '@aiki/contracts'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentKey } from '@/lib/agents'
-import { connectInjected, watchAccounts } from '@/lib/wallet'
+import { type ConnectOutcome, connectInjected, signIn, signOut, watchAccounts } from '@/lib/wallet'
 import { buildReceipt, runStep } from './script'
 import { demoState, freshState } from './seed'
 import { EMPTY, type Hire, type Job, MOCK_VERSION, type MockState } from './types'
@@ -22,7 +22,7 @@ const KEY = 'aiki.mock.v1'
 interface MockApi {
   state: MockState
   ready: boolean
-  connect: () => Promise<'injected' | 'simulated' | 'rejected'>
+  connect: () => Promise<ConnectOutcome>
   disconnect: () => void
   hire: (input: {
     key: AgentKey
@@ -119,7 +119,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
       ready,
 
       connect: () =>
-        connectInjected().then((result) => {
+        connectInjected().then(async (result) => {
           if (result.kind === 'connected') {
             patch((s) => ({
               ...s,
@@ -128,7 +128,10 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
               address: result.address,
               chainId: result.chainId,
             }))
-            return 'injected' as const
+            // Reading an address is not proving it. Declining the signature
+            // still leaves you connected, just unable to authorize anything.
+            const proof = await signIn(result.address, result.chainId)
+            return proof === 'signed-in' ? ('injected' as const) : ('unsigned' as const)
           }
           if (result.kind === 'no_wallet') {
             // No extension: the demo stays walkable, and every surface that
@@ -145,7 +148,10 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
           // A rejection is an answer; nothing changes and nothing pretends.
           return 'rejected' as const
         }),
-      disconnect: () => patch((s) => ({ ...s, connected: false, chainId: null })),
+      disconnect: () => {
+        void signOut()
+        patch((s) => ({ ...s, connected: false, chainId: null }))
+      },
 
       hire: (input) => {
         const jobId = nextId('job')

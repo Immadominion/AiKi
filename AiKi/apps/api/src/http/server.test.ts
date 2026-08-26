@@ -1,6 +1,24 @@
+import { createPublicClient, http } from 'viem'
+import { bsc } from 'viem/chains'
 import { afterEach, expect, it } from 'vitest'
+import { InMemoryNonceStore } from '../auth/nonce-store.js'
+import { SessionSigner } from '../auth/session.js'
 import { InMemoryEvidenceStore } from '../evidence/store.js'
 import { createApiServer } from './server.js'
+
+const SECRET = 'server-test-secret-long-enough-here'
+const signer = new SessionSigner(SECRET)
+
+/** These tests exercise routes, not sign-in; auth.test.ts covers the SIWE path. */
+const authConfig = () => ({
+  signer,
+  nonces: new InMemoryNonceStore(),
+  domain: 'aiki.test',
+  secureCookies: false,
+  client: createPublicClient({ chain: bsc, transport: http('http://127.0.0.1:1') }),
+})
+const OWNER = `0x${'ab'.repeat(20)}`
+const cookie = { cookie: `aiki_session=${signer.issue(OWNER, 56)}` }
 
 const apps: ReturnType<typeof createApiServer>[] = []
 afterEach(async () => {
@@ -19,12 +37,13 @@ it('serves evidence-first passport and requires idempotency for jobs', async () 
     evidenceClass: 'B',
     dedupeKey: '1',
   })
-  const app = createApiServer({ observations: () => store.observations })
+  const app = createApiServer({ observations: () => store.observations, auth: authConfig() })
   apps.push(app)
   expect((await app.inject('/v1/agents/1/passport')).json().liveness).toBe('LIVE')
   const auth = await app.inject({
     method: 'POST',
     url: '/v1/authorizations',
+    headers: cookie,
     payload: {
       constraints: [{ kind: 'session_total_cap', label: 'cap', value: '10', tier: 'T2' }],
     },
@@ -32,13 +51,14 @@ it('serves evidence-first passport and requires idempotency for jobs', async () 
   const noKey = await app.inject({
     method: 'POST',
     url: '/v1/jobs',
+    headers: cookie,
     payload: { authorizationId: auth.json().id },
   })
   expect(noKey.statusCode).toBe(400)
   const job = await app.inject({
     method: 'POST',
     url: '/v1/jobs',
-    headers: { 'idempotency-key': 'one' },
+    headers: { ...cookie, 'idempotency-key': 'one' },
     payload: { authorizationId: auth.json().id },
   })
   expect(job.statusCode).toBe(200)
@@ -57,7 +77,7 @@ it('serves intent, search, quote, SSE snapshot, receipt retrieval, and Arena end
     evidenceClass: 'B',
     dedupeKey: 'live',
   })
-  const app = createApiServer({ observations: () => store.observations })
+  const app = createApiServer({ observations: () => store.observations, auth: authConfig() })
   apps.push(app)
   expect(
     (
@@ -79,6 +99,7 @@ it('serves intent, search, quote, SSE snapshot, receipt retrieval, and Arena end
   const auth = await app.inject({
     method: 'POST',
     url: '/v1/authorizations',
+    headers: cookie,
     payload: {
       constraints: [{ kind: 'session_total_cap', label: 'cap', value: '10', tier: 'T2' }],
     },
@@ -86,14 +107,20 @@ it('serves intent, search, quote, SSE snapshot, receipt retrieval, and Arena end
   const job = await app.inject({
     method: 'POST',
     url: '/v1/jobs',
-    headers: { 'idempotency-key': 'sse' },
+    headers: { ...cookie, 'idempotency-key': 'sse' },
     payload: { authorizationId: auth.json().id },
   })
   const jobId = job.json().id
-  expect((await app.inject(`/v1/jobs/${jobId}/events`)).headers['content-type']).toContain(
-    'text/event-stream',
-  )
-  const receipt = await app.inject({ method: 'POST', url: `/v1/jobs/${jobId}/receipt` })
+  expect(
+    (await app.inject({ url: `/v1/jobs/${jobId}/events`, headers: cookie })).headers[
+      'content-type'
+    ],
+  ).toContain('text/event-stream')
+  const receipt = await app.inject({
+    method: 'POST',
+    url: `/v1/jobs/${jobId}/receipt`,
+    headers: cookie,
+  })
   expect((await app.inject(`/v1/receipts/${receipt.json().receiptId}`)).statusCode).toBe(200)
   const arena = await app.inject({
     method: 'POST',
@@ -127,7 +154,7 @@ it('search coverage names what the liveness filter excluded, and total survives 
       evidenceClass: 'B',
       dedupeKey: `cov-${index}`,
     })
-  const app = createApiServer({ observations: () => store.observations })
+  const app = createApiServer({ observations: () => store.observations, auth: authConfig() })
   apps.push(app)
   const response = await app.inject({
     method: 'POST',
