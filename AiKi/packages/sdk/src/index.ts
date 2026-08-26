@@ -46,6 +46,9 @@ export interface AgentResponse {
   body: string
 }
 
+/** Long enough for any legitimate agent id and query, short enough to bound parsing. */
+const MAX_URL_LENGTH = 2048
+
 const json = (status: number, value: unknown): AgentResponse => ({
   status,
   // A machine-readable content type is required, not decorative: an endpoint
@@ -103,7 +106,12 @@ export function agentCard(agent: AgentDefinition) {
 export async function handle(
   agents: AgentDefinition[],
   request: { method: string; url: string },
+  /** Where a failed assessment's reason goes, since it never goes to the caller. */
+  onError?: (error: unknown, context: { agentId: string; skillId: string }) => void,
 ): Promise<AgentResponse> {
+  // A URL is attacker-controlled and arrives before any handler runs. Rejecting
+  // an absurd one costs nothing and keeps parsing bounded.
+  if (request.url.length > MAX_URL_LENGTH) return json(414, { error: 'Request URL is too long.' })
   let url: URL
   try {
     url = new URL(request.url, 'http://agent.local')
@@ -126,10 +134,12 @@ export async function handle(
   if (!agent)
     return json(404, {
       error: 'This service does not speak for that agent id.',
-      // Naming the id is what makes this response differ per request, which is
-      // what proves the endpoint is agent-specific rather than a static page.
+      // Echoing the id asked about is what makes this response differ per
+      // request, which is what proves the endpoint is agent-specific rather
+      // than a static page. The list of ids this host DOES serve is not
+      // included: agent-specificity needs the response to vary, not to
+      // enumerate every identity behind one address.
       requestedAgentId: agentId,
-      servedAgentIds: agents.map((a) => a.agentId),
     })
 
   if (!skillId) return json(200, agentCard(agent))
@@ -153,12 +163,12 @@ export async function handle(
     // A failed assessment is reported as a failed assessment. Returning a
     // cheerful 200 would make the endpoint look healthier than it is, and AiKi
     // is measuring precisely that difference.
-    return json(502, {
-      error: 'The assessment failed.',
-      agentId,
-      skillId,
-      detail: error instanceof Error ? error.message : String(error),
-    })
+    //
+    // The reason is not returned to the caller. A thrown message routinely
+    // carries a file path, a query, or an upstream key, and the caller here is
+    // anyone on the internet. Pass `onError` to receive it where it belongs.
+    onError?.(error, { agentId, skillId })
+    return json(502, { error: 'The assessment failed.', agentId, skillId })
   }
 }
 

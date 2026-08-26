@@ -93,6 +93,7 @@ it('serves a reciprocal proof the prober accepts', async () => {
 it('does not speak for an agent id it was not given', async () => {
   const mine = await handle([honest], { method: 'GET', url: `/agents/${honest.agentId}` })
   const other = await handle([honest], { method: 'GET', url: '/agents/999999999' })
+  expect(JSON.parse(other.body).servedAgentIds).toBeUndefined()
   expect(mine.status).toBe(200)
   expect(other.status).toBe(404)
   expect(JSON.parse(other.body).requestedAgentId).toBe('999999999')
@@ -119,4 +120,29 @@ it('still refuses an impostor, so the LIVE verdict above is not a formality', as
     primaryBody: identical,
   })
   expect(verdict.state).toBe('IMPOSTOR_STATIC')
+})
+
+it('keeps a failed assessment opaque to the caller and reports it to the operator', async () => {
+  const seen: unknown[] = []
+  const breaks: AgentDefinition = {
+    ...honest,
+    assess: () => {
+      throw new Error('postgres://user:hunter2@db.internal:5432 refused the connection')
+    },
+  }
+  const response = await handle(
+    [breaks],
+    { method: 'GET', url: `/agents/${honest.agentId}/assess_health_factor` },
+    (error) => seen.push(error),
+  )
+  expect(response.status).toBe(502)
+  // The credential in that message is exactly why it does not travel outward.
+  expect(response.body).not.toContain('hunter2')
+  expect(response.body).not.toContain('db.internal')
+  expect((seen[0] as Error).message).toContain('hunter2')
+})
+
+it('refuses an absurd URL before any handler runs', async () => {
+  const response = await handle([honest], { method: 'GET', url: `/agents/${'9'.repeat(5000)}` })
+  expect(response.status).toBe(414)
 })
