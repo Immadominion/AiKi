@@ -1,0 +1,41 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = []
+test = "test"
+script = "script"
+
+# Pinned. A floating solc version means the bytecode a reviewer reads is not the
+# bytecode that was tested.
+solc_version = "0.8.28"
+
+# Shanghai, not Cancun: this suite must not depend on EIP-1153 transient storage.
+# Whether TSTORE/TLOAD are live on BNB Chain (56) is not verified in this
+# repository, and the reentrancy guard here uses a plain storage slot instead.
+evm_version = "shanghai"
+
+optimizer = true
+optimizer_runs = 1000
+# The ERC-7710 hook signature has seven parameters; that alone exhausts the legacy
+# codegen stack inside every enforcer. via_ir is required, not an optimisation choice.
+via_ir = true
+
+bytecode_hash = "none"
+cbor_metadata = false
+
+fs_permissions = [{ access = "read", path = "./test/vectors" }]
+
+ffi = false
+
+# The parity corpus is ~190 vectors, each one a full dry-run through the manager plus JSON
+# parsing. The default 2^30 test gas limit is not enough to replay it.
+gas_limit = "18446744073709551615"
+
+[fmt]
+line_length = 110
+tab_width = 4
+bracket_spacing = false
+int_types = "long"
+
+[rpc_endpoints]
+bsc = "https://bsc-dataseed.bnbchain.org"
