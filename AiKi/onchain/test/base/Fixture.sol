@@ -208,21 +208,27 @@ abstract contract Fixture is Test {
         view
         returns (Delegation memory d)
     {
-        AmountSite[] memory sites = siteFor(address(token), TRANSFER_SELECTOR, address(token), 1);
+        return mandateFor(address(token), perCap, sessionCap, expiresAt);
+    }
+
+    /// @dev The same mandate over an arbitrary token, so a test can hand the account something
+    ///      that does not behave like MockERC20.
+    function mandateFor(address asset, uint256 perCap, uint256 sessionCap, uint256 expiresAt)
+        internal
+        view
+        returns (Delegation memory d)
+    {
+        AmountSite[] memory sites = siteFor(asset, TRANSFER_SELECTOR, asset, 1);
 
         Caveat[] memory caveats = new Caveat[](6);
         caveats[0] = expiryCaveat(expiresAt);
-        caveats[1] =
-            Caveat({enforcer: address(targetsE), terms: packAddresses(one(address(token))), args: ""});
+        caveats[1] = Caveat({enforcer: address(targetsE), terms: packAddresses(one(asset)), args: ""});
         caveats[2] =
             Caveat({enforcer: address(selectorsE), terms: packSelectors(one(TRANSFER_SELECTOR)), args: ""});
-        caveats[3] =
-            Caveat({enforcer: address(assetsE), terms: abi.encode(one(address(token)), sites), args: ""});
-        caveats[4] =
-            Caveat({enforcer: address(perActionE), terms: capTerms(address(token), perCap, sites), args: ""});
-        caveats[5] = Caveat({
-            enforcer: address(sessionE), terms: capTerms(address(token), sessionCap, sites), args: ""
-        });
+        caveats[3] = Caveat({enforcer: address(assetsE), terms: abi.encode(one(asset), sites), args: ""});
+        caveats[4] = Caveat({enforcer: address(perActionE), terms: capTerms(asset, perCap, sites), args: ""});
+        caveats[5] =
+            Caveat({enforcer: address(sessionE), terms: capTerms(asset, sessionCap, sites), args: ""});
 
         d = baseDelegation(address(account), caveats);
         d.delegate = agent;

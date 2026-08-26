@@ -127,6 +127,39 @@ Refusing to enforce what cannot be mirrored is the correct direction to diverge.
 
 ---
 
+## Known gaps, from this suite's own adversarial review
+
+A 32-agent review of these contracts confirmed ten defects. The critical one is fixed and
+tested (`test/Overspend.t.sol`: the stateful enforcer's balance-delta reconciliation had no
+test at all, so it could have been deleted wholesale and the suite would have stayed green).
+The rest are recorded here rather than quietly carried, because an audit finding nobody wrote
+down is an audit that did not happen.
+
+**Semantics, unresolved:**
+
+- `dryRun`'s ALLOW verdict is forgeable by any contract reached during a `beforeHook`. The API
+  trusts `dryRun`, so this weakens the "the answer the API gives is the answer the chain gives"
+  claim in the presence of a hostile enforcer or target.
+- Two constraints of the same kind are a meaningful intersection off chain (`evaluatePolicy`
+  applies both) but are structurally unredeemable on chain (`DuplicateEnforcer`). The chain is
+  stricter, which is the safe direction, but the two are not mirrors.
+- The balance-delta `afterHook` charges any outflow of the asset during the execution, including
+  one the execution did not cause, so the on-chain counter can run ahead of the mirror's.
+
+**Test coverage, unresolved:**
+
+- `disableDelegationWithSig`'s signature check has no negative test; deleting it keeps the suite
+  green.
+- The headline session-cap invariant is vacuous: the cap is unreachable by construction.
+- `AmountLib`'s fail-closed path for a missing calldata word is untested, so a short read priced
+  as zero would pass every cap.
+- The enforcer-level snapshot lock, claimed as the second reentrancy defence, is never exercised.
+- `redeemDelegations` with more than one execution per call is untested, which is the same
+  cap-multiplication surface the batch-mode rejection is meant to close.
+- The parity corpus has no case for a policy the mirror accepts and the chain cannot represent.
+
+None of this is a reason to deploy. It is a reason not to.
+
 ## What is NOT enforced on chain
 
 **`condition` is out of scope, permanently.** It is an off-chain trigger by nature — "when the

@@ -20,15 +20,15 @@ contract MockERC20 {
         emit Transfer(address(0), to, amount);
     }
 
-    function transfer(address to, uint256 value) external returns (bool) {
-        _move(msg.sender, to, value);
+    function transfer(address to, uint256 value) external virtual returns (bool) {
+        _take(msg.sender, to, value);
         return true;
     }
 
     function transferFrom(address from, address to, uint256 value) external returns (bool) {
         uint256 a = allowance[from][msg.sender];
         if (a != type(uint256).max) allowance[from][msg.sender] = a - value;
-        _move(from, to, value);
+        _take(from, to, value);
         return true;
     }
 
@@ -38,9 +38,32 @@ contract MockERC20 {
         return true;
     }
 
-    function _move(address from, address to, uint256 value) private {
+    function _take(address from, address to, uint256 value) internal {
         balanceOf[from] -= value;
         balanceOf[to] += value;
         emit Transfer(from, to, value);
+    }
+}
+
+/// @notice A token whose `transfer` moves MORE than the caller asked for.
+///
+/// @dev This is the case the stateful enforcer's afterHook exists for. The cap is checked
+///      before the call against the amount DECLARED in calldata, but what a token actually
+///      moves is the token's decision. Fee-on-transfer, rebasing and outright malicious tokens
+///      all break the assumption that declared equals realised, and a cap that trusts calldata
+///      alone is a cap the token can walk straight through.
+contract OverchargingERC20 is MockERC20 {
+    uint256 public immutable EXTRA;
+    address public immutable SINK;
+
+    constructor(uint256 extra, address sink) {
+        EXTRA = extra;
+        SINK = sink;
+    }
+
+    function transfer(address to, uint256 value) external override returns (bool) {
+        _take(msg.sender, to, value);
+        _take(msg.sender, SINK, EXTRA);
+        return true;
     }
 }
