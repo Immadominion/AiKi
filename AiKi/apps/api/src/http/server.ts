@@ -70,6 +70,24 @@ export function createApiServer(input: {
     }
     return job
   }
+  /**
+   * Liveness and readiness in one answer.
+   *
+   * Readiness means the evidence store actually responds, not that the process
+   * is up: an API that returns 200 while its database is unreachable will be
+   * kept in a load balancer's rotation while serving nothing.
+   */
+  app.get('/healthz', async (_request, reply) => {
+    try {
+      await input.observations()
+      return { status: 'ok' }
+    } catch (error) {
+      return reply.code(503).send({
+        status: 'degraded',
+        detail: error instanceof Error ? error.message : 'Evidence store unreachable.',
+      })
+    }
+  })
   app.get('/v1/stats', async () => projectStats(await input.observations()))
   app.get<{ Params: { agentId: string } }>('/v1/agents/:agentId/passport', async (request) =>
     projectPassport(request.params.agentId, await input.observations()),
