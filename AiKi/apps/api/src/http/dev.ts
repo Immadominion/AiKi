@@ -15,6 +15,10 @@ import { bsc } from 'viem/chains'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
 import type { Observation } from '../evidence/types.js'
+import { PostgresJobStore } from '../jobs/postgres-store.js'
+import { JobService } from '../jobs/service.js'
+import { PostgresReceiptStore } from '../receipts/postgres-store.js'
+import { ReceiptService } from '../receipts/service.js'
 import { createApiServer } from './server.js'
 
 interface SweepResult {
@@ -114,8 +118,23 @@ const observations = loadSweeps(process.cwd())
 const agents = new Set(observations.map((o) => o.subject.agentId)).size
 // Sign-in works here exactly as it does in production, against the same SIWE
 // path. The secret is per-process, so restarting the dev server signs you out.
+// Given a database, the dev server persists exactly like production does, so a
+// mandate made here is a row you can go and look at. Without one it stays in
+// memory and dies with the process.
+const databaseUrl = process.env.DATABASE_URL
+const persistence = databaseUrl
+  ? {
+      jobs: new JobService(new PostgresJobStore(databaseUrl)),
+      receipts: new ReceiptService(
+        process.env.RECEIPT_SIGNING_KEY ?? 'ab'.repeat(32),
+        new PostgresReceiptStore(databaseUrl),
+      ),
+    }
+  : {}
+
 const app = createApiServer({
   observations: () => observations,
+  ...persistence,
   auth: {
     signer: new SessionSigner(process.env.SESSION_SECRET ?? randomBytes(24).toString('hex')),
     nonces: new InMemoryNonceStore(),
@@ -144,4 +163,8 @@ app.addHook('onRequest', async (request, reply) => {
 
 const port = Number(process.env.PORT ?? '4700')
 await app.listen({ host: '127.0.0.1', port })
-console.log(`aiki dev api: ${observations.length} observations over ${agents} agents on :${port}`)
+console.log(
+  `aiki dev api: ${observations.length} observations over ${agents} agents on :${port} · mandates ${
+    databaseUrl ? 'persisted in Postgres' : 'in memory only'
+  }`,
+)

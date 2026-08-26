@@ -11,7 +11,11 @@
       "!packages/contracts/src/fixtures/_real",
       "!pnpm-lock.yaml",
       "!**/*.css",
-      "!**/probe-sweep-*.json"
+      "!**/probe-sweep-*.json",
+      "!onchain/out",
+      "!onchain/cache",
+      "!onchain/lib",
+      "!onchain/broadcast"
     ]
   },
   "formatter": {

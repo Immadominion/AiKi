@@ -1,9 +1,43 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "tasks": {
-    "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },
-    "dev": { "cache": false, "persistent": true },
-    "typecheck": { "dependsOn": ["^build"] },
-    "test": { "dependsOn": ["^build"] }
-  }
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"]
+    }
+  },
+  "globalEnv": [
+    "DATABASE_URL",
+    "BSC_RPC_URL",
+    "NODE_ENV",
+    "PORT",
+    "RECEIPT_SIGNING_KEY",
+    "SESSION_SECRET",
+    "AUTH_DOMAIN",
+    "WEB_ORIGIN",
+    "ERC8004_INITIAL_BLOCK",
+    "EIGHT004SCAN_API_KEY",
+    "REFERENCE_AGENT_BASE_URL",
+    "VENUS_GUARDIAN_AGENT_ID",
+    "PANCAKE_REBALANCER_AGENT_ID",
+    "PANCAKE_GRID_AGENT_ID",
+    "YIELD_OPTIMIZER_AGENT_ID",
+    "INDEX_INTERVAL_MS",
+    "PROBE_INTERVAL_MS",
+    "PROBE_LIMIT",
+    "PROBE_CONCURRENCY",
+    "PROBE_BUDGET_MS",
+    "PROBE_STALE_HOURS",
+    "NEXT_PUBLIC_API_URL"
+  ]
 }

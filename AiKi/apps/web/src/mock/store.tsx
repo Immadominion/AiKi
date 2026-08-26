@@ -3,10 +3,11 @@
 import type { ApprovalMode, CapPeriod } from '@aiki/contracts'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentKey } from '@/lib/agents'
+import { api as backend } from '@/lib/api'
 import { type ConnectOutcome, connectInjected, signIn, signOut, watchAccounts } from '@/lib/wallet'
 import { buildReceipt, runStep } from './script'
 import { demoState, freshState } from './seed'
-import { EMPTY, type Hire, type Job, MOCK_VERSION, type MockState } from './types'
+import { EMPTY, type Hire, type Job, MOCK_VERSION, type MockState, usd } from './types'
 
 const KEY = 'aiki.mock.v1'
 
@@ -31,7 +32,7 @@ interface MockApi {
     period: CapPeriod
     days: number
     approval: ApprovalMode
-  }) => string
+  }) => Promise<string>
   advance: (jobId: string) => void
   approve: (jobId: string) => void
   decline: (jobId: string) => void
@@ -153,9 +154,80 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
         patch((s) => ({ ...s, connected: false, chainId: null }))
       },
 
-      hire: (input) => {
-        const jobId = nextId('job')
+      hire: async (input) => {
         const now = new Date().toISOString()
+        const expiresAt = new Date(Date.now() + input.days * 86_400_000).toISOString()
+
+        // A real wallet gets a real mandate: the API records it against the
+        // address that signed in, and the cap it returns is the one the server
+        // enforces. A simulated wallet stays local, and every screen says so.
+        let authorizationId: string | undefined
+        if (stateRef.current.walletKind === 'injected') {
+          const constraints = [
+            {
+              kind: 'session_total_cap',
+              label: `Never spend more than ${usd(input.capCents)} in total`,
+              value: String(input.capCents),
+              tier: 'T2',
+            },
+            ...(input.perActionCents > 0
+              ? [
+                  {
+                    kind: 'per_action_cap',
+                    label: `Never spend more than ${usd(input.perActionCents)} at once`,
+                    value: String(input.perActionCents),
+                    tier: 'T2',
+                  },
+                ]
+              : []),
+            {
+              kind: 'expiry',
+              label: `Expires ${expiresAt.slice(0, 10)}`,
+              value: expiresAt,
+              tier: 'T0',
+            },
+          ]
+          // No silent fallback to a local mandate: a limit the server never
+          // heard of is not a limit, and pretending otherwise is the one thing
+          // this product cannot do.
+          const authorization = await backend.authorize(constraints)
+          const job = await backend.createJob(authorization.id, `hire:${authorization.id}`)
+          authorizationId = authorization.id
+          const hire: Hire = {
+            key: input.key,
+            hiredAt: now,
+            status: 'working',
+            mandate: {
+              perActionCents: input.perActionCents,
+              capCents: input.capCents,
+              period: input.period,
+              expiresAt,
+              approval: input.approval,
+            },
+            spentCents: 0,
+            jobId: job.id,
+            authorizationId,
+          }
+          const remoteJob: Job = {
+            id: job.id,
+            key: input.key,
+            title: TITLES[input.key],
+            status: 'RUNNING',
+            step: 0,
+            createdAt: now,
+            updatedAt: now,
+            blockedOnce: false,
+          }
+          patch((s) => ({
+            ...s,
+            connected: true,
+            hires: [...s.hires.filter((h) => h.key !== input.key), hire],
+            jobs: [...s.jobs.filter((j) => j.key !== input.key), remoteJob],
+          }))
+          return job.id
+        }
+
+        const jobId = nextId('job')
         const hire: Hire = {
           key: input.key,
           hiredAt: now,
@@ -164,7 +236,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
             perActionCents: input.perActionCents,
             capCents: input.capCents,
             period: input.period,
-            expiresAt: new Date(Date.now() + input.days * 86_400_000).toISOString(),
+            expiresAt,
             approval: input.approval,
           },
           spentCents: 0,
@@ -183,7 +255,6 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
         patch((s) => ({
           ...s,
           connected: true,
-          // Re-hiring replaces the old authority rather than stacking two.
           hires: [...s.hires.filter((h) => h.key !== input.key), hire],
           jobs: [...s.jobs.filter((j) => j.key !== input.key), job],
         }))

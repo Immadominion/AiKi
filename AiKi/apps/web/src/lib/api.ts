@@ -50,8 +50,28 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T
 }
 
+export interface AuthorizationResponse {
+  id: string
+  status: string
+  spent: string
+  owner: string | null
+  policy: { hash: string; weakestTier: string }
+}
+
 export const api = {
   stats: () => req<EcosystemStats>('/v1/stats'),
+  me: () => req<{ address: string; chainId: number }>('/v1/auth/me'),
+  authorize: (constraints: unknown[]) =>
+    req<AuthorizationResponse>('/v1/authorizations', {
+      method: 'POST',
+      body: JSON.stringify({ constraints }),
+    }),
+  createJob: (authorizationId: string, idempotencyKey: string) =>
+    req<{ id: string; status: string }>('/v1/jobs', {
+      method: 'POST',
+      headers: { 'idempotency-key': idempotencyKey },
+      body: JSON.stringify({ authorizationId }),
+    }),
   search: (body: SearchRequest) =>
     req<ProjectedSearchResponse>('/v1/search', { method: 'POST', body: JSON.stringify(body) }),
   passport: (id: string) => req<ProjectedPassport>(`/v1/agents/${id}/passport`),

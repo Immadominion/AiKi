@@ -402,7 +402,7 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
               onClick={() => {
                 // The limits you just set are the ones the job runs under, so
                 // the refusal you are about to see happens at YOUR number.
-                const jobId = hire({
+                void hire({
                   key: agentKey,
                   perActionCents: spends ? perAction * 100 : 0,
                   capCents: budget * 100,
@@ -410,8 +410,16 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
                   days,
                   approval,
                 })
-                say(`${row.name} is hired and starting now.`)
-                router.push(jobHref(jobId))
+                  .then((jobId) => {
+                    say(`${row.name} is hired and starting now.`)
+                    router.push(jobHref(jobId))
+                  })
+                  .catch(() => {
+                    // Recording the mandate is what makes it a mandate. If that
+                    // failed, saying "hired" would be the lie the whole product
+                    // exists to avoid.
+                    say('Could not record that mandate, so nothing was hired. Try again.')
+                  })
               }}
               className="bg-ink-app hover:bg-orange-app mt-[16px] h-[42px] w-full rounded-xl border-0 text-[13.5px] font-bold text-white transition-colors"
             >

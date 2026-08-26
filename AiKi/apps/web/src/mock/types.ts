@@ -13,7 +13,7 @@ import type { AgentKey } from '@/lib/agents'
  *  - ids are sequential, not opaque. When you are walking a flow by hand you
  *    want to recognise the thing you just made.
  */
-export const MOCK_VERSION = 2
+export const MOCK_VERSION = 3
 
 export type JobStatus = 'RUNNING' | 'WAITING' | 'PAUSED' | 'DONE'
 
@@ -32,6 +32,11 @@ export interface Hire {
   mandate: Mandate
   spentCents: number
   jobId: string
+  /**
+   * Set when this mandate was recorded by the API under a proven address.
+   * Absent means it exists only in this browser, and the UI says so.
+   */
+  authorizationId?: string
 }
 
 export interface PendingApproval {
