@@ -32,8 +32,13 @@ const canonical = (value: unknown): string =>
   JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 0)
 export function compilePolicy(constraints: Constraint[]): CompiledPolicy {
   if (!constraints.length) throw new Error('At least one constraint is required.')
-  const expiry = constraints.find((c) => c.kind === 'expiry')?.value
-  const expiresAt = typeof expiry === 'string' ? expiry : undefined
+  const expiryConstraint = constraints.find((c) => c.kind === 'expiry')
+  // An expiry we cannot read must not compile into a mandate that simply has no
+  // expiry. That failure is silent and total: the constraint still renders in
+  // the UI as a limit while nothing anywhere enforces it.
+  if (expiryConstraint && typeof expiryConstraint.value !== 'string')
+    throw new Error('Expiry must be an ISO-8601 string.')
+  const expiresAt = expiryConstraint?.value as string | undefined
   if (expiresAt && Number.isNaN(Date.parse(expiresAt))) throw new Error('Expiry must be ISO-8601.')
   return {
     id: randomUUID(),
@@ -51,8 +56,16 @@ export function evaluatePolicy(
   action: Action,
   spent: bigint,
 ): { allow: boolean; rule: string; reason: string } {
-  if (policy.expiresAt && Date.parse(action.at) >= Date.parse(policy.expiresAt))
-    return { allow: false, rule: 'expiry', reason: 'Authorization has expired.' }
+  if (policy.expiresAt) {
+    const at = Date.parse(action.at)
+    // Fail closed on an unreadable timestamp. Comparing NaN yields false, so the
+    // original check let an action with a garbage `at` slip past an expired
+    // mandate entirely rather than being refused by it.
+    if (Number.isNaN(at))
+      return { allow: false, rule: 'expiry', reason: 'Action timestamp is not a valid time.' }
+    if (at >= Date.parse(policy.expiresAt))
+      return { allow: false, rule: 'expiry', reason: 'Authorization has expired.' }
+  }
   for (const c of policy.constraints) {
     const values = Array.isArray(c.value) ? c.value.map(String).map((v) => v.toLowerCase()) : []
     if (c.kind === 'contract_allowlist' && !values.includes(action.target.toLowerCase()))

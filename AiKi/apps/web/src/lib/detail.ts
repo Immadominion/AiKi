@@ -4,6 +4,12 @@ import type { AgentKey } from './agents'
 /**
  * Passport fixtures.
  *
+ * Rule for this file: an enforcement line may never name a contract that does
+ * not exist. A renewing cap has no enforcer anywhere, on chain or off, because
+ * Constraint has no period field and evaluatePolicy has no reset, so it is T2
+ * and says why. Claiming T0 for it named ERC20PeriodTransferEnforcer, which is
+ * not in onchain/ and never was.
+ *
  * Everything measurable is stored as the COUNTS behind it — successes out of
  * trials — never as a finished score. The score is computed at render time from
  * those counts, so a number on screen can always be traced back to the evidence
@@ -117,15 +123,19 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
       },
       {
         label: 'Never more than $80 in one action',
-        tier: 'T0',
-        enforcedBy: 'ERC20PeriodTransferEnforcer',
+        tier: 'T2',
+        enforcedBy: 'aiki:policy-service',
         verified: true,
+        caveat:
+          'Counted by AiKi before relaying. PerActionCapEnforcer takes this over once deployed.',
       },
       {
         label: 'Never more than $250 a month',
-        tier: 'T0',
-        enforcedBy: 'ERC20PeriodTransferEnforcer',
+        tier: 'T2',
+        enforcedBy: 'aiki:policy-service',
         verified: true,
+        caveat:
+          'A renewing cap is counted by AiKi, not by a contract. No periodic enforcer exists on either side, so this is the weakest line in the mandate.',
       },
       {
         label: 'Stops on 30 September',
@@ -210,9 +220,11 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
       },
       {
         label: 'Never more than $120 a month',
-        tier: 'T0',
-        enforcedBy: 'ERC20PeriodTransferEnforcer',
+        tier: 'T2',
+        enforcedBy: 'aiki:policy-service',
         verified: true,
+        caveat:
+          'A renewing cap is counted by AiKi, not by a contract. No periodic enforcer exists on either side, so this is the weakest line in the mandate.',
       },
       {
         label: 'At most 6 rebalances a day',
@@ -380,9 +392,11 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
       },
       {
         label: 'Never more than $120 a month',
-        tier: 'T0',
-        enforcedBy: 'ERC20PeriodTransferEnforcer',
+        tier: 'T2',
+        enforcedBy: 'aiki:policy-service',
         verified: true,
+        caveat:
+          'A renewing cap is counted by AiKi, not by a contract. No periodic enforcer exists on either side, so this is the weakest line in the mandate.',
       },
       {
         label: 'Only trades between $580 and $640',

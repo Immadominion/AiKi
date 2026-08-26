@@ -78,6 +78,16 @@ The boundaries are copied, not approximated:
 `test/Invariants.t.sol` states these four as properties over the full `uint256` domain rather
 than as table rows.
 
+### What the API enforces that the chain cannot
+
+- **An unreadable action timestamp** (`expiry` / "Action timestamp is not a valid time."). The
+  off-chain `Action.at` is a string that can be malformed; `block.timestamp` is a `uint256` and
+  cannot. The API therefore fails closed on a timestamp it cannot parse, and the chain has no
+  equivalent case to mirror. This rule has no parity vector for that reason, not by oversight.
+
+  It was a live bug: `Date.parse(action.at) >= Date.parse(policy.expiresAt)` compares `NaN`
+  when `at` is garbage, `NaN >= x` is `false`, and an expired mandate accepted the action.
+
 ### What the chain enforces that the API does not
 
 The off-chain `Action` type is `{target, selector, asset, amount, at}`. It has no field for
