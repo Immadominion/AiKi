@@ -3,6 +3,4 @@
 !AiKi/
 !AiKi/**
 !.gitignore
-!.github/
-!.github/**
 .gstack/
