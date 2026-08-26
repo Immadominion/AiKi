@@ -118,6 +118,7 @@ contract AiKiDelegationManager is IDelegationManager {
         bytes[] calldata executionCallDatas
     ) external nonReentrant {
         uint256 n = permissionContexts.length;
+        if (n != modes.length || n != executionCallDatas.length) revert LengthMismatch();
         for (uint256 i; i < n; ++i) {
             _redeem(permissionContexts[i], modes[i], executionCallDatas[i], msg.sender);
         }

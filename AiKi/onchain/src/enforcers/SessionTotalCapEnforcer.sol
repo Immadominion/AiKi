@@ -78,7 +78,7 @@ contract SessionTotalCapEnforcer is StatefulCaveatEnforcerBase {
         bytes32 delegationHash,
         address delegator,
         address
-    ) external override noArgs(args) singleCallMode(mode) {
+    ) external override onlyManager noArgs(args) singleCallMode(mode) {
         (address asset, uint256 cap, uint256 declared) =
             CapTermsLib.declaredAmount(terms, executionCallData, Rules.SESSION_TOTAL_CAP);
 
@@ -138,7 +138,7 @@ contract SessionTotalCapEnforcer is StatefulCaveatEnforcerBase {
         }
 
         emit SessionSpend(
-            msg.sender, delegationHash, realised < snap.declared ? realised : snap.declared, used
+            msg.sender, delegationHash, realised > snap.declared ? realised : snap.declared, used
         );
     }
 

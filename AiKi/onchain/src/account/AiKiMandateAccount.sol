@@ -121,7 +121,7 @@ contract AiKiMandateAccount is IDeleGatorCore, IERC1271 {
         return result;
     }
 
-    function withdrawERC20(address token, address to, uint256 amount) external {
+    function withdrawERC20(address token, address to, uint256 amount) external onlyOwner {
         if (!IERC20(token).transfer(to, amount)) revert ExecutionFailed("");
     }
 
@@ -130,7 +130,7 @@ contract AiKiMandateAccount is IDeleGatorCore, IERC1271 {
         if (!ok) _bubble(result);
     }
 
-    function transferOwnership(address newOwner) external {
+    function transferOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert ZeroAddress();
         emit OwnerTransferred(owner, newOwner);
         owner = newOwner;
