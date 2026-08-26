@@ -25,7 +25,8 @@
     "@aiki/contracts": "workspace:*",
     "fastify": "^5.6.0",
     "postgres": "^3.4.7",
-    "viem": "^2.44.1"
+    "viem": "^2.44.1",
+    "@aiki/sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24",

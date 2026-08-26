@@ -1,0 +1,23 @@
+{
+  "name": "@aiki/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "example": "tsx example/venus-watcher.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "tsx": "4.23.12",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  },
+  "dependencies": {
+    "@aiki/sdk": "workspace:*"
+  }
+}
