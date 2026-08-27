@@ -135,6 +135,12 @@ test at all, so it could have been deleted wholesale and the suite would have st
 The rest are recorded here rather than quietly carried, because an audit finding nobody wrote
 down is an audit that did not happen.
 
+**Also fixed:** two constraints of the same kind were applied in turn off chain, quietly
+meaning their intersection, while the chain refused the delegation outright with
+`DuplicateEnforcer`. The API therefore accepted mandates whose every action would then fail.
+`compilePolicy` now rejects duplicate kinds with the same strictness the chain does, so the two
+refuse the same mandate for the same reason.
+
 **Fixed since the review:** `dryRun`'s ALLOW verdict was forgeable by any contract reached
 during a `beforeHook`. The enforcers call `balanceOf` on the asset, the asset is just an address
 in the signed terms, and a hostile token reverting with the four bytes of `DryRunAllowed` made
@@ -149,9 +155,6 @@ form is restored.
 - `dryRun`'s ALLOW verdict is forgeable by any contract reached during a `beforeHook`. The API
   trusts `dryRun`, so this weakens the "the answer the API gives is the answer the chain gives"
   claim in the presence of a hostile enforcer or target.
-- Two constraints of the same kind are a meaningful intersection off chain (`evaluatePolicy`
-  applies both) but are structurally unredeemable on chain (`DuplicateEnforcer`). The chain is
-  stricter, which is the safe direction, but the two are not mirrors.
 - The balance-delta `afterHook` charges any outflow of the asset during the execution, including
   one the execution did not cause, so the on-chain counter can run ahead of the mirror's.
 

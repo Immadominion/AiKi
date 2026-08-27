@@ -32,6 +32,20 @@ const canonical = (value: unknown): string =>
   JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 0)
 export function compilePolicy(constraints: Constraint[]): CompiledPolicy {
   if (!constraints.length) throw new Error('At least one constraint is required.')
+  // The chain refuses a delegation carrying two caveats of the same kind, because a shared
+  // spend counter would be incremented twice by two identical stateful caveats. Off chain
+  // duplicates are merely applied in turn, which quietly means their intersection. Accepting a
+  // mandate here that could never be redeemed there is the worst of both: the user is told
+  // their limits are set, and every action fails.
+  const kinds = new Set<string>()
+  for (const c of constraints) {
+    if (kinds.has(c.kind))
+      throw new Error(
+        `Duplicate ${c.kind} constraint. A mandate carries at most one of each kind, because the chain cannot represent two.`,
+      )
+    kinds.add(c.kind)
+  }
+
   const expiryConstraint = constraints.find((c) => c.kind === 'expiry')
   // An expiry we cannot read must not compile into a mandate that simply has no
   // expiry. That failure is silent and total: the constraint still renders in
