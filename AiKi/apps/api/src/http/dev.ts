@@ -17,101 +17,17 @@ import { SessionSigner } from '../auth/session.js'
 import type { Observation } from '../evidence/types.js'
 import { PostgresJobStore } from '../jobs/postgres-store.js'
 import { JobService } from '../jobs/service.js'
+import { sweepObservations } from '../prober/sweep-observations.js'
 import { PostgresReceiptStore } from '../receipts/postgres-store.js'
 import { ReceiptService } from '../receipts/service.js'
 import { createApiServer } from './server.js'
 
-interface SweepResult {
-  agentId: string
-  probedAt: string
-  registrationWasZeroCost?: boolean
-  verdict: { state: string; rule: string; detail: string; evidence?: Record<string, unknown> }
-  samples?: Record<string, unknown>[]
-  reciprocal?: { verified: boolean; detail: string }
-}
-
-interface SweepFile {
-  sweptAt?: string
-  chainId?: number
-  registry?: string
-  results?: SweepResult[]
-}
-
 function loadSweeps(root: string): Observation[] {
-  const observations: Observation[] = []
   const files = readdirSync(root)
     .filter((name) => /^probe-sweep-.*\.json$/.test(name))
     .sort()
-  for (const file of files) {
-    let sweep: SweepFile
-    try {
-      sweep = JSON.parse(readFileSync(join(root, file), 'utf8')) as SweepFile
-    } catch {
-      continue
-    }
-    if (!Array.isArray(sweep.results)) continue
-    for (const result of sweep.results) {
-      if (
-        !result?.agentId ||
-        typeof result.verdict?.state !== 'string' ||
-        typeof result.probedAt !== 'string' ||
-        Number.isNaN(Date.parse(result.probedAt))
-      )
-        continue
-      const subject = {
-        type: 'agent' as const,
-        chainId: sweep.chainId ?? 56,
-        registry: sweep.registry ?? '0x8004a169fb4a3325136eb29fa0ceb6d2e539a432',
-        agentId: result.agentId,
-      }
-      const base = {
-        subject,
-        validAt: result.probedAt,
-        observedAt: result.probedAt,
-        recordedAt: result.probedAt,
-        source: 'aiki:prober',
-        evidenceClass: 'B' as const,
-      }
-      // The same probe run never lands twice even when sweeps overlap.
-      const runKey = `${result.agentId}:${result.probedAt}`
-      observations.push({
-        ...base,
-        id: `dev:${runKey}:verdict`,
-        predicate: 'agent.liveness_verdict',
-        method: `capability-probe/${result.verdict.rule}`,
-        value: {
-          state: result.verdict.state,
-          detail: result.verdict.detail,
-          evidence: result.verdict.evidence,
-          // Only stored when the sweep measured it; a missing flag is not false.
-          ...(typeof result.registrationWasZeroCost === 'boolean'
-            ? { registrationWasZeroCost: result.registrationWasZeroCost }
-            : {}),
-        },
-        dedupeKey: `prober:${runKey}:verdict`,
-      })
-      if (result.reciprocal)
-        observations.push({
-          ...base,
-          id: `dev:${runKey}:reciprocal`,
-          predicate: 'erc8004.reciprocal_proof',
-          method: 'reciprocal-proof/D8',
-          value: result.reciprocal as unknown as Record<string, unknown>,
-          dedupeKey: `prober:${runKey}:reciprocal`,
-        })
-      for (const [index, sample] of (result.samples ?? []).entries())
-        observations.push({
-          ...base,
-          id: `dev:${runKey}:sample:${index}`,
-          predicate: 'agent.capability_probe',
-          method: 'capability-probe/v2',
-          value: sample,
-          dedupeKey: `prober:${runKey}:sample:${index}`,
-        })
-    }
-  }
-  const unique = new Map(observations.map((o) => [o.dedupeKey, o]))
-  return [...unique.values()]
+    .map((name) => ({ name, raw: readFileSync(join(root, name), 'utf8') }))
+  return sweepObservations(files)
 }
 
 const observations = loadSweeps(process.cwd())

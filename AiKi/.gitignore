@@ -12,9 +12,9 @@ out/
 keystore/
 .DS_Store
 
-probe-sweep-*.json
-
-apps/api/probe-sweep-*.json
+# The probe sweeps are NOT artifacts to be ignored: they are the measurements
+# this product is built on, the README tells people the dev server rebuilds them
+# with no RPC and no keys, and that was untrue while they sat gitignored. 756K.
 
 # Next 16 auto-generates these; agentRules:false stops it, this is belt-and-braces.
 AGENTS.md

@@ -1,0 +1,929 @@
+{
+  "sweptAt": "2026-08-19T22:59:06.137Z",
+  "chainId": 56,
+  "registry": "0x8004a169fb4a3325136eb29fa0ceb6d2e539a432",
+  "sampled": 75,
+  "byState": {
+    "DECLARED_ONLY": 70,
+    "PLACEHOLDER_URL": 5
+  },
+  "reciprocalVerified": 0,
+  "zeroCostRegistrations": 0,
+  "results": [
+    {
+      "agentId": "203519",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.136Z"
+    },
+    {
+      "agentId": "203518",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.138Z"
+    },
+    {
+      "agentId": "203517",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.138Z"
+    },
+    {
+      "agentId": "203516",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.138Z"
+    },
+    {
+      "agentId": "203515",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.138Z"
+    },
+    {
+      "agentId": "203514",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.138Z"
+    },
+    {
+      "agentId": "203513",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.139Z"
+    },
+    {
+      "agentId": "203512",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.139Z"
+    },
+    {
+      "agentId": "203511",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.139Z"
+    },
+    {
+      "agentId": "203510",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.139Z"
+    },
+    {
+      "agentId": "203509",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.139Z"
+    },
+    {
+      "agentId": "203508",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.139Z"
+    },
+    {
+      "agentId": "203507",
+      "verdict": {
+        "state": "PLACEHOLDER_URL",
+        "rule": "D2",
+        "detail": "Endpoint contains an unexpanded template placeholder {agentId}.",
+        "evidence": {
+          "placeholder": "{agentId}",
+          "endpoint": "https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card"
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card",
+          "status": 404,
+          "bodyHash": "afe0f8aaf0c8105bcd10e9a804e9243d",
+          "bodyLength": 58,
+          "contentType": "application/json",
+          "latencyMs": 1077
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "No /.well-known/agent-registration.json served."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.139Z"
+    },
+    {
+      "agentId": "203506",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.143Z"
+    },
+    {
+      "agentId": "203505",
+      "verdict": {
+        "state": "PLACEHOLDER_URL",
+        "rule": "D2",
+        "detail": "Endpoint contains an unexpanded template placeholder {agentId}.",
+        "evidence": {
+          "placeholder": "{agentId}",
+          "endpoint": "https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card"
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card",
+          "status": 404,
+          "bodyHash": "afe0f8aaf0c8105bcd10e9a804e9243d",
+          "bodyLength": 58,
+          "contentType": "application/json",
+          "latencyMs": 1081
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "No /.well-known/agent-registration.json served."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.143Z"
+    },
+    {
+      "agentId": "203504",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.143Z"
+    },
+    {
+      "agentId": "203503",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.143Z"
+    },
+    {
+      "agentId": "203502",
+      "verdict": {
+        "state": "PLACEHOLDER_URL",
+        "rule": "D2",
+        "detail": "Endpoint contains an unexpanded template placeholder {agentId}.",
+        "evidence": {
+          "placeholder": "{agentId}",
+          "endpoint": "https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card"
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card",
+          "status": 404,
+          "bodyHash": "afe0f8aaf0c8105bcd10e9a804e9243d",
+          "bodyLength": 58,
+          "contentType": "application/json",
+          "latencyMs": 1070
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "No /.well-known/agent-registration.json served."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:03.143Z"
+    },
+    {
+      "agentId": "203501",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:04.532Z"
+    },
+    {
+      "agentId": "203500",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:04.532Z"
+    },
+    {
+      "agentId": "203499",
+      "verdict": {
+        "state": "PLACEHOLDER_URL",
+        "rule": "D2",
+        "detail": "Endpoint contains an unexpanded template placeholder {agentId}.",
+        "evidence": {
+          "placeholder": "{agentId}",
+          "endpoint": "https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card"
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card",
+          "status": 404,
+          "bodyHash": "afe0f8aaf0c8105bcd10e9a804e9243d",
+          "bodyLength": 58,
+          "contentType": "application/json",
+          "latencyMs": 333
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "No /.well-known/agent-registration.json served."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:04.532Z"
+    },
+    {
+      "agentId": "203498",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:04.533Z"
+    },
+    {
+      "agentId": "203497",
+      "verdict": {
+        "state": "PLACEHOLDER_URL",
+        "rule": "D2",
+        "detail": "Endpoint contains an unexpanded template placeholder {agentId}.",
+        "evidence": {
+          "placeholder": "{agentId}",
+          "endpoint": "https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card"
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card",
+          "status": 404,
+          "bodyHash": "afe0f8aaf0c8105bcd10e9a804e9243d",
+          "bodyLength": 58,
+          "contentType": "application/json",
+          "latencyMs": 322
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "No /.well-known/agent-registration.json served."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:04.533Z"
+    },
+    {
+      "agentId": "203496",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "203495",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115222",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115221",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115220",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115219",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115218",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115217",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115216",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115215",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115214",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115213",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115212",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115211",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115210",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115209",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115208",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115207",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115206",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115205",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115204",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115203",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115202",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115201",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115199",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115198",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "115200",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24244",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24243",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24242",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24241",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24240",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24239",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24238",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24237",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24236",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24235",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24234",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24233",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24232",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24231",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24230",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24229",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24228",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24227",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24226",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24224",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24223",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24222",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24220",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24219",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    },
+    {
+      "agentId": "24217",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-19T22:59:05.170Z"
+    }
+  ]
+}

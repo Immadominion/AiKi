@@ -1,0 +1,4949 @@
+{
+  "sweptAt": "2026-08-20T07:16:08.284Z",
+  "chainId": 56,
+  "registry": "0x8004a169fb4a3325136eb29fa0ceb6d2e539a432",
+  "sampled": 258,
+  "distinctBlocks": 117,
+  "declaredService": 54,
+  "byState": {
+    "DECLARED_ONLY": 204,
+    "LIVE": 3,
+    "IMPOSTOR_STATIC": 49,
+    "UNREACHABLE": 2
+  },
+  "reciprocalVerified": 0,
+  "zeroCostRegistrations": 104,
+  "results": [
+    {
+      "agentId": "880535",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.329Z"
+    },
+    {
+      "agentId": "268798",
+      "verdict": {
+        "state": "LIVE",
+        "rule": "D5",
+        "detail": "Responded with structured content and is agent-specific.",
+        "evidence": {
+          "contentType": "application/json",
+          "latencyMs": 731
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://q402.quackai.ai/api/relay/info",
+          "status": 200,
+          "bodyHash": "031c50b147f71c34edaa0b8ecebd85af",
+          "bodyLength": 60,
+          "contentType": "application/json",
+          "latencyMs": 731
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "No /.well-known/agent-registration.json served."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.333Z"
+    },
+    {
+      "agentId": "63803",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.336Z"
+    },
+    {
+      "agentId": "268167",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:55.336Z"
+    },
+    {
+      "agentId": "7409",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:55.336Z"
+    },
+    {
+      "agentId": "7408",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:55.336Z"
+    },
+    {
+      "agentId": "62589",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:55.336Z"
+    },
+    {
+      "agentId": "62588",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:55.336Z"
+    },
+    {
+      "agentId": "62587",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:55.336Z"
+    },
+    {
+      "agentId": "264200",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:55.336Z"
+    },
+    {
+      "agentId": "264199",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=4441948",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 2131
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 385
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 377
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.336Z"
+    },
+    {
+      "agentId": "873649",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.337Z"
+    },
+    {
+      "agentId": "258980",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=4350756",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 1624
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 425
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 378
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.337Z"
+    },
+    {
+      "agentId": "258979",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=4350725",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 1631
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 380
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 387
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.337Z"
+    },
+    {
+      "agentId": "10659",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.338Z"
+    },
+    {
+      "agentId": "256978",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=4314443",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 1610
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 427
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 386
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.338Z"
+    },
+    {
+      "agentId": "256977",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=4314440",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 2089
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 366
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 373
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.338Z"
+    },
+    {
+      "agentId": "864877",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.339Z"
+    },
+    {
+      "agentId": "249481",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:55.339Z"
+    },
+    {
+      "agentId": "9290",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:55.339Z"
+    },
+    {
+      "agentId": "10449",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.339Z"
+    },
+    {
+      "agentId": "60199",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:55.339Z"
+    },
+    {
+      "agentId": "245561",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=4087888",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 1605
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 383
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 403
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.339Z"
+    },
+    {
+      "agentId": "245560",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=4087880",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 1619
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 389
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 386
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:55.339Z"
+    },
+    {
+      "agentId": "43600",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:56.460Z"
+    },
+    {
+      "agentId": "43603",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:56.460Z"
+    },
+    {
+      "agentId": "43590",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:56.460Z"
+    },
+    {
+      "agentId": "240501",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=4038057",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 767
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 371
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 351
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:56.460Z"
+    },
+    {
+      "agentId": "240500",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=4038055",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 347
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 363
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 367
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:58.123Z"
+    },
+    {
+      "agentId": "240499",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=4038054",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 366
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 364
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 359
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:58.128Z"
+    },
+    {
+      "agentId": "237007",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=3966346",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 365
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 366
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 360
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:58.128Z"
+    },
+    {
+      "agentId": "237006",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:58.142Z"
+    },
+    {
+      "agentId": "237005",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=3966344",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 367
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 417
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 383
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:58.142Z"
+    },
+    {
+      "agentId": "8427",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:58.280Z"
+    },
+    {
+      "agentId": "231031",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:58.280Z"
+    },
+    {
+      "agentId": "231030",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:58.280Z"
+    },
+    {
+      "agentId": "226908",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=3830749",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 363
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 360
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 400
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:58.280Z"
+    },
+    {
+      "agentId": "226907",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=3830740",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 351
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 380
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 437
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:58.327Z"
+    },
+    {
+      "agentId": "226906",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=3830730",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 399
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 371
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 394
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:58.549Z"
+    },
+    {
+      "agentId": "215529",
+      "verdict": {
+        "state": "LIVE",
+        "rule": "D5",
+        "detail": "Responded with structured content and is agent-specific.",
+        "evidence": {
+          "contentType": "application/json",
+          "latencyMs": 139
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://q402.quackai.ai/api/relay/info",
+          "status": 200,
+          "bodyHash": "031c50b147f71c34edaa0b8ecebd85af",
+          "bodyLength": 60,
+          "contentType": "application/json",
+          "latencyMs": 139
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "No /.well-known/agent-registration.json served."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:58.602Z"
+    },
+    {
+      "agentId": "215528",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:15:58.876Z"
+    },
+    {
+      "agentId": "215527",
+      "verdict": {
+        "state": "LIVE",
+        "rule": "D5",
+        "detail": "Responded with structured content and is agent-specific.",
+        "evidence": {
+          "contentType": "application/json",
+          "latencyMs": 104
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://q402.quackai.ai/api/relay/info",
+          "status": 200,
+          "bodyHash": "031c50b147f71c34edaa0b8ecebd85af",
+          "bodyLength": 60,
+          "contentType": "application/json",
+          "latencyMs": 104
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "No /.well-known/agent-registration.json served."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:58.876Z"
+    },
+    {
+      "agentId": "208322",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=3200155",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 396
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 343
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 495
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:59.126Z"
+    },
+    {
+      "agentId": "208321",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=3200056",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 472
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 371
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 357
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:59.558Z"
+    },
+    {
+      "agentId": "208320",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=3200005",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 408
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 370
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 372
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:59.634Z"
+    },
+    {
+      "agentId": "207642",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=3153482",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 407
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 550
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 387
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:59.635Z"
+    },
+    {
+      "agentId": "207641",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=3153459",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 508
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 368
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 438
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:15:59.852Z"
+    },
+    {
+      "agentId": "207640",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=3153430",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 379
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 373
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 383
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:00.029Z"
+    },
+    {
+      "agentId": "58745",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:00.041Z"
+    },
+    {
+      "agentId": "198041",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=2589938",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 368
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 371
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 388
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:00.041Z"
+    },
+    {
+      "agentId": "849701",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:00.397Z"
+    },
+    {
+      "agentId": "194882",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:00.397Z"
+    },
+    {
+      "agentId": "194881",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=2471104",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 360
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 406
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 365
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:00.397Z"
+    },
+    {
+      "agentId": "194880",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=2471099",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 411
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 355
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 539
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:00.759Z"
+    },
+    {
+      "agentId": "189432",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:01.170Z"
+    },
+    {
+      "agentId": "7756",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:01.170Z"
+    },
+    {
+      "agentId": "189431",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=2342611",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 379
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 512
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 533
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:01.170Z"
+    },
+    {
+      "agentId": "178112",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=2061101",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 561
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 532
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 485
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:01.502Z"
+    },
+    {
+      "agentId": "178111",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=2061093",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 557
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 535
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 546
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:01.503Z"
+    },
+    {
+      "agentId": "178110",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=2054606",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 521
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 536
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 484
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:01.539Z"
+    },
+    {
+      "agentId": "170993",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=1950199",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 512
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 535
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 486
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:01.548Z"
+    },
+    {
+      "agentId": "170994",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=1950197",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 382
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 533
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 485
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:01.679Z"
+    },
+    {
+      "agentId": "170997",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=1950192",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 530
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 486
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 452
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:02.065Z"
+    },
+    {
+      "agentId": "167598",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=1903552",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 485
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 452
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 434
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:02.596Z"
+    },
+    {
+      "agentId": "167599",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=1903554",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 412
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 425
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 409
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:03.122Z"
+    },
+    {
+      "agentId": "167597",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=1903543",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 433
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 389
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 419
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:03.535Z"
+    },
+    {
+      "agentId": "164072",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=1796420",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 450
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 379
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 413
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:03.535Z"
+    },
+    {
+      "agentId": "7513",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:03.535Z"
+    },
+    {
+      "agentId": "164071",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=1796419",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 423
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 545
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 407
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:03.535Z"
+    },
+    {
+      "agentId": "157389",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=1460018",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 377
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 396
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 409
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:03.592Z"
+    },
+    {
+      "agentId": "157390",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=1460019",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 379
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 392
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 556
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:03.606Z"
+    },
+    {
+      "agentId": "844705",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:03.971Z"
+    },
+    {
+      "agentId": "151125",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=1012433",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 398
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 405
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 384
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:03.972Z"
+    },
+    {
+      "agentId": "57488",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:04.512Z"
+    },
+    {
+      "agentId": "151124",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=1012432",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 406
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 402
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 402
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:04.512Z"
+    },
+    {
+      "agentId": "145837",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=978325",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 383
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 401
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 395
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:04.781Z"
+    },
+    {
+      "agentId": "145836",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=978313",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 395
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 393
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 397
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.163Z"
+    },
+    {
+      "agentId": "145835",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=978309",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 395
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 394
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 400
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.168Z"
+    },
+    {
+      "agentId": "834198",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "834197",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "834196",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "138424",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "828740",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "828739",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "785804",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "785803",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "785802",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "720041",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "720039",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "136856",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "700645",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "700644",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "700643",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "670701",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "670700",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "670699",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "656914",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "656913",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "656912",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "135379",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "135378",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "605592",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "600870",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "600871",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "600869",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "593501",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "593503",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "593502",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "574875",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "574876",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "574874",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "549437",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "549436",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "549433",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "538399",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "538389",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "538384",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "133920",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "509490",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "509492",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "495864",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "495870",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "495859",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "471161",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "471157",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "471153",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "451185",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "451186",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "451184",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "439618",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "439617",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "439616",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "354831",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "354829",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "354832",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "347594",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "347580",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "347579",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "338478",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "338477",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "338476",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "328913",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "328909",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "328906",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "249149",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "249086",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "249057",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "213784",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "213783",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=3551172",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 395
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 401
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 392
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.323Z"
+    },
+    {
+      "agentId": "213779",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:05.327Z"
+    },
+    {
+      "agentId": "199263",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=2684963",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 394
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 399
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 393
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.327Z"
+    },
+    {
+      "agentId": "199253",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:05.340Z"
+    },
+    {
+      "agentId": "199264",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=2685001",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 398
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 402
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 393
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.340Z"
+    },
+    {
+      "agentId": "191634",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=2440529",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 400
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 396
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 399
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:05.711Z"
+    },
+    {
+      "agentId": "191637",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "191631",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "162932",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "162930",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "162934",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "134626",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "134620",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "134616",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "99725",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "99724",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "99723",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "83676",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "83678",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "83675",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "77125",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "77127",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "77128",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "130287",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "70054",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "70053",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=806",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 386
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 399
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 404
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.132Z"
+    },
+    {
+      "agentId": "50860",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "50859",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "50854",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "43641",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "43639",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "43638",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "40055",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "25886",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "40054",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "125732",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "34502",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "34501",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "30480",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "123797",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "30479",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "26703",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "118624",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "118623",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "905",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "24151",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "114093",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "22214",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "110077",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "110076",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "104868",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "1227",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "104867",
+      "verdict": {
+        "state": "IMPOSTOR_STATIC",
+        "rule": "D1",
+        "detail": "Returned byte-identical responses (MD5 2067c4db…) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "evidence": {
+          "sharedHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "inputsTried": [
+            "valid",
+            "nonsense",
+            "nonNumeric"
+          ],
+          "bodyLength": 43469
+        }
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://evoevo.ai/agent/detail?id=78914",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 387
+        },
+        {
+          "label": "nonsense",
+          "url": "https://evoevo.ai/agent/detail?id=999999999",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 551
+        },
+        {
+          "label": "nonNumeric",
+          "url": "https://evoevo.ai/agent/detail?id=abc",
+          "status": 200,
+          "bodyHash": "2067c4db4f3e15616e96894ef3f89cc0",
+          "bodyLength": 43469,
+          "contentType": "text/html",
+          "latencyMs": 405
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "Reciprocal proof could not be evaluated."
+      },
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.376Z"
+    },
+    {
+      "agentId": "99880",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "19410",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "99879",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "6095",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "97228",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "97227",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "14722",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "14721",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "93952",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "11409",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "11408",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "11407",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "50705",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "50703",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "50702",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "3661",
+      "verdict": {
+        "state": "UNREACHABLE",
+        "rule": "D0",
+        "detail": "fetch failed"
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://wavenode599.io",
+          "status": 0,
+          "bodyHash": "d41d8cd98f00b204e9800998ecf8427e",
+          "bodyLength": 0,
+          "contentType": null,
+          "latencyMs": 200,
+          "error": "fetch failed"
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "No /.well-known/agent-registration.json served."
+      },
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.750Z"
+    },
+    {
+      "agentId": "88108",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "4560",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "85006",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "5666",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "47100",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "23666",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "23665",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "80119",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "78436",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "17949",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "17948",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "72322",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "3536",
+      "verdict": {
+        "state": "UNREACHABLE",
+        "rule": "D0",
+        "detail": "fetch failed"
+      },
+      "samples": [
+        {
+          "label": "valid",
+          "url": "https://neonlink627.io",
+          "status": 0,
+          "bodyHash": "d41d8cd98f00b204e9800998ecf8427e",
+          "bodyLength": 0,
+          "contentType": null,
+          "latencyMs": 187,
+          "error": "fetch failed"
+        }
+      ],
+      "reciprocal": {
+        "verified": false,
+        "detail": "No /.well-known/agent-registration.json served."
+      },
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.765Z"
+    },
+    {
+      "agentId": "5104",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "68305",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "68304",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "68300",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "60037",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "1628",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "60035",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "34404",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "46369",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "2661",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "45107",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "33463",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "33462",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "37983",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "37982",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "29667",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "34138",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "27569",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "27568",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "20961",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "20960",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "20959",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "774",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "775",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "776",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": false,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "21688",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "21689",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    },
+    {
+      "agentId": "21690",
+      "verdict": {
+        "state": "DECLARED_ONLY",
+        "rule": "D0",
+        "detail": "Agent is registered but declares no service endpoint."
+      },
+      "samples": [],
+      "registrationWasZeroCost": true,
+      "probedAt": "2026-08-20T07:16:06.920Z"
+    }
+  ]
+}
