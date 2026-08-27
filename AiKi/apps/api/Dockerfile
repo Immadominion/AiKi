@@ -1,10 +1,12 @@
 # The API and the evidence scheduler ship as one image; the command decides which
 # one a container becomes, so both always run identical code.
 FROM node:24-alpine AS base
-# Activating the pinned pnpm at build time, not first run: otherwise every
-# container start downloads it before the app can begin, which races the
-# platform's healthcheck and looks exactly like a crash.
-RUN corepack enable && corepack prepare pnpm@11.22.0 --activate
+# Installed globally rather than through corepack. Corepack caches the package
+# manager under the invoking user's home, so preparing it as root and then
+# running as `node` sends the container back to the registry on every start,
+# which races the platform's healthcheck and reads exactly like a crash. A
+# global install lands in /usr/local/bin, where every user can see it.
+RUN npm install -g pnpm@11.22.0
 WORKDIR /app
 
 FROM base AS deps
