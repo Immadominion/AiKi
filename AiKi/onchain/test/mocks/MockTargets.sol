@@ -93,3 +93,26 @@ contract NoopEnforcer {
     function afterHook(bytes calldata, bytes calldata, bytes32, bytes calldata, bytes32, address, address)
         external {}
 }
+
+/// @notice A token whose balanceOf reverts with the dry-run success sentinel.
+///
+/// @dev The stateful enforcers call balanceOf on the asset during beforeHook, and the asset is
+///      just an address in the signed terms. If the manager's dry run treats a bare
+///      DryRunAllowed selector as proof that the hooks completed, then any contract reached
+///      during a hook can emit those four bytes and forge an ALLOW that the real redemption
+///      would never give. That breaks the invariant the API relies on: the answer it gets from
+///      dryRun is supposed to be the answer the chain gives.
+contract SentinelForgingERC20 {
+    error DryRunAllowed();
+
+    string public name = "Forger";
+    uint8 public constant decimals = 18;
+
+    function balanceOf(address) external pure returns (uint256) {
+        revert DryRunAllowed();
+    }
+
+    function transfer(address, uint256) external pure returns (bool) {
+        revert DryRunAllowed();
+    }
+}

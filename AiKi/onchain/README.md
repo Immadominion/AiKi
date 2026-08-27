@@ -135,6 +135,15 @@ test at all, so it could have been deleted wholesale and the suite would have st
 The rest are recorded here rather than quietly carried, because an audit finding nobody wrote
 down is an audit that did not happen.
 
+**Fixed since the review:** `dryRun`'s ALLOW verdict was forgeable by any contract reached
+during a `beforeHook`. The enforcers call `balanceOf` on the asset, the asset is just an address
+in the signed terms, and a hostile token reverting with the four bytes of `DryRunAllowed` made
+the outer catch report that the hooks had completed. The hooks now run one frame deeper, so
+anything they revert with is caught and re-wrapped as a denial and the success sentinel is only
+reachable after the inner call returned. `test/DryRunForgery.t.sol` reproduces the forgery,
+proves a genuine allow and a genuine denial still report correctly, and goes red if the inline
+form is restored.
+
 **Semantics, unresolved:**
 
 - `dryRun`'s ALLOW verdict is forgeable by any contract reached during a `beforeHook`. The API

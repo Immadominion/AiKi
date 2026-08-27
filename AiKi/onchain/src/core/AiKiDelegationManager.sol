@@ -49,6 +49,8 @@ contract AiKiDelegationManager is IDelegationManager {
     /// @dev Sentinel thrown by the dry-run probe when every check passed. It is a revert so
     ///      that the probe's state writes (the session-cap increment) are rolled back.
     error DryRunAllowed();
+    /// @dev Wraps whatever came out of the hooks. Its existence is the fix: see dryRunProbe.
+    error DryRunDenied(bytes inner);
 
     event RedeemedDelegation(
         address indexed delegator,
@@ -289,7 +291,32 @@ contract AiKiDelegationManager is IDelegationManager {
         }
     }
 
+    /// @dev The hooks run one frame deeper, and that separation is load-bearing rather than
+    ///      stylistic. A bare sentinel selector as the success signal is forgeable by ANY
+    ///      contract reached while the hooks run: the enforcers call balanceOf on the asset,
+    ///      and the asset is just an address in the signed terms, so a hostile token can revert
+    ///      with those four bytes and the outer catch would read it as "the hooks completed".
+    ///      That does not merely mislead the API, it silences the very alarm the dry run exists
+    ///      to raise.
+    ///
+    ///      With the hooks in their own call, anything they revert with is caught here and
+    ///      re-wrapped as a denial. DryRunAllowed is then only reachable on the line after the
+    ///      inner call RETURNED, which nothing inside the hooks can cause.
     function dryRunProbe(
+        Delegation calldata delegation,
+        bytes32 mode,
+        bytes calldata executionCallData,
+        address redeemer
+    ) external {
+        if (msg.sender != address(this)) revert OnlySelf();
+        try this.dryRunHooks(delegation, mode, executionCallData, redeemer) {
+            revert DryRunAllowed();
+        } catch (bytes memory err) {
+            revert DryRunDenied(err);
+        }
+    }
+
+    function dryRunHooks(
         Delegation calldata delegation,
         bytes32 mode,
         bytes calldata executionCallData,
@@ -303,7 +330,6 @@ contract AiKiDelegationManager is IDelegationManager {
             redeemer: redeemer
         });
         _runHooks(delegation.caveats, ctx, executionCallData, true);
-        revert DryRunAllowed();
     }
 
     function _decodeProbe(bytes memory err)
@@ -316,7 +342,30 @@ contract AiKiDelegationManager is IDelegationManager {
         assembly {
             sel := mload(add(err, 0x20))
         }
+        // Only dryRunProbe itself can produce this, and only after the hooks returned.
         if (sel == DryRunAllowed.selector) return (true, Rules.POLICY, Reasons.ALLOWED);
+        // Everything the hooks reverted with arrives wrapped. Unwrap once, then classify the
+        // payload; a forged sentinel inside is now just an unrecognised denial.
+        if (sel == DryRunDenied.selector) {
+            bytes memory wrapper = new bytes(err.length - 4);
+            for (uint256 i; i < wrapper.length; ++i) {
+                wrapper[i] = err[i + 4];
+            }
+            return _classify(abi.decode(wrapper, (bytes)));
+        }
+        return _classify(err);
+    }
+
+    function _classify(bytes memory err)
+        private
+        pure
+        returns (bool allow, string memory rule, string memory reason)
+    {
+        if (err.length < 4) return (false, "revert", "Redemption reverted without a reason.");
+        bytes4 sel;
+        assembly {
+            sel := mload(add(err, 0x20))
+        }
         if (sel == PolicyDenied.selector) {
             bytes memory payload = new bytes(err.length - 4);
             for (uint256 i; i < payload.length; ++i) {
