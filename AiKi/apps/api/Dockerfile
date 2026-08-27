@@ -17,6 +17,11 @@ RUN pnpm install --frozen-lockfile --filter @aiki/api...
 
 FROM base AS runtime
 ENV NODE_ENV=production
+# pnpm 10+ checks node_modules against the lockfile before running any script and
+# reinstalls when they disagree. This image installs a filtered subset on purpose,
+# so that check always disagrees, and it turned every pre-deploy into an install
+# that failed with no useful error. The dependencies are already here and correct.
+ENV npm_config_verify_deps_before_run=false
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/contracts/node_modules ./packages/contracts/node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
