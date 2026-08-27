@@ -1,7 +1,13 @@
-import type { Observation } from '../evidence/types.js'
+import type { NewObservation } from '../evidence/types.js'
 
 /**
  * Turning a committed probe sweep into observations.
+ *
+ * No `id` is set. The store assigns a UUID, and the id column IS a uuid: setting
+ * a readable string here worked against the in-memory store and was rejected by
+ * Postgres, which is the sort of divergence a store interface is supposed to
+ * prevent and this one quietly permitted. `dedupeKey` is the stable identity,
+ * and it is what makes re-seeding a no-op.
  *
  * Shared by the dev server and the production seeder, so what you develop
  * against is exactly what a fresh deployment is loaded with. Each row keeps the
@@ -24,9 +30,9 @@ export interface SweepFile {
   results?: SweepResult[]
 }
 
-function fromSweep(sweep: SweepFile): Observation[] {
+function fromSweep(sweep: SweepFile): NewObservation[] {
   if (!Array.isArray(sweep.results)) return []
-  const out: Observation[] = []
+  const out: NewObservation[] = []
   for (const result of sweep.results) {
     if (
       !result?.agentId ||
@@ -55,7 +61,6 @@ function fromSweep(sweep: SweepFile): Observation[] {
 
     out.push({
       ...base,
-      id: `sweep:${runKey}:verdict`,
       predicate: 'agent.liveness_verdict',
       method: `capability-probe/${result.verdict.rule}`,
       value: {
@@ -73,7 +78,6 @@ function fromSweep(sweep: SweepFile): Observation[] {
     if (result.reciprocal)
       out.push({
         ...base,
-        id: `sweep:${runKey}:reciprocal`,
         predicate: 'erc8004.reciprocal_proof',
         method: 'reciprocal-proof/D8',
         value: result.reciprocal as unknown as Record<string, unknown>,
@@ -83,7 +87,6 @@ function fromSweep(sweep: SweepFile): Observation[] {
     for (const [index, sample] of (result.samples ?? []).entries())
       out.push({
         ...base,
-        id: `sweep:${runKey}:sample:${index}`,
         predicate: 'agent.capability_probe',
         method: 'capability-probe/v2',
         value: sample,
@@ -93,8 +96,8 @@ function fromSweep(sweep: SweepFile): Observation[] {
   return out
 }
 
-export function sweepObservations(files: { name: string; raw: string }[]): Observation[] {
-  const observations: Observation[] = []
+export function sweepObservations(files: { name: string; raw: string }[]): NewObservation[] {
+  const observations: NewObservation[] = []
   for (const file of files) {
     let sweep: SweepFile
     try {

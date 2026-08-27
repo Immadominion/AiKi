@@ -14,6 +14,7 @@ import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
+import { materializeObservation } from '../evidence/store.js'
 import type { Observation } from '../evidence/types.js'
 import { PostgresJobStore } from '../jobs/postgres-store.js'
 import { JobService } from '../jobs/service.js'
@@ -27,7 +28,8 @@ function loadSweeps(root: string): Observation[] {
     .filter((name) => /^probe-sweep-.*\.json$/.test(name))
     .sort()
     .map((name) => ({ name, raw: readFileSync(join(root, name), 'utf8') }))
-  return sweepObservations(files)
+  // The store would do this; the dev server holds them in memory instead.
+  return sweepObservations(files).map((o) => materializeObservation(o))
 }
 
 const observations = loadSweeps(process.cwd())
