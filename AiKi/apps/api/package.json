@@ -9,6 +9,7 @@
     "dev": "tsx src/http/dev.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed-sweeps.ts",
+    "db:setup": "pnpm run db:migrate && pnpm run db:seed",
     "index:persist": "tsx src/indexer/persist-cli.ts",
     "probe": "tsx src/prober/cli.ts",
     "probe:persist": "tsx src/prober/persist-cli.ts",
