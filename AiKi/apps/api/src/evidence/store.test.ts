@@ -31,3 +31,33 @@ describe('evidence store', () => {
     ).toThrow('recordedAt cannot precede observedAt')
   })
 })
+
+it('reads a block number back as a number, not the string BIGINT returns', async () => {
+  const url = process.env.DATABASE_URL
+  if (!url) return
+  const { PostgresEvidenceStore } = await import('./postgres-store.js')
+  const store = new PostgresEvidenceStore(url)
+  try {
+    const block = 118_463_582
+    await store.append({
+      subject: { type: 'agent', chainId: 56, registry: '0xbig', agentId: 'bigint-check' },
+      predicate: 'erc8004.agent_registered',
+      value: { owner: '0x1', agentURI: 'https://x' },
+      validAt: '2026-01-01T00:00:00.000Z',
+      observedAt: '2026-01-01T00:00:00.000Z',
+      source: 'test',
+      method: 'test',
+      evidenceClass: 'A',
+      blockNumber: block,
+      dedupeKey: 'bigint-check',
+    })
+    const row = (await store.list()).find((o) => o.subject.agentId === 'bigint-check')
+    // Every projection tests typeof === 'number'. A string here means a real
+    // block reads as no block, which is how lastIndexedBlock stayed 0 in
+    // production while the indexer was working.
+    expect(typeof row?.blockNumber).toBe('number')
+    expect(row?.blockNumber).toBe(block)
+  } finally {
+    await store.close()
+  }
+})

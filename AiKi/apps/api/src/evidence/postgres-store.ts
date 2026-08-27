@@ -10,6 +10,17 @@ import type { AppendResult, EvidenceStore, IndexerCheckpoint, NewObservation } f
  */
 const iso = (value: string | Date): string => (value instanceof Date ? value.toISOString() : value)
 
+/**
+ * BIGINT arrives as a string.
+ *
+ * The postgres driver returns int8 as a string to avoid losing precision above
+ * 2^53, which is correct of it and quietly wrong for us: every projection tests
+ * `typeof blockNumber === 'number'`, so a real block silently read as no block
+ * and lastIndexedBlock sat at 0 while the indexer was working perfectly. Block
+ * numbers are nowhere near the precision limit, so narrowing them here is safe
+ * and is the same boundary fix the timestamps needed.
+ */
+
 export class PostgresEvidenceStore implements EvidenceStore {
   private readonly sql: postgres.Sql
   constructor(databaseUrl: string) {
@@ -99,8 +110,8 @@ export class PostgresEvidenceStore implements EvidenceStore {
         source: string
         method: string
         evidence_class: 'A' | 'B' | 'C' | 'D'
-        block_number: number | null
-        log_index: number | null
+        block_number: number | string | null
+        log_index: number | string | null
         transaction_hash: string | null
         finality: 'provisional' | 'safe' | 'finalized' | null
         supersedes: string | null
@@ -124,8 +135,8 @@ export class PostgresEvidenceStore implements EvidenceStore {
       source: row.source,
       method: row.method,
       evidenceClass: row.evidence_class,
-      ...(row.block_number === null ? {} : { blockNumber: row.block_number }),
-      ...(row.log_index === null ? {} : { logIndex: row.log_index }),
+      ...(row.block_number === null ? {} : { blockNumber: Number(row.block_number) }),
+      ...(row.log_index === null ? {} : { logIndex: Number(row.log_index) }),
       ...(row.transaction_hash === null ? {} : { transactionHash: row.transaction_hash }),
       ...(row.finality === null ? {} : { finality: row.finality }),
       ...(row.supersedes === null ? {} : { supersedes: row.supersedes }),
