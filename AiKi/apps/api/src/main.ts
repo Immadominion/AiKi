@@ -136,4 +136,8 @@ app.addHook('onClose', async () => {
   await Promise.all([venus.close(), rebalancer.close(), grid.close(), yieldAgent.close()])
   await Promise.all([store.close(), jobStore.close(), receiptStore.close(), nonceStore.close()])
 })
-await app.listen({ host: '0.0.0.0', port: Number(process.env.PORT ?? '3000') })
+const port = Number(process.env.PORT ?? '3000')
+await app.listen({ host: '0.0.0.0', port })
+// Say so. A process that boots silently is indistinguishable from one that hung,
+// and the difference matters most exactly when a deploy is failing.
+console.log(`aiki api listening on :${port}`)

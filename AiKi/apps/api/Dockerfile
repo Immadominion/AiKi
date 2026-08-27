@@ -1,7 +1,10 @@
 # The API and the evidence scheduler ship as one image; the command decides which
 # one a container becomes, so both always run identical code.
 FROM node:24-alpine AS base
-RUN corepack enable
+# Activating the pinned pnpm at build time, not first run: otherwise every
+# container start downloads it before the app can begin, which races the
+# platform's healthcheck and looks exactly like a crash.
+RUN corepack enable && corepack prepare pnpm@11.22.0 --activate
 WORKDIR /app
 
 FROM base AS deps
