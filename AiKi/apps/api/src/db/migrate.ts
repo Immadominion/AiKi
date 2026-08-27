@@ -23,3 +23,8 @@ for (const name of names) {
   console.log(`Applied ${name}`)
 }
 await sql.end()
+// Exit explicitly. postgres.js can leave a handle open that keeps the event loop
+// alive after end(), and a migration step that never returns is indistinguishable
+// from a slow one: it silently prevents the process that follows it from ever
+// starting, which is how the first deploys "failed" with an empty log.
+process.exit(0)
