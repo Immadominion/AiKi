@@ -463,8 +463,10 @@ export const ECOSYSTEM_STATS: EcosystemStats = {
   indexed: {
     totalAgents: 736076,
     bscAgents: 270263,
+    firstIndexedBlock: 79027200,
     lastIndexedBlock: 116864993,
     lastIndexedAt: NOW,
+    complete: true,
   },
   probed: {
     agentsProbed: 400,

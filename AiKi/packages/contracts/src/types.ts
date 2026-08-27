@@ -577,8 +577,17 @@ export interface EcosystemStats {
   indexed: {
     totalAgents: number
     bscAgents: number
+    firstIndexedBlock: number
     lastIndexedBlock: number
     lastIndexedAt: Timestamp
+    /**
+     * False when indexing started after the registry's first block, which makes
+     * `totalAgents` a count of what we have seen rather than of what exists.
+     * Backfilling the whole registry needs an archive RPC; tailing the head does
+     * not. A partial index reported as a complete one would be the same lie as
+     * reporting an unmeasured field as a measurement.
+     */
+    complete: boolean
   } | null
   probed: {
     agentsProbed: number

@@ -148,8 +148,11 @@ it('projects stats counting each agent once by its latest verdict', () => {
   expect(stats.indexed).toEqual({
     totalAgents: 1,
     bscAgents: 1,
+    firstIndexedBlock: 4321,
     lastIndexedBlock: 4321,
     lastIndexedAt: '2026-01-03T00:00:00Z',
+    // Block 4321 predates the registry, so everything that exists has been seen.
+    complete: true,
   })
   // Feedback is not ingested, so reputation is null — zeros would be a claim.
   expect(stats.reputation).toBeNull()
@@ -223,4 +226,25 @@ it('keeps two tied agents tied even when a third is clearly worse', () => {
     comparePassports([mk([0.5, 0.8]), mk([0.6, 0.9]), mk([0.05, 0.2])]).indistinguishable,
   ).toBe(true)
   expect(comparePassports([mk([0.5, 0.8]), mk([0.05, 0.2])]).indistinguishable).toBe(false)
+})
+
+it('says so when the index is only part of the registry', () => {
+  const registered = (block: number) =>
+    obs(
+      'a',
+      'erc8004.agent_registered',
+      { owner: '0x1', agentURI: 'https://x' },
+      '2026-01-01T00:00:00Z',
+      {
+        evidenceClass: 'A',
+        blockNumber: block,
+      },
+    )
+
+  // Started at the registry's first block: what we have is what exists.
+  expect(projectStats([registered(79_027_200)]).indexed?.complete).toBe(true)
+  // Started later: totalAgents counts what we have seen, not what exists, and a
+  // partial index reported as a complete one is the same lie as an unmeasured
+  // field reported as a measurement.
+  expect(projectStats([registered(118_000_000)]).indexed?.complete).toBe(false)
 })

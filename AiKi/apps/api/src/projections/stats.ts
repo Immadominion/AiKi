@@ -1,4 +1,5 @@
 import type { EcosystemStats } from '@aiki/contracts'
+import { BSC_MAINNET } from '../config/chains.js'
 import type { Observation } from '../evidence/types.js'
 import { asLiveness } from './passport.js'
 
@@ -34,10 +35,13 @@ export function projectStats(observations: Observation[]): EcosystemStats {
   const indexedAgents = new Set(indexedRows.map(subjectKey))
   const indexedBsc = new Set(indexedRows.filter((o) => o.subject.chainId === 56).map(subjectKey))
   let lastIndexedBlock = 0
+  let firstIndexedBlock = Number.POSITIVE_INFINITY
   let lastIndexedAt: string | null = null
   for (const o of indexedRows) {
-    if (typeof o.blockNumber === 'number' && o.blockNumber > lastIndexedBlock)
-      lastIndexedBlock = o.blockNumber
+    if (typeof o.blockNumber === 'number') {
+      if (o.blockNumber > lastIndexedBlock) lastIndexedBlock = o.blockNumber
+      if (o.blockNumber < firstIndexedBlock) firstIndexedBlock = o.blockNumber
+    }
     if (!lastIndexedAt || o.observedAt > lastIndexedAt) lastIndexedAt = o.observedAt
   }
 
@@ -47,8 +51,15 @@ export function projectStats(observations: Observation[]): EcosystemStats {
         ? {
             totalAgents: indexedAgents.size,
             bscAgents: indexedBsc.size,
+            firstIndexedBlock: Number.isFinite(firstIndexedBlock) ? firstIndexedBlock : 0,
             lastIndexedBlock,
             lastIndexedAt,
+            // Indexing that began after the registry's first block has seen only
+            // part of it, and totalAgents is then a count of what we have seen
+            // rather than of what exists.
+            complete:
+              Number.isFinite(firstIndexedBlock) &&
+              firstIndexedBlock <= BSC_MAINNET.registryGenesisBlock,
           }
         : null,
     probed: {

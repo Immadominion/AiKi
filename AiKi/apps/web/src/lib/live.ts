@@ -15,6 +15,13 @@ import { api } from './api'
 export interface RegistryCoverage {
   /** Null when no chain-indexer evidence exists yet; probing alone cannot fake it. */
   indexed: number | null
+  /**
+   * False when the index began after the registry's first block, which makes
+   * `indexed` a count of what we have seen rather than of what exists. The
+   * difference has to reach the reader, or a partial index reads as the whole
+   * registry.
+   */
+  indexComplete: boolean
   probed: number
   /** LIVE + DEGRADED: everything that answered like an agent at all. */
   answering: number
@@ -27,6 +34,7 @@ export const SWEEP_COVERAGE: RegistryCoverage = {
   indexed: 12_847,
   probed: 400,
   answering: 2,
+  indexComplete: false,
   reasons: [
     { state: 'DECLARED_ONLY', count: 243 },
     { state: 'IMPOSTOR_STATIC', count: 133 },
@@ -49,6 +57,7 @@ async function load(): Promise<RegistryCoverage> {
     .sort((a, b) => b.count - a.count)
   return {
     indexed: stats.indexed?.totalAgents ?? null,
+    indexComplete: stats.indexed?.complete ?? false,
     probed: stats.probed.agentsProbed,
     answering,
     reasons,

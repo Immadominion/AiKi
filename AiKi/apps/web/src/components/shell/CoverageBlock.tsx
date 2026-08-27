@@ -35,7 +35,9 @@ export function CoverageBlock({ shown, coverage }: { shown: number; coverage: Re
         <span className="text-muted text-[12.5px] font-semibold">
           {coverage.indexed === null
             ? `behind them, the ${coverage.probed.toLocaleString()} agents AiKi probed on BNB Chain`
-            : `behind them, a registry of ${coverage.indexed.toLocaleString()} agents on BNB Chain`}
+            : coverage.indexComplete
+              ? `behind them, a registry of ${coverage.indexed.toLocaleString()} agents on BNB Chain`
+              : `behind them, ${coverage.indexed.toLocaleString()} agents indexed so far on BNB Chain, which is part of the registry and not all of it`}
         </span>
       </div>
 

@@ -17,6 +17,8 @@ export interface ChainContracts {
 
 export interface ChainConfig {
   id: number
+  /** The block the ERC-8004 registry was deployed at. Indexing from later than this is partial. */
+  registryGenesisBlock: number
   name: string
   nativeCurrency: 'BNB'
   finalityTag: 'finalized'
@@ -28,6 +30,7 @@ export const BSC_MAINNET: ChainConfig = {
   id: 56,
   name: 'BNB Smart Chain',
   nativeCurrency: 'BNB',
+  registryGenesisBlock: 79_027_200,
   finalityTag: 'finalized',
   expectedReorgDepth: 8,
   contracts: {
