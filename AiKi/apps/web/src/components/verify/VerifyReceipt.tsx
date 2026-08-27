@@ -3,7 +3,12 @@
 import { useEffect, useState } from 'react'
 import { type Verdict, verifyReceipt, type WireReceipt } from '@/lib/receipts'
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4700'
+/**
+ * Empty means this origin, which is how it is deployed: the app proxies /v1 to
+ * the API so the session cookie is same-origin. Local development points at the
+ * dev API on another port instead.
+ */
+const API = process.env.NEXT_PUBLIC_API_URL ?? ''
 
 type State =
   | { kind: 'checking' }
