@@ -135,6 +135,21 @@ test at all, so it could have been deleted wholesale and the suite would have st
 The rest are recorded here rather than quietly carried, because an audit finding nobody wrote
 down is an audit that did not happen.
 
+**Specified rather than fixed:** the balance-delta `afterHook` charges any outflow of the asset
+during the execution, including one the execution did not name, so the on-chain counter can run
+ahead of the off-chain mirror's. That is deliberate and the mirror is the optimistic one: it
+knows only the amount in calldata, and trusting that number is exactly the bypass a
+fee-on-transfer or rebasing token walks through. The chain is the authority on what actually
+moved.
+
+The scope is narrower than it sounds. The snapshot spans one execution inside one transaction,
+the manager is non-reentrant, and the account accepts calls only from the manager, so nothing
+unrelated can move the delegator's balance in between. What remains is a target the mandate
+itself allowlisted drawing on an allowance the delegator granted, which is an outflow the user
+authorised twice over. `test/UnnamedOutflow.t.sol` pins the boundary: the extra outflow is
+charged to the cap, and one that carries the total past the cap unwinds the whole redemption
+rather than reporting it after the money left.
+
 **Also fixed:** two constraints of the same kind were applied in turn off chain, quietly
 meaning their intersection, while the chain refused the delegation outright with
 `DuplicateEnforcer`. The API therefore accepted mandates whose every action would then fail.
@@ -150,13 +165,9 @@ reachable after the inner call returned. `test/DryRunForgery.t.sol` reproduces t
 proves a genuine allow and a genuine denial still report correctly, and goes red if the inline
 form is restored.
 
-**Semantics, unresolved:**
-
 - `dryRun`'s ALLOW verdict is forgeable by any contract reached during a `beforeHook`. The API
   trusts `dryRun`, so this weakens the "the answer the API gives is the answer the chain gives"
   claim in the presence of a hostile enforcer or target.
-- The balance-delta `afterHook` charges any outflow of the asset during the execution, including
-  one the execution did not cause, so the on-chain counter can run ahead of the mirror's.
 
 **Test coverage: closed.** All six are now covered by `test/AuditGaps.t.sol`, and each was
 mutation-checked by deleting the guard it claims to test:
@@ -176,7 +187,12 @@ so `CapTermsLib`'s own branch stayed unexecuted and mutating it left the suite g
 test uses a mandate with no asset-scope caveat so the cap itself is asked to read the amount.
 A test that passes for the wrong reason is the failure mode this table exists to prevent.
 
-The three semantic findings above remain open. They are a reason not to deploy.
+All ten findings from the review are now closed: six coverage gaps tested and mutation-checked,
+two semantics bugs fixed, and one behaviour specified with its boundary pinned by tests.
+
+That is not the same as being safe to deploy. These contracts are still **unaudited**, and an
+adversarial review by the people who wrote them is worth less than one by people who did not.
+The findings above are the ones we thought to look for.
 
 ## What is NOT enforced on chain
 

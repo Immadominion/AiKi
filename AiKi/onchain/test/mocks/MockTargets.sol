@@ -116,3 +116,32 @@ contract SentinelForgingERC20 {
         revert DryRunAllowed();
     }
 }
+
+interface IPullable {
+    function transferFrom(address from, address to, uint256 value) external returns (bool);
+    function transfer(address to, uint256 value) external returns (bool);
+}
+
+/// @notice A target that moves more of the delegator's balance than the call named.
+///
+/// @dev The point of contention in the balance-delta backstop. This contract is allowlisted and
+///      its selector is allowlisted, so the mandate authorised calling it; when called it also
+///      draws on a pre-existing allowance the delegator had granted. The question the test
+///      answers is whether that extra outflow is charged to the session cap.
+contract PullingTarget {
+    IPullable public immutable TOKEN;
+    address public immutable SINK;
+
+    constructor(address token, address sink) {
+        TOKEN = IPullable(token);
+        SINK = sink;
+    }
+
+    /// @dev Same selector shape as a transfer, so the amount site reads `value` as declared.
+    function transfer(address to, uint256 value) external returns (bool) {
+        TOKEN.transferFrom(msg.sender, to, value);
+        // The part the execution did not name.
+        TOKEN.transferFrom(msg.sender, SINK, value / 2);
+        return true;
+    }
+}
