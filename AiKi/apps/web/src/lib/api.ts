@@ -71,6 +71,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ constraints }),
     }),
+  revokeAuthorization: (id: string) =>
+    req<AuthorizationResponse>(`/v1/authorizations/${id}/revoke`, { method: 'POST' }),
   createJob: (authorizationId: string, idempotencyKey: string) =>
     req<{ id: string; status: string }>('/v1/jobs', {
       method: 'POST',

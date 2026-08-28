@@ -210,8 +210,10 @@ export function LimitsView() {
 
             <p className="text-muted mt-[16px] mb-0 max-w-[680px] text-[12.5px] leading-[1.5] text-pretty">
               Pausing is instant and costs nothing, because it only stops AiKi relaying. Revoking
-              sends a transaction that removes the authority from the chain. Slower, costs gas, and
-              the only one of the two that survives AiKi disappearing.
+              withdraws the authority at AiKi, so it stops for good rather than for now. Neither
+              currently sends a transaction: the enforcer contracts that would let a revocation
+              survive AiKi disappearing are written and tested but not yet deployed, and this page
+              will say so plainly until they are.
             </p>
           </>
         )}
@@ -220,10 +222,10 @@ export function LimitsView() {
       {confirming ? (
         <ConfirmDialog
           title={`Revoke ${AGENT_BY_KEY[confirming].name}?`}
-          body={`This sends a transaction that removes the authority from the chain. It costs gas, it cannot be undone, and ${AGENT_BY_KEY[confirming].name} stops for good.`}
+          body={`This withdraws the authority at AiKi. It cannot be undone and ${AGENT_BY_KEY[confirming].name} stops for good. It does not yet send a transaction, so it does not survive AiKi disappearing; pausing and revoking differ today in permanence, not in where they are enforced.`}
           alternative="If you only want it to stop for now, pause instead. That is instant, free, and reversible."
           alternativeLabel="Pause instead"
-          confirmLabel="Revoke on chain"
+          confirmLabel="Withdraw authority"
           onCancel={() => setConfirming(null)}
           onAlternative={() => {
             const name = AGENT_BY_KEY[confirming].name
@@ -233,9 +235,10 @@ export function LimitsView() {
           }}
           onConfirm={() => {
             const name = AGENT_BY_KEY[confirming].name
-            revoke(confirming)
+            void revoke(confirming)
+              .then(() => say(`${name} withdrawn. AiKi will not relay for it again.`))
+              .catch(() => say(`Could not withdraw ${name}. Nothing changed; try again.`))
             setConfirming(null)
-            say(`${name} revoked on chain. Its authority is gone.`)
           }}
         />
       ) : null}

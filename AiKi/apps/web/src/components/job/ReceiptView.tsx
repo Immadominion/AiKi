@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { PageCard } from '@/components/shell/PageCard'
 import { PageSkeleton } from '@/components/ui/Skeleton'
@@ -44,7 +45,7 @@ const Line = ({ label, children }: { label: string; children: React.ReactNode })
 
 export function ReceiptView({ receiptId }: { receiptId: string }) {
   const { state, ready } = useMock()
-  const say = useToast()
+  const _say = useToast()
   const router = useRouter()
 
   const r = state.receipts.find((x) => x.id === receiptId)
@@ -80,7 +81,9 @@ export function ReceiptView({ receiptId }: { receiptId: string }) {
 
   const agent = AGENT_BY_KEY[r.key]
   const total = r.providerCents + r.platformCents + r.networkCents
-  const verifyUrl = `https://useaiki.xyz/verify/${r.id}`
+  // This origin, because that is where the verifier runs. It used to name a host
+  // that serves no API, so the link went nowhere and verification was a toast.
+  const verifyPath = `/verify/${r.id}`
 
   const header = (
     <div className="flex flex-wrap items-start gap-[14px]">
@@ -93,19 +96,23 @@ export function ReceiptView({ receiptId }: { receiptId: string }) {
       <div className="min-w-0 flex-1 basis-[240px]">
         <div className="flex flex-wrap items-center gap-[10px]">
           <span className="text-[19px] font-extrabold tracking-[-0.02em]">Receipt</span>
-          <StatusPill label="Signed" tone="good" />
+          <StatusPill
+            label={r.signature ? 'Signed' : 'Not signed'}
+            tone={r.signature ? 'good' : 'idle'}
+          />
         </div>
         <p className="text-muted mt-[3px] mb-0 text-[13px] leading-[1.45]">
           {agent.name} · {stamp(r.startedAt)} → {stamp(r.completedAt)}
         </p>
       </div>
-      <button
-        type="button"
-        onClick={() => say(`Verification opens ${verifyUrl}. It does not go through AiKi.`)}
-        className="bg-ink-app hover:bg-orange-app h-[38px] w-full flex-none rounded-xl border-0 px-4 text-[13.5px] font-bold text-white transition-colors sm:w-auto"
-      >
-        Verify this yourself
-      </button>
+      {r.signature ? (
+        <Link
+          href={route(verifyPath)}
+          className="bg-ink-app hover:bg-orange-app flex h-[38px] w-full flex-none items-center justify-center rounded-xl border-0 px-4 text-[13.5px] font-bold text-white transition-colors sm:w-auto"
+        >
+          Verify this yourself
+        </Link>
+      ) : null}
     </div>
   )
 
@@ -174,11 +181,15 @@ export function ReceiptView({ receiptId }: { receiptId: string }) {
 
         <Section
           title="What it was allowed to do"
-          note="The hash binds this work to the exact permissions it ran under. Change one limit and the hash changes, so nobody can claim afterwards that you agreed to something else."
+          note={
+            r.mandateHash
+              ? 'The hash binds this work to the exact permissions it ran under. Change one limit and the hash changes, so nobody can claim afterwards that you agreed to something else.'
+              : 'A signed receipt binds its work to a mandate hash. This one has none, because nothing was signed.'
+          }
         >
           <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)]">
             <Line label="Mandate">
-              <Mono>{r.mandateHash}</Mono>
+              {r.mandateHash ? <Mono>{r.mandateHash}</Mono> : 'not signed'}
             </Line>
             <Line label="Job">{r.jobId}</Line>
             <Line label="Agent identity">ERC-8004 token on BNB Chain · {agent.name}</Line>
@@ -193,16 +204,26 @@ export function ReceiptView({ receiptId }: { receiptId: string }) {
 
         <Section
           title="Check it without us"
-          note="Signed with a standard algorithm in a standard format, so verification never has to go through AiKi. Anyone can check this, including someone who thinks we are lying."
+          note={
+            r.signature
+              ? 'Your browser rebuilds the signed bytes and checks the signature itself, so verification never goes through AiKi. Anyone can check this, including someone who thinks we are lying.'
+              : 'Nothing here was signed, so there is nothing to check. A real receipt is issued when a job actually executes, and it carries an Ed25519 signature this site verifies in your own browser.'
+          }
         >
           <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)]">
-            <Line label="Algorithm">ES256 · COSE receipt, SCITT profile</Line>
-            <Line label="Signature">
-              <Mono>{r.signature}</Mono>
+            <Line label="Algorithm">
+              {r.signature ? 'Ed25519 over canonical JSON · aiki-scitt-cose/v1' : 'not signed'}
             </Line>
-            <Line label="Verify at">
-              <span className="font-semibold">{verifyUrl}</span>
-            </Line>
+            {r.signature ? (
+              <Line label="Signature">
+                <Mono>{r.signature}</Mono>
+              </Line>
+            ) : null}
+            {r.signature ? (
+              <Line label="Verify at">
+                <span className="font-semibold">{verifyPath}</span>
+              </Line>
+            ) : null}
           </div>
         </Section>
       </div>

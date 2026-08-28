@@ -108,6 +108,18 @@ const DOT: Record<Ask['tone'], string> = {
 
 export function HistoryRail({ onResume }: { onResume: (ask: string) => void }) {
   const [open, setOpen] = useState(false)
+  // Shown only where it is true. These are example asks, and a first-time
+  // visitor was being shown five things they had supposedly asked, complete
+  // with outcomes and timestamps. A history of things you did not do is not a
+  // history.
+  const [seen, setSeen] = useState(false)
+  useEffect(() => {
+    try {
+      setSeen(localStorage.getItem('aiki.asked.v1') === 'yes')
+    } catch {
+      setSeen(false)
+    }
+  }, [])
 
   // ⌘/ opens it from anywhere, because reaching for history should never mean
   // hunting for a control on a page whose whole point is a single input.
@@ -187,7 +199,16 @@ export function HistoryRail({ onResume }: { onResume: (ask: string) => void }) {
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-[10px] pb-3">
-            {HISTORY.map((g) => (
+            {seen ? null : (
+              <div className="px-2 py-[18px]">
+                <div className="text-[13.5px] font-bold">You have not asked anything yet.</div>
+                <p className="mt-[6px] mb-0 text-[12.5px] leading-[1.5] text-pretty text-[#8A8A8A]">
+                  Every ask is kept here once you make one, including the ones no agent could take.
+                  Those are how we know what to build next.
+                </p>
+              </div>
+            )}
+            {(seen ? HISTORY : []).map((g) => (
               <div key={g.label} className="mb-[14px]">
                 <div className="px-2 pb-[6px] text-[11.5px] font-semibold text-[#9C9C98]">
                   {g.label}

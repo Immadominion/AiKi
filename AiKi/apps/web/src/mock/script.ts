@@ -58,16 +58,16 @@ const PLAN: Record<AgentKey, string> = {
   harbor: 'move idle USDT to the better market',
 }
 
-const hash = (seed: string) => {
-  // Deterministic, so the same job always shows the same hashes. A mock that
-  // reshuffles its transaction ids every render is impossible to walk through.
-  let h = 0
-  for (const c of seed) h = (h * 31 + c.charCodeAt(0)) % 0xffffffff
-  const hex = h.toString(16).padStart(8, '0')
-  return `0x${hex.repeat(8).slice(0, 64)}`
-}
-
-export const txFor = (jobId: string, step: number) => hash(`${jobId}:${step}`)
+/**
+ * There are no transaction hashes here, and no signature.
+ *
+ * This script drives a demonstration of the flow; nothing it describes was ever
+ * broadcast. It used to hash the job id into 64 hex characters and render that
+ * under a "Signed" pill next to real venue names, which is a fabricated proof of
+ * a transaction that does not exist, in a product whose whole claim is that a
+ * number on screen can be traced to something that happened. A real signed
+ * receipt comes from POST /v1/jobs/:id/receipt and verifies at /verify.
+ */
 
 /** Agents that cannot spend never reach the money steps. */
 const canSpend = (key: AgentKey) =>
@@ -129,7 +129,6 @@ export function runStep(job: Job, hire: Hire): StepResult | null {
             what: `${ACT[key]}, ${(half / 100).toFixed(2)} USDT`,
             costCents: 6,
             result: 'Done',
-            txHash: txFor(job.id, 2),
             rule: 'per_action_cap',
           },
         ],
@@ -177,7 +176,6 @@ export function runStep(job: Job, hire: Hire): StepResult | null {
             what: `${ACT[key]}, ${(half / 100).toFixed(2)} USDT`,
             costCents: 6,
             result: 'Done',
-            txHash: txFor(job.id, 5),
           },
         ],
         spendCents: half,
@@ -198,7 +196,7 @@ const OUTCOME: Record<AgentKey, string> = {
   harbor: 'Your idle stablecoins moved to the better market, and here is where they went.',
 }
 
-export function buildReceipt(job: Job, hire: Hire, events: ActivityEvent[]): Receipt {
+export function buildReceipt(job: Job, _hire: Hire, events: ActivityEvent[]): Receipt {
   const mine = events.filter((e) => e.jobId === job.id)
   const spent = mine.reduce((n, e) => n + e.costCents, 0)
 
@@ -217,8 +215,6 @@ export function buildReceipt(job: Job, hire: Hire, events: ActivityEvent[]): Rec
     platformCents: 10,
     networkCents: spent,
     summary: OUTCOME[job.key],
-    mandateHash: hash(`${job.id}:mandate:${hire.mandate.perActionCents}:${hire.mandate.capCents}`),
-    signature: hash(`${job.id}:sig`).slice(2),
     startedAt: job.createdAt,
     completedAt: job.updatedAt,
   }

@@ -1,5 +1,5 @@
 import type { AgentKey } from '@/lib/agents'
-import { txFor } from './script'
+
 import {
   type ActivityEvent,
   EMPTY,
@@ -119,7 +119,6 @@ export function demoState(): MockState {
 
   const events: ActivityEvent[] = [
     ev('e1', 322, 'guardian', 'Venus', 'Repaid 72 USDT. Health factor 1.22 → 1.47', 6, 'Done', {
-      txHash: txFor('job_01', 2),
       jobId: 'job_01',
     }),
     ev(
@@ -133,7 +132,6 @@ export function demoState(): MockState {
       { jobId: 'job_01', rule: 'per_action_cap' },
     ),
     ev('e3', 168, 'gridly', 'PancakeSwap', 'Rebalanced BNB / USDT back into range', 12, 'Done', {
-      txHash: txFor('job_02', 2),
       jobId: 'job_02',
     }),
     ev('e4', 130, 'guardian', 'Venus', 'Checked your position, no action needed', 0, 'Checked', {
@@ -149,7 +147,6 @@ export function demoState(): MockState {
       'Waiting',
     ),
     ev('e6', 18, 'gridly', 'PancakeSwap', 'Placed 4 grid orders between $580 and $640', 9, 'Done', {
-      txHash: txFor('job_02', 5),
       jobId: 'job_02',
     }),
   ]

@@ -5,7 +5,6 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useState } from 'react'
 import { useHoverIcon } from '@/components/ui/AnimatedIcon'
-import { Freshness } from '@/components/ui/Freshness'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, AGENT_BY_KEY } from '@/lib/agents'
 import { hiredRows } from '@/lib/present'
@@ -181,12 +180,10 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
         <Chip key={c.label} label={c.label} icon={c.icon} onClick={() => say(c.msg)} />
       ))}
 
-      {/* Nothing is being read, so nothing has an age. */}
-      {connected ? (
-        <span className="hidden md:inline">
-          <Freshness state="LIVE" ageMs={42_000} />
-        </span>
-      ) : null}
+      {/* No freshness badge. It used to render LIVE at a hardcoded 42 seconds to
+          every signed-in visitor, which is a measurement of nothing presented as
+          the age of data. Nothing here reads a balance or a position yet, so
+          there is no age to report. */}
 
       <div className="flex-1" />
 

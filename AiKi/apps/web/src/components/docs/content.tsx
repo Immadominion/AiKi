@@ -110,7 +110,7 @@ export const DOCS: Doc[] = [
         kind: 'list',
         items: [
           'Pausing stops AiKi relaying. Instant, free, reversible, and it is what most people mean.',
-          'Revoking sends a transaction that removes the authority from the chain. Slower, costs gas, cannot be undone, and it is the only one that holds if AiKi is gone.',
+          'Revoking withdraws the authority at AiKi. Permanent rather than temporary, and it cannot be undone. It does not yet send a transaction: the enforcer contracts that would make a revocation hold if AiKi were gone are written and tested, and not deployed. When they are, this page will say so.',
         ],
       },
     ],
@@ -143,7 +143,7 @@ export const DOCS: Doc[] = [
           },
           {
             label: 'Signature',
-            body: 'ES256 over a COSE receipt, profiled on SCITT. Standard format, standard algorithm.',
+            body: 'Ed25519 over a canonical JSON body, under the profile aiki-scitt-cose/v1. The canonical form is the receipt with every object key sorted, so a verifier rebuilds the signed bytes from the receipt itself without knowing the order we happened to serialise it in. This is not COSE and it is not SCITT: off-the-shelf tooling for those will not read it, and the page used to say otherwise.',
           },
         ],
       },

@@ -38,7 +38,7 @@ interface MockApi {
   decline: (jobId: string) => void
   pause: (key: AgentKey) => void
   resume: (key: AgentKey) => void
-  revoke: (key: AgentKey) => void
+  revoke: (key: AgentKey) => Promise<void>
   seed: (mode: 'demo' | 'fresh' | 'empty') => void
 }
 
@@ -374,25 +374,33 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
             : withHire
         }),
 
-      revoke: (key) =>
-        patch((s) => {
-          const hire = s.hires.find((h) => h.key === key)
-          const revoked = {
-            id: nextId('e'),
-            at: new Date().toISOString(),
-            key,
-            where: 'BNB Chain',
-            what: 'You revoked its authority on chain. It cannot act again without a new signature.',
-            costCents: 4,
-            result: 'Done' as const,
-          }
-          return {
-            ...s,
-            events: [...s.events, revoked],
-            hires: s.hires.filter((h) => h.key !== key),
-            jobs: hire ? s.jobs.filter((j) => j.id !== hire.jobId) : s.jobs,
-          }
-        }),
+      revoke: async (key) => {
+        // A mandate the server knows about is withdrawn at the server. Filtering
+        // an array in this browser while telling someone their authority is gone
+        // is the one lie in this product that could cost them money.
+        const hire = stateRef.current.hires.find((h) => h.key === key)
+        if (hire?.authorizationId) await backend.revokeAuthorization(hire.authorizationId)
+
+        const now = new Date().toISOString()
+        patch((s) => ({
+          ...s,
+          hires: s.hires.filter((h) => h.key !== key),
+          jobs: s.jobs.filter((j) => j.key !== key),
+          events: [
+            {
+              id: nextId('evt'),
+              at: now,
+              key,
+              jobId: hire?.jobId ?? '',
+              where: 'AiKi',
+              what: 'You withdrew its authority. AiKi will not relay for it again.',
+              costCents: 0,
+              result: 'Done' as const,
+            },
+            ...s.events,
+          ],
+        }))
+      },
 
       seed: (mode) =>
         commit(mode === 'demo' ? demoState() : mode === 'fresh' ? freshState() : EMPTY),

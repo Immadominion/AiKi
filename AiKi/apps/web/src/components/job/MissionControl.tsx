@@ -137,10 +137,10 @@ export function MissionControl({ jobId }: { jobId: string }) {
       {revoking ? (
         <ConfirmDialog
           title={`Revoke ${agent.name}?`}
-          body="This sends a transaction that removes the authority from the chain. It costs gas, it cannot be undone, and this job stops where it is."
+          body="This withdraws the authority at AiKi. It cannot be undone and this job stops where it is. It does not yet send a transaction: the enforcer contracts are written and tested but not deployed."
           alternative="If you only want it to stop for now, pause instead. That is instant, free, and reversible."
           alternativeLabel="Pause instead"
-          confirmLabel="Revoke on chain"
+          confirmLabel="Withdraw authority"
           onCancel={() => setRevoking(false)}
           onAlternative={() => {
             setRevoking(false)
@@ -150,7 +150,7 @@ export function MissionControl({ jobId }: { jobId: string }) {
           onConfirm={() => {
             setRevoking(false)
             revoke(job.key)
-            say(`${agent.name} revoked on chain. Its authority is gone.`)
+            say(`${agent.name} withdrawn. AiKi will not relay for it again.`)
             router.push(route('/agents'))
           }}
         />

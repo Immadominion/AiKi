@@ -94,8 +94,9 @@ export interface Receipt {
   platformCents: number
   networkCents: number
   summary: string
-  mandateHash: string
-  signature: string
+  /** Absent on a demonstration receipt: nothing was signed, so nothing is claimed. */
+  mandateHash?: string
+  signature?: string
   startedAt: string
   completedAt: string
 }

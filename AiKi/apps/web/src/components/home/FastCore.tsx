@@ -51,6 +51,14 @@ export function FastCore({
       say('Say what you need, or press Tab for the suggestion.')
       return
     }
+    // Recorded so History shows itself only to someone who has actually asked
+    // something, rather than greeting a first-time visitor with five asks they
+    // never made.
+    try {
+      localStorage.setItem('aiki.asked.v1', 'yes')
+    } catch {
+      /* a private window can refuse; the rail simply stays empty */
+    }
     router.push(route(`/explore?q=${encodeURIComponent(q)}`))
   }
 

@@ -30,8 +30,17 @@ export interface RegistryCoverage {
   sweptAt: string | null
 }
 
+/**
+ * The last sweep, as measured. Used only when the API cannot be reached.
+ *
+ * `indexed` is null on purpose. There was a number here once, 12,847, and it
+ * came from nowhere: no sweep produced it and no observation contains it. It
+ * rendered as "agents indexed so far on BNB Chain" under a label saying it came
+ * from a probe sweep. Not knowing how large the registry is, and saying so, is
+ * the only honest thing this file can do offline.
+ */
 export const SWEEP_COVERAGE: RegistryCoverage = {
-  indexed: 12_847,
+  indexed: null,
   probed: 400,
   answering: 2,
   indexComplete: false,
