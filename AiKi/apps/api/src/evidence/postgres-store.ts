@@ -35,11 +35,27 @@ export class PostgresEvidenceStore implements EvidenceStore {
     `
     return { observation, inserted: rows.length === 1 }
   }
+  /**
+   * The resume point, as a number.
+   *
+   * `last_indexed_block` is BIGINT and the driver hands it back as a string, so
+   * the runner's `lastIndexedBlock + 1` concatenated instead of adding: a
+   * checkpoint at 118464140 produced a next block of 1184641401, which is past
+   * the chain head, so every subsequent run indexed nothing and exited zero. A
+   * stuck indexer reporting success is worse than one that crashes, because
+   * nothing ever asks why.
+   */
   async getCheckpoint(stream: string): Promise<IndexerCheckpoint | null> {
     const rows = await this.sql<
-      IndexerCheckpoint[]
+      { stream: string; lastIndexedBlock: string | number; updatedAt: string | Date }[]
     >`SELECT stream, last_indexed_block AS "lastIndexedBlock", updated_at AS "updatedAt" FROM indexer_checkpoints WHERE stream = ${stream}`
-    return rows[0] ?? null
+    const row = rows[0]
+    if (!row) return null
+    return {
+      stream: row.stream,
+      lastIndexedBlock: Number(row.lastIndexedBlock),
+      updatedAt: iso(row.updatedAt),
+    }
   }
   async saveCheckpoint(checkpoint: IndexerCheckpoint): Promise<void> {
     await this

@@ -61,3 +61,26 @@ it('reads a block number back as a number, not the string BIGINT returns', async
     await store.close()
   }
 })
+
+it('resumes from a number, so the next block is addition and not concatenation', async () => {
+  const url = process.env.DATABASE_URL
+  if (!url) return
+  const { PostgresEvidenceStore } = await import('./postgres-store.js')
+  const store = new PostgresEvidenceStore(url)
+  try {
+    const stream = `checkpoint-type-${Date.now()}`
+    await store.saveCheckpoint({
+      stream,
+      lastIndexedBlock: 118_464_140,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    })
+    const back = await store.getCheckpoint(stream)
+    expect(typeof back?.lastIndexedBlock).toBe('number')
+    // The bug this exists for: a string checkpoint made the next block
+    // 1184641401, past the chain head, so the indexer did nothing and said it
+    // had succeeded.
+    expect((back?.lastIndexedBlock ?? 0) + 1).toBe(118_464_141)
+  } finally {
+    await store.close()
+  }
+})
