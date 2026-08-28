@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { InMemoryEvidenceStore } from '../evidence/store.js'
+import { REGISTRY_STREAM } from './evidence-sink.js'
 import type { RegisteredEvent } from './registry.js'
-import { runRegistryIndexer } from './runner.js'
+import { type RegistrySource, runRegistryIndexer } from './runner.js'
 
 const event = (blockNumber: number, logIndex = 0): RegisteredEvent => ({
   agentId: String(blockNumber),
@@ -32,4 +33,37 @@ describe('runRegistryIndexer', () => {
     expect(second).toMatchObject({ fromBlock: 103, eventsSeen: 0, observationsInserted: 0 })
     expect(store.observations).toHaveLength(2)
   })
+})
+
+it('advances the checkpoint through a range with no registrations in it', async () => {
+  const store = new InMemoryEvidenceStore()
+  const source: RegistrySource = {
+    finalizedBlockNumber: async () => 1_000,
+    blockTimestamp: async () => '2026-01-01T00:00:00.000Z',
+    // eslint-disable-next-line require-yield
+    async *registered() {
+      // Nothing registered in this stretch of chain.
+    },
+  }
+
+  await runRegistryIndexer(source, store, { initialBlock: 100 })
+
+  // Without this the checkpoint never moved on a quiet range, so every run
+  // rescanned the same ever-growing window until the provider refused.
+  expect((await store.getCheckpoint(REGISTRY_STREAM))?.lastIndexedBlock).toBe(1_000)
+})
+
+it('covers at most maxBlocksPerRun, so a large gap is crossed in steps', async () => {
+  const store = new InMemoryEvidenceStore()
+  const source: RegistrySource = {
+    finalizedBlockNumber: async () => 500_000,
+    blockTimestamp: async () => '2026-01-01T00:00:00.000Z',
+    async *registered() {},
+  }
+
+  await runRegistryIndexer(source, store, { initialBlock: 100, maxBlocksPerRun: 5_000 })
+  expect((await store.getCheckpoint(REGISTRY_STREAM))?.lastIndexedBlock).toBe(5_099)
+
+  await runRegistryIndexer(source, store, { initialBlock: 100, maxBlocksPerRun: 5_000 })
+  expect((await store.getCheckpoint(REGISTRY_STREAM))?.lastIndexedBlock).toBe(10_099)
 })
