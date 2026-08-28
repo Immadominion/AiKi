@@ -16,6 +16,25 @@ const sweepDay = (iso: string) =>
   new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 
 /**
+ * How old the newest measurement is, when that is old enough to matter.
+ *
+ * The evidence engine ran itself into a rate limit and stopped for a day, and
+ * every page went on saying "Live from AiKi's evidence API" over numbers that
+ * had stopped moving. Reaching the API is not the same as the API knowing
+ * anything recent, and only one of those was being reported.
+ */
+const STALE_AFTER_HOURS = 36
+const stalenessOf = (iso: string | null): string | null => {
+  if (!iso) return null
+  const hours = (Date.now() - Date.parse(iso)) / 3_600_000
+  if (!Number.isFinite(hours) || hours < STALE_AFTER_HOURS) return null
+  const days = Math.floor(hours / 24)
+  return days >= 1
+    ? `nothing new in ${days} day${days === 1 ? '' : 's'}`
+    : `nothing new in ${Math.floor(hours)} hours`
+}
+
+/**
  * What we searched, and what we left out.
  *
  * Rendered on the page rather than hidden behind a tooltip, because the excluded
@@ -27,6 +46,7 @@ const sweepDay = (iso: string) =>
 export function CoverageBlock({ shown, coverage }: { shown: number; coverage: RegistryCoverage }) {
   if (!shown) return null
   const excluded = coverage.probed - coverage.answering
+  const stale = stalenessOf(coverage.sweptAt)
 
   return (
     <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-[15px]">
@@ -78,8 +98,14 @@ export function CoverageBlock({ shown, coverage }: { shown: number; coverage: Re
 
       <p className="text-muted-3 mt-[10px] mb-0 text-[11.5px] leading-[1.45]">
         {coverage.freshness === 'live'
-          ? `Live from AiKi's evidence API${coverage.sweptAt ? ` · last sweep ${sweepDay(coverage.sweptAt)}` : ''}`
+          ? `From AiKi's evidence API${coverage.sweptAt ? ` · last sweep ${sweepDay(coverage.sweptAt)}` : ''}`
           : `From AiKi's probe sweep${coverage.sweptAt ? ` of ${sweepDay(coverage.sweptAt)}` : ''} · live numbers unreachable right now`}
+        {stale ? (
+          <>
+            {' · '}
+            <b className="font-bold text-[#B45309]">{stale}</b>
+          </>
+        ) : null}
       </p>
     </div>
   )
