@@ -34,6 +34,18 @@ export interface AgentRow {
   price: string
 }
 
+/**
+ * Six example agents.
+ *
+ * These are NOT in the ERC-8004 registry and AiKi has never probed them. They
+ * exist so the hiring flow, the mandate builder and the receipt can be walked
+ * end to end before any real agent publishes enough to be hired, and every
+ * surface that renders them is required to say so.
+ *
+ * The real ones live at /registry, built entirely from observations. The two
+ * sets are deliberately not mixed: an invented check count sitting beside a
+ * measured one would make both meaningless.
+ */
 export const AGENTS: AgentRow[] = [
   {
     key: 'guardian',

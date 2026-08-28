@@ -252,14 +252,14 @@ export function AgentPassport({ agentKey }: { agentKey: AgentKey }) {
         </span>
       }
       banner={
-        d.liveness.state === 'DEGRADED'
-          ? {
-              title: 'This one is slow.',
-              body: d.liveness.detail,
-              cta: 'How we test',
-              onAction: () => router.push(route('/docs/how-we-test')),
-            }
-          : undefined
+        // Stated before anything else on the page, because everything below it
+        // is a number and none of these numbers were measured.
+        {
+          title: 'This is an example agent.',
+          body: 'AiKi has never probed it and it is not in the ERC-8004 registry. Every figure below shows the shape of a passport rather than a measurement. The registry holds the agents we did probe, with the evidence behind each one.',
+          cta: 'See the registry',
+          onAction: () => router.push(route('/registry')),
+        }
       }
       panels={[evidence, canDo, identity, risks]}
     />

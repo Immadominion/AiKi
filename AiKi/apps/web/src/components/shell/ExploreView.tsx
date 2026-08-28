@@ -35,6 +35,23 @@ export function ExploreView() {
     [],
   )
 
+  /**
+   * Said on every view of this page, not tucked into a footnote.
+   *
+   * These six agents are examples. AiKi has never probed them, because they are
+   * not in the registry. Matching an ask to an agent needs to know what an agent
+   * can do, and almost nothing in the real registry publishes that: of the
+   * agents indexed so far, none has resolved a registration file carrying
+   * capabilities. So this page demonstrates the shape of the answer while the
+   * registry page carries what is actually known.
+   */
+  const exampleBanner = {
+    title: 'These six agents are examples.',
+    body: 'AiKi has not probed them and they are not in the ERC-8004 registry. Matching an ask to an agent means knowing what that agent can do, and almost no registry entry publishes it yet, so this page shows the shape of the answer rather than a measured one.',
+    cta: 'See what we measured',
+    onAction: () => router.push(route('/registry')),
+  }
+
   const table = (rows: typeof AGENTS) => (
     <DataTable
       cols="minmax(200px,1.5fr) minmax(150px,1.1fr) minmax(180px,1.3fr) 100px 152px"
@@ -140,17 +157,7 @@ export function ExploreView() {
               'Most checks we have run, first',
             ]
       }
-      banner={
-        searching
-          ? undefined
-          : {
-              title: 'Suggested for your positions.',
-              body: 'You hold a Venus loan and a BNB / USDT pool, and these agents claim exactly that work.',
-              cta: 'Why these',
-              onAction: () =>
-                say('Ranked on your open positions and the evidence AiKi collected itself.'),
-            }
-      }
+      banner={exampleBanner}
       panels={searching ? undefined : [table(suggested), table(AGENTS), table(testedMost)]}
     >
       {searching ? (

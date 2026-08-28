@@ -8,6 +8,7 @@ import {
   CompassIcon,
   HeartIcon,
   HouseIcon,
+  LayersIcon,
   LayoutGridIcon,
   ShieldCheckIcon,
   WalletIcon,
@@ -50,13 +51,16 @@ const GROUPS: { label: string; items: Item[] }[] = [
     items: [
       { label: 'Home', icon: HouseIcon },
       { label: 'Explore', icon: CompassIcon, href: '/explore' },
-      { label: 'My agents', icon: LayoutGridIcon, href: '/agents', count: 2 },
+      // The registry is the only surface built entirely from measurement, and it
+      // was reachable only from a link inside a search result.
+      { label: 'Registry', icon: LayersIcon, href: '/registry' },
+      { label: 'My agents', icon: LayoutGridIcon, href: '/agents' },
     ],
   },
   {
     label: 'Oversight',
     items: [
-      { label: 'Activity', icon: ActivityIcon, href: '/activity', count: 1 },
+      { label: 'Activity', icon: ActivityIcon, href: '/activity' },
       { label: 'Limits', icon: ShieldCheckIcon, href: '/limits' },
       { label: 'Saved', icon: HeartIcon, href: '/saved' },
     ],

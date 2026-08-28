@@ -34,6 +34,13 @@ const DESTINATIONS = [
     keys: ['explore', 'browse', 'find', 'search', 'agents'],
   },
   {
+    label: 'Registry',
+    sub: 'Every agent we index, and what we measured',
+    href: '/registry',
+    glyph: '▤',
+    keys: ['registry', 'indexed', 'measured', 'evidence', 'erc8004', 'chain'],
+  },
+  {
     label: 'Manual mode',
     sub: 'Browse the market yourself',
     href: '/market',
