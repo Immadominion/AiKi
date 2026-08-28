@@ -9,6 +9,7 @@
     "dev": "tsx src/http/dev.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed-sweeps.ts",
+    "db:reindex-from": "tsx src/db/reindex-from.ts",
     "db:setup": "tsx src/db/migrate.ts && tsx src/db/seed-sweeps.ts",
     "index:persist": "tsx src/indexer/persist-cli.ts",
     "probe": "tsx src/prober/cli.ts",
