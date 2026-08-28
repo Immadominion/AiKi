@@ -17,17 +17,20 @@ RUN pnpm install --frozen-lockfile --filter @aiki/api...
 
 FROM base AS runtime
 ENV NODE_ENV=production
-# pnpm 10+ checks node_modules against the lockfile before running any script and
-# reinstalls when they disagree. This image installs a filtered subset on purpose,
-# so that check always disagrees, and it turned every pre-deploy into an install
-# that failed with no useful error. The dependencies are already here and correct.
-ENV npm_config_verify_deps_before_run=false
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/contracts/node_modules ./packages/contracts/node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY packages/contracts packages/contracts
 COPY apps/api apps/api
+
+# pnpm 10+ checks node_modules against the lockfile before running any script and
+# reinstalls when they disagree. This image installs a filtered subset on purpose,
+# so the check always disagrees, and the install it triggers then fails with
+# EACCES against a root-owned tree. Written as .npmrc rather than an environment
+# variable because the variable form did not take: the symptom was a scheduler
+# looping forever on "exit code 243: pnpm install".
+RUN printf 'verify-deps-before-run=false\n' > /app/.npmrc && chown -R node:node /app
 
 # Never run as root: the prober fetches arbitrary third-party URLs, so this
 # process is the one most worth confining.
