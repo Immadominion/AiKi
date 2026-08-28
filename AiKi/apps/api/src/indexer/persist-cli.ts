@@ -12,10 +12,14 @@ if (!Number.isSafeInteger(initialBlock) || initialBlock < 0)
 
 const store = new PostgresEvidenceStore(databaseUrl)
 try {
-  const result = await runRegistryIndexer(createBscRegistrySource({ url: rpcUrl }), store, {
-    initialBlock,
-    maxBlocksPerRun: Number(process.env.INDEX_MAX_BLOCKS_PER_RUN ?? '5000'),
-  })
+  const result = await runRegistryIndexer(
+    createBscRegistrySource({
+      url: rpcUrl,
+      pauseMs: Number(process.env.INDEX_PAUSE_MS ?? '1200'),
+    }),
+    store,
+    { initialBlock, maxBlocksPerRun: Number(process.env.INDEX_MAX_BLOCKS_PER_RUN ?? '2000') },
+  )
   console.log(JSON.stringify(result, null, 2))
 } finally {
   await store.close()

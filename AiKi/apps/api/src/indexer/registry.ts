@@ -41,6 +41,16 @@ export interface RegisteredEvent {
 
 export interface RpcConfig {
   url: string
+  /**
+   * Milliseconds to wait between windows.
+   *
+   * A free endpoint will serve a small window happily and refuse two hundred of
+   * them in a row, and the refusal reads as a broken indexer rather than as a
+   * rate limit. Pacing is what lets an unfunded deployment keep up with the head
+   * at all: BSC produces roughly 4,800 blocks an hour, so a few calls a minute
+   * is enough to stay current, and a backlog closes slowly rather than never.
+   */
+  pauseMs?: number
   /** Max block span per eth_getLogs call. Probed at startup if omitted. */
   maxSpan?: number
   /** Optional inclusive ceiling for safe bounded historical verification. */
@@ -201,8 +211,11 @@ export async function* indexRegistry(
 
   let cursor = fromBlock
   let seen = 0
+  let first = true
 
   while (cursor <= finalized) {
+    if (!first && cfg.pauseMs) await new Promise((resolve) => setTimeout(resolve, cfg.pauseMs))
+    first = false
     const to = Math.min(cursor + span - 1, finalized)
     let batch: RegisteredEvent[] = []
     try {
