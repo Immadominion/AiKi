@@ -33,6 +33,17 @@ const config: NextConfig = {
     return [
       { source: '/v1/:path*', destination: `${target}/v1/:path*` },
       { source: '/healthz', destination: `${target}/healthz` },
+      /**
+       * D8, the reciprocal proof, is checked at the AGENT'S OWN domain: a
+       * verifier reads the registration file named on chain, then asks the host
+       * it points at whether it acknowledges that agent id. Both halves have to
+       * answer from the same origin, so if the manifest is served from here this
+       * has to be too, or every first-party agent fails its own D8 check.
+       */
+      {
+        source: '/.well-known/agent-registration.json',
+        destination: `${target}/.well-known/agent-registration.json`,
+      },
     ]
   },
 }

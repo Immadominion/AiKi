@@ -4,3 +4,6 @@
 !AiKi/**
 !.gitignore
 .gstack/
+
+# Vercel CLI project link
+.vercel

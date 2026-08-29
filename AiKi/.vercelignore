@@ -1,0 +1,8 @@
+# Build artifacts only. Every workspace package stays: pnpm installs from the
+# workspace root and a missing importer makes the lockfile check fail.
+node_modules
+.next
+.turbo
+**/*.tsbuildinfo
+onchain/out
+onchain/cache
