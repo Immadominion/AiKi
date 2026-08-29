@@ -19,6 +19,13 @@ import { buildQuote } from '../settlement/pricing.js'
 import { publishedPrice } from '../settlement/published-price.js'
 import { asClientError, asProtocolError, asSchemaError, ClientError } from './errors.js'
 
+/**
+ * The most constraints one mandate may carry. The policy compiler already
+ * refuses duplicate kinds and there are seven kinds, so anything near this is
+ * already malformed; the cap exists because the preview route is unauthenticated.
+ */
+const MANDATE_MAX_CONSTRAINTS = 32
+
 /** The most agents one comparison may name. See the check in /v1/compare. */
 const COMPARE_MAX = 10
 
@@ -337,6 +344,54 @@ export function createApiServer(input: {
 
     return buildQuote({ quoteId: randomUUID(), agentId: request.body.agentId, price })
   })
+  /*
+   * What a mandate would be worth, without creating one.
+   *
+   * The builder has to show which limits the chain will hold WHILE the limits
+   * are being chosen, since that is what the choice is between. It creates
+   * nothing, touches no user data, and reads only the deployed enforcer set,
+   * which is public, so it needs no session: a person can see what AiKi can and
+   * cannot enforce before deciding whether to connect a wallet at all. Being
+   * asked to sign in before you may learn what the product does is the wrong
+   * way round.
+   */
+  app.post<{ Body: { constraints: Constraint[] } }>(
+    '/v1/mandates/preview',
+    async (request, reply) => {
+      const constraints = request.body?.constraints
+      if (!Array.isArray(constraints) || constraints.length === 0)
+        return reply.code(400).send({
+          error: {
+            code: 'NO_CONSTRAINTS',
+            message: 'At least one constraint is required.',
+            retryable: false,
+            requestId: request.headers['x-request-id'],
+          },
+        })
+      if (constraints.length > MANDATE_MAX_CONSTRAINTS)
+        return reply.code(400).send({
+          error: {
+            code: 'TOO_MANY_CONSTRAINTS',
+            message: `A mandate carries at most ${MANDATE_MAX_CONSTRAINTS} constraints.`,
+            retryable: false,
+            requestId: request.headers['x-request-id'],
+          },
+        })
+      const enforcement = describeEnforcement(constraints, input.enforcers)
+      return {
+        tier: enforcement.tier,
+        network: enforcement.network,
+        audited: enforcement.audited,
+        limits: enforcement.outcomes.map((o) => ({
+          kind: o.constraint.kind,
+          label: o.constraint.label,
+          tier: o.tier,
+          enforcedBy: o.enforcer,
+          why: o.why,
+        })),
+      }
+    },
+  )
   app.post<{ Body: { constraints: Constraint[] } }>(
     '/v1/authorizations',
     async (request, reply) => {

@@ -55,17 +55,58 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T
 }
 
+/**
+ * What the API says a single limit is actually worth.
+ *
+ * `tier` is decided by the API against its deployed enforcer set, never by us
+ * and never by what we sent: the request carries a claimed tier on each
+ * constraint and the API overwrites it. So this is the only tier a screen may
+ * render. `enforcedBy` names the contract holding it, or is null with `why`
+ * explaining what stopped it being held.
+ */
+export interface EnforcedLimit {
+  kind: string
+  label: string
+  tier: 'T0' | 'T2'
+  enforcedBy: string | null
+  why: string
+}
+
+export interface Enforcement {
+  /** The weakest link, never an average. */
+  tier: 'T0' | 'T2'
+  /**
+   * Which chain is doing the refusing. Load-bearing: "the chain refuses this"
+   * reads as a sentence about real money, and on a test network it is not one.
+   */
+  network: string | null
+  audited: boolean
+  limits: EnforcedLimit[]
+}
+
 export interface AuthorizationResponse {
   id: string
   status: string
   spent: string
   owner: string | null
   policy: { hash: string; weakestTier: string }
+  enforcement?: Enforcement
 }
 
 export const api = {
   stats: () => req<EcosystemStats>('/v1/stats'),
   me: () => req<{ address: string; chainId: number }>('/v1/auth/me'),
+  /**
+   * What a mandate would be worth, without creating one. No session needed,
+   * because the answer depends only on the constraints and the deployed
+   * enforcers, and someone should be able to see what AiKi can enforce before
+   * deciding whether to connect a wallet.
+   */
+  previewMandate: (constraints: unknown[]) =>
+    req<Enforcement>('/v1/mandates/preview', {
+      method: 'POST',
+      body: JSON.stringify({ constraints }),
+    }),
   authorize: (constraints: unknown[]) =>
     req<AuthorizationResponse>('/v1/authorizations', {
       method: 'POST',

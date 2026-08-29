@@ -107,3 +107,60 @@ const ORDER: EnforcementTier[] = ['T0', 'T1', 'T2', 'T3']
 /** The headline number is the WEAKEST link, never the average or the best. */
 export const weakest = (tiers: EnforcementTier[]): EnforcementTier =>
   tiers.reduce((w, t) => (ORDER.indexOf(t) > ORDER.indexOf(w) ? t : w), 'T0')
+
+export interface MandateInput {
+  capCents: number
+  perActionCents: number
+  days: number
+}
+
+/**
+ * The constraints a hire actually sends, built in one place.
+ *
+ * The builder previews what the chain will hold and the hire then creates it,
+ * and those two must be the same mandate. Building them separately would mean
+ * previewing one thing and signing another, which is a worse lie than showing
+ * no preview at all.
+ *
+ * Note what is NOT here: no contract allowlist, no selector allowlist, no asset
+ * scope. The cap enforcers locate an amount by (target, selector) and refuse
+ * when they cannot, so while this is the shape we send, a cap can only ever come
+ * back counted by AiKi rather than held on chain. The preview says so instead of
+ * hiding it, and closing that gap means teaching this function what the agent is
+ * allowed to touch.
+ */
+export function mandateConstraints(input: MandateInput): {
+  kind: string
+  label: string
+  value: string
+  tier: EnforcementTier
+}[] {
+  const expiresAt = new Date(Date.now() + input.days * 86_400_000).toISOString()
+  const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`
+  return [
+    {
+      kind: 'session_total_cap',
+      label: `Never spend more than ${usd(input.capCents)} in total`,
+      value: String(input.capCents),
+      // Claimed, and overwritten by the API, which decides this against its
+      // deployed enforcers. Nothing here may be rendered as a verdict.
+      tier: 'T2',
+    },
+    ...(input.perActionCents > 0
+      ? [
+          {
+            kind: 'per_action_cap',
+            label: `Never spend more than ${usd(input.perActionCents)} at once`,
+            value: String(input.perActionCents),
+            tier: 'T2' as EnforcementTier,
+          },
+        ]
+      : []),
+    {
+      kind: 'expiry',
+      label: `Expires ${expiresAt.slice(0, 10)}`,
+      value: expiresAt,
+      tier: 'T2',
+    },
+  ]
+}

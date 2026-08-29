@@ -2,12 +2,13 @@
 
 import type { ApprovalMode, CapPeriod } from '@aiki/contracts'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { mandateConstraints } from '@/components/hire/mandate'
 import type { AgentKey } from '@/lib/agents'
 import { api as backend } from '@/lib/api'
 import { type ConnectOutcome, connectInjected, signIn, signOut, watchAccounts } from '@/lib/wallet'
 import { buildReceipt, runStep } from './script'
 import { demoState, freshState } from './seed'
-import { EMPTY, type Hire, type Job, MOCK_VERSION, type MockState, usd } from './types'
+import { EMPTY, type Hire, type Job, MOCK_VERSION, type MockState } from './types'
 
 const KEY = 'aiki.mock.v1'
 
@@ -163,30 +164,13 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
         // enforces. A simulated wallet stays local, and every screen says so.
         let authorizationId: string | undefined
         if (stateRef.current.walletKind === 'injected') {
-          const constraints = [
-            {
-              kind: 'session_total_cap',
-              label: `Never spend more than ${usd(input.capCents)} in total`,
-              value: String(input.capCents),
-              tier: 'T2',
-            },
-            ...(input.perActionCents > 0
-              ? [
-                  {
-                    kind: 'per_action_cap',
-                    label: `Never spend more than ${usd(input.perActionCents)} at once`,
-                    value: String(input.perActionCents),
-                    tier: 'T2',
-                  },
-                ]
-              : []),
-            {
-              kind: 'expiry',
-              label: `Expires ${expiresAt.slice(0, 10)}`,
-              value: expiresAt,
-              tier: 'T0',
-            },
-          ]
+          // Built by the same function the builder previews, so what was shown
+          // and what is created cannot drift apart.
+          const constraints = mandateConstraints({
+            capCents: input.capCents,
+            perActionCents: input.perActionCents,
+            days: input.days,
+          })
           // No silent fallback to a local mandate: a limit the server never
           // heard of is not a limit, and pretending otherwise is the one thing
           // this product cannot do.

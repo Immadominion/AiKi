@@ -9,7 +9,8 @@ import { AGENT_BG, AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
 import { DETAILS } from '@/lib/detail'
 import { jobHref } from '@/lib/routes'
 import { useMock } from '@/mock/store'
-import { capabilitiesOf, capTier, TIER_MEANS, TIER_WORD, weakest } from './mandate'
+import { mandateConstraints } from './mandate'
+import { limitFor, tierWording, useMandatePreview } from './useMandatePreview'
 
 const PER_ACTION = [40, 80, 150] as const
 const RENEWING = [120, 250, 500] as const
@@ -133,7 +134,6 @@ function Choice<T extends string | number>({
 export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
   const row = AGENT_BY_KEY[agentKey]
   const d = DETAILS[agentKey]
-  const caps = useMemo(() => capabilitiesOf(d), [d])
   const say = useToast()
   const router = useRouter()
   const { hire } = useMock()
@@ -146,22 +146,48 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
 
   const spends = d.capabilities.some((c) => c.permissions.some((p) => p.startsWith('spend_')))
 
-  const perActionVerdict = capTier(caps, 'per_transaction')
-  const budgetVerdict = capTier(caps, period)
-  const allowlistWeak = caps.allowlistTier !== 'T0'
-  const expiryTier = caps.expiryOnChain ? 'T0' : 'T2'
+  /*
+   * Every tier on this screen now comes from the API, which derives it against
+   * its deployed enforcer set and overwrites the tier we sent. It used to come
+   * from lib/detail.ts, a fixture file, which was harmless while nothing was
+   * deployed and became a claim about enforcement the moment something was.
+   *
+   * The constraints previewed are built by the same function the hire sends, so
+   * what is shown and what is created cannot drift apart.
+   */
+  const constraints = useMemo(
+    () =>
+      mandateConstraints({
+        capCents: budget,
+        perActionCents: spends ? perAction : 0,
+        days,
+      }),
+    [budget, perAction, days, spends],
+  )
+  const preview = useMandatePreview(constraints)
 
-  const weakestTier = weakest([
-    caps.allowlistTier,
-    perActionVerdict.tier,
-    budgetVerdict.tier,
-    expiryTier,
-  ])
+  const perActionLimit = limitFor(preview, 'per_action_cap')
+  const budgetLimit = limitFor(preview, 'session_total_cap')
+  const expiryLimit = limitFor(preview, 'expiry')
+
+  const perActionBadge = tierWording(preview, perActionLimit?.tier ?? null)
+  const budgetBadge = tierWording(preview, budgetLimit?.tier ?? null)
+  const expiryBadge = tierWording(preview, expiryLimit?.tier ?? null)
+  // The allowlist is not one of the constraints this mandate sends at all, which
+  // is exactly why the caps below can only ever be counted by AiKi. Saying so is
+  // the point; inventing a tier for a limit we never send would not be.
+  const overall = tierWording(preview, preview.status === 'ready' ? preview.enforcement.tier : null)
 
   const stopsOn = new Date(Date.now() + days * 86_400_000)
 
+  /*
+   * This list said "only touches the contracts listed on its passport", directly
+   * under a badge saying the mandate does not tell the chain which contracts the
+   * agent may call. Both cannot be true, and the badge is the one derived from
+   * what is actually sent. A summary that flatters the mandate is worse than no
+   * summary, because it is read as the plain-language version of the badges.
+   */
   const summary = [
-    `Only touches ${d.capabilities.length === 1 ? 'one contract' : 'the contracts listed on its passport'}`,
     spends ? `At most $${perAction} in one action` : 'Cannot spend anything at all',
     spends ? `At most $${budget} ${PERIOD_LABEL[period]}` : null,
     `Stops on ${stopsOn.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}`,
@@ -207,9 +233,10 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
             title="What it may touch"
             note={`Set by what ${row.name} can do. It cannot be widened, by you or by the agent.`}
             badge={{
-              word: TIER_WORD[caps.allowlistTier],
-              weak: allowlistWeak,
-              means: TIER_MEANS[caps.allowlistTier],
+              word: 'Not sent',
+              weak: true,
+              means:
+                'This mandate does not yet tell the chain which contracts the agent may call, which is why the caps below cannot be held on chain either.',
             }}
           >
             <div className="flex flex-wrap gap-[6px]">
@@ -232,10 +259,10 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
                 title="Most it can spend in one action"
                 note="A single transaction larger than this is refused."
                 badge={{
-                  word: TIER_WORD[perActionVerdict.tier],
-                  weak: perActionVerdict.tier !== 'T0' || !perActionVerdict.verified,
-                  means: TIER_MEANS[perActionVerdict.tier],
-                  caveat: perActionVerdict.caveat,
+                  word: perActionBadge.word,
+                  weak: perActionBadge.weak,
+                  means: perActionBadge.means,
+                  ...(perActionLimit?.tier === 'T2' ? { caveat: perActionLimit.why } : {}),
                 }}
               >
                 <Choice
@@ -254,10 +281,10 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
                     : 'A renewing cap. It refills at the start of each period.'
                 }
                 badge={{
-                  word: TIER_WORD[budgetVerdict.tier],
-                  weak: budgetVerdict.tier !== 'T0',
-                  means: TIER_MEANS[budgetVerdict.tier],
-                  caveat: budgetVerdict.caveat,
+                  word: budgetBadge.word,
+                  weak: budgetBadge.weak,
+                  means: budgetBadge.means,
+                  ...(budgetLimit?.tier === 'T2' ? { caveat: budgetLimit.why } : {}),
                 }}
               >
                 <Choice
@@ -292,9 +319,10 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
             title="When it stops"
             note="The authority expires on its own. You never have to remember to revoke it."
             badge={{
-              word: TIER_WORD[expiryTier],
-              weak: expiryTier !== 'T0',
-              means: TIER_MEANS[expiryTier],
+              word: expiryBadge.word,
+              weak: expiryBadge.weak,
+              means: expiryBadge.means,
+              ...(expiryLimit?.tier === 'T2' ? { caveat: expiryLimit.why } : {}),
             }}
           >
             <Choice
@@ -319,7 +347,8 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
             badge={{
               word: 'AiKi only',
               weak: true,
-              means: TIER_MEANS.T2,
+              means:
+                'AiKi refuses to relay it. Holds against a buggy agent, not against a compromised AiKi.',
               caveat:
                 'Approval prompts are delivered by AiKi. If AiKi is down, the action waits rather than proceeding.',
             }}
@@ -369,15 +398,15 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
               <span
                 className="text-[26px] font-extrabold tracking-[-0.02em]"
                 style={{
-                  color: weakestTier === 'T0' ? 'var(--color-ink-app)' : 'var(--color-warn-ink)',
+                  color: overall.weak ? 'var(--color-warn-ink)' : 'var(--color-ink-app)',
                 }}
               >
-                {TIER_WORD[weakestTier]}
+                {overall.word}
               </span>
               <span className="text-faint text-[12px] font-semibold">holds it</span>
             </div>
             <p className="text-muted mt-[8px] mb-0 text-[12.5px] leading-[1.5] text-pretty">
-              {TIER_MEANS[weakestTier]}
+              {overall.means}
             </p>
 
             <div className="mt-[16px] border-t border-[rgb(26_26_25_/_0.07)] pt-[14px]">

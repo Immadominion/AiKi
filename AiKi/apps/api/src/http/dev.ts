@@ -14,6 +14,7 @@ import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
+import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
 import { materializeObservation } from '../evidence/store.js'
 import type { Observation } from '../evidence/types.js'
 import { PostgresJobStore } from '../jobs/postgres-store.js'
@@ -43,6 +44,10 @@ const databaseUrl = process.env.DATABASE_URL
 const persistence = databaseUrl
   ? {
       jobs: new JobService(new PostgresJobStore(databaseUrl)),
+      // The same deployed suite production reads, so what a limit is worth here
+      // is what it is worth there. A dev API that reported everything as counted
+      // by AiKi would make the builder's badges a local fiction.
+      enforcers: AIKI_ENFORCERS_BSC_TESTNET,
       receipts: new ReceiptService(
         process.env.RECEIPT_SIGNING_KEY ?? 'ab'.repeat(32),
         new PostgresReceiptStore(databaseUrl),

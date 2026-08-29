@@ -5,6 +5,7 @@ import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
 import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
 import { InMemoryEvidenceStore } from '../evidence/store.js'
+import { JobService } from '../jobs/service.js'
 import { createApiServer } from './server.js'
 
 const SECRET = 'server-test-secret-long-enough-here'
@@ -377,4 +378,81 @@ it('counts every limit itself when no enforcers are deployed', async () => {
   expect(enforcement.tier).toBe('T2')
   expect(enforcement.network).toBeNull()
   expect(enforcement.limits[0].why).toMatch(/No enforcers are deployed/)
+})
+
+it('previews what a mandate would be worth without a session or a mandate', async () => {
+  // The builder shows which limits the chain holds WHILE they are being chosen,
+  // so this has to answer before anyone signs in. Being asked to connect a wallet
+  // before you may learn what the product enforces is the wrong way round.
+  const app = createApiServer({
+    observations: () => [],
+    auth: authConfig(),
+    enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+  })
+  apps.push(app)
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/mandates/preview',
+    headers: { 'content-type': 'application/json' },
+    payload: {
+      constraints: [
+        {
+          kind: 'expiry',
+          value: new Date('2030-01-01T00:00:00.000Z').toISOString(),
+          tier: 'T3',
+          label: 'Expires',
+        },
+        { kind: 'per_action_cap', value: '10', tier: 'T0', label: 'At most 10' },
+      ],
+    },
+  })
+  expect(res.statusCode).toBe(200)
+  const body = res.json()
+  const byKind = Object.fromEntries(body.limits.map((l: { kind: string }) => [l.kind, l]))
+  expect(byKind.expiry.tier).toBe('T0')
+  // Claimed T0 by the caller, and still not enforceable: no scope to read an
+  // amount from. A preview that flattered the input would be worse than none.
+  expect(byKind.per_action_cap.tier).toBe('T2')
+  expect(body.tier).toBe('T2')
+  expect(body.network).toBe('testnet')
+})
+
+it('creates nothing when previewing', async () => {
+  const jobs = new JobService()
+  const app = createApiServer({
+    observations: () => [],
+    auth: authConfig(),
+    enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+    jobs,
+  })
+  apps.push(app)
+  await app.inject({
+    method: 'POST',
+    url: '/v1/mandates/preview',
+    headers: { 'content-type': 'application/json' },
+    payload: { constraints: [{ kind: 'session_total_cap', value: '1', tier: 'T0', label: 'c' }] },
+  })
+  // A preview that quietly authorised something would be the worst kind of
+  // surprise: authority created by looking at it.
+  await expect(jobs.getAuthorization('any')).rejects.toThrow()
+})
+
+it('bounds an unauthenticated preview', async () => {
+  const app = createApiServer({ observations: () => [], enforcers: AIKI_ENFORCERS_BSC_TESTNET })
+  apps.push(app)
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/mandates/preview',
+    headers: { 'content-type': 'application/json' },
+    payload: {
+      constraints: Array.from({ length: 40 }, () => ({
+        kind: 'condition',
+        value: {},
+        tier: 'T0',
+        label: 'x',
+      })),
+    },
+  })
+  expect(res.statusCode).toBe(400)
+  expect(res.json().error.code).toBe('TOO_MANY_CONSTRAINTS')
 })
