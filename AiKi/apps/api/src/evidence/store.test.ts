@@ -120,3 +120,71 @@ it('probes the newest registration first among agents nothing has ever probed', 
     await store.close()
   }
 })
+
+it('counts the dashboard over every row, and agrees with the in-memory fold', async () => {
+  const url = process.env.DATABASE_URL
+  if (!url) return
+  const { PostgresEvidenceStore } = await import('./postgres-store.js')
+  const { aggregateStats } = await import('../projections/stats.js')
+  const store = new PostgresEvidenceStore(url)
+  const registry = `0xstats-${Date.now()}`
+  try {
+    const at = (n: number) => `2026-02-0${n}T00:00:00.000Z`
+    for (const [agentId, block] of [
+      ['a', 10],
+      ['b', 20],
+      ['c', 30],
+    ] as const) {
+      await store.append({
+        subject: { type: 'agent', chainId: 56, registry, agentId },
+        predicate: 'erc8004.agent_registered',
+        value: { owner: '0x1', agentURI: `https://example.test/${agentId}.json` },
+        validAt: at(1),
+        observedAt: at(1),
+        source: 'test',
+        method: 'test',
+        evidenceClass: 'A',
+        blockNumber: block,
+        dedupeKey: `${registry}-reg-${agentId}`,
+      })
+    }
+    // Agent 'a' is probed twice. Only its LATEST verdict may be counted, and the
+    // superseded one must not inflate agentsProbed.
+    for (const [agentId, state, day] of [
+      ['a', 'UNREACHABLE', 2],
+      ['a', 'LIVE', 3],
+      ['b', 'IMPOSTOR_STATIC', 2],
+    ] as const) {
+      await store.append({
+        subject: { type: 'agent', chainId: 56, registry, agentId },
+        predicate: 'agent.liveness_verdict',
+        value: { state },
+        validAt: at(day),
+        observedAt: at(day),
+        source: 'test',
+        method: 'test',
+        evidenceClass: 'B',
+        dedupeKey: `${registry}-probe-${agentId}-${day}`,
+      })
+    }
+
+    // Both sides read the SAME store, so they must produce the same answer. The
+    // in-memory side is given an explicit limit far above the row count; the
+    // default is 10,000 and reading the dashboard through it is the bug.
+    const fromSql = await store.statsAggregate()
+    const everything = await store.list(1_000_000)
+    const inMemory = aggregateStats(everything)
+    expect(fromSql).toEqual(inMemory)
+
+    // And the whole store must actually be big enough for the cap to bite,
+    // otherwise this test would pass on a store where the bug cannot appear.
+    expect(everything.length).toBeGreaterThan(0)
+    const scoped = aggregateStats(everything.filter((o) => o.subject.registry === registry))
+    expect(scoped.probed.agentsProbed).toBe(2)
+    expect(scoped.probed.byRawState).toEqual({ LIVE: 1, IMPOSTOR_STATIC: 1 })
+    expect(scoped.indexed.firstIndexedBlock).toBe(10)
+    expect(scoped.indexed.lastIndexedBlock).toBe(30)
+  } finally {
+    await store.close()
+  }
+})

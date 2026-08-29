@@ -11,7 +11,7 @@ import type { Observation } from '../evidence/types.js'
 import { parseIntent } from '../intent/parser.js'
 import { JobService } from '../jobs/service.js'
 import { comparePassports, projectPassport } from '../projections/passport.js'
-import { projectStats } from '../projections/stats.js'
+import { assembleStats, projectStats, type StatsAggregate } from '../projections/stats.js'
 import { ReceiptService } from '../receipts/service.js'
 import { buildQuote } from '../settlement/pricing.js'
 import { publishedPrice } from '../settlement/published-price.js'
@@ -24,6 +24,12 @@ export function createApiServer(input: {
    * indexer, where coverage is genuinely unknown rather than zero.
    */
   coverageStart?: () => number | null | Promise<number | null>
+  /**
+   * Counted over every row. Deployments that can do this MUST, because folding
+   * the dashboard out of `observations()` reads a capped page and the totals
+   * then shrink as the store grows.
+   */
+  statsAggregate?: () => StatsAggregate | Promise<StatsAggregate>
   jobs?: JobService
   receipts?: ReceiptService
   benchmarks?: BenchmarkService
@@ -118,9 +124,10 @@ export function createApiServer(input: {
   })
   app.get('/v1/stats', async () => {
     const coverageStart = input.coverageStart ? await input.coverageStart() : null
-    return projectStats(await input.observations(), {
-      ...(typeof coverageStart === 'number' ? { coverageStart } : {}),
-    })
+    const opts = typeof coverageStart === 'number' ? { coverageStart } : {}
+    return input.statsAggregate
+      ? assembleStats(await input.statsAggregate(), opts)
+      : projectStats(await input.observations(), opts)
   })
   app.get<{ Params: { agentId: string } }>('/v1/agents/:agentId/passport', async (request) =>
     projectPassport(request.params.agentId, await input.observations()),

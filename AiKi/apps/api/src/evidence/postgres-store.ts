@@ -1,4 +1,5 @@
 import postgres from 'postgres'
+import type { StatsAggregate } from '../projections/stats.js'
 import { materializeObservation } from './store.js'
 import type { AppendResult, EvidenceStore, IndexerCheckpoint, NewObservation } from './types.js'
 
@@ -120,6 +121,77 @@ export class PostgresEvidenceStore implements EvidenceStore {
       ORDER BY p.last_probed_at ASC NULLS FIRST, r.block_number DESC NULLS LAST
       LIMIT ${limit}
     `
+  }
+
+  /**
+   * The dashboard's numbers, counted over every row rather than a page of them.
+   *
+   * `list()` is capped, and folding the dashboard out of it meant the published
+   * totals shrank as the store grew. Counting here has no window: `agentsProbed`
+   * is distinct agents holding a verdict, not verdicts, and `byRawState` uses
+   * each agent's LATEST verdict, which is what DISTINCT ON gives.
+   */
+  async statsAggregate(): Promise<StatsAggregate> {
+    const [indexed] = await this.sql<
+      {
+        total_agents: string | number
+        bsc_agents: string | number
+        first_block: string | number | null
+        last_block: string | number | null
+        last_indexed_at: string | Date | null
+      }[]
+    >`
+      SELECT
+        count(DISTINCT (chain_id, lower(registry_address), agent_id)) AS total_agents,
+        count(DISTINCT (chain_id, lower(registry_address), agent_id))
+          FILTER (WHERE chain_id = 56) AS bsc_agents,
+        min(block_number) AS first_block,
+        max(block_number) AS last_block,
+        max(observed_at)  AS last_indexed_at
+      FROM observations
+      WHERE predicate = 'erc8004.agent_registered'
+    `
+    const states = await this.sql<{ state: string | null; n: string | number }[]>`
+      WITH latest AS (
+        SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
+          value->>'state' AS state
+        FROM observations
+        WHERE predicate = 'agent.liveness_verdict'
+        ORDER BY chain_id, lower(registry_address), agent_id, observed_at DESC
+      )
+      SELECT state, count(*) AS n FROM latest GROUP BY state
+    `
+    const [sweep] = await this.sql<{ last_probe_sweep_at: string | Date | null }[]>`
+      SELECT max(observed_at) AS last_probe_sweep_at
+      FROM observations WHERE predicate = 'agent.liveness_verdict'
+    `
+
+    // Every count and every block number arrives from the driver as a string.
+    // This is the same class of bug that once made lastIndexedBlock zero.
+    const num = (v: string | number | null | undefined) =>
+      v === null || v === undefined ? null : Number(v)
+    const byRawState: Record<string, number> = {}
+    let agentsProbed = 0
+    for (const row of states) {
+      const n = Number(row.n)
+      agentsProbed += n
+      byRawState[row.state ?? 'null'] = (byRawState[row.state ?? 'null'] ?? 0) + n
+    }
+
+    return {
+      indexed: {
+        totalAgents: num(indexed?.total_agents) ?? 0,
+        bscAgents: num(indexed?.bsc_agents) ?? 0,
+        firstIndexedBlock: num(indexed?.first_block),
+        lastIndexedBlock: num(indexed?.last_block),
+        lastIndexedAt: indexed?.last_indexed_at ? iso(indexed.last_indexed_at) : null,
+      },
+      probed: {
+        agentsProbed,
+        byRawState,
+        lastProbeSweepAt: sweep?.last_probe_sweep_at ? iso(sweep.last_probe_sweep_at) : null,
+      },
+    }
   }
 
   async close(): Promise<void> {

@@ -56,6 +56,7 @@ const app = createApiServer({
   observations: () => store.list(),
   coverageStart: async () =>
     (await store.getCheckpoint(COVERAGE_START_STREAM))?.lastIndexedBlock ?? null,
+  statsAggregate: () => store.statsAggregate(),
   jobs: new JobService(jobStore),
   receipts: new ReceiptService(receiptSeed, receiptStore),
   auth: {
