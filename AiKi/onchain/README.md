@@ -25,7 +25,8 @@ That match is not asserted, it is **tested**. `test/vectors/policy-vectors.json`
 chain returns the identical `allow`, the identical `rule`, and the identical `reason` string.
 
 ```
-node tools/gen-vectors.mjs     # regenerate the corpus from the real evaluatePolicy
+npx tsx tools/gen-vectors.mjs         # regenerate the policy corpus from the real evaluatePolicy
+npx tsx tools/gen-caveat-vectors.mjs  # regenerate the caveat corpus from the real compileCaveats
 forge test                     # replay it, plus everything else
 ```
 

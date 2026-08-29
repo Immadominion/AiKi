@@ -4,7 +4,7 @@
 // the expected verdicts in the corpus are produced by the off-chain evaluator itself and not
 // by a transcription of it. A transcription can drift; this cannot.
 //
-//   node onchain/tools/gen-vectors.mjs
+//   npx tsx onchain/tools/gen-vectors.mjs
 //
 // The corpus is replayed by test/Parity.t.sol. Both sides go red when either moves.
 import { mkdirSync, writeFileSync } from 'node:fs'
