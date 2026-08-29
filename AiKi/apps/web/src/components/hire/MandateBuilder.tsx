@@ -10,7 +10,7 @@ import { DETAILS } from '@/lib/detail'
 import { jobHref } from '@/lib/routes'
 import { useMock } from '@/mock/store'
 import { mandateConstraints } from './mandate'
-import { limitFor, tierWording, useMandatePreview } from './useMandatePreview'
+import { enforcementNote, limitFor, tierWording, useMandatePreview } from './useMandatePreview'
 
 const PER_ACTION = [40, 80, 150] as const
 const RENEWING = [120, 250, 500] as const
@@ -177,6 +177,7 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
   // is exactly why the caps below can only ever be counted by AiKi. Saying so is
   // the point; inventing a tier for a limit we never send would not be.
   const overall = tierWording(preview, preview.status === 'ready' ? preview.enforcement.tier : null)
+  const note = enforcementNote(preview)
 
   const stopsOn = new Date(Date.now() + days * 86_400_000)
 
@@ -233,10 +234,10 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
             title="What it may touch"
             note={`Set by what ${row.name} can do. It cannot be widened, by you or by the agent.`}
             badge={{
-              word: 'Not sent',
-              weak: true,
+              word: 'AiKi',
+              weak: false,
               means:
-                'This mandate does not yet tell the chain which contracts the agent may call, which is why the caps below cannot be held on chain either.',
+                'AiKi refuses to relay a call to anything outside this list, and the list comes from the agent, not from you.',
             }}
           >
             <div className="flex flex-wrap gap-[6px]">
@@ -262,7 +263,6 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
                   word: perActionBadge.word,
                   weak: perActionBadge.weak,
                   means: perActionBadge.means,
-                  ...(perActionLimit?.tier === 'T2' ? { caveat: perActionLimit.why } : {}),
                 }}
               >
                 <Choice
@@ -284,7 +284,6 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
                   word: budgetBadge.word,
                   weak: budgetBadge.weak,
                   means: budgetBadge.means,
-                  ...(budgetLimit?.tier === 'T2' ? { caveat: budgetLimit.why } : {}),
                 }}
               >
                 <Choice
@@ -322,7 +321,6 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
               word: expiryBadge.word,
               weak: expiryBadge.weak,
               means: expiryBadge.means,
-              ...(expiryLimit?.tier === 'T2' ? { caveat: expiryLimit.why } : {}),
             }}
           >
             <Choice
@@ -345,10 +343,11 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
             title="When it should ask you"
             note="Approval is a speed choice, not a safety one. The limits above hold either way."
             badge={{
-              word: 'AiKi only',
-              weak: true,
-              means:
-                'AiKi refuses to relay it. Holds against a buggy agent, not against a compromised AiKi.',
+              word: 'AiKi',
+              weak: false,
+              means: 'AiKi holds the action and asks you before relaying it.',
+              // Kept, because it changes what someone should expect: this is the
+              // one control whose failure mode is a delay rather than a refusal.
               caveat:
                 'Approval prompts are delivered by AiKi. If AiKi is down, the action waits rather than proceeding.',
             }}
@@ -408,6 +407,11 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
             <p className="text-muted mt-[8px] mb-0 text-[12.5px] leading-[1.5] text-pretty">
               {overall.means}
             </p>
+            {note ? (
+              <p className="text-faint mt-[8px] mb-0 text-[12px] leading-[1.5] text-pretty">
+                {note}
+              </p>
+            ) : null}
 
             <div className="mt-[16px] border-t border-[rgb(26_26_25_/_0.07)] pt-[14px]">
               <div className="text-muted text-[12.5px] font-semibold">What you are granting</div>

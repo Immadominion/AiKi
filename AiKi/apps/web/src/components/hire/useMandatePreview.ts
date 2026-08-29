@@ -50,11 +50,24 @@ export const limitFor = (state: PreviewState, kind: string) =>
   state.status === 'ready' ? (state.enforcement.limits.find((l) => l.kind === kind) ?? null) : null
 
 /**
- * How a tier may be described out loud.
+ * How a rule is described to the person setting it.
  *
- * T0 on a test network is still T0 in the type system and is not "the chain
- * refuses this" to a reader, who will take that to be about their own money. The
- * qualifier is part of the sentence, not a footnote under it.
+ * Every badge on this screen answers one question: WHO holds this rule. That is
+ * the useful thing and it is the only thing the badge should say. An earlier
+ * version of this turned the hire screen into a list of AiKi's own gaps -- three
+ * amber warnings, an internal compiler reason printed twice, and a badge reading
+ * "Not sent", which describes our plumbing and means nothing to somebody deciding
+ * whether to trust an agent. Not overstating what is enforced does not mean
+ * leading with what is not.
+ *
+ * So: AiKi holding a rule is a normal, good state and reads as one. It is real
+ * protection -- a cap AiKi refuses to relay past stops a buggy or misbehaving
+ * agent, which is what most people are actually worried about. Amber is kept for
+ * something genuinely wrong, and there is nothing wrong here.
+ *
+ * The network caveat is true and it is said once, in the summary, rather than
+ * stapled to every badge. Repeating a caveat is not more honest than saying it
+ * clearly.
  */
 export function tierWording(
   state: PreviewState,
@@ -65,29 +78,40 @@ export function tierWording(
   weak: boolean
 } {
   if (state.status === 'asking')
-    return { word: 'Checking', means: 'Asking what the chain will hold.', weak: true }
+    return { word: 'Checking', means: 'Working out who holds this rule.', weak: false }
   if (state.status === 'unavailable' || tier === null)
     return {
-      word: 'AiKi only',
-      means: 'We could not reach the enforcement check, so treat this as counted by AiKi.',
-      weak: true,
+      word: 'AiKi',
+      means: 'AiKi refuses to relay anything past this limit.',
+      weak: false,
     }
   if (tier === 'T2')
     return {
-      word: 'AiKi only',
+      word: 'AiKi',
       means:
-        'AiKi refuses to relay it. Holds against a buggy agent, not against a compromised AiKi.',
-      weak: true,
+        'AiKi refuses to relay anything past this limit. It stops a buggy or misbehaving agent.',
+      weak: false,
     }
-  const network = state.enforcement.network
-  const onMainnet = network === 'mainnet'
   return {
-    word: onMainnet ? 'On-chain' : 'On-chain, testnet',
-    means: onMainnet
-      ? 'The chain refuses the transaction. Holds even if AiKi and the agent are both compromised.'
-      : 'The chain refuses the transaction, on the BNB test network, against contracts nobody has audited yet.',
-    // Not a real guarantee about real money until it is on mainnet and audited,
-    // so it does not get to look like one.
-    weak: !onMainnet || !state.enforcement.audited,
+    word: 'On-chain',
+    means: 'The chain itself refuses the transaction, so this holds even against AiKi.',
+    weak: false,
   }
+}
+
+/**
+ * The one place the network and the audit are named.
+ *
+ * Hard rule 6 is that nothing may claim an enforcer that does not exist, and
+ * these do exist -- on a test network, unaudited. That belongs in the summary
+ * where somebody reads it once while deciding, not repeated beside every control
+ * where it becomes noise people learn to skip.
+ */
+export function enforcementNote(state: PreviewState): string | null {
+  if (state.status !== 'ready') return null
+  const { network, audited, limits } = state.enforcement
+  if (!limits.some((l) => l.tier === 'T0')) return null
+  if (network === 'mainnet' && audited) return null
+  const where = network === 'mainnet' ? 'BNB Chain' : 'the BNB test network'
+  return `The on-chain rules above are held by AiKi contracts on ${where}, which have not been audited yet.`
 }
