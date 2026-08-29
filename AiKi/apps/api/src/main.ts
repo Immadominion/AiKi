@@ -5,6 +5,7 @@ import { PostgresNonceStore } from './auth/nonce-store.js'
 import { describeCookieMismatch, SessionSigner } from './auth/session.js'
 import { PostgresEvidenceStore } from './evidence/postgres-store.js'
 import { createApiServer } from './http/server.js'
+import { COVERAGE_START_STREAM } from './indexer/evidence-sink.js'
 import { PostgresJobStore } from './jobs/postgres-store.js'
 import { JobService } from './jobs/service.js'
 import { PostgresReceiptStore } from './receipts/postgres-store.js'
@@ -53,6 +54,8 @@ const gridId = process.env.PANCAKE_GRID_AGENT_ID
 const yieldId = process.env.YIELD_OPTIMIZER_AGENT_ID
 const app = createApiServer({
   observations: () => store.list(),
+  coverageStart: async () =>
+    (await store.getCheckpoint(COVERAGE_START_STREAM))?.lastIndexedBlock ?? null,
   jobs: new JobService(jobStore),
   receipts: new ReceiptService(receiptSeed, receiptStore),
   auth: {

@@ -4,6 +4,16 @@ import type { RegisteredEvent } from './registry.js'
 
 export const REGISTRY_STREAM = 'bsc:56:erc8004:registered'
 
+/**
+ * The lowest block this deployment has ever begun a scan at.
+ *
+ * The registration checkpoint says where scanning got to; nothing said where it
+ * started, so "have we seen the whole registry" had to be inferred from the
+ * earliest event we happened to hold — a number that can never reach the
+ * registry's first block, because the first block predates the first event.
+ */
+export const COVERAGE_START_STREAM = 'bsc:56:erc8004:coverage-start'
+
 /** Convert one finalized log into a provenance-complete, immutable fact. */
 export function registeredObservation(event: RegisteredEvent, validAt: string): NewObservation {
   return {

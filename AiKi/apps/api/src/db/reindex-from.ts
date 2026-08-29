@@ -6,7 +6,7 @@
  * already covered is harmless because observations deduplicate on dedupeKey, so
  * the cost of rewinding too far is time rather than corruption.
  *
- *   INDEX_REWIND_TO=79027200 pnpm --filter @aiki/api db:reindex-from
+ *   INDEX_REWIND_TO=79027268 pnpm --filter @aiki/api db:reindex-from
  */
 import { PostgresEvidenceStore } from '../evidence/postgres-store.js'
 import { REGISTRY_STREAM } from '../indexer/evidence-sink.js'

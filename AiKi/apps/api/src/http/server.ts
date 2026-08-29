@@ -17,6 +17,11 @@ import { publishedPrice } from '../settlement/published-price.js'
 
 export function createApiServer(input: {
   observations: () => Observation[] | Promise<Observation[]>
+  /**
+   * Lowest block the indexer has ever scanned from. Omitted by deployments with no
+   * indexer, where coverage is genuinely unknown rather than zero.
+   */
+  coverageStart?: () => number | null | Promise<number | null>
   jobs?: JobService
   receipts?: ReceiptService
   benchmarks?: BenchmarkService
@@ -90,7 +95,12 @@ export function createApiServer(input: {
       })
     }
   })
-  app.get('/v1/stats', async () => projectStats(await input.observations()))
+  app.get('/v1/stats', async () => {
+    const coverageStart = input.coverageStart ? await input.coverageStart() : null
+    return projectStats(await input.observations(), {
+      ...(typeof coverageStart === 'number' ? { coverageStart } : {}),
+    })
+  })
   app.get<{ Params: { agentId: string } }>('/v1/agents/:agentId/passport', async (request) =>
     projectPassport(request.params.agentId, await input.observations()),
   )

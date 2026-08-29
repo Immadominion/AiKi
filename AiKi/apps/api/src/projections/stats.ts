@@ -15,7 +15,17 @@ const subjectKey = (o: Observation) =>
  * is null until feedback is actually ingested, because zeros would claim a
  * measurement that never ran.
  */
-export function projectStats(observations: Observation[]): EcosystemStats {
+export interface StatsInput {
+  /**
+   * Lowest block the indexer has ever begun a scan at, from the coverage-start
+   * checkpoint. Undefined means nothing has recorded it, which is not the same as
+   * zero and must never read as full coverage.
+   */
+  coverageStart?: number
+}
+
+export function projectStats(observations: Observation[], input: StatsInput = {}): EcosystemStats {
+  const { coverageStart } = input
   const latestVerdict = new Map<string, Observation>()
   for (const o of observations) {
     if (o.predicate !== 'agent.liveness_verdict') continue
@@ -57,9 +67,15 @@ export function projectStats(observations: Observation[]): EcosystemStats {
             // Indexing that began after the registry's first block has seen only
             // part of it, and totalAgents is then a count of what we have seen
             // rather than of what exists.
+            //
+            // This asks where scanning STARTED, not where the earliest event we
+            // hold sits. Those are different questions and only the first one can
+            // ever be answered yes: the registry's first block is by definition
+            // earlier than its first registration, so comparing the earliest event
+            // against it left `complete` permanently, silently false.
             complete:
-              Number.isFinite(firstIndexedBlock) &&
-              firstIndexedBlock <= BSC_MAINNET.registryGenesisBlock,
+              typeof coverageStart === 'number' &&
+              coverageStart <= BSC_MAINNET.registryGenesisBlock,
           }
         : null,
     probed: {

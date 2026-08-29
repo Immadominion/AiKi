@@ -17,7 +17,14 @@ export interface ChainContracts {
 
 export interface ChainConfig {
   id: number
-  /** The block the ERC-8004 registry was deployed at. Indexing from later than this is partial. */
+  /**
+   * The block the ERC-8004 registry contract was deployed at. Indexing that began
+   * later than this has seen only part of the registry.
+   *
+   * Measured, not assumed: binary search on `eth_getCode` against an archive node
+   * puts the first block with code at 79,027,268 and the last without it at
+   * 79,027,267.
+   */
   registryGenesisBlock: number
   name: string
   nativeCurrency: 'BNB'
@@ -30,7 +37,7 @@ export const BSC_MAINNET: ChainConfig = {
   id: 56,
   name: 'BNB Smart Chain',
   nativeCurrency: 'BNB',
-  registryGenesisBlock: 79_027_200,
+  registryGenesisBlock: 79_027_268,
   finalityTag: 'finalized',
   expectedReorgDepth: 8,
   contracts: {

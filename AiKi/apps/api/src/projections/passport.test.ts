@@ -140,7 +140,7 @@ it('projects stats counting each agent once by its latest verdict', () => {
       },
     ),
   ]
-  const stats = projectStats(rows)
+  const stats = projectStats(rows, { coverageStart: 4321 })
   expect(stats.probed.agentsProbed).toBe(2)
   expect(stats.probed.byState).toEqual({ UNREACHABLE: 1, LIVE: 1 })
   expect(stats.probed.lastProbeSweepAt).toBe('2026-01-05T00:00:00Z')
@@ -151,7 +151,8 @@ it('projects stats counting each agent once by its latest verdict', () => {
     firstIndexedBlock: 4321,
     lastIndexedBlock: 4321,
     lastIndexedAt: '2026-01-03T00:00:00Z',
-    // Block 4321 predates the registry, so everything that exists has been seen.
+    // Scanning began at block 4321, before the registry existed, so everything
+    // that exists has been seen.
     complete: true,
   })
   // Feedback is not ingested, so reputation is null — zeros would be a claim.
@@ -241,10 +242,19 @@ it('says so when the index is only part of the registry', () => {
       },
     )
 
-  // Started at the registry's first block: what we have is what exists.
-  expect(projectStats([registered(79_027_200)]).indexed?.complete).toBe(true)
+  // Scanned from the registry's first block: what we have is what exists.
+  expect(
+    projectStats([registered(80_000_000)], { coverageStart: 79_027_268 }).indexed?.complete,
+  ).toBe(true)
   // Started later: totalAgents counts what we have seen, not what exists, and a
   // partial index reported as a complete one is the same lie as an unmeasured
   // field reported as a measurement.
-  expect(projectStats([registered(118_000_000)]).indexed?.complete).toBe(false)
+  expect(
+    projectStats([registered(118_000_000)], { coverageStart: 118_000_000 }).indexed?.complete,
+  ).toBe(false)
+  // Unrecorded coverage is not full coverage. This is the case that was silently
+  // wrong: completeness used to be read off the earliest event we happened to
+  // hold, which sits AFTER the registry's first block by construction, so a fully
+  // backfilled index would still have reported itself partial forever.
+  expect(projectStats([registered(79_027_268)]).indexed?.complete).toBe(false)
 })

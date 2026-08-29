@@ -67,3 +67,36 @@ it('covers at most maxBlocksPerRun, so a large gap is crossed in steps', async (
   await runRegistryIndexer(source, store, { initialBlock: 100, maxBlocksPerRun: 5_000 })
   expect((await store.getCheckpoint(REGISTRY_STREAM))?.lastIndexedBlock).toBe(10_099)
 })
+
+it('records where scanning began, follows a rewind down, and never raises it', async () => {
+  const store = new InMemoryEvidenceStore()
+  const source: RegistrySource = {
+    finalizedBlockNumber: async () => 5_000,
+    blockTimestamp: async () => '2026-08-29T00:00:00.000Z',
+    async *registered() {
+      // Deliberately empty: coverage is a claim about the range scanned, not
+      // about the events found in it.
+    },
+  }
+  const coverage = async () =>
+    (await store.getCheckpoint('bsc:56:erc8004:coverage-start'))?.lastIndexedBlock
+
+  const first = await runRegistryIndexer(source, store, { initialBlock: 1_000 })
+  expect(first.coverageStart).toBe(1_000)
+  expect(await coverage()).toBe(1_000)
+
+  // Ordinary forward progress resumes at 5,001 and must not move the start.
+  const second = await runRegistryIndexer(source, store, { initialBlock: 1_000 })
+  expect(second.coverageStart).toBe(1_000)
+  expect(await coverage()).toBe(1_000)
+
+  // A rewind moves the resume point back; coverage follows it down.
+  await store.saveCheckpoint({
+    stream: REGISTRY_STREAM,
+    lastIndexedBlock: 99,
+    updatedAt: '2026-08-29T00:00:00.000Z',
+  })
+  const third = await runRegistryIndexer(source, store, { initialBlock: 1_000 })
+  expect(third.coverageStart).toBe(100)
+  expect(await coverage()).toBe(100)
+})
