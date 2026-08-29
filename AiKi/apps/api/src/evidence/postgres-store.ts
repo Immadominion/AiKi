@@ -79,7 +79,7 @@ export class PostgresEvidenceStore implements EvidenceStore {
     >`
       WITH registered AS (
         SELECT DISTINCT ON (chain_id, registry_address, agent_id)
-          chain_id, registry_address, agent_id, value->>'agentURI' AS agent_uri
+          chain_id, registry_address, agent_id, value->>'agentURI' AS agent_uri, block_number
         FROM observations
         WHERE predicate = 'erc8004.agent_registered'
         ORDER BY chain_id, registry_address, agent_id, observed_at DESC
@@ -101,7 +101,23 @@ export class PostgresEvidenceStore implements EvidenceStore {
           p.last_probed_at IS NULL
           OR p.last_probed_at < now() - ${`${staleAfterHours} hours`}::interval
         )
-      ORDER BY p.last_probed_at ASC NULLS FIRST
+      /**
+       * Never-probed first, and among those the most recently REGISTERED first.
+       *
+       * The tiebreak is the point. Without it the unprobed group has no ordering
+       * at all, so Postgres returns it in whatever order the plan happens to
+       * produce — on an append-only table, oldest first. An agent that registers
+       * today then waits behind every agent that has ever gone unprobed, and the
+       * delay between "an agent exists" and "AiKi has an opinion about it" is
+       * unbounded and unrepeatable. That delay is the product's core latency and
+       * it should be short and stated.
+       *
+       * This does not starve the backlog: probe capacity is well above the rate
+       * new agents arrive, so the old unprobed set still drains, just behind
+       * today's. If registrations ever outpace probing, that ceases to be true
+       * and this ordering has to be revisited.
+       */
+      ORDER BY p.last_probed_at ASC NULLS FIRST, r.block_number DESC NULLS LAST
       LIMIT ${limit}
     `
   }

@@ -84,3 +84,39 @@ it('resumes from a number, so the next block is addition and not concatenation',
     await store.close()
   }
 })
+
+it('probes the newest registration first among agents nothing has ever probed', async () => {
+  const url = process.env.DATABASE_URL
+  if (!url) return
+  const { PostgresEvidenceStore } = await import('./postgres-store.js')
+  const store = new PostgresEvidenceStore(url)
+  const registry = `0xorder-${Date.now()}`
+  try {
+    // Inserted oldest-block LAST, so heap order and registration order disagree.
+    // Without an explicit tiebreak the plan tends to return insertion order and
+    // the newest agent — the one a user is most likely to be asking about — waits
+    // behind every agent that has ever gone unprobed.
+    for (const [agentId, block] of [
+      ['middle', 200],
+      ['newest', 300],
+      ['oldest', 100],
+    ] as const) {
+      await store.append({
+        subject: { type: 'agent', chainId: 56, registry, agentId },
+        predicate: 'erc8004.agent_registered',
+        value: { owner: '0x1', agentURI: `https://example.test/${agentId}.json` },
+        validAt: '2026-01-01T00:00:00.000Z',
+        observedAt: '2026-01-01T00:00:00.000Z',
+        source: 'test',
+        method: 'test',
+        evidenceClass: 'A',
+        blockNumber: block,
+        dedupeKey: `${registry}-${agentId}`,
+      })
+    }
+    const due = (await store.dueForProbe(500, 24)).filter((r) => r.registry_address === registry)
+    expect(due.map((r) => r.agent_id)).toEqual(['newest', 'middle', 'oldest'])
+  } finally {
+    await store.close()
+  }
+})
