@@ -161,8 +161,11 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
         capCents: budget,
         perActionCents: spends ? perAction : 0,
         days,
+        // From the agent, not from the person hiring: what it may move is a
+        // description of the agent, and widening it is not a user's choice.
+        spends: d.spends,
       }),
-    [budget, perAction, days, spends],
+    [budget, perAction, days, spends, d.spends],
   )
   const preview = useMandatePreview(constraints)
 
@@ -173,6 +176,10 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
   const perActionBadge = tierWording(preview, perActionLimit?.tier ?? null)
   const budgetBadge = tierWording(preview, budgetLimit?.tier ?? null)
   const expiryBadge = tierWording(preview, expiryLimit?.tier ?? null)
+  // What the agent may call is now part of the mandate, so this badge is derived
+  // like the others rather than asserted. It was the last one left hardcoded, and
+  // it was understating: the chain does hold this list.
+  const touchBadge = tierWording(preview, limitFor(preview, 'contract_allowlist')?.tier ?? null)
   // The allowlist is not one of the constraints this mandate sends at all, which
   // is exactly why the caps below can only ever be counted by AiKi. Saying so is
   // the point; inventing a tier for a limit we never send would not be.
@@ -234,10 +241,9 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
             title="What it may touch"
             note={`Set by what ${row.name} can do. It cannot be widened, by you or by the agent.`}
             badge={{
-              word: 'AiKi',
-              weak: false,
-              means:
-                'AiKi refuses to relay a call to anything outside this list, and the list comes from the agent, not from you.',
+              word: touchBadge.word,
+              weak: touchBadge.weak,
+              means: touchBadge.means,
             }}
           >
             <div className="flex flex-wrap gap-[6px]">

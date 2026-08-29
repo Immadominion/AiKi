@@ -62,16 +62,39 @@ export interface AgentDetail {
   settlementAsset: string
   supportsX402: boolean
   capabilities: { name: string; does: string; permissions: string[] }[]
+  /**
+   * The assets this agent may move, as addresses.
+   *
+   * A spend cap is a limit on money leaving your account, and money leaves
+   * through the token contract, so this is what the cap has to be scoped to
+   * before a chain can hold it: the enforcers locate an amount by the contract
+   * and function being called, and refuse outright when they cannot find one.
+   * Without this the cap is only ever counted by AiKi.
+   *
+   * Empty means the agent cannot move anything, which is a real answer and a
+   * stronger one than any cap.
+   */
+  spends: { asset: `0x${string}`; symbol: string }[]
   enforcement: EnforcementLine[]
   risks: { label: string; severity: 'info' | 'warn' | 'critical'; detail: string }[]
   evidence: { cls: EvidenceClass; count: number; summary: string }[]
 }
+
+/**
+ * Checked against the chain rather than copied from a list: both answered
+ * `symbol()` and `decimals()` on BNB Chain on 29 August 2026, and both are 18
+ * decimals. USDT is 6 decimals on most other chains, and assuming that here
+ * would make every cap wrong by a factor of a trillion.
+ */
+const USDT = { asset: '0x55d398326f99059fF775485246999027B3197955', symbol: 'USDT' } as const
+const WBNB = { asset: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', symbol: 'WBNB' } as const
 
 const OBSERVED = '2026-08-22T04:10:00Z'
 
 export const DETAILS: Record<AgentKey, AgentDetail> = {
   guardian: {
     key: 'guardian',
+    spends: [USDT],
     tagline: 'Watches a lending position and repays debt before liquidation gets close.',
     owner: '0x9c41f2a7b83e5d0146c9a7f3b2e8d4517a09cb62',
     ownerVerified: true,
@@ -168,6 +191,7 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
 
   lpilot: {
     key: 'lpilot',
+    spends: [WBNB],
     tagline: 'Keeps a concentrated position in range without you watching charts.',
     owner: '0x3fa8d15c72e94b0d61a8c53f7e2b9d04ca617e38',
     ownerVerified: true,
@@ -253,6 +277,7 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
 
   yieldmax: {
     key: 'yieldmax',
+    spends: [USDT],
     tagline: 'Moves idle assets into the best rate it can verify, with receipts.',
     owner: '0x77b0e4a9c1d35f826b4e07a9c2f81d63e5a04b19',
     ownerVerified: true,
@@ -338,6 +363,7 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
 
   gridly: {
     key: 'gridly',
+    spends: [WBNB],
     tagline: 'Runs a grid strategy between two prices you set yourself.',
     owner: '0x1d93c807ae62f5b40c37e8d1962af5730b8c4e2d',
     ownerVerified: true,
@@ -428,6 +454,7 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
 
   harbor: {
     key: 'harbor',
+    spends: [USDT],
     tagline: 'Moves idle stablecoins and tells you exactly where they went.',
     owner: '0x5e02b7d9184ac36f0e73b1c85d2947af60e13cb7',
     ownerVerified: false,
@@ -512,6 +539,7 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
 
   sentinel: {
     key: 'sentinel',
+    spends: [],
     tagline: 'Same job as Guardian and cheaper, but barely tested so far.',
     owner: '0x2ab7f406e91c58d3b70a4e16f9c82d05b3e7401a',
     ownerVerified: true,

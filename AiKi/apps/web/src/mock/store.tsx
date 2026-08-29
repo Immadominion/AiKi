@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { mandateConstraints } from '@/components/hire/mandate'
 import type { AgentKey } from '@/lib/agents'
 import { api as backend } from '@/lib/api'
+import { DETAILS } from '@/lib/detail'
 import { type ConnectOutcome, connectInjected, signIn, signOut, watchAccounts } from '@/lib/wallet'
 import { buildReceipt, runStep } from './script'
 import { demoState, freshState } from './seed'
@@ -170,6 +171,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
             capCents: input.capCents,
             perActionCents: input.perActionCents,
             days: input.days,
+            spends: DETAILS[input.key].spends,
           })
           // No silent fallback to a local mandate: a limit the server never
           // heard of is not a limit, and pretending otherwise is the one thing
