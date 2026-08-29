@@ -168,6 +168,17 @@ export function HowWeTestBody() {
             at all, or answered without reading the question.
           </span>
         </div>
+
+        <p className="text-muted mt-3 mb-0 max-w-[680px] text-[12.5px] leading-[1.55] text-pretty">
+          These are the numbers from that one fixed draw, and they do not move. The{' '}
+          <a className="font-semibold underline underline-offset-2" href="/registry">
+            registry page
+          </a>{' '}
+          shows the running totals from the continuous sweep, and it does find live agents. The two
+          disagree because they are different populations: this sample was stratified to be
+          representative, while the sweep works through whatever is due to be re-checked. Take the
+          percentages from here and the current counts from there, and do not mix them.
+        </p>
       </Section>
 
       <Section

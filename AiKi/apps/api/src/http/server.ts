@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import Fastify from 'fastify'
 import { requireOwner, requireSession } from '../auth/guard.js'
+import { requireIngestToken } from '../auth/ingest.js'
 import type { AuthConfig } from '../auth/routes.js'
 import { registerAuthRoutes } from '../auth/routes.js'
 import { readCookie, SESSION_COOKIE } from '../auth/session.js'
@@ -14,6 +15,7 @@ import { projectStats } from '../projections/stats.js'
 import { ReceiptService } from '../receipts/service.js'
 import { buildQuote } from '../settlement/pricing.js'
 import { publishedPrice } from '../settlement/published-price.js'
+import { asClientError, asSchemaError } from './errors.js'
 
 export function createApiServer(input: {
   observations: () => Observation[] | Promise<Observation[]>
@@ -41,16 +43,35 @@ export function createApiServer(input: {
         input.auth.signer.verify(readCookie(request.headers.cookie, SESSION_COOKIE)) ?? undefined
   })
   if (input.auth) registerAuthRoutes(app, input.auth)
-  app.setErrorHandler((error, request, reply) =>
-    reply.code(400).send({
+  /**
+   * Only messages written for a caller reach a caller.
+   *
+   * Fastify's own schema errors are safe and useful, and anything raised as a
+   * ClientError was phrased deliberately. Everything else is ours: it gets a 500,
+   * a generic sentence and the request id, and the real text goes to the log.
+   */
+  app.setErrorHandler((error, request, reply) => {
+    const requestId = request.headers['x-request-id']
+    const client = asClientError(error)
+    if (client)
+      return reply.code(client.statusCode).send({
+        error: { code: client.code, message: client.message, retryable: false, requestId },
+      })
+    const schema = asSchemaError(error)
+    if (schema)
+      return reply.code(400).send({
+        error: { code: 'BAD_REQUEST', message: schema, retryable: false, requestId },
+      })
+    request.log.error({ err: error, requestId }, 'unhandled request failure')
+    return reply.code(500).send({
       error: {
-        code: 'BAD_REQUEST',
-        message: error instanceof Error ? error.message : 'Request failed.',
-        retryable: false,
-        requestId: request.headers['x-request-id'],
+        code: 'INTERNAL',
+        message: 'Something failed on our side. Quote the request id if you report it.',
+        retryable: true,
+        requestId,
       },
-    }),
-  )
+    })
+  })
 
   /**
    * A job belongs to whoever owns its authorization. Deriving it rather than
@@ -84,15 +105,15 @@ export function createApiServer(input: {
    * is up: an API that returns 200 while its database is unreachable will be
    * kept in a load balancer's rotation while serving nothing.
    */
-  app.get('/healthz', async (_request, reply) => {
+  app.get('/healthz', async (request, reply) => {
     try {
       await input.observations()
       return { status: 'ok' }
     } catch (error) {
-      return reply.code(503).send({
-        status: 'degraded',
-        detail: error instanceof Error ? error.message : 'Evidence store unreachable.',
-      })
+      // A health endpoint is unauthenticated by design, so it says that it is
+      // unhealthy and not why. The reason belongs in the log.
+      request.log.error({ err: error }, 'healthcheck: evidence store unreachable')
+      return reply.code(503).send({ status: 'degraded', detail: 'Evidence store unreachable.' })
     }
   })
   app.get('/v1/stats', async () => {
@@ -266,9 +287,13 @@ export function createApiServer(input: {
     publicKey: receipts.publicKey(),
     profile: 'aiki-scitt-cose/v1',
   }))
+  // A leaderboard anyone can write to is not a measurement, it is a guestbook.
   app.post<{ Body: Omit<BenchmarkRun, 'id' | 'completedAt' | 'methodology'> }>(
     '/v1/arena/runs',
-    async (request) => benchmarks.add(request.body),
+    async (request, reply) => {
+      if (!requireIngestToken(request, reply)) return reply
+      return benchmarks.add(request.body)
+    },
   )
   app.get<{ Params: { id: string } }>('/v1/arena/runs/:id', async (request) => {
     const run = benchmarks.get(request.params.id)

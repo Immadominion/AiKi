@@ -53,7 +53,6 @@ export interface AgentDetail {
     detail: string
     lastProbeAt: string
     p95LatencyMs?: number
-    regionsProbed: number
   }
   /** Overall: did it do what it said, across every check we ran. */
   checks: Counts
@@ -85,10 +84,9 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
     ownershipTransfers: 0,
     liveness: {
       state: 'LIVE',
-      detail: 'Answers differently for different positions, from three regions.',
+      detail: 'Answers differently for different positions.',
       lastProbeAt: OBSERVED,
       p95LatencyMs: 410,
-      regionsProbed: 3,
     },
     checks: [171, 174],
     components: {
@@ -182,10 +180,9 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
     ownershipTransfers: 0,
     liveness: {
       state: 'LIVE',
-      detail: 'Answers differently for different pools, from three regions.',
+      detail: 'Answers differently for different pools.',
       lastProbeAt: OBSERVED,
       p95LatencyMs: 620,
-      regionsProbed: 3,
     },
     checks: [92, 96],
     components: {
@@ -268,10 +265,9 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
     ownershipTransfers: 1,
     liveness: {
       state: 'LIVE',
-      detail: 'Answers differently for different assets, from two regions.',
+      detail: 'Answers differently for different assets.',
       lastProbeAt: OBSERVED,
       p95LatencyMs: 1180,
-      regionsProbed: 2,
     },
     checks: [55, 61],
     components: {
@@ -354,10 +350,9 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
     ownershipTransfers: 0,
     liveness: {
       state: 'LIVE',
-      detail: 'Answers differently for different grids, from three regions.',
+      detail: 'Answers differently for different grids.',
       lastProbeAt: OBSERVED,
       p95LatencyMs: 540,
-      regionsProbed: 3,
     },
     checks: [43, 48],
     components: {
@@ -448,7 +443,6 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
       detail: 'Reachable, but 4 of the last 22 probes timed out.',
       lastProbeAt: OBSERVED,
       p95LatencyMs: 4900,
-      regionsProbed: 3,
     },
     checks: [19, 22],
     components: {
@@ -530,10 +524,9 @@ export const DETAILS: Record<AgentKey, AgentDetail> = {
     ownershipTransfers: 0,
     liveness: {
       state: 'LIVE',
-      detail: 'Answers differently for different positions, from three regions.',
+      detail: 'Answers differently for different positions.',
       lastProbeAt: OBSERVED,
       p95LatencyMs: 380,
-      regionsProbed: 3,
     },
     checks: [6, 7],
     components: {

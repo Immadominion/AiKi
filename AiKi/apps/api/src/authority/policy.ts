@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { ClientError } from '../http/errors.js'
 export type EnforcementTier = 'T0' | 'T1' | 'T2' | 'T3'
 export interface Constraint {
   kind:
@@ -31,7 +32,7 @@ const rank: Record<EnforcementTier, number> = { T0: 0, T1: 1, T2: 2, T3: 3 }
 const canonical = (value: unknown): string =>
   JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 0)
 export function compilePolicy(constraints: Constraint[]): CompiledPolicy {
-  if (!constraints.length) throw new Error('At least one constraint is required.')
+  if (!constraints.length) throw new ClientError('At least one constraint is required.')
   // The chain refuses a delegation carrying two caveats of the same kind, because a shared
   // spend counter would be incremented twice by two identical stateful caveats. Off chain
   // duplicates are merely applied in turn, which quietly means their intersection. Accepting a
@@ -40,7 +41,7 @@ export function compilePolicy(constraints: Constraint[]): CompiledPolicy {
   const kinds = new Set<string>()
   for (const c of constraints) {
     if (kinds.has(c.kind))
-      throw new Error(
+      throw new ClientError(
         `Duplicate ${c.kind} constraint. A mandate carries at most one of each kind, because the chain cannot represent two.`,
       )
     kinds.add(c.kind)
@@ -51,9 +52,10 @@ export function compilePolicy(constraints: Constraint[]): CompiledPolicy {
   // expiry. That failure is silent and total: the constraint still renders in
   // the UI as a limit while nothing anywhere enforces it.
   if (expiryConstraint && typeof expiryConstraint.value !== 'string')
-    throw new Error('Expiry must be an ISO-8601 string.')
+    throw new ClientError('Expiry must be an ISO-8601 string.')
   const expiresAt = expiryConstraint?.value as string | undefined
-  if (expiresAt && Number.isNaN(Date.parse(expiresAt))) throw new Error('Expiry must be ISO-8601.')
+  if (expiresAt && Number.isNaN(Date.parse(expiresAt)))
+    throw new ClientError('Expiry must be ISO-8601.')
   return {
     id: randomUUID(),
     hash: createHash('sha256').update(canonical(constraints)).digest('hex'),

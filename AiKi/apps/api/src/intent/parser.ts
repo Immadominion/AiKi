@@ -1,3 +1,5 @@
+import { ClientError } from '../http/errors.js'
+
 const rules = [
   { category: 'health_factor', match: /health|liquidat|venus/i, protocols: ['Venus'] },
   {
@@ -13,7 +15,7 @@ const rules = [
   },
 ] as const
 export function parseIntent(text: string) {
-  if (!text.trim()) throw new Error('Intent text is required.')
+  if (!text.trim()) throw new ClientError('Intent text is required.')
   const rule = rules.find((candidate) => candidate.match.test(text))
   return {
     intentId: crypto.randomUUID(),

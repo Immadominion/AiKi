@@ -109,8 +109,8 @@ export function AgentPassport({ agentKey }: { agentKey: AgentKey }) {
               timeStyle: 'short',
             })}
           </Fact>
-          <Fact label="Regions probed">
-            {d.liveness.regionsProbed}, so a network fault cannot be mistaken for a dead agent
+          <Fact label="Probed from">
+            One place, so an unreachable verdict could be a fault at our end and not at theirs
           </Fact>
           {d.liveness.p95LatencyMs ? (
             <Fact

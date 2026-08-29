@@ -6,6 +6,7 @@ import {
   sign,
   verify,
 } from 'node:crypto'
+import { ClientError } from '../http/errors.js'
 import { InMemoryReceiptStore, type ReceiptStore } from './store.js'
 export interface ExecutionReceipt {
   receiptId: string
@@ -93,7 +94,8 @@ export class ReceiptService {
   }
   async get(id: string) {
     const receipt = await this.store.get(id)
-    if (!receipt) throw new Error('Receipt not found.')
+    if (!receipt)
+      throw new ClientError('Receipt not found.', { statusCode: 404, code: 'NOT_FOUND' })
     return receipt
   }
   verify(receipt: ExecutionReceipt) {

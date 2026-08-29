@@ -126,9 +126,12 @@ it('serves intent, search, quote, SSE snapshot, receipt retrieval, and Arena end
     headers: cookie,
   })
   expect((await app.inject(`/v1/receipts/${receipt.json().receiptId}`)).statusCode).toBe(200)
+  // Benchmark ingestion is token-gated: the harness writes here, browsers do not.
+  process.env.ARENA_INGEST_TOKEN = 'test-ingest-token'
   const arena = await app.inject({
     method: 'POST',
     url: '/v1/arena/runs',
+    headers: { authorization: 'Bearer test-ingest-token' },
     payload: {
       scenarioId: 'health-threshold',
       scenarioVersion: '1',

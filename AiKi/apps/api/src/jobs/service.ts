@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { type Action, type Constraint, compilePolicy, evaluatePolicy } from '../authority/policy.js'
+import { ClientError } from '../http/errors.js'
 import {
   type AuthorizationRecord,
   InMemoryJobStore,
@@ -45,17 +46,18 @@ export class JobService {
 
   async revoke(id: string): Promise<AuthorizationRecord> {
     const record = await this.store.revokeAuthorization(id, new Date().toISOString())
-    if (!record) throw new Error('Authorization not found.')
+    if (!record)
+      throw new ClientError('Authorization not found.', { statusCode: 404, code: 'NOT_FOUND' })
     return record
   }
 
   async createJob(authorizationId: string, idempotencyKey: string): Promise<JobRecord> {
-    if (!idempotencyKey) throw new Error('Idempotency-Key is required.')
+    if (!idempotencyKey) throw new ClientError('Idempotency-Key is required.')
     const existing = await this.store.jobByIdempotencyKey(idempotencyKey)
     if (existing) return existing
 
     const auth = await this.getAuthorization(authorizationId)
-    if (auth.status !== 'active') throw new Error(`Authorization is ${auth.status}.`)
+    if (auth.status !== 'active') throw new ClientError(`Authorization is ${auth.status}.`)
 
     const now = new Date().toISOString()
     const job: JobRecord = {
@@ -93,7 +95,8 @@ export class JobService {
       const decision = evaluatePolicy(auth.policy, action, auth.spent)
       return { ...decision, spend: decision.allow ? action.amount : 0n }
     })
-    if (!verdict) throw new Error('Authorization not found.')
+    if (!verdict)
+      throw new ClientError('Authorization not found.', { statusCode: 404, code: 'NOT_FOUND' })
 
     const events: JobEvent[] = [
       {
@@ -116,13 +119,14 @@ export class JobService {
 
   async getAuthorization(id: string): Promise<AuthorizationRecord> {
     const record = await this.store.getAuthorization(id)
-    if (!record) throw new Error('Authorization not found.')
+    if (!record)
+      throw new ClientError('Authorization not found.', { statusCode: 404, code: 'NOT_FOUND' })
     return record
   }
 
   async getJob(id: string): Promise<JobRecord> {
     const record = await this.store.getJob(id)
-    if (!record) throw new Error('Job not found.')
+    if (!record) throw new ClientError('Job not found.', { statusCode: 404, code: 'NOT_FOUND' })
     return record
   }
 }
