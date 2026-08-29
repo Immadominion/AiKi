@@ -1,13 +1,25 @@
 import Fastify from 'fastify'
 import { BSC_MAINNET } from '../../config/chains.js'
 import type { EvidenceStore } from '../../evidence/types.js'
-import { REGISTRATION_TYPE } from '../../prober/registration.js'
+import {
+  NOT_REGISTERED,
+  type ReferenceRegistrationConfig,
+  reciprocalProof,
+  referenceBase,
+  referenceManifest,
+} from '../manifest.js'
 import type { PancakeReader } from './client.js'
 import { persistPancakeAssessment } from './evidence-sink.js'
 
-export interface PancakeRebalancerConfig {
-  publicBaseUrl: string
-  agentId: string
+export type PancakeRebalancerConfig = ReferenceRegistrationConfig
+
+const SPEC = {
+  name: 'AiKi PancakeSwap LP Rebalancer',
+  description:
+    'First-party, read-only reference agent that verifies PancakeSwap v3 LP NFT range state and produces evidence-backed rebalance recommendations.',
+  servicePath: '/v1/reference/pancake/rebalancer/agent',
+  serviceName: 'pancakeswap-v3-lp-rebalance-assessment',
+  iconPath: '/v1/reference/pancake/rebalancer/icon.svg',
 }
 export function createPancakeRebalancerServer(options: {
   reader: PancakeReader
@@ -16,57 +28,29 @@ export function createPancakeRebalancerServer(options: {
 }) {
   const app = Fastify({ logger: process.env.NODE_ENV === 'production' })
   const registration = options.registration
-  const base = registration
-    ? new URL(registration.publicBaseUrl).toString().replace(/\/$/, '')
-    : null
-  const registry = `eip155:${BSC_MAINNET.id}:${BSC_MAINNET.contracts.erc8004Identity}`
+  const base = referenceBase(registration)
   app.get('/healthz', async () => ({ ok: true, service: 'aiki-pancakeswap-lp-rebalancer' }))
-  app.get('/v1/reference/pancake/rebalancer/manifest.json', async (_req, reply) => {
-    if (
-      !registration ||
-      !base ||
-      !/^\d+$/.test(registration.agentId) ||
-      !base.startsWith('https://')
-    )
-      return reply.code(503).send({
-        error: {
-          code: 'REFERENCE_NOT_REGISTERED',
-          message:
-            'Public HTTPS URL and ERC-8004 token id are required before publishing a registration manifest.',
-        },
-      })
-    return {
-      type: REGISTRATION_TYPE,
-      name: 'AiKi PancakeSwap LP Rebalancer',
-      description:
-        'First-party, read-only reference agent that verifies PancakeSwap v3 LP NFT range state and produces evidence-backed rebalance recommendations.',
-      image: `${base}/v1/reference/pancake/rebalancer/icon.svg`,
-      active: true,
-      services: [
-        {
-          name: 'pancakeswap-v3-lp-rebalance-assessment',
-          endpoint: `${base}/v1/reference/pancake/rebalancer/agent/${registration.agentId}`,
-          version: '1.0.0',
-        },
-      ],
-      registrations: [{ agentId: registration.agentId, agentRegistry: registry }],
-      supportedTrust: [],
-    }
-  })
-  app.get('/.well-known/agent-registration.json', async (_req, reply) => {
-    if (!registration)
-      return reply.code(503).send({
-        error: {
-          code: 'REFERENCE_NOT_REGISTERED',
-          message: 'Reciprocal proof unavailable until configured.',
-        },
-      })
-    return { registrations: [{ agentId: registration.agentId, agentRegistry: registry }] }
-  })
+  app.get(SPEC.iconPath, async (_req, reply) =>
+    reply
+      .type('image/svg+xml')
+      .send(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#111827"/><path d="M20 26a14 14 0 0 1 24-4M44 38a14 14 0 0 1-24 4" fill="none" stroke="#f472b6" stroke-width="4" stroke-linecap="round"/><path d="M44 12v10H34M20 52V42h10" fill="none" stroke="#f472b6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      ),
+  )
+  app.get('/v1/reference/pancake/rebalancer/manifest.json', async (_req, reply) =>
+    registration && base
+      ? referenceManifest(registration, SPEC)
+      : reply.code(503).send(NOT_REGISTERED),
+  )
+  app.get('/.well-known/agent-registration.json', async (_req, reply) =>
+    registration && base
+      ? reciprocalProof([registration.agentId])
+      : reply.code(503).send(NOT_REGISTERED),
+  )
   app.get<{ Params: { agentId: string }; Querystring: { tokenId?: string } }>(
     '/v1/reference/pancake/rebalancer/agent/:agentId',
     async (request, reply) => {
-      if (!registration || request.params.agentId !== registration.agentId)
+      if (!registration || !base || request.params.agentId !== registration.agentId)
         return reply.code(404).send({
           error: {
             code: 'UNKNOWN_AGENT',

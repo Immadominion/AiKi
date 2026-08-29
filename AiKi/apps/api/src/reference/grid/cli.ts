@@ -8,7 +8,14 @@ const store = process.env.DATABASE_URL
   : undefined
 const app = createGridServer({
   reader: new PancakeGridClient(process.env.BSC_RPC_URL),
-  ...(process.env.PANCAKE_GRID_AGENT_ID ? { agentId: process.env.PANCAKE_GRID_AGENT_ID } : {}),
+  ...(process.env.REFERENCE_AGENT_BASE_URL && process.env.PANCAKE_GRID_AGENT_ID
+    ? {
+        registration: {
+          publicBaseUrl: process.env.REFERENCE_AGENT_BASE_URL,
+          agentId: process.env.PANCAKE_GRID_AGENT_ID,
+        },
+      }
+    : {}),
   ...(store ? { evidenceStore: store } : {}),
 })
 try {

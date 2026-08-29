@@ -11,6 +11,7 @@ import { PostgresReceiptStore } from './receipts/postgres-store.js'
 import { ReceiptService } from './receipts/service.js'
 import { PancakeGridClient } from './reference/grid/client.js'
 import { createGridServer } from './reference/grid/server.js'
+import { reciprocalProof } from './reference/manifest.js'
 import { PancakeV3Client } from './reference/rebalancer/client.js'
 import { createPancakeRebalancerServer } from './reference/rebalancer/server.js'
 import { VenusClient } from './reference/venus/client.js'
@@ -74,12 +75,12 @@ const rebalancer = createPancakeRebalancerServer({
 })
 const grid = createGridServer({
   reader: new PancakeGridClient(rpcUrl),
-  ...(gridId ? { agentId: gridId } : {}),
+  ...(base && gridId ? { registration: { publicBaseUrl: base, agentId: gridId } } : {}),
   evidenceStore: store,
 })
 const yieldAgent = createYieldServer({
   reader: new VenusYieldClient(rpcUrl),
-  ...(yieldId ? { agentId: yieldId } : {}),
+  ...(base && yieldId ? { registration: { publicBaseUrl: base, agentId: yieldId } } : {}),
   evidenceStore: store,
 })
 type Injectable = {
@@ -116,21 +117,24 @@ app.get('/v1/reference/pancake/rebalancer/*', (request, reply) =>
 app.get('/v1/reference/pancake/grid', (request, reply) =>
   delegate(grid as unknown as Injectable, request, reply),
 )
+app.get('/v1/reference/pancake/grid/*', (request, reply) =>
+  delegate(grid as unknown as Injectable, request, reply),
+)
 app.get('/v1/reference/yield', (request, reply) =>
   delegate(yieldAgent as unknown as Injectable, request, reply),
 )
+app.get('/v1/reference/yield/*', (request, reply) =>
+  delegate(yieldAgent as unknown as Injectable, request, reply),
+)
 app.get('/.well-known/agent-registration.json', async (_request, reply) => {
-  const registrations = [venusId, rebalancerId, gridId, yieldId]
-    .filter((id): id is string => Boolean(id))
-    .map((agentId) => ({
-      agentId,
-      agentRegistry: 'eip155:56:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432',
-    }))
-  if (!registrations.length)
+  // D8 asks whoever controls this domain to acknowledge the on-chain ids. All four
+  // agents share one host, so one file names all four.
+  const ids = base ? [venusId, rebalancerId, gridId, yieldId].filter(Boolean) : []
+  if (!ids.length)
     return reply.code(503).send({
       error: { code: 'REFERENCE_NOT_REGISTERED', message: 'No configured reference identities.' },
     })
-  return { registrations }
+  return reciprocalProof(ids as string[])
 })
 app.addHook('onClose', async () => {
   await Promise.all([venus.close(), rebalancer.close(), grid.close(), yieldAgent.close()])

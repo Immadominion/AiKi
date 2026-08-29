@@ -8,8 +8,13 @@ const store = process.env.DATABASE_URL
   : undefined
 const app = createYieldServer({
   reader: new VenusYieldClient(process.env.BSC_RPC_URL),
-  ...(process.env.YIELD_OPTIMIZER_AGENT_ID
-    ? { agentId: process.env.YIELD_OPTIMIZER_AGENT_ID }
+  ...(process.env.REFERENCE_AGENT_BASE_URL && process.env.YIELD_OPTIMIZER_AGENT_ID
+    ? {
+        registration: {
+          publicBaseUrl: process.env.REFERENCE_AGENT_BASE_URL,
+          agentId: process.env.YIELD_OPTIMIZER_AGENT_ID,
+        },
+      }
     : {}),
   ...(store ? { evidenceStore: store } : {}),
 })
