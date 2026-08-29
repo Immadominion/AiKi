@@ -41,3 +41,7 @@ int_types = "long"
 # An archive endpoint: forking needs historical state, and the public dataseeds
 # prune it ("missing trie node"). Override with BSC_FORK_RPC if this one rate-limits.
 bsc = "https://bsc.drpc.org"
+# BNB's own testnet is chain 97 and its token is tBNB. It is NOT Sepolia, which
+# belongs to Ethereum, and a deploy aimed at Sepolia goes nowhere useful here.
+# Faucet: https://www.bnbchain.org/en/testnet-faucet
+bsc_testnet = "https://data-seed-prebsc-1-s1.bnbchain.org:8545"
