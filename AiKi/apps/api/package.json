@@ -21,6 +21,7 @@
     "reference:grid": "tsx src/reference/grid/cli.ts",
     "reference:yield": "tsx src/reference/yield/cli.ts",
     "reference:register": "tsx src/reference/register-cli.ts",
+    "reference:verify": "tsx src/reference/verify-cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "index": "tsx src/indexer/cli.ts"
