@@ -1,8 +1,11 @@
+import { ROOT_AUTHORITY } from '@aiki/contracts'
 import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
 import { afterEach, expect, it } from 'vitest'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
+import { compileCaveats } from '../authority/caveats.js'
+import type { ChainReader } from '../authority/chain-reader.js'
 import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
 import { InMemoryEvidenceStore } from '../evidence/store.js'
 import { JobService } from '../jobs/service.js'
@@ -455,4 +458,142 @@ it('bounds an unauthenticated preview', async () => {
   })
   expect(res.statusCode).toBe(400)
   expect(res.json().error.code).toBe('TOO_MANY_CONSTRAINTS')
+})
+
+/** Says yes to everything, so each test isolates the refusal it is about. */
+const permissiveChain = (over: Partial<ChainReader> = {}): ChainReader => ({
+  ownerOf: async () => OWNER as `0x${string}`,
+  isValidSignature: async () => true,
+  ...over,
+})
+
+const CONSTRAINTS = [
+  { kind: 'expiry', value: '2030-01-01T00:00:00.000Z', tier: 'T2', label: 'Expires' },
+  {
+    kind: 'contract_allowlist',
+    value: ['0x55d398326f99059ff775485246999027b3197955'],
+    tier: 'T2',
+    label: 'USDT',
+  },
+  { kind: 'selector_allowlist', value: ['0xa9059cbb'], tier: 'T2', label: 'transfer' },
+  {
+    kind: 'asset_scope',
+    value: ['0x55d398326f99059ff775485246999027b3197955'],
+    tier: 'T2',
+    label: 'USDT',
+  },
+  { kind: 'per_action_cap', value: '10000000000000000000', tier: 'T2', label: '10' },
+]
+
+async function signedApp(chain = permissiveChain()) {
+  const app = createApiServer({
+    observations: () => [],
+    auth: authConfig(),
+    enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+    chain,
+  })
+  apps.push(app)
+  const created = await app.inject({
+    method: 'POST',
+    url: '/v1/authorizations',
+    headers: { ...cookie, 'content-type': 'application/json' },
+    payload: { constraints: CONSTRAINTS },
+  })
+  const id = created.json().id
+  const caveats = compileCaveats(CONSTRAINTS as never, AIKI_ENFORCERS_BSC_TESTNET).caveats
+  const delegation = {
+    delegate: `0x${'ef'.repeat(20)}`,
+    delegator: `0x${'cd'.repeat(20)}`,
+    authority: ROOT_AUTHORITY,
+    caveats,
+    salt: '1',
+    epoch: '0',
+    signature: `0x${'11'.repeat(65)}`,
+  }
+  return { app, id, delegation }
+}
+
+it('files a signed delegation against the mandate it was signed for', async () => {
+  const { app, id, delegation } = await signedApp()
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/authorizations/${id}/delegation`,
+    headers: { ...cookie, 'content-type': 'application/json' },
+    payload: { delegation },
+  })
+  expect(res.statusCode).toBe(200)
+  expect(res.json().delegationChainId).toBe(97)
+  expect(res.json().delegator.toLowerCase()).toBe(delegation.delegator)
+})
+
+it('checks the delegation against what is stored, not against what was sent', async () => {
+  // The request supplies the delegation; the constraints come from the store.
+  // If both came from the request, a caller could be shown one mandate and file
+  // another, and every screen would agree with them.
+  const { app, id, delegation } = await signedApp()
+  const cap = delegation.caveats.at(-1)
+  if (!cap) throw new Error('no caveats')
+  delegation.caveats[delegation.caveats.length - 1] = {
+    ...cap,
+    terms: `${cap.terms.slice(0, -1)}f` as `0x${string}`,
+  }
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/authorizations/${id}/delegation`,
+    headers: { ...cookie, 'content-type': 'application/json' },
+    payload: { delegation },
+  })
+  expect(res.statusCode).toBe(400)
+  expect(res.json().error.code).toBe('DELEGATION_CAVEAT_MISMATCH')
+})
+
+it('will not sign a mandate that has been revoked', async () => {
+  // Revoke is what somebody reaches for when they want a thing to stop, so it
+  // must not be possible to hand it authority afterwards.
+  const { app, id, delegation } = await signedApp()
+  await app.inject({
+    method: 'POST',
+    url: `/v1/authorizations/${id}/revoke`,
+    headers: { ...cookie, 'content-type': 'application/json' },
+  })
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/authorizations/${id}/delegation`,
+    headers: { ...cookie, 'content-type': 'application/json' },
+    payload: { delegation },
+  })
+  expect(res.statusCode).toBe(409)
+  expect(res.json().error.code).toBe('AUTHORIZATION_REVOKED')
+})
+
+it('refuses to sign somebody else’s mandate', async () => {
+  const { app, id, delegation } = await signedApp()
+  const stranger = `aiki_session=${signer.issue(`0x${'99'.repeat(20)}`, 56)}`
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/authorizations/${id}/delegation`,
+    headers: { cookie: stranger, 'content-type': 'application/json' },
+    payload: { delegation },
+  })
+  // 404, not 403: telling a stranger the mandate exists is itself a disclosure.
+  expect(res.statusCode).toBe(404)
+})
+
+it('says so plainly when it cannot reach a chain at all', async () => {
+  const app = createApiServer({ observations: () => [], auth: authConfig() })
+  apps.push(app)
+  const created = await app.inject({
+    method: 'POST',
+    url: '/v1/authorizations',
+    headers: { ...cookie, 'content-type': 'application/json' },
+    payload: { constraints: CONSTRAINTS },
+  })
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/authorizations/${created.json().id}/delegation`,
+    headers: { ...cookie, 'content-type': 'application/json' },
+    payload: { delegation: {} },
+  })
+  expect(res.statusCode).toBe(503)
+  expect(res.json().error.code).toBe('DELEGATION_UNAVAILABLE')
 })

@@ -14,6 +14,7 @@ import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
+import { viemChainReader } from '../authority/chain-reader.js'
 import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
 import { materializeObservation } from '../evidence/store.js'
 import type { Observation } from '../evidence/types.js'
@@ -48,6 +49,9 @@ const persistence = databaseUrl
       // is what it is worth there. A dev API that reported everything as counted
       // by AiKi would make the builder's badges a local fiction.
       enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+      chain: viemChainReader(
+        process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
+      ),
       receipts: new ReceiptService(
         process.env.RECEIPT_SIGNING_KEY ?? 'ab'.repeat(32),
         new PostgresReceiptStore(databaseUrl),

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { SignedDelegation } from '@aiki/contracts'
 import { type Action, type Constraint, compilePolicy, evaluatePolicy } from '../authority/policy.js'
 import { ClientError } from '../http/errors.js'
 import {
@@ -42,6 +43,28 @@ export class JobService {
       owner: owner ? owner.toLowerCase() : null,
     }
     return this.store.createAuthorization(record)
+  }
+
+  /**
+   * File a signed delegation against a mandate that already exists.
+   *
+   * The checks live in `acceptDelegation` and this is the only path to the
+   * store's `attachDelegation`, so there is no way to write a delegation that
+   * did not pass them.
+   */
+  async attachDelegation(
+    id: string,
+    accepted: { delegation: SignedDelegation; chainId: number },
+  ): Promise<AuthorizationRecord> {
+    const record = await this.store.attachDelegation(
+      id,
+      accepted.delegation,
+      accepted.delegation.delegator,
+      accepted.chainId,
+      new Date().toISOString(),
+    )
+    if (!record) throw new ClientError('No such authorization.', { statusCode: 404 })
+    return record
   }
 
   async revoke(id: string): Promise<AuthorizationRecord> {

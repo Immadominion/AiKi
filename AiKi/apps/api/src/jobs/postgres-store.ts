@@ -1,3 +1,4 @@
+import type { SignedDelegation } from '@aiki/contracts'
 import postgres from 'postgres'
 import type { CompiledPolicy } from '../authority/policy.js'
 import type {
@@ -20,6 +21,10 @@ interface AuthorizationRow {
   created_at: string | Date
   revoked_at: string | Date | null
   owner: string | null
+  delegation: SignedDelegation | null
+  delegator: string | null
+  delegation_chain_id: number | string | null
+  delegation_signed_at: string | Date | null
 }
 
 interface JobRow {
@@ -46,6 +51,15 @@ const toAuthorization = (row: AuthorizationRow): AuthorizationRecord => ({
   createdAt: iso(row.created_at),
   owner: row.owner,
   ...(row.revoked_at ? { revokedAt: iso(row.revoked_at) } : {}),
+  ...(row.delegation ? { delegation: row.delegation } : {}),
+  ...(row.delegator ? { delegator: row.delegator } : {}),
+  // INTEGER arrives as a number here, but every other numeric column in this
+  // file has arrived as a string at least once, and a chain id read as "97"
+  // would never match a comparison against 97.
+  ...(row.delegation_chain_id === null
+    ? {}
+    : { delegationChainId: Number(row.delegation_chain_id) }),
+  ...(row.delegation_signed_at ? { delegationSignedAt: iso(row.delegation_signed_at) } : {}),
 })
 
 /** Authorizations, jobs, and their event logs, in Postgres. */
@@ -87,6 +101,33 @@ export class PostgresJobStore implements JobStore {
     `
     const row = rows[0]
     return row ? toAuthorization(row) : null
+  }
+
+  async attachDelegation(
+    id: string,
+    delegation: SignedDelegation,
+    delegator: string,
+    chainId: number,
+    at: string,
+  ) {
+    // `delegation IS NULL` in the WHERE, not a read-then-write: two requests
+    // racing to sign the same mandate would otherwise both read no delegation
+    // and the second would overwrite the first. The first signature stands.
+    const rows = await this.sql<AuthorizationRow[]>`
+      UPDATE authorizations
+      SET delegation = ${this.sql.json(delegation as unknown as postgres.JSONValue)},
+          delegator = ${delegator},
+          delegation_chain_id = ${chainId},
+          delegation_signed_at = ${at}
+      WHERE id = ${id} AND delegation IS NULL
+      RETURNING *
+    `
+    const row = rows[0]
+    // Nothing updated means either no such mandate or one already signed. The
+    // caller is handed whatever is actually stored rather than an error, so a
+    // retried request is idempotent instead of alarming.
+    if (row) return toAuthorization(row)
+    return this.getAuthorization(id)
   }
 
   async createJob(record: JobRecord) {

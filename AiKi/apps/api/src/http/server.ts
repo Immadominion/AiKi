@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto'
+import type { SignedDelegation } from '@aiki/contracts'
 import Fastify from 'fastify'
 import { requireOwner, requireSession } from '../auth/guard.js'
 import { requireIngestToken } from '../auth/ingest.js'
 import type { AuthConfig } from '../auth/routes.js'
 import { registerAuthRoutes } from '../auth/routes.js'
 import { readCookie, SESSION_COOKIE } from '../auth/session.js'
+import { acceptDelegation } from '../authority/accept-delegation.js'
 import { describeEnforcement, withDerivedTiers } from '../authority/caveats.js'
+import type { ChainReader } from '../authority/chain-reader.js'
 import type { Constraint } from '../authority/policy.js'
 import { type BenchmarkRun, BenchmarkService, benchmarkEvidence } from '../benchmarks/service.js'
 import type { EnforcerDeployment } from '../config/enforcers.js'
@@ -59,6 +62,12 @@ export function createApiServer(input: {
    * error: a deployment with no enforcers counts every limit itself and says so.
    */
   enforcers?: EnforcerDeployment
+  /**
+   * Reads the chain the enforcers are on. Needed only to accept a signed
+   * delegation: without it a mandate can still be built and its limits are
+   * counted by AiKi, which is what a deployment with no chain access should do.
+   */
+  chain?: ChainReader
   jobs?: JobService
   receipts?: ReceiptService
   benchmarks?: BenchmarkService
@@ -425,6 +434,60 @@ export function createApiServer(input: {
             why: o.why,
           })),
         },
+      }
+    },
+  )
+  /**
+   * Turn a mandate into authority a chain will hold.
+   *
+   * The limits are chosen and stored first, and only then is a wallet asked to
+   * sign them, so this attaches a signature to something that already exists
+   * rather than creating anything. Every refusal lives in `acceptDelegation`,
+   * and the constraints it checks against are read from the store rather than
+   * taken from this request: a caller who supplies both sides of a comparison is
+   * not being checked by it.
+   */
+  app.post<{ Params: { id: string }; Body: { delegation: SignedDelegation } }>(
+    '/v1/authorizations/:id/delegation',
+    async (request, reply) => {
+      const session = requireSession(request, reply)
+      if (!session) return reply
+      if (!input.enforcers || !input.chain)
+        return reply.code(503).send({
+          error: {
+            code: 'DELEGATION_UNAVAILABLE',
+            message: 'This deployment cannot hold mandates on a chain.',
+            retryable: false,
+            requestId: request.headers['x-request-id'],
+          },
+        })
+      const authorization = await jobs.getAuthorization(request.params.id)
+      if (!requireOwner(request, reply, session, authorization.owner, 'authorization')) return reply
+      // A revoked mandate must not become signable again. Revoke is the control
+      // somebody reaches for when they want a thing to stop.
+      if (authorization.status === 'revoked')
+        return reply.code(409).send({
+          error: {
+            code: 'AUTHORIZATION_REVOKED',
+            message: 'This mandate has been revoked.',
+            retryable: false,
+            requestId: request.headers['x-request-id'],
+          },
+        })
+      const accepted = await acceptDelegation({
+        delegation: request.body?.delegation,
+        constraints: authorization.policy.constraints,
+        owner: session.address,
+        deployment: input.enforcers,
+        chain: input.chain,
+      })
+      const updated = await jobs.attachDelegation(request.params.id, accepted)
+      return {
+        id: updated.id,
+        status: updated.status,
+        delegator: updated.delegator ?? null,
+        delegationChainId: updated.delegationChainId ?? null,
+        signedAt: updated.delegationSignedAt ?? null,
       }
     },
   )

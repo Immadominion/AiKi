@@ -1,3 +1,4 @@
+import type { SignedDelegation } from '@aiki/contracts'
 import type { CompiledPolicy } from '../authority/policy.js'
 
 export type AuthorizationStatus = 'pending' | 'active' | 'revoked' | 'expired'
@@ -18,6 +19,15 @@ export interface AuthorizationRecord {
   revokedAt?: string
   /** The address that signed for this mandate. Null only for rows written before authentication existed. */
   owner: string | null
+  /**
+   * The delegation the owner signed, if they have. Absent means the limits are
+   * counted by AiKi and nothing on a chain knows about this mandate.
+   */
+  delegation?: SignedDelegation
+  /** The account the value comes out of, and the chain its manager is on. */
+  delegator?: string
+  delegationChainId?: number
+  delegationSignedAt?: string
 }
 
 export interface JobEvent {
@@ -56,6 +66,22 @@ export interface JobStore {
   createAuthorization(record: AuthorizationRecord): Promise<AuthorizationRecord>
   getAuthorization(id: string): Promise<AuthorizationRecord | null>
   revokeAuthorization(id: string, at: string): Promise<AuthorizationRecord | null>
+  /**
+   * Attach a signature to a mandate that already exists.
+   *
+   * Separate from creating one because they happen at different moments: the
+   * limits are chosen and stored first, and only then is a wallet asked to sign
+   * them. Refuses a mandate that is already signed rather than replacing it,
+   * since a second signature over different terms is how the limits somebody
+   * agreed to would quietly become different limits.
+   */
+  attachDelegation(
+    id: string,
+    delegation: SignedDelegation,
+    delegator: string,
+    chainId: number,
+    at: string,
+  ): Promise<AuthorizationRecord | null>
 
   createJob(record: JobRecord): Promise<JobRecord>
   getJob(id: string): Promise<JobRecord | null>
@@ -89,6 +115,25 @@ export class InMemoryJobStore implements JobStore {
     if (!held) return null
     held.status = 'revoked'
     held.revokedAt = at
+    return { ...held }
+  }
+
+  async attachDelegation(
+    id: string,
+    delegation: SignedDelegation,
+    delegator: string,
+    chainId: number,
+    at: string,
+  ) {
+    const held = this.authorizations.get(id)
+    if (!held) return null
+    // Signing again over different terms is how the limits somebody agreed to
+    // would quietly become different limits, so the first signature stands.
+    if (held.delegation) return { ...held }
+    held.delegation = delegation
+    held.delegator = delegator
+    held.delegationChainId = chainId
+    held.delegationSignedAt = at
     return { ...held }
   }
 

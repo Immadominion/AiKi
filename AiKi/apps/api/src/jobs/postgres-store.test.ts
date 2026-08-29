@@ -1,4 +1,7 @@
+import { randomUUID } from 'node:crypto'
+import type { SignedDelegation } from '@aiki/contracts'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { compilePolicy } from '../authority/policy.js'
 import { PostgresJobStore } from './postgres-store.js'
 import { JobService } from './service.js'
 
@@ -103,4 +106,66 @@ describe.skipIf(!url)('PostgresJobStore', () => {
     expect(verdict.allow).toBe(true)
     expect((await service.getAuthorization(auth.id)).spent).toBe(huge)
   })
+})
+
+it('keeps the first signature and refuses to let a second replace it', async () => {
+  const url = process.env.DATABASE_URL
+  if (!url) return
+  const { PostgresJobStore } = await import('./postgres-store.js')
+  const store = new PostgresJobStore(url)
+  try {
+    const id = randomUUID()
+    await store.createAuthorization({
+      id,
+      policy: compilePolicy([
+        { kind: 'session_total_cap', value: '1000', tier: 'T2', label: 'cap' },
+      ]),
+      status: 'active',
+      spent: 0n,
+      createdAt: new Date().toISOString(),
+      owner: `0x${'ab'.repeat(20)}`,
+    })
+
+    const first: SignedDelegation = {
+      delegate: `0x${'11'.repeat(20)}`,
+      delegator: `0x${'22'.repeat(20)}`,
+      authority: `0x${'ff'.repeat(32)}`,
+      caveats: [{ enforcer: `0x${'33'.repeat(20)}`, terms: '0xaaaa', args: '0x' }],
+      salt: '1',
+      epoch: '0',
+      signature: `0x${'11'.repeat(65)}` as `0x${string}`,
+    }
+    const attached = await store.attachDelegation(
+      id,
+      first,
+      first.delegator,
+      97,
+      new Date().toISOString(),
+    )
+    expect(attached?.delegation?.signature).toBe(first.signature)
+    expect(attached?.delegationChainId).toBe(97)
+    // A number, not the string INTEGER can arrive as: a chain id read as "97"
+    // never equals 97, and the mandate would look like it was for another chain.
+    expect(typeof attached?.delegationChainId).toBe('number')
+
+    // Signing again over different terms is how the limits somebody agreed to
+    // would quietly become different limits. The UPDATE says `delegation IS
+    // NULL` rather than reading first, so two racing requests cannot both win.
+    const firstCaveat = first.caveats[0]
+    if (!firstCaveat) throw new Error('fixture has no caveats')
+    const second: SignedDelegation = {
+      ...first,
+      caveats: [{ ...firstCaveat, terms: '0xbbbb' }],
+    }
+    const again = await store.attachDelegation(
+      id,
+      second,
+      second.delegator,
+      97,
+      new Date().toISOString(),
+    )
+    expect(again?.delegation?.caveats[0]?.terms).toBe('0xaaaa')
+  } finally {
+    await store.close()
+  }
 })
