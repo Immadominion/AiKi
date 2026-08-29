@@ -25,6 +25,9 @@ import { PostgresReceiptStore } from '../receipts/postgres-store.js'
 import { ReceiptService } from '../receipts/service.js'
 import { createApiServer } from './server.js'
 
+/** Absent means this deployment cannot prepare a delegation to sign. */
+const agentSessionKey = process.env.AGENT_SESSION_ADDRESS as `0x${string}` | undefined
+
 function loadSweeps(root: string): Observation[] {
   const files = readdirSync(root)
     .filter((name) => /^probe-sweep-.*\.json$/.test(name))
@@ -49,6 +52,7 @@ const persistence = databaseUrl
       // is what it is worth there. A dev API that reported everything as counted
       // by AiKi would make the builder's badges a local fiction.
       enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+      ...(agentSessionKey ? { agentSessionKey } : {}),
       chain: viemChainReader(
         process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
       ),

@@ -49,6 +49,12 @@ if (!webOrigin)
 const cookieMismatch = describeCookieMismatch(authDomain, webOrigin)
 if (cookieMismatch) throw new Error(cookieMismatch)
 const nonceStore = new PostgresNonceStore(databaseUrl)
+/**
+ * The agent's session key address. Absent means this deployment cannot prepare
+ * a delegation to sign, which is a real state and not an error: everything else
+ * still works and the limits are counted by AiKi.
+ */
+const agentSessionKey = process.env.AGENT_SESSION_ADDRESS as `0x${string}` | undefined
 const enforcerRpcUrl =
   process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
 const base = process.env.REFERENCE_AGENT_BASE_URL
@@ -63,6 +69,7 @@ const app = createApiServer({
   statsAggregate: () => store.statsAggregate(),
   observationsForLiveness: (states) => store.observationsForLiveness(states),
   enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+  ...(agentSessionKey ? { agentSessionKey } : {}),
   // Reads the chain the enforcers are on, which is not the one the rest of this
   // process talks to: the registry and the reference agents are on mainnet and
   // the mandate suite is on testnet. Sharing one client would check a signature

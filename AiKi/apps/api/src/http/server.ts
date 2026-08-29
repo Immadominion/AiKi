@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
+import { DELEGATION_TYPES, delegationDomain, ROOT_AUTHORITY } from '@aiki/contracts'
 import Fastify from 'fastify'
 import { requireOwner, requireSession } from '../auth/guard.js'
 import { requireIngestToken } from '../auth/ingest.js'
@@ -7,7 +8,7 @@ import type { AuthConfig } from '../auth/routes.js'
 import { registerAuthRoutes } from '../auth/routes.js'
 import { readCookie, SESSION_COOKIE } from '../auth/session.js'
 import { acceptDelegation } from '../authority/accept-delegation.js'
-import { describeEnforcement, withDerivedTiers } from '../authority/caveats.js'
+import { compileCaveats, describeEnforcement, withDerivedTiers } from '../authority/caveats.js'
 import type { ChainReader } from '../authority/chain-reader.js'
 import type { Constraint } from '../authority/policy.js'
 import { type BenchmarkRun, BenchmarkService, benchmarkEvidence } from '../benchmarks/service.js'
@@ -68,6 +69,12 @@ export function createApiServer(input: {
    * counted by AiKi, which is what a deployment with no chain access should do.
    */
   chain?: ChainReader
+  /**
+   * The agent's session key, which is the only address allowed to redeem a
+   * delegation. It pays its own gas and holds no authority of its own: whatever
+   * it can do, it can do only inside a delegation somebody signed.
+   */
+  agentSessionKey?: `0x${string}`
   jobs?: JobService
   receipts?: ReceiptService
   benchmarks?: BenchmarkService
@@ -434,6 +441,84 @@ export function createApiServer(input: {
             why: o.why,
           })),
         },
+      }
+    },
+  )
+  /*
+   * Exactly what to sign, computed by the side that will check it.
+   *
+   * A wallet cannot build this itself without the compiled caveats, and having
+   * the client compile them would put a second copy of the compiler in the
+   * browser, free to drift from the one the API verifies against. Then a person
+   * would sign what their browser believed and the API would reject it, or
+   * worse, accept something they were never shown. So the server hands over the
+   * bytes and the same server checks them back in.
+   *
+   * `delegator` is the caller's own account and is a query parameter rather than
+   * something we look up, because a person may hold more than one and only they
+   * know which is being used. Ownership of it is checked when the signature
+   * comes back, which is the moment it matters.
+   */
+  app.get<{ Params: { id: string }; Querystring: { delegator?: string } }>(
+    '/v1/authorizations/:id/delegation',
+    async (request, reply) => {
+      const session = requireSession(request, reply)
+      if (!session) return reply
+      if (!input.enforcers || !input.agentSessionKey)
+        return reply.code(503).send({
+          error: {
+            code: 'DELEGATION_UNAVAILABLE',
+            message: 'This deployment cannot hold mandates on a chain.',
+            retryable: false,
+            requestId: request.headers['x-request-id'],
+          },
+        })
+      const delegator = request.query.delegator
+      if (!delegator || !/^0x[0-9a-fA-F]{40}$/.test(delegator))
+        return reply.code(400).send({
+          error: {
+            code: 'DELEGATOR_REQUIRED',
+            message: 'Name the account this mandate spends from.',
+            retryable: false,
+            requestId: request.headers['x-request-id'],
+          },
+        })
+      const authorization = await jobs.getAuthorization(request.params.id)
+      if (!requireOwner(request, reply, session, authorization.owner, 'authorization')) return reply
+      const { caveats, outcomes } = compileCaveats(
+        authorization.policy.constraints,
+        input.enforcers,
+      )
+      return {
+        domain: delegationDomain(input.enforcers.chainId, input.enforcers.manager as `0x${string}`),
+        types: DELEGATION_TYPES,
+        primaryType: 'Delegation',
+        // What the wallet signs. `args` are absent because they are not part of
+        // the signed type at all.
+        message: {
+          delegate: input.agentSessionKey,
+          delegator,
+          authority: ROOT_AUTHORITY,
+          caveats: caveats.map((c) => ({ enforcer: c.enforcer, terms: c.terms })),
+          salt: '1',
+          epoch: '0',
+        },
+        // What to post back, once signed. Carries args, which the manager needs
+        // and the signature deliberately does not cover.
+        unsigned: {
+          delegate: input.agentSessionKey,
+          delegator,
+          authority: ROOT_AUTHORITY,
+          caveats,
+          salt: '1',
+          epoch: '0',
+        },
+        limits: outcomes.map((o) => ({
+          kind: o.constraint.kind,
+          label: o.constraint.label,
+          tier: o.tier,
+          enforcedBy: o.enforcer,
+        })),
       }
     },
   )

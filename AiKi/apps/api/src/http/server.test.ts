@@ -491,6 +491,7 @@ async function signedApp(chain = permissiveChain()) {
     auth: authConfig(),
     enforcers: AIKI_ENFORCERS_BSC_TESTNET,
     chain,
+    agentSessionKey: `0x${'ef'.repeat(20)}`,
   })
   apps.push(app)
   const created = await app.inject({
@@ -596,4 +597,45 @@ it('says so plainly when it cannot reach a chain at all', async () => {
   })
   expect(res.statusCode).toBe(503)
   expect(res.json().error.code).toBe('DELEGATION_UNAVAILABLE')
+})
+
+it('hands over exactly what to sign, computed by the side that checks it', async () => {
+  // The alternative is a second copy of the caveat compiler in the browser, free
+  // to drift from the one the API verifies against. Then a person signs what
+  // their browser believed and the API rejects it, or worse accepts something
+  // they were never shown.
+  const { app, id, delegation } = await signedApp()
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/authorizations/${id}/delegation?delegator=${delegation.delegator}`,
+    headers: cookie,
+  })
+  expect(res.statusCode).toBe(200)
+  const body = res.json()
+  expect(body.domain.chainId).toBe(97)
+  expect(body.domain.name).toBe('AiKi Delegation')
+  expect(body.primaryType).toBe('Delegation')
+  // args are absent from the signed message and present on what gets posted
+  // back, because the manager needs them and the signature must not cover them.
+  expect(body.message.caveats[0].args).toBeUndefined()
+  expect(body.unsigned.caveats[0].args).toBe('0x')
+  // What it hands over must be what it will accept.
+  const filed = await app.inject({
+    method: 'POST',
+    url: `/v1/authorizations/${id}/delegation`,
+    headers: { ...cookie, 'content-type': 'application/json' },
+    payload: { delegation: { ...body.unsigned, signature: `0x${'11'.repeat(65)}` } },
+  })
+  expect(filed.statusCode).toBe(200)
+})
+
+it('will not prepare a delegation without naming the account it spends from', async () => {
+  const { app, id } = await signedApp()
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/authorizations/${id}/delegation`,
+    headers: cookie,
+  })
+  expect(res.statusCode).toBe(400)
+  expect(res.json().error.code).toBe('DELEGATOR_REQUIRED')
 })
