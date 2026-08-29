@@ -1,14 +1,20 @@
 name: CI
 
-# Railway deploys the API and the scheduler on every push to main, and Vercel
-# deploys the web, both without waiting for this. So this does not gate anything
-# yet: it tells us a push was broken, it does not stop it shipping. Turning on
-# Railway's "wait for CI" and a Vercel required check is the follow-up, and it is
-# only worth doing once this is reliably green.
+# Manual only, for now, and not because that is better.
+#
+# Every run fails in about three seconds with "The job was not started because
+# your account is locked due to a billing issue", and the card that would clear
+# it keeps being rejected. On push this produced a permanently red badge on main,
+# which this project has already decided once is worse than no CI: a badge that
+# is always red is a badge nobody reads, and it hides the run that genuinely
+# fails later.
+#
+# The workflow is correct and kept ready. When billing clears, put the push and
+# pull_request triggers back and this starts working with no other change. Until
+# then it can be run by hand with `gh workflow run ci.yml`, which fails for the
+# same reason but does not mark the branch.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 # A second push supersedes the first. Nobody needs the results for a commit that
 # has already been replaced.
