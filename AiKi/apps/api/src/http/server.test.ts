@@ -178,3 +178,74 @@ it('search coverage names what the liveness filter excluded, and total survives 
     exclusionReasons: { DECLARED_ONLY: 1, IMPOSTOR_STATIC: 1 },
   })
 })
+
+it('finds agents a capped read model has already forgotten, and counts exclusions over every row', async () => {
+  // The failure this reproduces: /v1/stats counted 13 LIVE agents on production
+  // while /v1/search could see 4, because search projected over the newest page
+  // of observations and the other nine had aged out of it. The four that
+  // survived were simply the most recently probed, which were our own.
+  const verdict = (agentId: string, state: string) => ({
+    id: `obs-${agentId}`,
+    subject: { type: 'agent' as const, chainId: 56, registry: '0x8004', agentId },
+    predicate: 'agent.liveness_verdict',
+    value: { state },
+    validAt: '2026-08-01T00:00:00.000Z',
+    observedAt: '2026-08-01T00:00:00.000Z',
+    recordedAt: '2026-08-01T00:00:00.000Z',
+    source: 'prober',
+    method: 'probe/v1',
+    evidenceClass: 'B' as const,
+    dedupeKey: `d-${agentId}`,
+  })
+
+  const app = createApiServer({
+    // The capped page: it can only see one of the two live agents.
+    observations: () => [verdict('recent', 'LIVE')],
+    // The store, selected in SQL: it can see both.
+    observationsForLiveness: () => [verdict('recent', 'LIVE'), verdict('ancient', 'LIVE')],
+    statsAggregate: () => ({
+      indexed: {
+        totalAgents: 100,
+        bscAgents: 100,
+        firstIndexedBlock: 1,
+        lastIndexedBlock: 2,
+        lastIndexedAt: '2026-08-01T00:00:00.000Z',
+      },
+      probed: {
+        agentsProbed: 40,
+        byRawState: { LIVE: 2, IMPOSTOR_STATIC: 38 },
+        lastProbeSweepAt: '2026-08-01T00:00:00.000Z',
+      },
+    }),
+  })
+  apps.push(app)
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/search',
+    payload: { filters: { liveness: ['LIVE'] }, limit: 100 },
+  })
+  const body = res.json()
+  expect(body.results.map((r: { agentId: string }) => r.agentId).sort()).toEqual([
+    'ancient',
+    'recent',
+  ])
+  expect(body.total).toBe(2)
+  // The honesty block agrees with the aggregate rather than with one page of it:
+  // 100 indexed, 38 impostors excluded, and the 60 never probed at all.
+  expect(body.coverage.indexedAgents).toBe(100)
+  expect(body.coverage.exclusionReasons).toEqual({ IMPOSTOR_STATIC: 38, UNPROBED: 60 })
+  expect(body.coverage.excludedUnverified).toBe(98)
+})
+
+it('refuses a comparison large enough to hold the event loop', async () => {
+  const app = createApiServer({ observations: () => [] })
+  apps.push(app)
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/compare',
+    payload: { agentIds: Array.from({ length: 5_000 }, (_, i) => String(i)) },
+  })
+  expect(res.statusCode).toBe(400)
+  expect(res.json().error.code).toBe('TOO_MANY_AGENTS')
+})

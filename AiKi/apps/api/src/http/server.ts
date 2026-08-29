@@ -17,6 +17,13 @@ import { buildQuote } from '../settlement/pricing.js'
 import { publishedPrice } from '../settlement/published-price.js'
 import { asClientError, asSchemaError } from './errors.js'
 
+/** The most agents one comparison may name. See the check in /v1/compare. */
+const COMPARE_MAX = 10
+
+/** One page size rule for both search paths: 1 to 100, defaulting to 20. */
+const clampLimit = (raw: number | undefined): number =>
+  typeof raw === 'number' && Number.isFinite(raw) ? Math.min(Math.max(Math.floor(raw), 1), 100) : 20
+
 export function createApiServer(input: {
   observations: () => Observation[] | Promise<Observation[]>
   /**
@@ -30,6 +37,14 @@ export function createApiServer(input: {
    * then shrink as the store grows.
    */
   statsAggregate?: () => StatsAggregate | Promise<StatsAggregate>
+  /**
+   * Every observation for the agents whose latest verdict is one of `states`,
+   * selected in SQL. Deployments that can do this MUST, for the same reason
+   * `statsAggregate` exists: projecting a search over the capped `observations()`
+   * page silently drops agents as the store grows, and the ones it drops are the
+   * ones probed longest ago.
+   */
+  observationsForLiveness?: (states: string[]) => Observation[] | Promise<Observation[]>
   jobs?: JobService
   receipts?: ReceiptService
   benchmarks?: BenchmarkService
@@ -142,6 +157,22 @@ export function createApiServer(input: {
           requestId: request.headers['x-request-id'],
         },
       })
+    /*
+     * Bounded, because each id projects a passport over the whole observation
+     * set and this route is unauthenticated. Measured at roughly 5ms per id, and
+     * Fastify's default 1MB body holds about 116,000 of them, which is on the
+     * order of ten minutes of blocked event loop from a single POST. Comparison
+     * is pairwise and nobody reads a hundred agents side by side anyway.
+     */
+    if (request.body.agentIds.length > COMPARE_MAX)
+      return reply.code(400).send({
+        error: {
+          code: 'TOO_MANY_AGENTS',
+          message: `Compare takes at most ${COMPARE_MAX} agents at a time.`,
+          retryable: false,
+          requestId: request.headers['x-request-id'],
+        },
+      })
     const observations = await input.observations()
     const passports = request.body.agentIds.map((id) => projectPassport(id, observations))
     return { agents: passports, ...comparePassports(passports) }
@@ -152,14 +183,66 @@ export function createApiServer(input: {
   app.post<{
     Body: { query?: string; filters?: { category?: string; liveness?: string[] }; limit?: number }
   }>('/v1/search', async (request) => {
+    const query = request.body.query?.toLowerCase()
+    // The contract's documented default: unverified agents are hidden but
+    // counted. Passing filters.liveness explicitly overrides it.
+    const wanted = request.body.filters?.liveness ?? ['LIVE', 'DEGRADED']
+
+    /*
+     * With no text query, the wanted states can be selected in SQL, so the
+     * answer covers every agent in them instead of whichever ones sit in the
+     * newest page of observations. Measured on production before this existed:
+     * /v1/stats counted 13 LIVE agents and this route could see 4, and the 4
+     * were simply the most recently probed, which were our own.
+     *
+     * A text query still runs over the capped page, because narrowing to the
+     * wanted states first would make "how many did the filter exclude" a count
+     * of agents that never matched the query. That path keeps its old window,
+     * and its limits are the same as they were.
+     */
+    const scoped =
+      !query && !!input.observationsForLiveness && !!input.statsAggregate && wanted.length > 0
+    if (scoped && input.observationsForLiveness && input.statsAggregate) {
+      const [observations, agg] = await Promise.all([
+        input.observationsForLiveness(wanted),
+        input.statsAggregate(),
+      ])
+      const ids = [...new Set(observations.map((o) => o.subject.agentId))]
+      const results = ids
+        .map((id) => projectPassport(id, observations))
+        .filter((p) => wanted.includes(p.liveness))
+      const limit = clampLimit(request.body.limit)
+
+      // Counted over every row, so the honesty block agrees with /v1/stats
+      // rather than with one page of it.
+      const total = agg.indexed?.totalAgents ?? 0
+      const unprobed = Math.max(0, total - agg.probed.agentsProbed)
+      const exclusionReasons: Partial<Record<string, number>> = {}
+      let excludedUnverified = 0
+      const note = (state: string, count: number) => {
+        if (count <= 0 || wanted.includes(state)) return
+        exclusionReasons[state] = (exclusionReasons[state] ?? 0) + count
+        if (state !== 'LIVE' && state !== 'DEGRADED') excludedUnverified += count
+      }
+      for (const [state, count] of Object.entries(agg.probed.byRawState)) note(state, count)
+      note('UNPROBED', unprobed)
+
+      return {
+        results: results.slice(0, limit),
+        total: results.length,
+        coverage: {
+          indexedAgents: total,
+          // No query means everything indexed matched before the filter ran.
+          matchedBeforeFilters: total,
+          excludedUnverified,
+          exclusionReasons,
+        },
+      }
+    }
+
     const observations = await input.observations()
     const ids = [...new Set(observations.map((o) => o.subject.agentId))]
-    const query = request.body.query?.toLowerCase()
-    const rawLimit = request.body.limit
-    const limit =
-      typeof rawLimit === 'number' && Number.isFinite(rawLimit)
-        ? Math.min(Math.max(Math.floor(rawLimit), 1), 100)
-        : 20
+    const limit = clampLimit(request.body.limit)
     const matched = ids
       .map((id) => projectPassport(id, observations))
       .filter(
@@ -169,9 +252,6 @@ export function createApiServer(input: {
           (passport.name?.toLowerCase().includes(query) ?? false) ||
           passport.liveness.toLowerCase().includes(query),
       )
-    // The contract's documented default: unverified agents are hidden but
-    // counted. Passing filters.liveness explicitly overrides it.
-    const wanted = request.body.filters?.liveness ?? ['LIVE', 'DEGRADED']
     const kept = matched.filter((p) => wanted.includes(p.liveness))
     // The honesty block: what the filter removed, counted by why — and
     // excludedUnverified counts only the unverified among them, since a LIVE

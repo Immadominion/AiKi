@@ -46,7 +46,11 @@ const stalenessOf = (iso: string | null): string | null => {
 export function CoverageBlock({ shown, coverage }: { shown: number; coverage: RegistryCoverage }) {
   if (!shown) return null
   const excluded = coverage.probed - coverage.answering
-  const stale = stalenessOf(coverage.sweptAt)
+  // Staleness is an alarm about the evidence having stopped moving. While the
+  // API has not answered yet, the only thing that is old is the fallback we are
+  // holding up in the meantime, so raising it here would warn about the wrong
+  // thing on every cold load.
+  const stale = coverage.freshness === 'asking' ? null : stalenessOf(coverage.sweptAt)
 
   return (
     <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-[15px]">
@@ -99,7 +103,11 @@ export function CoverageBlock({ shown, coverage }: { shown: number; coverage: Re
       <p className="text-muted-3 mt-[10px] mb-0 text-[11.5px] leading-[1.45]">
         {coverage.freshness === 'live'
           ? `From AiKi's evidence API${coverage.sweptAt ? ` · last sweep ${sweepDay(coverage.sweptAt)}` : ''}`
-          : `From AiKi's probe sweep${coverage.sweptAt ? ` of ${sweepDay(coverage.sweptAt)}` : ''} · live numbers unreachable right now`}
+          : `From AiKi's probe sweep${coverage.sweptAt ? ` of ${sweepDay(coverage.sweptAt)}` : ''} · ${
+              coverage.freshness === 'asking'
+                ? 'checking for newer numbers'
+                : 'live numbers unreachable right now'
+            }`}
         {stale ? (
           <>
             {' · '}

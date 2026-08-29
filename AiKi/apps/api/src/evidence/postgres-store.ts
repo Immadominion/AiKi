@@ -200,52 +200,107 @@ export class PostgresEvidenceStore implements EvidenceStore {
   /** Read model input only; canonical facts remain append-only. */
   async list(limit = 10_000) {
     const rows = await this.sql<
-      {
-        id: string
-        subject_type: 'agent'
-        chain_id: number
-        registry_address: string
-        agent_id: string
-        predicate: string
-        value: Record<string, unknown>
-        valid_at: string | Date
-        observed_at: string | Date
-        recorded_at: string | Date
-        source: string
-        method: string
-        evidence_class: 'A' | 'B' | 'C' | 'D'
-        block_number: number | string | null
-        log_index: number | string | null
-        transaction_hash: string | null
-        finality: 'provisional' | 'safe' | 'finalized' | null
-        supersedes: string | null
-        superseded_reason: string | null
-        dedupe_key: string
-      }[]
+      ObservationRow[]
     >`SELECT * FROM observations ORDER BY observed_at DESC LIMIT ${limit}`
-    return rows.map((row) => ({
-      id: row.id,
-      subject: {
-        type: row.subject_type,
-        chainId: row.chain_id,
-        registry: row.registry_address,
-        agentId: row.agent_id,
-      },
-      predicate: row.predicate,
-      value: row.value,
-      validAt: iso(row.valid_at),
-      observedAt: iso(row.observed_at),
-      recordedAt: iso(row.recorded_at),
-      source: row.source,
-      method: row.method,
-      evidenceClass: row.evidence_class,
-      ...(row.block_number === null ? {} : { blockNumber: Number(row.block_number) }),
-      ...(row.log_index === null ? {} : { logIndex: Number(row.log_index) }),
-      ...(row.transaction_hash === null ? {} : { transactionHash: row.transaction_hash }),
-      ...(row.finality === null ? {} : { finality: row.finality }),
-      ...(row.supersedes === null ? {} : { supersedes: row.supersedes }),
-      ...(row.superseded_reason === null ? {} : { supersededReason: row.superseded_reason }),
-      dedupeKey: row.dedupe_key,
-    }))
+    return rows.map(toObservation)
+  }
+
+  /**
+   * Every observation belonging to the agents whose LATEST verdict is one of
+   * `states`, chosen in SQL rather than sliced off a page.
+   *
+   * `list()` is `ORDER BY observed_at DESC LIMIT 10000`, and a projection built
+   * over it is a moving window: once the store passed ten thousand rows, agents
+   * stopped being visible in search as soon as newer observations pushed theirs
+   * out. Measured on production, `/v1/stats` counted thirteen LIVE agents while
+   * a search over `list()` could see four, and the four were the ones probed
+   * most recently, which happened to be our own. A registry page that shows only
+   * the operator's own agents as working is worse than showing nothing.
+   *
+   * The window is closed by selecting the AGENTS first and then taking all of
+   * their rows, so an agent is either wholly present or wholly absent, never
+   * half-remembered.
+   */
+  async observationsForLiveness(states: string[], agentLimit = 1_000) {
+    if (states.length === 0) return []
+    const rows = await this.sql<ObservationRow[]>`
+      WITH latest AS (
+        SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
+          chain_id,
+          lower(registry_address) AS reg,
+          agent_id,
+          value->>'state' AS state,
+          observed_at
+        FROM observations
+        WHERE predicate = 'agent.liveness_verdict'
+        ORDER BY chain_id, lower(registry_address), agent_id, observed_at DESC
+      ),
+      picked AS (
+        SELECT chain_id, reg, agent_id
+        FROM latest
+        WHERE state = ANY(${states})
+        ORDER BY observed_at DESC
+        LIMIT ${agentLimit}
+      )
+      SELECT o.*
+      FROM observations o
+      JOIN picked p
+        ON o.chain_id = p.chain_id
+       AND lower(o.registry_address) = p.reg
+       AND o.agent_id = p.agent_id
+      ORDER BY o.observed_at DESC
+    `
+    return rows.map(toObservation)
+  }
+}
+
+interface ObservationRow {
+  id: string
+  subject_type: 'agent'
+  chain_id: number
+  registry_address: string
+  agent_id: string
+  predicate: string
+  value: Record<string, unknown>
+  valid_at: string | Date
+  observed_at: string | Date
+  recorded_at: string | Date
+  source: string
+  method: string
+  evidence_class: 'A' | 'B' | 'C' | 'D'
+  block_number: number | string | null
+  log_index: number | string | null
+  transaction_hash: string | null
+  finality: 'provisional' | 'safe' | 'finalized' | null
+  supersedes: string | null
+  superseded_reason: string | null
+  dedupe_key: string
+}
+
+/** One row shape, mapped in one place, so the two readers cannot disagree. */
+function toObservation(row: ObservationRow) {
+  return {
+    id: row.id,
+    subject: {
+      type: row.subject_type,
+      chainId: row.chain_id,
+      registry: row.registry_address,
+      agentId: row.agent_id,
+    },
+    predicate: row.predicate,
+    value: row.value,
+    validAt: iso(row.valid_at),
+    observedAt: iso(row.observed_at),
+    recordedAt: iso(row.recorded_at),
+    source: row.source,
+    method: row.method,
+    evidenceClass: row.evidence_class,
+    ...(row.block_number === null ? {} : { blockNumber: Number(row.block_number) }),
+    ...(row.log_index === null ? {} : { logIndex: Number(row.log_index) }),
+    ...(row.transaction_hash === null ? {} : { transactionHash: row.transaction_hash }),
+    ...(row.finality === null ? {} : { finality: row.finality }),
+    ...(row.supersedes === null ? {} : { supersedes: row.supersedes }),
+    ...(row.superseded_reason === null ? {} : { supersededReason: row.superseded_reason }),
+    dedupeKey: row.dedupe_key,
   }
 }

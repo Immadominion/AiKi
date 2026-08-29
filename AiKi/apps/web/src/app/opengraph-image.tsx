@@ -1,17 +1,23 @@
 import { ImageResponse } from 'next/og'
 
-export const alt = 'AiKi: put agents to work on BNB Chain'
+export const alt = 'AiKi: give an agent a limit, not your wallet'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
 
 /**
  * The link preview.
  *
- * Leads with the measurement rather than a tagline, because the measurement is
- * the reason to click. It is our own number from our own sweep, and it is worse
- * than anything else published about this registry.
- */
-/**
+ * It used to lead with a measurement, "we probed 400 agents, zero were fully
+ * live", on the theory that the number was the reason to click. Two problems.
+ * The sweep moved on and the card did not, so it published a superseded figure
+ * to everyone who shared the link. And a fact about how bad other people's
+ * agents are is not a reason to use this: it makes AiKi a critic.
+ *
+ * What it says now is the thing the product actually offers, and it is careful
+ * about the tier. It does not say the chain refuses, because no enforcer of ours
+ * is deployed yet. It says you keep the wallet and get a receipt, both of which
+ * are true today. Upgrade this line when, and only when, that changes.
+ *
  * The card is the first thing most people see, so it should be in our typeface.
  *
  * Satori has no access to the fonts `next/font` installs, so the file is fetched
@@ -94,7 +100,7 @@ export default async function OgImage() {
             maxWidth: 900,
           }}
         >
-          Put agents to work. Prove what they did.
+          Give an agent a limit, not your wallet.
         </div>
         <div
           style={{
@@ -106,8 +112,8 @@ export default async function OgImage() {
             lineHeight: 1.4,
           }}
         >
-          We probed 400 agents on the BNB Chain registry ourselves. Zero were fully live. A third
-          answer with the same bytes whatever you ask them.
+          You set what it may spend and where. Every action it takes, including the ones it was
+          refused, lands in a receipt you can check yourself.
         </div>
       </div>
 

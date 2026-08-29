@@ -26,7 +26,14 @@ export interface RegistryCoverage {
   /** LIVE + DEGRADED: everything that answered like an agent at all. */
   answering: number
   reasons: { state: LivenessState; count: number }[]
-  freshness: 'live' | 'cached'
+  /**
+   * Three states, not two. `asking` is the truth before the API answers: the
+   * sweep numbers below are real measurements, just older ones, and we have not
+   * yet learned whether newer ones exist. Rendering that as `cached` made every
+   * cold load spend two seconds asserting the API was unreachable before it had
+   * been asked, which is the one thing this product may never do.
+   */
+  freshness: 'live' | 'cached' | 'asking'
   sweptAt: string | null
 }
 
@@ -76,7 +83,9 @@ async function load(): Promise<RegistryCoverage> {
 }
 
 export function useRegistryCoverage(): RegistryCoverage {
-  const [coverage, setCoverage] = useState<RegistryCoverage>(cached ?? SWEEP_COVERAGE)
+  const [coverage, setCoverage] = useState<RegistryCoverage>(
+    cached ?? { ...SWEEP_COVERAGE, freshness: 'asking' },
+  )
   useEffect(() => {
     if (cached) return
     inflight ??= load()
@@ -87,8 +96,10 @@ export function useRegistryCoverage(): RegistryCoverage {
         if (alive) setCoverage(live)
       },
       () => {
-        // Sweep numbers stay up; the next mount retries the API.
+        // Sweep numbers stay up, and only now may they be called unreachable:
+        // we asked, and the answer did not come.
         inflight = null
+        if (alive) setCoverage(SWEEP_COVERAGE)
       },
     )
     return () => {

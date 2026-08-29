@@ -10,6 +10,7 @@ import { EvidenceBars } from '@/components/ui/EvidenceBars'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, AGENTS } from '@/lib/agents'
 import { DETAILS } from '@/lib/detail'
+import { EXAMPLE_EVIDENCE_COLUMN, EXAMPLE_FOOTNOTE, exampleBanner } from '@/lib/examples'
 import { useRegistryCoverage } from '@/lib/live'
 import { agentHref, route } from '@/lib/routes'
 import { search } from '@/lib/search'
@@ -35,22 +36,11 @@ export function ExploreView() {
     [],
   )
 
-  /**
-   * Said on every view of this page, not tucked into a footnote.
-   *
-   * These six agents are examples. AiKi has never probed them, because they are
-   * not in the registry. Matching an ask to an agent needs to know what an agent
-   * can do, and almost nothing in the real registry publishes that: of the
-   * agents indexed so far, none has resolved a registration file carrying
-   * capabilities. So this page demonstrates the shape of the answer while the
-   * registry page carries what is actually known.
-   */
-  const exampleBanner = {
-    title: 'These six agents are examples.',
-    body: 'AiKi has not probed them and they are not in the ERC-8004 registry. Matching an ask to an agent means knowing what that agent can do, and almost no registry entry publishes it yet, so this page shows the shape of the answer rather than a measured one.',
-    cta: 'See what we measured',
-    onAction: () => router.push(route('/registry')),
-  }
+  // Said on every view of this page, not tucked into a footnote. The wording
+  // lives in lib/examples so the four surfaces showing this dataset cannot drift
+  // apart again, which is exactly how three of them ended up claiming the
+  // opposite.
+  const banner = exampleBanner(() => router.push(route('/registry')))
 
   const table = (rows: typeof AGENTS) => (
     <DataTable
@@ -59,7 +49,7 @@ export function ExploreView() {
       columns={[
         { label: 'Agent', glyph: '◍' },
         { label: 'What it does', glyph: '⌬' },
-        { label: 'Evidence AiKi collected', glyph: '⊞', sortable: true },
+        { label: EXAMPLE_EVIDENCE_COLUMN, glyph: '⊞', sortable: true },
         { label: 'Price', glyph: '⌁', sortable: true },
         { label: '', glyph: '', align: 'end' },
       ]}
@@ -95,7 +85,7 @@ export function ExploreView() {
           />,
         ],
       }))}
-      footnote="Each bar is one batch of checks AiKi ran itself, not a rating and not self-reported uptime. Empty bars mean missing evidence. A new agent is not a bad agent."
+      footnote={EXAMPLE_FOOTNOTE}
     />
   )
 
@@ -153,11 +143,11 @@ export function ExploreView() {
           ? ''
           : [
               'Matched against the positions you hold',
-              'Everything we index that answers at all',
-              'Most checks we have run, first',
+              'Every example in the set',
+              'Most illustrative checks first',
             ]
       }
-      banner={exampleBanner}
+      banner={banner}
       panels={searching ? undefined : [table(suggested), table(AGENTS), table(testedMost)]}
     >
       {searching ? (

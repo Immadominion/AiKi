@@ -5,6 +5,8 @@ import { MarketGrid } from '@/components/shell/MarketCard'
 import { PageCard } from '@/components/shell/PageCard'
 import { useLayoutPref } from '@/components/shell/prefs'
 import { AGENTS } from '@/lib/agents'
+import { EXAMPLE_FOOTNOTE, exampleBanner } from '@/lib/examples'
+import { route } from '@/lib/routes'
 
 /**
  * The market home — the alternative to the single question.
@@ -24,12 +26,10 @@ export function MarketView() {
       primary={fast ? 'Open Fast mode' : 'Hire agent'}
       onPrimary={fast ? () => router.push('/') : undefined}
       tabs={['All agents', 'For your positions', 'New']}
-      tabHint="12 agents claim work today"
+      tabHint={`${AGENTS.length} agents claim work today`}
+      banner={exampleBanner(() => router.push(route('/registry')))}
     >
-      <MarketGrid
-        agents={AGENTS}
-        footnote="Every agent here is tested by AiKi itself. Empty bars mean missing evidence, not bad performance."
-      />
+      <MarketGrid agents={AGENTS} footnote={EXAMPLE_FOOTNOTE} />
     </PageCard>
   )
 }

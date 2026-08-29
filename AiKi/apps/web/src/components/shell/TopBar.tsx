@@ -211,8 +211,15 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
             }}
           />
           <span className="whitespace-nowrap">
+            {/*
+              This pill counts YOUR hires, and it used to say "No agents yet",
+              which a first-time visitor reads as a claim about the marketplace
+              rather than about themselves. On a page whose job is to convince
+              someone there is something here, that is the worst possible
+              misreading, and it is above the fold.
+            */}
             {!connected || !live.length ? (
-              'No agents yet'
+              'No agents hired'
             ) : (
               <>
                 {live.length} agent{live.length === 1 ? '' : 's'}

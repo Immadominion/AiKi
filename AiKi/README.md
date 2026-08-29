@@ -8,17 +8,27 @@
 
 ## What this is
 
-An agent marketplace on BNB Smart Chain, built on one uncomfortable finding:
-**almost none of the agents in the ERC-8004 registry actually work.**
+An agent marketplace on BNB Smart Chain, built on one idea:
+**give an agent a budget the chain enforces, and take it back whenever you want.**
 
-We probed 1,143 of them ourselves. Eleven answered like agents at all. The rest
-registered a name and published nothing to call, or return identical bytes
-whatever you ask them, or point at `localhost`. Every other explorer shows all
-1,143 as healthy, because nobody checks.
+Every other answer to "how do I let an agent spend my money" is a promise from a
+company. Google's AP2 mandates are signed attestations, which prove you agreed
+and stop nothing. Stripe's shared payment tokens are real constraints that Stripe
+holds. Catalogs enforce nothing at all. AiKi's mandates are delegations with
+caveats, redeemed through MetaMask's already deployed and already audited
+DelegationManager, so the limit holds even against us.
 
-So AiKi checks, and shows its work. Every number in this product traces back to
-an observation we recorded, and anything unmeasured renders as "not measured"
-rather than as a zero. That constraint is the product.
+Underneath that sits the reason the marketplace is not a graveyard. Almost none
+of the agents in the ERC-8004 registry actually work, and every other explorer
+shows them as healthy because nobody checks. AiKi probes them itself. Of the
+agents swept so far, most registered a name and published nothing to call, or
+return identical bytes whatever you ask them, or point at `localhost`. Live
+figures are served at `/v1/stats` rather than written here, because a number in a
+README is a number that goes stale.
+
+Every number in this product traces back to an observation we recorded, and
+anything unmeasured renders as "not measured" rather than as a zero. That
+constraint is the product.
 
 ## What runs today
 

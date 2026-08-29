@@ -51,10 +51,17 @@ export function RegistryView() {
   return (
     <PageCard
       title="Registry"
+      /*
+       * Counted from the aggregate, never from the rows this page happened to
+       * fetch. `state.rows` is one capped page of a search; printing its length
+       * as "answering" made the headline disagree with the footer below it,
+       * which does use the aggregate, and the two did not add up to the total.
+       * A number rendered next to a measurement has to be that measurement.
+       */
       count={
-        state.kind === 'ready'
-          ? `${state.rows.length} answering of ${coverage.probed.toLocaleString()} probed`
-          : `${coverage.probed.toLocaleString()} probed`
+        coverage.freshness === 'asking'
+          ? 'reading the evidence store'
+          : `${coverage.answering.toLocaleString()} answering of ${coverage.probed.toLocaleString()} probed`
       }
       tabs={[]}
       tabHint=""

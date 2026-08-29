@@ -138,7 +138,7 @@ export function AskPanel() {
           href={route('/docs/how-we-test')}
           className="pointer-events-auto text-[12.5px] font-medium text-[#767676] hover:text-[#141414]"
         >
-          Every agent here is tested by AiKi itself.{' '}
+          AiKi probes the ERC-8004 registry itself.{' '}
           <span className="font-bold underline underline-offset-[3px]">how we test</span>
         </Link>
       </div>

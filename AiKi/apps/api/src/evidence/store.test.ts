@@ -188,3 +188,64 @@ it('counts the dashboard over every row, and agrees with the in-memory fold', as
     await store.close()
   }
 })
+
+it('selects agents by their latest verdict, however old their rows are', async () => {
+  const url = process.env.DATABASE_URL
+  if (!url) return
+  const { PostgresEvidenceStore } = await import('./postgres-store.js')
+  const store = new PostgresEvidenceStore(url)
+  const registry = `0xliveness-${Date.now()}`
+  const subject = (agentId: string) => ({
+    type: 'agent' as const,
+    chainId: 56,
+    registry,
+    agentId,
+  })
+  const verdict = (agentId: string, state: string, observedAt: string) => ({
+    subject: subject(agentId),
+    predicate: 'agent.liveness_verdict',
+    value: { state },
+    validAt: observedAt,
+    observedAt,
+    source: 'prober',
+    method: 'probe/v1',
+    evidenceClass: 'B' as const,
+    dedupeKey: `${registry}:${agentId}:${state}:${observedAt}`,
+  })
+  try {
+    // Probed long ago and never since. This is the agent the capped read model
+    // loses first, and losing it is what made production report four live
+    // agents while the aggregate counted thirteen.
+    await store.append(verdict('ancient', 'LIVE', '2020-01-01T00:00:00.000Z'))
+    await store.append({
+      subject: subject('ancient'),
+      predicate: 'erc8004.agent_registered',
+      value: { agentURI: 'https://example.com/ancient' },
+      validAt: '2019-01-01T00:00:00.000Z',
+      observedAt: '2019-01-01T00:00:00.000Z',
+      source: 'chain:bsc',
+      method: 'erc8004:Registered/v1',
+      evidenceClass: 'A' as const,
+      dedupeKey: `${registry}:ancient:registered`,
+    })
+    // Was live, is not any more. Only the latest verdict may decide.
+    await store.append(verdict('lapsed', 'LIVE', '2020-01-01T00:00:00.000Z'))
+    await store.append(verdict('lapsed', 'DECLARED_ONLY', '2026-08-01T00:00:00.000Z'))
+    // Never live, probed most recently of the three.
+    await store.append(verdict('dead', 'IMPOSTOR_STATIC', '2026-08-02T00:00:00.000Z'))
+
+    const live = await store.observationsForLiveness(['LIVE'])
+    const mine = live.filter((o) => o.subject.registry.toLowerCase() === registry.toLowerCase())
+    const agents = [...new Set(mine.map((o) => o.subject.agentId))].sort()
+
+    expect(agents).toEqual(['ancient'])
+    // Whole agent or no agent: the registration comes back with the verdict, so
+    // a passport projected from this is never half-remembered.
+    expect(mine.map((o) => o.predicate).sort()).toEqual([
+      'agent.liveness_verdict',
+      'erc8004.agent_registered',
+    ])
+  } finally {
+    await store.close()
+  }
+})

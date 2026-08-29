@@ -5,6 +5,7 @@ import { MarketGrid } from '@/components/shell/MarketCard'
 import { PageCard } from '@/components/shell/PageCard'
 import { useSaved } from '@/components/shell/prefs'
 import { AGENTS } from '@/lib/agents'
+import { EXAMPLE_FOOTNOTE } from '@/lib/examples'
 import { route } from '@/lib/routes'
 
 export function SavedView() {
@@ -55,10 +56,7 @@ export function SavedView() {
           </button>
         </div>
       ) : (
-        <MarketGrid
-          agents={agents}
-          footnote="Every agent here is tested by AiKi itself. Empty bars mean missing evidence, not bad performance."
-        />
+        <MarketGrid agents={agents} footnote={EXAMPLE_FOOTNOTE} />
       )}
     </PageCard>
   )

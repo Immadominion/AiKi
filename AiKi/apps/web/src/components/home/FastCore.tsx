@@ -89,10 +89,19 @@ export function FastCore({
       />
 
       <Hero landmark={landmark} className={frame.heroClass}>
-        <div
-          className={`leading-[1.4] font-semibold whitespace-nowrap text-[#8A8A8A] ${frame.greetClass}`}
-        >
-          {first ? 'Welcome to AiKi' : `Good morning, ${userName}`}
+        {/*
+          A stranger got "Welcome to AiKi" here, which is a greeting and not an
+          answer: nothing above the fold said what this was, what an agent would
+          do for them, or why a chain was involved. The eyebrow now names the
+          category and the line under the field gives the reason, so the page
+          can be understood without scrolling or connecting anything.
+
+          Not nowrap any more. The old string was short enough to get away with
+          it and this one is not, and a clipped first sentence is worse than a
+          wrapped one.
+        */}
+        <div className={`leading-[1.4] font-semibold text-[#8A8A8A] ${frame.greetClass}`}>
+          {first ? 'An agent marketplace on BNB Chain' : `Good morning, ${userName}`}
         </div>
         <h1
           className={`mt-[9px] max-w-full text-center leading-[1.02] font-extrabold tracking-[-0.036em] text-balance ${frame.titleClass}`}
@@ -105,6 +114,19 @@ export function FastCore({
           onSubmit={submit}
           onPick={(t: Task) => say(`Finding agents for “${t.intent}”.`)}
         />
+
+        {/*
+          Careful about the tier. It says you keep the wallet and you get a
+          receipt, both of which are true today. It does NOT say the chain
+          refuses, because no enforcer of ours is deployed anywhere yet. Upgrade
+          this sentence when that changes and not before.
+        */}
+        {first ? (
+          <p className="text-muted mt-[14px] mb-0 max-w-[430px] text-center text-[13px] leading-[1.55] text-pretty">
+            Hire one with a limit you set. AiKi never holds your wallet, and every action it takes,
+            including the ones it was refused, lands in a receipt you can check yourself.
+          </p>
+        ) : null}
 
         {footer}
       </Hero>
