@@ -2,6 +2,7 @@ import { ROOT_AUTHORITY } from '@aiki/contracts'
 import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
 import { afterEach, expect, it } from 'vitest'
+import { InMemoryAccountStore } from '../accounts/store.js'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
 import { compileCaveats } from '../authority/caveats.js'
@@ -638,4 +639,84 @@ it('will not prepare a delegation without naming the account it spends from', as
   })
   expect(res.statusCode).toBe(400)
   expect(res.json().error.code).toBe('DELEGATOR_REQUIRED')
+})
+
+const fakeDeployer = (address: `0x${string}`) => {
+  let calls = 0
+  return {
+    deployer: {
+      deploy: async () => {
+        calls += 1
+        return { address, transactionHash: `0x${'aa'.repeat(32)}` as `0x${string}` }
+      },
+    },
+    deployments: () => calls,
+  }
+}
+
+it('gives a person one account, and never a second', async () => {
+  // Deploying twice would split their mandates across two accounts, and half
+  // their limits would sit against the wrong one.
+  const ADDRESS = `0x${'a1'.repeat(20)}` as `0x${string}`
+  const fake = fakeDeployer(ADDRESS)
+  const app = createApiServer({
+    observations: () => [],
+    auth: authConfig(),
+    enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+    accounts: { store: new InMemoryAccountStore(), deployer: fake.deployer },
+  })
+  apps.push(app)
+
+  const before = await app.inject({ method: 'GET', url: '/v1/account', headers: cookie })
+  expect(before.json().address).toBeNull()
+
+  const first = await app.inject({ method: 'POST', url: '/v1/account', headers: cookie })
+  expect(first.statusCode).toBe(200)
+  expect(first.json().address).toBe(ADDRESS)
+  expect(first.json().created).toBe(true)
+
+  const second = await app.inject({ method: 'POST', url: '/v1/account', headers: cookie })
+  expect(second.json().address).toBe(ADDRESS)
+  expect(second.json().created).toBe(false)
+  // Checked before gas is spent, not after.
+  expect(fake.deployments()).toBe(1)
+
+  const after = await app.inject({ method: 'GET', url: '/v1/account', headers: cookie })
+  expect(after.json().address).toBe(ADDRESS)
+  expect(after.json().network).toBe('testnet')
+})
+
+it('gives two people two different accounts', async () => {
+  const app = createApiServer({
+    observations: () => [],
+    auth: authConfig(),
+    enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+    accounts: {
+      store: new InMemoryAccountStore(),
+      // Hands back a different address each time, as a real deployment would.
+      deployer: {
+        deploy: async (owner) => ({
+          address: `0x${owner.slice(2, 4).repeat(20)}` as `0x${string}`,
+          transactionHash: `0x${'bb'.repeat(32)}` as `0x${string}`,
+        }),
+      },
+    },
+  })
+  apps.push(app)
+  const other = `aiki_session=${signer.issue(`0x${'77'.repeat(20)}`, 56)}`
+  const mine = await app.inject({ method: 'POST', url: '/v1/account', headers: cookie })
+  const theirs = await app.inject({
+    method: 'POST',
+    url: '/v1/account',
+    headers: { cookie: other },
+  })
+  expect(mine.json().address).not.toBe(theirs.json().address)
+})
+
+it('says so plainly when it cannot make accounts at all', async () => {
+  const app = createApiServer({ observations: () => [], auth: authConfig() })
+  apps.push(app)
+  const res = await app.inject({ method: 'POST', url: '/v1/account', headers: cookie })
+  expect(res.statusCode).toBe(503)
+  expect(res.json().error.code).toBe('ACCOUNTS_UNAVAILABLE')
 })

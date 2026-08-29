@@ -1,6 +1,8 @@
 /** One production process: marketplace API plus all first-party reference-agent routes. */
 import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
+import { viemAccountDeployer } from './accounts/deploy.js'
+import { PostgresAccountStore } from './accounts/store.js'
 import { PostgresNonceStore } from './auth/nonce-store.js'
 import { describeCookieMismatch, SessionSigner } from './auth/session.js'
 import { viemChainReader } from './authority/chain-reader.js'
@@ -55,6 +57,14 @@ const nonceStore = new PostgresNonceStore(databaseUrl)
  * still works and the limits are counted by AiKi.
  */
 const agentSessionKey = process.env.AGENT_SESSION_ADDRESS as `0x${string}` | undefined
+/**
+ * Pays gas to put a person's mandate account on chain, and nothing else. It is
+ * not an owner and not an executor: the worst it can do if it leaks is waste gas
+ * deploying accounts for strangers. Absent means this deployment cannot make
+ * accounts, which every screen has to be able to say.
+ */
+const accountFunderKey = process.env.ACCOUNT_FUNDER_PRIVATE_KEY as `0x${string}` | undefined
+const accountStore = new PostgresAccountStore(databaseUrl)
 const enforcerRpcUrl =
   process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
 const base = process.env.REFERENCE_AGENT_BASE_URL
@@ -75,6 +85,19 @@ const app = createApiServer({
   // the mandate suite is on testnet. Sharing one client would check a signature
   // against an account that does not exist there.
   chain: viemChainReader(enforcerRpcUrl),
+  ...(accountFunderKey
+    ? {
+        accounts: {
+          store: accountStore,
+          deployer: viemAccountDeployer({
+            rpcUrl: enforcerRpcUrl,
+            chainId: AIKI_ENFORCERS_BSC_TESTNET.chainId,
+            manager: AIKI_ENFORCERS_BSC_TESTNET.manager as `0x${string}`,
+            funderKey: accountFunderKey,
+          }),
+        },
+      }
+    : {}),
   jobs: new JobService(jobStore),
   receipts: new ReceiptService(receiptSeed, receiptStore),
   auth: {
@@ -160,7 +183,13 @@ app.get('/.well-known/agent-registration.json', async (_request, reply) => {
 })
 app.addHook('onClose', async () => {
   await Promise.all([venus.close(), rebalancer.close(), grid.close(), yieldAgent.close()])
-  await Promise.all([store.close(), jobStore.close(), receiptStore.close(), nonceStore.close()])
+  await Promise.all([
+    store.close(),
+    jobStore.close(),
+    receiptStore.close(),
+    nonceStore.close(),
+    accountStore.close(),
+  ])
 })
 const port = Number(process.env.PORT ?? '3000')
 await app.listen({ host: '0.0.0.0', port })

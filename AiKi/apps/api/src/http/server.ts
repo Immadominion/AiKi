@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
 import { DELEGATION_TYPES, delegationDomain, ROOT_AUTHORITY } from '@aiki/contracts'
 import Fastify from 'fastify'
+import type { AccountDeployer } from '../accounts/deploy.js'
+import type { AccountStore } from '../accounts/store.js'
 import { requireOwner, requireSession } from '../auth/guard.js'
 import { requireIngestToken } from '../auth/ingest.js'
 import type { AuthConfig } from '../auth/routes.js'
@@ -75,6 +77,8 @@ export function createApiServer(input: {
    * it can do, it can do only inside a delegation somebody signed.
    */
   agentSessionKey?: `0x${string}`
+  /** Mandate accounts: where a person's value lives. Absent means none can be made. */
+  accounts?: { store: AccountStore; deployer: AccountDeployer }
   jobs?: JobService
   receipts?: ReceiptService
   benchmarks?: BenchmarkService
@@ -444,6 +448,70 @@ export function createApiServer(input: {
       }
     },
   )
+  /*
+   * The account a person's mandates spend from.
+   *
+   * Nobody can use this product without one, and asking somebody to deploy a
+   * contract before they may try anything is not an onboarding step, it is a
+   * wall. So AiKi pays the gas. That is not custody: the constructor names the
+   * caller as owner and the manager as the account's only executor, so it
+   * belongs to them from the first block and the key that deployed it holds
+   * nothing.
+   */
+  app.get('/v1/account', async (request, reply) => {
+    const session = requireSession(request, reply)
+    if (!session) return reply
+    if (!input.accounts || !input.enforcers)
+      return reply.code(503).send({
+        error: {
+          code: 'ACCOUNTS_UNAVAILABLE',
+          message: 'This deployment does not provide mandate accounts.',
+          retryable: false,
+          requestId: request.headers['x-request-id'],
+        },
+      })
+    const account = await input.accounts.store.find(session.address, input.enforcers.chainId)
+    return {
+      address: account?.address ?? null,
+      chainId: input.enforcers.chainId,
+      network: input.enforcers.network,
+      ...(account ? { deployedTx: account.deployedTx, createdAt: account.createdAt } : {}),
+    }
+  })
+  app.post('/v1/account', async (request, reply) => {
+    const session = requireSession(request, reply)
+    if (!session) return reply
+    if (!input.accounts || !input.enforcers)
+      return reply.code(503).send({
+        error: {
+          code: 'ACCOUNTS_UNAVAILABLE',
+          message: 'This deployment does not provide mandate accounts.',
+          retryable: false,
+          requestId: request.headers['x-request-id'],
+        },
+      })
+    // Deploying twice for one person would split their mandates across two
+    // accounts, and half their limits would sit against the wrong one. Checked
+    // before spending gas, and the primary key decides a race afterwards.
+    const held = await input.accounts.store.find(session.address, input.enforcers.chainId)
+    if (held) return { address: held.address, chainId: held.chainId, created: false }
+    const deployed = await input.accounts.deployer.deploy(session.address as `0x${string}`)
+    const stored = await input.accounts.store.claim({
+      owner: session.address,
+      chainId: input.enforcers.chainId,
+      address: deployed.address,
+      deployedTx: deployed.transactionHash,
+      createdAt: new Date().toISOString(),
+    })
+    return {
+      address: stored.address,
+      chainId: stored.chainId,
+      // False when a concurrent request won the race, so a caller is never told
+      // it created something it did not.
+      created: stored.address === deployed.address,
+      deployedTx: stored.deployedTx,
+    }
+  })
   /*
    * Exactly what to sign, computed by the side that will check it.
    *
