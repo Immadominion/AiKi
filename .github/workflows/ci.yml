@@ -1,0 +1,87 @@
+name: CI
+
+# Railway deploys the API and the scheduler on every push to main, and Vercel
+# deploys the web, both without waiting for this. So this does not gate anything
+# yet: it tells us a push was broken, it does not stop it shipping. Turning on
+# Railway's "wait for CI" and a Vercel required check is the follow-up, and it is
+# only worth doing once this is reliably green.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push supersedes the first. Nobody needs the results for a commit that
+# has already been replaced.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: AiKi
+
+    services:
+      # The SQL is the only thing these tests cannot check without a database,
+      # and it is the part most worth checking: nine tests skip silently without
+      # DATABASE_URL, and they are the ones guarding the queries.
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: aiki
+          POSTGRES_PASSWORD: aiki
+          POSTGRES_DB: aiki
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: AiKi/.nvmrc
+          cache: pnpm
+          cache-dependency-path: AiKi/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      # Two of the chain tests deploy from different anvil accounts on purpose,
+      # because sharing a deployer made their nonces race under vitest's
+      # parallelism and one silently skipped. They skip entirely without a node.
+      - name: Start anvil
+        run: anvil --port 8545 &
+
+      - name: API tests
+        run: pnpm --filter @aiki/api test
+        env:
+          DATABASE_URL: postgres://aiki:aiki@127.0.0.1:5432/aiki
+
+      # Includes the fork tests, which reach a public BSC archive endpoint and
+      # redeem through MetaMask's deployed manager. If they start failing here
+      # for rate limits rather than for code, point foundry.toml at a keyed RPC
+      # rather than deleting the tests.
+      - name: Contract tests
+        run: forge test
+        working-directory: AiKi/onchain
+
+      - name: Web build
+        run: pnpm --filter @aiki/web build

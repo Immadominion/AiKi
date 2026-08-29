@@ -3,7 +3,18 @@
 !AiKi/
 !AiKi/**
 !.gitignore
+
+# GitHub only reads workflows from the ROOT of the repository, and the root of
+# this repository is this directory, not AiKi/. So the workflow lives here and
+# has to be un-ignored explicitly, or the whitelist above swallows it and CI
+# silently does not exist. That is how it went missing once already.
+!.github/
+!.github/**
+
 .gstack/
 
 # Vercel CLI project link
 .vercel
+
+# Scratch directories that tooling drops inside the project.
+AiKi/.superpowers/
