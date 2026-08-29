@@ -5,8 +5,10 @@ import { requireIngestToken } from '../auth/ingest.js'
 import type { AuthConfig } from '../auth/routes.js'
 import { registerAuthRoutes } from '../auth/routes.js'
 import { readCookie, SESSION_COOKIE } from '../auth/session.js'
+import { describeEnforcement, withDerivedTiers } from '../authority/caveats.js'
 import type { Constraint } from '../authority/policy.js'
 import { type BenchmarkRun, BenchmarkService, benchmarkEvidence } from '../benchmarks/service.js'
+import type { EnforcerDeployment } from '../config/enforcers.js'
 import type { Observation } from '../evidence/types.js'
 import { parseIntent } from '../intent/parser.js'
 import { JobService } from '../jobs/service.js'
@@ -45,6 +47,11 @@ export function createApiServer(input: {
    * ones probed longest ago.
    */
   observationsForLiveness?: (states: string[]) => Observation[] | Promise<Observation[]>
+  /**
+   * AiKi's own deployed mandate suite, when there is one. Its absence is not an
+   * error: a deployment with no enforcers counts every limit itself and says so.
+   */
+  enforcers?: EnforcerDeployment
   jobs?: JobService
   receipts?: ReceiptService
   benchmarks?: BenchmarkService
@@ -335,8 +342,35 @@ export function createApiServer(input: {
     async (request, reply) => {
       const session = requireSession(request, reply)
       if (!session) return reply
-      const authorization = await jobs.authorize(request.body.constraints, session.address)
-      return { ...authorization, spent: authorization.spent.toString() }
+      /*
+       * The tier is decided here, not accepted. It arrives on each constraint
+       * from whoever posted the mandate, and `weakestTier` was reduced straight
+       * out of those claims, so a caller could assert T0 on every line and be
+       * served it back having had nothing checked. What a limit is worth is a
+       * fact about the deployed enforcers, so it is derived by trying to compile
+       * against them and the claim is overwritten.
+       */
+      const enforcement = describeEnforcement(request.body.constraints, input.enforcers)
+      const authorization = await jobs.authorize(
+        withDerivedTiers(enforcement.outcomes),
+        session.address,
+      )
+      return {
+        ...authorization,
+        spent: authorization.spent.toString(),
+        enforcement: {
+          tier: enforcement.tier,
+          network: enforcement.network,
+          audited: enforcement.audited,
+          limits: enforcement.outcomes.map((o) => ({
+            kind: o.constraint.kind,
+            label: o.constraint.label,
+            tier: o.tier,
+            enforcedBy: o.enforcer,
+            why: o.why,
+          })),
+        },
+      }
     },
   )
   app.post<{ Params: { id: string } }>('/v1/authorizations/:id/revoke', async (request, reply) => {

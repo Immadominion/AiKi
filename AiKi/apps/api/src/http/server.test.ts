@@ -3,6 +3,7 @@ import { bsc } from 'viem/chains'
 import { afterEach, expect, it } from 'vitest'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
+import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
 import { InMemoryEvidenceStore } from '../evidence/store.js'
 import { createApiServer } from './server.js'
 
@@ -292,4 +293,88 @@ it('blames the caller, not us, for a body it could not parse', async () => {
   expect(res.statusCode).toBe(400)
   expect(res.json().error.retryable).toBe(false)
   expect(res.json().error.code).toBe('INVALID_JSON')
+})
+
+it('decides what a limit is worth instead of believing the caller', async () => {
+  // `Constraint.tier` arrives from whoever posted the mandate, and weakestTier
+  // was reduced straight out of those claims, so this exact body used to be
+  // stored and served back as T0 with nothing checked anywhere.
+  const app = createApiServer({
+    observations: () => [],
+    auth: authConfig(),
+    enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+  })
+  apps.push(app)
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/authorizations',
+    headers: { ...cookie, 'content-type': 'application/json' },
+    payload: {
+      constraints: [
+        { kind: 'session_total_cap', value: '1000', tier: 'T0', label: 'I say this is on chain' },
+      ],
+    },
+  })
+  expect(res.statusCode).toBe(200)
+  const body = res.json()
+  // No expiry, so nothing can be held on chain at all, whatever the caller said.
+  expect(body.enforcement.tier).toBe('T2')
+  expect(body.policy.weakestTier).toBe('T2')
+  expect(body.enforcement.limits[0].enforcedBy).toBeNull()
+  expect(body.enforcement.limits[0].why).toMatch(/expiry/i)
+})
+
+it('says which limits the chain holds and which it only counts', async () => {
+  const app = createApiServer({
+    observations: () => [],
+    auth: authConfig(),
+    enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+  })
+  apps.push(app)
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/authorizations',
+    headers: { ...cookie, 'content-type': 'application/json' },
+    payload: {
+      constraints: [
+        {
+          kind: 'expiry',
+          value: new Date('2030-01-01T00:00:00.000Z').toISOString(),
+          tier: 'T3',
+          label: 'Expires',
+        },
+        // Claimed T3, and genuinely unenforceable: no scope, so no amount can be
+        // read out of a call. It must not be promoted, and must carry the reason.
+        { kind: 'per_action_cap', value: '10', tier: 'T3', label: 'At most 10' },
+      ],
+    },
+  })
+  const { enforcement } = res.json()
+  const byKind = Object.fromEntries(enforcement.limits.map((l: { kind: string }) => [l.kind, l]))
+  expect(byKind.expiry.tier).toBe('T0')
+  expect(byKind.expiry.enforcedBy).toBe('ExpiryEnforcer')
+  expect(byKind.per_action_cap.tier).toBe('T2')
+  expect(byKind.per_action_cap.why).toMatch(/before the chain can read an amount/)
+  // The headline is the weakest link.
+  expect(enforcement.tier).toBe('T2')
+  // A testnet deployment may never present itself as anything else.
+  expect(enforcement.network).toBe('testnet')
+  expect(enforcement.audited).toBe(false)
+})
+
+it('counts every limit itself when no enforcers are deployed', async () => {
+  const app = createApiServer({ observations: () => [], auth: authConfig() })
+  apps.push(app)
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/authorizations',
+    headers: { ...cookie, 'content-type': 'application/json' },
+    payload: {
+      constraints: [{ kind: 'session_total_cap', value: '1000', tier: 'T0', label: 'cap' }],
+    },
+  })
+  const { enforcement } = res.json()
+  expect(enforcement.tier).toBe('T2')
+  expect(enforcement.network).toBeNull()
+  expect(enforcement.limits[0].why).toMatch(/No enforcers are deployed/)
 })

@@ -310,3 +310,56 @@ export function compileCaveats(
 /** The weakest link, which is the only honest headline for a mandate. */
 export const overallTier = (outcomes: ConstraintOutcome[]): 'T0' | 'T2' =>
   outcomes.every((o) => o.tier === 'T0') ? 'T0' : 'T2'
+
+/**
+ * What a mandate's limits are actually worth, decided here rather than accepted.
+ *
+ * `Constraint.tier` arrives from whoever posted the mandate, and `compilePolicy`
+ * reduced those claimed tiers into `weakestTier`, so a caller could assert T0 on
+ * every line and the API would store and serve it back having checked nothing.
+ * That is the API vouching for enforcement it never verified, which is the same
+ * fault `003201a` closed for the numbers on the dashboard.
+ *
+ * The tier is a fact about the deployed enforcer set, so it is derived from
+ * trying to compile against that set. Never throws: a mandate that cannot be
+ * held on chain at all is not an error, it is a mandate AiKi counts, and it has
+ * to be able to say so.
+ */
+export function describeEnforcement(
+  constraints: Constraint[],
+  deployment: EnforcerDeployment | undefined,
+): { tier: 'T0' | 'T2'; network: string | null; audited: boolean; outcomes: ConstraintOutcome[] } {
+  const counted = (why: string) => ({
+    tier: 'T2' as const,
+    network: deployment?.network ?? null,
+    audited: deployment?.audited ?? false,
+    outcomes: constraints.map((constraint) => soft(constraint, why)),
+  })
+
+  if (!deployment)
+    return counted('No enforcers are deployed for this API, so AiKi counts every limit.')
+
+  try {
+    const { outcomes } = compileCaveats(constraints, deployment)
+    return {
+      tier: overallTier(outcomes),
+      network: deployment.network,
+      audited: deployment.audited,
+      outcomes,
+    }
+  } catch (error) {
+    // The mandate cannot be signed at all: no expiry, or none the chain can read.
+    // Every limit in it is therefore counted by AiKi, and the reason is the one
+    // the compiler gave rather than a summary of it.
+    return counted(error instanceof Error ? error.message : 'This mandate cannot be held on chain.')
+  }
+}
+
+/**
+ * The same constraints, each carrying the tier it actually earned.
+ *
+ * Handed to `compilePolicy` so the stored mandate and its `weakestTier` describe
+ * what is enforced rather than what was asserted.
+ */
+export const withDerivedTiers = (outcomes: ConstraintOutcome[]): Constraint[] =>
+  outcomes.map((o) => ({ ...o.constraint, tier: o.tier }))

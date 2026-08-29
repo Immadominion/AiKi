@@ -3,6 +3,7 @@ import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
 import { PostgresNonceStore } from './auth/nonce-store.js'
 import { describeCookieMismatch, SessionSigner } from './auth/session.js'
+import { AIKI_ENFORCERS_BSC_TESTNET } from './config/enforcers.js'
 import { PostgresEvidenceStore } from './evidence/postgres-store.js'
 import { createApiServer } from './http/server.js'
 import { COVERAGE_START_STREAM } from './indexer/evidence-sink.js'
@@ -58,6 +59,7 @@ const app = createApiServer({
     (await store.getCheckpoint(COVERAGE_START_STREAM))?.lastIndexedBlock ?? null,
   statsAggregate: () => store.statsAggregate(),
   observationsForLiveness: (states) => store.observationsForLiveness(states),
+  enforcers: AIKI_ENFORCERS_BSC_TESTNET,
   jobs: new JobService(jobStore),
   receipts: new ReceiptService(receiptSeed, receiptStore),
   auth: {
