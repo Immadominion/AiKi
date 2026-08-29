@@ -39,3 +39,28 @@ export function asSchemaError(error: unknown): string | null {
   if (!Array.isArray(candidate.validation)) return null
   return typeof candidate.message === 'string' ? candidate.message : 'Request failed validation.'
 }
+
+/**
+ * Fastify's own protocol-level refusals: unparseable body, wrong content type,
+ * body too large, bad parameter. It decided these were 4xx before our code ever
+ * ran, and its messages describe the request rather than our internals.
+ *
+ * Without this they fell through to the 500 branch, which got the blame exactly
+ * backwards. `003201a` stopped this API calling our faults the caller's; this is
+ * the same mistake in the other direction, and it also told them to retry, which
+ * an unparseable body never fixes.
+ */
+export function asProtocolError(
+  error: unknown,
+): { statusCode: number; code: string; message: string } | null {
+  if (!error || typeof error !== 'object') return null
+  const candidate = error as { statusCode?: unknown; code?: unknown; message?: unknown }
+  if (typeof candidate.statusCode !== 'number') return null
+  if (candidate.statusCode < 400 || candidate.statusCode >= 500) return null
+  if (typeof candidate.code !== 'string' || !candidate.code.startsWith('FST_')) return null
+  return {
+    statusCode: candidate.statusCode,
+    code: candidate.code,
+    message: typeof candidate.message === 'string' ? candidate.message : 'Malformed request.',
+  }
+}

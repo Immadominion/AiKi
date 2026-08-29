@@ -15,7 +15,7 @@ import { assembleStats, projectStats, type StatsAggregate } from '../projections
 import { ReceiptService } from '../receipts/service.js'
 import { buildQuote } from '../settlement/pricing.js'
 import { publishedPrice } from '../settlement/published-price.js'
-import { asClientError, asSchemaError } from './errors.js'
+import { asClientError, asProtocolError, asSchemaError, ClientError } from './errors.js'
 
 /** The most agents one comparison may name. See the check in /v1/compare. */
 const COMPARE_MAX = 10
@@ -52,6 +52,29 @@ export function createApiServer(input: {
   auth?: AuthConfig
 }) {
   const app = Fastify({ logger: process.env.NODE_ENV === 'production' })
+  /*
+   * An empty body is not a malformed one.
+   *
+   * Several routes here take no body at all: revoking a mandate names it in the
+   * path, and issuing a receipt names the job. Fastify's default JSON parser
+   * refuses an empty body outright when the content type says JSON, and almost
+   * every HTTP client sets that header on every request whether or not it is
+   * sending anything. Our own web client does, on every call it makes, which
+   * meant POST /v1/authorizations/:id/revoke answered 500 from the browser and
+   * 200 from curl. Revoke is the control a user reaches for when something is
+   * wrong, so it is the worst possible route to have working only by accident.
+   */
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_request, body, done) => {
+    if (body === '') return done(null, undefined)
+    try {
+      done(null, JSON.parse(body as string))
+    } catch {
+      // A deliberate sentence rather than the raw SyntaxError, which names a
+      // character offset in bytes the caller cannot see, and which reaches them
+      // as a 500 inviting a retry that no amount of retrying will fix.
+      done(new ClientError('Request body is not valid JSON.', { code: 'INVALID_JSON' }))
+    }
+  })
   const jobs = input.jobs ?? new JobService()
   const receipts = input.receipts ?? new ReceiptService(process.env.RECEIPT_SIGNING_KEY)
   const benchmarks = input.benchmarks ?? new BenchmarkService()
@@ -82,6 +105,16 @@ export function createApiServer(input: {
     if (schema)
       return reply.code(400).send({
         error: { code: 'BAD_REQUEST', message: schema, retryable: false, requestId },
+      })
+    const protocol = asProtocolError(error)
+    if (protocol)
+      return reply.code(protocol.statusCode).send({
+        error: {
+          code: protocol.code,
+          message: protocol.message,
+          retryable: false,
+          requestId,
+        },
       })
     request.log.error({ err: error, requestId }, 'unhandled request failure')
     return reply.code(500).send({

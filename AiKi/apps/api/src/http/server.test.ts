@@ -249,3 +249,47 @@ it('refuses a comparison large enough to hold the event loop', async () => {
   expect(res.statusCode).toBe(400)
   expect(res.json().error.code).toBe('TOO_MANY_AGENTS')
 })
+
+it('revokes a mandate when the caller sends a JSON content type and no body', async () => {
+  // Exactly how apps/web/src/lib/api.ts calls it: `req()` sets
+  // content-type: application/json on every request, and revoke passes no body.
+  // Fastify's default parser refused that outright, so revoke answered 500 in
+  // the browser and 200 from curl. Revoke is the control someone reaches for
+  // when they want a thing to stop.
+  const app = createApiServer({ observations: () => [], auth: authConfig() })
+  apps.push(app)
+  const created = await app.inject({
+    method: 'POST',
+    url: '/v1/authorizations',
+    headers: { ...cookie, 'content-type': 'application/json' },
+    payload: {
+      constraints: [{ kind: 'session_total_cap', value: '1000', tier: 'T2', label: 'c' }],
+    },
+  })
+  expect(created.statusCode).toBe(200)
+  const id = created.json().id
+
+  const revoked = await app.inject({
+    method: 'POST',
+    url: `/v1/authorizations/${id}/revoke`,
+    headers: { ...cookie, 'content-type': 'application/json' },
+  })
+  expect(revoked.statusCode).toBe(200)
+  expect(revoked.json().status).toBe('revoked')
+})
+
+it('blames the caller, not us, for a body it could not parse', async () => {
+  // A 500 here says it is our fault and that retrying may help. Neither is true:
+  // the bytes are unparseable and they will be unparseable next time too.
+  const app = createApiServer({ observations: () => [], auth: authConfig() })
+  apps.push(app)
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/search',
+    headers: { 'content-type': 'application/json' },
+    payload: '{ not json',
+  })
+  expect(res.statusCode).toBe(400)
+  expect(res.json().error.retryable).toBe(false)
+  expect(res.json().error.code).toBe('INVALID_JSON')
+})
