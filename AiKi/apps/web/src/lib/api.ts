@@ -131,6 +131,30 @@ export const api = {
       `/v1/authorizations/${id}/delegation`,
       { method: 'POST', body: JSON.stringify({ delegation }) },
     ),
+  /** The job as the API has it, including every verdict recorded against it. */
+  job: (id: string) =>
+    req<{
+      id: string
+      status: string
+      events: { type: string; at: string; detail: string }[]
+    }>(`/v1/jobs/${id}`),
+  /**
+   * Attempt one action. Returns what the mandate said, what the chain said when
+   * it was asked, and which of the two ultimately held the limit.
+   */
+  runAction: (
+    jobId: string,
+    action: { target: string; selector: string; asset: string; amount: string; callData: string },
+  ) =>
+    req<{
+      policy: { allow: boolean; rule: string; reason: string }
+      chain?: {
+        status: 'landed' | 'reverted' | 'refused'
+        transactionHash?: string
+        revertReason?: string
+      }
+      heldBy: 'chain' | 'aiki'
+    }>(`/v1/jobs/${jobId}/actions`, { method: 'POST', body: JSON.stringify(action) }),
   authorize: (constraints: unknown[]) =>
     req<AuthorizationResponse>('/v1/authorizations', {
       method: 'POST',

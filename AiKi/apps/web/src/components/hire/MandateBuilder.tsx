@@ -281,10 +281,19 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
 
               <Control
                 title="Most it can spend altogether"
+                /*
+                 * Both branches say the same thing on purpose, because today
+                 * both behave the same way. Nothing resets a cap: the constraint
+                 * carries no period, evaluatePolicy has no reset, and
+                 * SessionTotalCapEnforcer counts for the life of the mandate.
+                 * Telling somebody their cap refills next month and then
+                 * stopping their agent forever is the kind of surprise this
+                 * product exists to not produce.
+                 */
                 note={
                   period === 'total'
                     ? 'A lifetime cap. It does not refill, so when it is gone the agent stops.'
-                    : 'A renewing cap. It refills at the start of each period.'
+                    : 'Nothing refills a cap yet, so this behaves as a total: when it is gone the agent stops until you raise it.'
                 }
                 badge={{
                   word: budgetBadge.word,

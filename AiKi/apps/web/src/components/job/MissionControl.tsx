@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { OnChainRecord } from '@/components/job/OnChainRecord'
 import { PageCard } from '@/components/shell/PageCard'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { PageSkeleton } from '@/components/ui/Skeleton'
@@ -210,6 +211,7 @@ export function MissionControl({ jobId }: { jobId: string }) {
             </span>
           </div>
           <EventStream events={events} live={job.status === 'RUNNING'} />
+          <OnChainRecord jobId={job.id} />
         </div>
 
         <div className="flex flex-col gap-[14px] xl:sticky xl:top-0 xl:self-start">
@@ -224,9 +226,11 @@ export function MissionControl({ jobId }: { jobId: string }) {
               />
             </div>
             <div className="text-muted mt-[14px] border-t border-[rgb(26_26_25_/_0.07)] pt-[12px] text-[12.5px] leading-[1.5] text-pretty">
-              {hire.mandate.period === 'total'
-                ? 'A lifetime cap. It does not refill, so when it is gone the agent stops.'
-                : 'A renewing cap, held by the chain rather than by us.'}
+              {/* Not "a renewing cap, held by the chain": nothing renews it, and
+                  claiming the chain holds a reset it cannot express is the one
+                  kind of claim this product may not make. */}
+              A cap for the life of this mandate. It does not refill, so when it is gone the agent
+              stops until you raise it.
             </div>
           </div>
 
