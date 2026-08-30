@@ -327,14 +327,31 @@ export function createApiServer(input: {
     const observations = await input.observations()
     const ids = [...new Set(observations.map((o) => o.subject.agentId))]
     const limit = clampLimit(request.body.limit)
+    /*
+     * Any term, not the whole phrase.
+     *
+     * This is a substring match over the name an agent registered, and people
+     * do not type substrings — they type "venus loan guardian" and expect the
+     * agent called "Venus Guardian". Requiring the whole string made every
+     * multi-word question return nothing, which reads as "there are none"
+     * rather than "nothing is named that".
+     *
+     * It stays a name match. Matching on any term is looser and still cannot
+     * find an agent by what it DOES, because nothing in the registry says what
+     * an agent does; the honest fix for that is not a better substring.
+     */
+    const terms = query ? query.split(/\s+/).filter(Boolean) : []
     const matched = ids
       .map((id) => projectPassport(id, observations))
       .filter(
         (passport) =>
-          !query ||
-          passport.agentId.toLowerCase().includes(query) ||
-          (passport.name?.toLowerCase().includes(query) ?? false) ||
-          passport.liveness.toLowerCase().includes(query),
+          terms.length === 0 ||
+          terms.some(
+            (term) =>
+              passport.agentId.toLowerCase().includes(term) ||
+              (passport.name?.toLowerCase().includes(term) ?? false) ||
+              passport.liveness.toLowerCase().includes(term),
+          ),
       )
     const kept = matched.filter((p) => wanted.includes(p.liveness))
     // The honesty block: what the filter removed, counted by why — and

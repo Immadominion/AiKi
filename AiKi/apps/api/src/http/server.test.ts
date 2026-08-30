@@ -720,3 +720,49 @@ it('says so plainly when it cannot make accounts at all', async () => {
   expect(res.statusCode).toBe(503)
   expect(res.json().error.code).toBe('ACCOUNTS_UNAVAILABLE')
 })
+
+it('finds an agent by one word of a question, not only by the whole phrase', async () => {
+  /*
+   * Nobody types a substring. They type "venus loan guardian" and expect the
+   * agent called "Venus Guardian"; requiring the whole phrase returned nothing,
+   * which reads as "there are none" rather than "nothing is named that".
+   */
+  const store = new InMemoryEvidenceStore()
+  const base = {
+    predicate: 'agent.liveness_verdict',
+    validAt: '2026-01-01T00:00:00.000Z',
+    observedAt: '2026-01-01T00:00:00.000Z',
+    source: 'test',
+    method: 'test',
+    evidenceClass: 'B' as const,
+  }
+  await store.append({
+    ...base,
+    subject: { type: 'agent', chainId: 56, registry: '0x8004', agentId: '77' },
+    value: { state: 'LIVE' },
+    dedupeKey: 'venus-live',
+  })
+  await store.append({
+    ...base,
+    predicate: 'erc8004.registration_resolution',
+    subject: { type: 'agent', chainId: 56, registry: '0x8004', agentId: '77' },
+    value: { resolved: true, manifest: { name: 'Venus Guardian' } },
+    dedupeKey: 'venus-name',
+  })
+
+  const app = createApiServer({ observations: () => store.observations })
+  apps.push(app)
+  const ask = async (query: string) => {
+    const res = await app.inject({ method: 'POST', url: '/v1/search', payload: { query } })
+    const body = res.json()
+    if (!body.results)
+      throw new Error(`search answered ${res.statusCode}: ${res.body.slice(0, 200)}`)
+    return body.results.length as number
+  }
+
+  expect(await ask('venus guardian')).toBe(1)
+  expect(await ask('venus loan guardian')).toBe(1)
+  expect(await ask('guardian')).toBe(1)
+  // Still a name match: a word that names nothing still finds nothing.
+  expect(await ask('pancake')).toBe(0)
+})
