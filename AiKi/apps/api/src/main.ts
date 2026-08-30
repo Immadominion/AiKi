@@ -7,6 +7,7 @@ import { PostgresNonceStore } from './auth/nonce-store.js'
 import { describeCookieMismatch, SessionSigner } from './auth/session.js'
 import { viemChainReader } from './authority/chain-reader.js'
 import { AIKI_ENFORCERS_BSC_TESTNET } from './config/enforcers.js'
+import { PostgresCreditStore } from './credits/store.js'
 import { PostgresEvidenceStore } from './evidence/postgres-store.js'
 import { createApiServer } from './http/server.js'
 import { COVERAGE_START_STREAM } from './indexer/evidence-sink.js'
@@ -73,6 +74,22 @@ const agentKey = process.env.AGENT_PRIVATE_KEY as `0x${string}` | undefined
 const accountFunderKey = process.env.ACCOUNT_FUNDER_PRIVATE_KEY as `0x${string}` | undefined
 const accountStore = new PostgresAccountStore(databaseUrl)
 const watchStore = new PostgresWatchStore(databaseUrl)
+const creditStore = new PostgresCreditStore(databaseUrl)
+
+/*
+ * Fast mode. Absent key means this deployment serves Manual mode only and says
+ * so on the route, rather than failing in a way that reads like a bug.
+ *
+ * The assistant reaches this same API over loopback with the caller's own
+ * session, so it can do exactly what that person could do by clicking. That is
+ * the whole security model, and it depends on selfUrl pointing at this process
+ * and nothing else.
+ */
+const assistantKey = process.env.ANTHROPIC_API_KEY
+const treasury = process.env.CREDITS_TREASURY_ADDRESS as `0x${string}` | undefined
+const creditsToken =
+  (process.env.CREDITS_TOKEN_ADDRESS as `0x${string}` | undefined) ??
+  '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c'
 const enforcerRpcUrl =
   process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
 const base = process.env.REFERENCE_AGENT_BASE_URL
@@ -110,6 +127,22 @@ const app = createApiServer({
     : {}),
   jobs: new JobService(jobStore),
   watches: watchStore,
+  assistant: {
+    credits: creditStore,
+    ...(assistantKey ? { apiKey: assistantKey } : {}),
+    ...(process.env.ASSISTANT_MODEL ? { model: process.env.ASSISTANT_MODEL } : {}),
+    selfUrl: `http://127.0.0.1:${Number(process.env.PORT ?? '3000')}`,
+    ...(treasury
+      ? {
+          deposits: {
+            rpcUrl: enforcerRpcUrl,
+            chainId: 97,
+            token: creditsToken,
+            treasury,
+          },
+        }
+      : {}),
+  },
   receipts: new ReceiptService(receiptSeed, receiptStore),
   auth: {
     signer: new SessionSigner(sessionSecret),

@@ -4,6 +4,7 @@ import { DELEGATION_TYPES, delegationDomain, ROOT_AUTHORITY } from '@aiki/contra
 import Fastify from 'fastify'
 import type { AccountDeployer } from '../accounts/deploy.js'
 import type { AccountStore } from '../accounts/store.js'
+import { type AssistantConfig, registerAssistantRoutes } from '../assistant/routes.js'
 import { requireOwner, requireSession } from '../auth/guard.js'
 import { requireIngestToken } from '../auth/ingest.js'
 import type { AuthConfig } from '../auth/routes.js'
@@ -96,6 +97,11 @@ export function createApiServer(input: {
    * run agents on demand but nothing on a timer.
    */
   watches?: WatchStore
+  /**
+   * Fast mode and the points that pay for it. Absent means the deployment
+   * serves Manual mode only, and says so rather than failing oddly.
+   */
+  assistant?: AssistantConfig
   receipts?: ReceiptService
   benchmarks?: BenchmarkService
   /** Omitted only in tests of the public surface; every mandate route needs it. */
@@ -138,6 +144,7 @@ export function createApiServer(input: {
   })
   if (input.auth) registerAuthRoutes(app, input.auth)
   if (input.watches) registerWatchRoutes(app, { jobs, watches: input.watches })
+  if (input.assistant) registerAssistantRoutes(app, input.assistant)
   /**
    * Only messages written for a caller reach a caller.
    *

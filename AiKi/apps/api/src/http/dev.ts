@@ -18,6 +18,7 @@ import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
 import { viemChainReader } from '../authority/chain-reader.js'
 import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
+import { PostgresCreditStore } from '../credits/store.js'
 import { materializeObservation } from '../evidence/store.js'
 import type { Observation } from '../evidence/types.js'
 import { PostgresJobStore } from '../jobs/postgres-store.js'
@@ -59,6 +60,26 @@ const persistence = databaseUrl
       // present is missing from the server a developer actually runs — which is
       // how it goes unnoticed that a screen calls a route nobody registered.
       watches: new PostgresWatchStore(databaseUrl),
+      // Fast mode too, or it is missing from the server a developer runs — which
+      // is how a screen ends up calling a route nobody registered.
+      assistant: {
+        credits: new PostgresCreditStore(databaseUrl),
+        ...(process.env.ANTHROPIC_API_KEY ? { apiKey: process.env.ANTHROPIC_API_KEY } : {}),
+        ...(process.env.ASSISTANT_MODEL ? { model: process.env.ASSISTANT_MODEL } : {}),
+        selfUrl: `http://127.0.0.1:${Number(process.env.PORT ?? '4748')}`,
+        ...(process.env.CREDITS_TREASURY_ADDRESS
+          ? {
+              deposits: {
+                rpcUrl:
+                  process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
+                chainId: 97,
+                token: (process.env.CREDITS_TOKEN_ADDRESS ??
+                  '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c') as `0x${string}`,
+                treasury: process.env.CREDITS_TREASURY_ADDRESS as `0x${string}`,
+              },
+            }
+          : {}),
+      },
       // The same deployed suite production reads, so what a limit is worth here
       // is what it is worth there. A dev API that reported everything as counted
       // by AiKi would make the builder's badges a local fiction.
