@@ -3,9 +3,10 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
-import { agentHref, route } from '@/lib/routes'
+import { agentHref } from '@/lib/routes'
 import type { Task } from '@/lib/tasks'
 import { AskField } from './AskField'
+import { FastChat } from './FastChat'
 import { HistoryRail } from './HistoryRail'
 import { ShardField } from './ShardField'
 import { type Frame, SHARDS_DISCOVER, SHARDS_RETURNING } from './shards'
@@ -40,6 +41,14 @@ export function FastCore({
   landmark?: boolean
 }) {
   const [resumed, setResumed] = useState(0)
+  /*
+   * The question that opened Fast mode, if one has. Asking used to redirect to
+   * a search results page, which made "Fast" a differently-shaped search box
+   * rather than a different way of working: a search cannot preview limits,
+   * create a mandate, or put an agent on duty, and those are the things people
+   * come here to do.
+   */
+  const [asking, setAsking] = useState<string | null>(null)
   const say = useToast()
   const router = useRouter()
 
@@ -59,8 +68,22 @@ export function FastCore({
     } catch {
       /* a private window can refuse; the rail simply stays empty */
     }
-    router.push(route(`/explore?q=${encodeURIComponent(q)}`))
+    setAsking(q)
   }
+
+  if (asking !== null)
+    return (
+      <div className="absolute inset-0 z-30 flex flex-col px-[18px] pt-[18px] pb-[14px]">
+        <button
+          type="button"
+          onClick={() => setAsking(null)}
+          className="text-faint mb-[10px] self-start border-0 bg-none p-0 text-[12.5px] font-semibold hover:text-[#141414]"
+        >
+          ← Back
+        </button>
+        <FastChat opening={asking} onClose={() => setAsking(null)} />
+      </div>
+    )
 
   return (
     <>

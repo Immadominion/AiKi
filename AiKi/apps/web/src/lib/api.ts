@@ -110,6 +110,30 @@ export interface Watch {
   remaining?: string | null
 }
 
+export interface AssistantStep {
+  tool: string
+  input: Record<string, unknown>
+  ok: boolean
+  /** Did it change something, or only look? */
+  mutating: boolean
+}
+
+export interface AssistantTurn {
+  reply: string
+  steps: AssistantStep[]
+  truncated: boolean
+  cost: { points: number; balance: number; explanation: string; shortfall?: number }
+}
+
+export interface CreditBalance {
+  balance: number
+  worthUsd: number
+  pointsPerUsdt: number
+  minimumToAsk: number
+  model: string
+  history: { id: string; delta: number; reason: string; createdAt: string }[]
+}
+
 export const api = {
   stats: () => req<EcosystemStats>('/v1/stats'),
   me: () => req<{ address: string; chainId: number }>('/v1/auth/me'),
@@ -190,6 +214,33 @@ export const api = {
     },
   ) => req<Watch>(`/v1/jobs/${jobId}/watch`, { method: 'POST', body: JSON.stringify(body) }),
   stopWatch: (jobId: string) => req<Watch>(`/v1/jobs/${jobId}/watch/stop`, { method: 'POST' }),
+  /** Points, what they are worth, and every reason the number moved. */
+  credits: () => req<CreditBalance>('/v1/credits'),
+  /** Where to send USDT for points. Public: you have to see it before signing in. */
+  treasury: () =>
+    req<{
+      available?: false
+      chainId?: number
+      token?: string
+      treasury?: string
+      pointsPerUsdt?: number
+    }>('/v1/credits/treasury'),
+  /** Hands over a payment's transaction hash. Everything else is read from the chain. */
+  depositCredits: (transactionHash: string) =>
+    req<{ points: number; balance: number; amount: string }>('/v1/credits/deposits', {
+      method: 'POST',
+      body: JSON.stringify({ transactionHash }),
+    }),
+  /**
+   * One turn of Fast mode. The whole conversation goes up each time, because the
+   * server holds no session state for it — a turn is priced from the tokens it
+   * actually reads, so what is sent is what is paid for and both sides can see it.
+   */
+  assistant: (messages: { role: 'user' | 'assistant'; content: string }[]) =>
+    req<AssistantTurn>('/v1/assistant/messages', {
+      method: 'POST',
+      body: JSON.stringify({ messages }),
+    }),
   authorize: (constraints: unknown[]) =>
     req<AuthorizationResponse>('/v1/authorizations', {
       method: 'POST',
