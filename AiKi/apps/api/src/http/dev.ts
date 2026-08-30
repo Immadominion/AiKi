@@ -25,6 +25,7 @@ import { JobService } from '../jobs/service.js'
 import { sweepObservations } from '../prober/sweep-observations.js'
 import { PostgresReceiptStore } from '../receipts/postgres-store.js'
 import { ReceiptService } from '../receipts/service.js'
+import { PostgresWatchStore } from '../runner/store.js'
 import { createApiServer } from './server.js'
 
 /** Absent means this deployment cannot prepare a delegation to sign. */
@@ -54,6 +55,10 @@ const databaseUrl = process.env.DATABASE_URL
 const persistence = databaseUrl
   ? {
       jobs: new JobService(new PostgresJobStore(databaseUrl)),
+      // Watches too, or the one part of the product that works without a person
+      // present is missing from the server a developer actually runs — which is
+      // how it goes unnoticed that a screen calls a route nobody registered.
+      watches: new PostgresWatchStore(databaseUrl),
       // The same deployed suite production reads, so what a limit is worth here
       // is what it is worth there. A dev API that reported everything as counted
       // by AiKi would make the builder's badges a local fiction.
