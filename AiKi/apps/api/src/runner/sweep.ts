@@ -191,7 +191,10 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
   await deps.jobs.record(watch.jobId, {
     type: result.acted ? 'spend' : 'status',
     detail: result.acted
-      ? `watch repaid ${result.repay?.toString()}: ${result.reason}`
+      ? // The hash belongs in the record. It is the only part of this a user can
+        // check without trusting us, and a repayment nobody can look up is a
+        // claim rather than a receipt.
+        `watch repaid ${result.repay?.toString()} on chain: ${result.transactionHash}`
       : `watch looked: ${result.reason}`,
   })
 

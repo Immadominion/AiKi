@@ -220,3 +220,19 @@ it('claims a watch so a second scheduler cannot take it', async () => {
   // Exactly one of the two passes may end up repaying the shortfall.
   expect(mine.length + theirs.length).toBe(1)
 })
+
+it('records the transaction hash when it repays', async () => {
+  // A repayment nobody can look up is a claim rather than a receipt: the hash is
+  // the only part of this a user can check without trusting us.
+  tickMock.mockReset()
+  tickMock.mockResolvedValue({
+    acted: true,
+    reason: 'Position is AT_RISK.',
+    repay: 102_000_000n,
+    transactionHash: `0x${'ab'.repeat(32)}`,
+  })
+  const { deps, jobs, job } = await setup({ cap: '1000000000' })
+  await sweep(deps)
+  const events = (await jobs.getJob(job.id)).events
+  expect(events.some((e) => e.detail.includes(`0x${'ab'.repeat(32)}`))).toBe(true)
+})
