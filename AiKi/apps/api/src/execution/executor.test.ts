@@ -247,7 +247,16 @@ describe.skipIf(!reachable)('execute (against a real chain)', () => {
       callData: erc20TransferCall(recipient, amount),
     })
 
-    expect(outcome.status).toBe('reverted')
+    // Not 'landed', which is the property under test: the enforcer stopped it.
+    // Which flavour of refusal depends on the node. Anvil rejects it at
+    // estimation, so nothing is submitted and there is no hash; a node that
+    // accepts and mines it would report 'reverted' with one. Asserting the
+    // specific flavour would be asserting a property of the RPC rather than of
+    // the enforcers.
+    expect(outcome.status).not.toBe('landed')
+    expect(outcome.revertReason).toBeTruthy()
+    // A hash is claimed only when a transaction actually exists.
+    if (outcome.status === 'refused') expect(outcome.transactionHash).toBeUndefined()
     expect(await balanceOf(recipient)).toBe(before)
   }, 120_000)
 })

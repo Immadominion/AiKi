@@ -96,8 +96,21 @@ export interface ExecutionRequest {
 }
 
 export interface ExecutionOutcome {
-  status: 'landed' | 'reverted'
-  transactionHash: Hex
+  /**
+   * Three outcomes, not two.
+   *
+   * `landed` and `reverted` both describe a transaction that exists: it is in a
+   * block, it cost gas, and it can be linked to. `refused` is the node declining
+   * to accept it in the first place, usually because simulation showed it would
+   * revert. Nothing was submitted and nothing was spent.
+   *
+   * Collapsing the last two into `reverted` meant reporting a transaction hash
+   * of `0x` for something that never happened, which is a receipt citing
+   * evidence that does not exist.
+   */
+  status: 'landed' | 'reverted' | 'refused'
+  /** Absent when nothing was ever submitted. */
+  transactionHash?: Hex
   gasUsed: bigint
   /** Present when the chain refused, carrying whatever it said. */
   revertReason?: string
@@ -147,9 +160,11 @@ export async function execute(request: ExecutionRequest): Promise<ExecutionOutco
       gasUsed: receipt.gasUsed,
     }
   } catch (error) {
+    // The node would not take it, so there is no transaction and no hash to
+    // give. Saying `reverted` with an empty hash would invite a caller to link
+    // to something that was never on chain.
     return {
-      status: 'reverted',
-      transactionHash: '0x' as Hex,
+      status: 'refused',
       gasUsed: 0n,
       revertReason:
         error instanceof Error ? (error.message.split('\n')[0] ?? error.message) : String(error),

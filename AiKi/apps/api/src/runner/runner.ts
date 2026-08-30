@@ -81,6 +81,6 @@ export async function tick(input: TickInput): Promise<TickResult> {
     acted: true,
     reason: decision.reason,
     repay: decision.repay,
-    transactionHash: outcome.transactionHash,
+    ...(outcome.transactionHash ? { transactionHash: outcome.transactionHash } : {}),
   }
 }

@@ -172,3 +172,32 @@ it('refuses an action it cannot read', () => {
     }),
   ).toThrow(/negative/)
 })
+
+it('does not cite a transaction that was never sent', async () => {
+  // The node declining to accept a transaction and a transaction landing in a
+  // block and reverting are different events. One cost gas and can be linked to;
+  // the other never existed. Reporting a hash of '0x' for the second invites
+  // somebody to go looking for evidence that is not there.
+  executeMock.mockReset()
+  executeMock.mockResolvedValue({
+    status: 'refused',
+    gasUsed: 0n,
+    revertReason: 'execution reverted',
+  })
+  const { jobs, job, id } = await setup(true)
+  const authorization = await jobs.getAuthorization(id)
+  const out = await act({
+    jobs,
+    jobId: job.id,
+    action: action(4n),
+    callData: '0x',
+    authorization,
+    config: CONFIG,
+  })
+  expect(out.chain?.status).toBe('refused')
+  expect(out.chain?.transactionHash).toBeUndefined()
+  // Still a refusal, so the cap is still given back.
+  expect((await jobs.getAuthorization(id)).spent).toBe(0n)
+  const events = (await jobs.getJob(job.id)).events
+  expect(events.some((e) => e.detail.includes('would not accept'))).toBe(true)
+})

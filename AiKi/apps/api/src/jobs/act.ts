@@ -21,10 +21,16 @@ import type { AuthorizationRecord } from './store.js'
 export interface ActOutcome {
   /** What the off-chain policy engine said, and why. */
   policy: { allow: boolean; rule: string; reason: string }
-  /** What the chain did, when it was asked. Absent when it never was. */
+  /**
+   * What the chain did, when it was asked. Absent when it never was.
+   *
+   * `refused` carries no hash on purpose: the node would not take the
+   * transaction, so nothing was submitted, nothing was spent, and there is
+   * nothing to link to.
+   */
   chain?: {
-    status: 'landed' | 'reverted'
-    transactionHash: Hex
+    status: 'landed' | 'reverted' | 'refused'
+    transactionHash?: Hex
     revertReason?: string
   }
   /** Who ultimately held the limit for this action. */
@@ -81,7 +87,7 @@ export async function act(input: {
     callData,
   })
 
-  if (outcome.status === 'reverted') {
+  if (outcome.status !== 'landed') {
     /*
      * The chain refused what the off-chain engine allowed, and the cap was
      * already charged for it. Left alone, the counter would be ahead of reality
@@ -93,13 +99,16 @@ export async function act(input: {
     await jobs.releaseSpend(authorization.id, action.amount)
     await jobs.record(jobId, {
       type: 'policy',
-      detail: `chain refused: ${outcome.revertReason ?? 'reverted'}`,
+      detail:
+        outcome.status === 'refused'
+          ? `chain would not accept it: ${outcome.revertReason ?? 'refused'}`
+          : `chain refused it: ${outcome.revertReason ?? 'reverted'}`,
     })
     return {
       policy,
       chain: {
-        status: 'reverted',
-        transactionHash: outcome.transactionHash,
+        status: outcome.status,
+        ...(outcome.transactionHash ? { transactionHash: outcome.transactionHash } : {}),
         ...(outcome.revertReason ? { revertReason: outcome.revertReason } : {}),
       },
       heldBy: 'chain',
@@ -112,7 +121,10 @@ export async function act(input: {
   })
   return {
     policy,
-    chain: { status: 'landed', transactionHash: outcome.transactionHash },
+    chain: {
+      status: 'landed',
+      ...(outcome.transactionHash ? { transactionHash: outcome.transactionHash } : {}),
+    },
     heldBy: 'chain',
   }
 }

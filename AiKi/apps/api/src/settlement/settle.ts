@@ -36,7 +36,13 @@ export interface SettlementOutcome {
   feePaid: boolean
   /** True only when both legs landed. */
   settled: boolean
-  transactions: { leg: 'price' | 'fee'; status: string; transactionHash: Hex }[]
+  /**
+   * One row per leg attempted. `transactionHash` is absent when the node would
+   * not accept the transaction at all: there is nothing on chain to cite, and a
+   * settlement record naming a transaction that never existed is worse than one
+   * that admits nothing was sent.
+   */
+  transactions: { leg: 'price' | 'fee'; status: string; transactionHash?: Hex }[]
   detail: string
 }
 
@@ -63,7 +69,9 @@ export async function settle(request: SettlementRequest): Promise<SettlementOutc
     transactions.push({
       leg: name,
       status: outcome.status,
-      transactionHash: outcome.transactionHash,
+      // Absent for a leg the node would not accept: there is no transaction to
+      // cite, and a receipt naming one would be citing nothing.
+      ...(outcome.transactionHash ? { transactionHash: outcome.transactionHash } : {}),
     })
     return outcome.status === 'landed'
   }
