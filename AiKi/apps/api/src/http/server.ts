@@ -17,6 +17,7 @@ import { type BenchmarkRun, BenchmarkService, benchmarkEvidence } from '../bench
 import type { EnforcerDeployment } from '../config/enforcers.js'
 import type { Observation } from '../evidence/types.js'
 import { parseIntent } from '../intent/parser.js'
+import { act, parseAction } from '../jobs/act.js'
 import { JobService } from '../jobs/service.js'
 import { comparePassports, projectPassport } from '../projections/passport.js'
 import { assembleStats, projectStats, type StatsAggregate } from '../projections/stats.js'
@@ -77,6 +78,14 @@ export function createApiServer(input: {
    * it can do, it can do only inside a delegation somebody signed.
    */
   agentSessionKey?: `0x${string}`
+  /**
+   * The agent's private key, which signs redemptions and pays their gas. Its
+   * address must be `agentSessionKey`, since the manager accepts a redemption
+   * only from the delegate a mandate names. Absent means actions are decided
+   * off chain and nothing is submitted anywhere.
+   */
+  agentKey?: `0x${string}`
+  enforcerRpcUrl?: string
   /** Mandate accounts: where a person's value lives. Absent means none can be made. */
   accounts?: { store: AccountStore; deployer: AccountDeployer }
   jobs?: JobService
@@ -701,6 +710,42 @@ export function createApiServer(input: {
       actions: job.events,
       startedAt: job.createdAt,
       completedAt: new Date().toISOString(),
+    })
+  })
+  /**
+   * Do one thing, and report what each of the three said about it.
+   *
+   * The agent decides something should happen, the mandate decides whether it is
+   * permitted, and the chain decides whether it lands. Every answer is recorded
+   * against the job, refusals included, because a log of only what worked is a
+   * brochure rather than evidence.
+   */
+  app.post<{
+    Params: { id: string }
+    Body: { target?: string; selector?: string; asset?: string; amount?: string; callData?: string }
+  }>('/v1/jobs/:id/actions', async (request, reply) => {
+    const session = requireSession(request, reply)
+    if (!session) return reply
+    const job = await ownedJob(request, reply, session.address, request.params.id)
+    if (!job) return reply
+    const authorization = await jobs.getAuthorization(job.authorizationId)
+    const { action, callData } = parseAction(request.body ?? {})
+    return act({
+      jobs,
+      jobId: job.id,
+      action,
+      callData,
+      authorization,
+      ...(input.enforcers && input.agentKey
+        ? {
+            config: {
+              rpcUrl: input.enforcerRpcUrl ?? '',
+              chainId: input.enforcers.chainId,
+              manager: input.enforcers.manager as `0x${string}`,
+              agentKey: input.agentKey,
+            },
+          }
+        : {}),
     })
   })
   app.get<{ Params: { id: string } }>('/v1/receipts/:id', async (request) =>

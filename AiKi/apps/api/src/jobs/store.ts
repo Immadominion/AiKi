@@ -92,6 +92,20 @@ export interface JobStore {
     authorizationId: string,
     evaluate: (authorization: AuthorizationRecord) => SpendVerdict,
   ): Promise<SpendVerdict | null>
+
+  /**
+   * Give back an amount that was counted against the cap but never moved.
+   *
+   * The off-chain cap is checked and charged in one locked step, which is what
+   * stops two concurrent actions both fitting under a limit only one of them
+   * fits under. That charge happens before the chain has spoken, so when the
+   * chain then refuses the action, the counter is ahead of reality and every
+   * later action is measured against a spend that never occurred.
+   *
+   * Never below zero: a counter that could go negative would hand back more room
+   * than the mandate ever had.
+   */
+  releaseSpend(authorizationId: string, amount: bigint): Promise<void>
 }
 
 /** The default store: fine for tests and the sweep-backed dev server, and nowhere else. */
@@ -135,6 +149,12 @@ export class InMemoryJobStore implements JobStore {
     held.delegationChainId = chainId
     held.delegationSignedAt = at
     return { ...held }
+  }
+
+  async releaseSpend(authorizationId: string, amount: bigint) {
+    const held = this.authorizations.get(authorizationId)
+    if (!held) return
+    held.spent = held.spent > amount ? held.spent - amount : 0n
   }
 
   async createJob(record: JobRecord) {

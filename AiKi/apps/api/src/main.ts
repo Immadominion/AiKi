@@ -58,6 +58,12 @@ const nonceStore = new PostgresNonceStore(databaseUrl)
  */
 const agentSessionKey = process.env.AGENT_SESSION_ADDRESS as `0x${string}` | undefined
 /**
+ * Signs redemptions and pays their gas. Its address must be AGENT_SESSION_ADDRESS,
+ * because the manager accepts a redemption only from the delegate a mandate
+ * names. Absent means actions are decided off chain and submitted nowhere.
+ */
+const agentKey = process.env.AGENT_PRIVATE_KEY as `0x${string}` | undefined
+/**
  * Pays gas to put a person's mandate account on chain, and nothing else. It is
  * not an owner and not an executor: the worst it can do if it leaks is waste gas
  * deploying accounts for strangers. Absent means this deployment cannot make
@@ -80,6 +86,8 @@ const app = createApiServer({
   observationsForLiveness: (states) => store.observationsForLiveness(states),
   enforcers: AIKI_ENFORCERS_BSC_TESTNET,
   ...(agentSessionKey ? { agentSessionKey } : {}),
+  ...(agentKey ? { agentKey } : {}),
+  enforcerRpcUrl,
   // Reads the chain the enforcers are on, which is not the one the rest of this
   // process talks to: the registry and the reference agents are on mainnet and
   // the mandate suite is on testnet. Sharing one client would check a signature

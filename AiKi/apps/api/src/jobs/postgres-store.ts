@@ -176,6 +176,17 @@ export class PostgresJobStore implements JobStore {
    * concurrent actions cannot both read the same total and both squeeze past a
    * cap only one of them fits under.
    */
+  async releaseSpend(authorizationId: string, amount: bigint) {
+    // GREATEST rather than a read-then-write: the subtraction happens inside the
+    // one statement, so it cannot race another action's charge, and the floor is
+    // applied by the database rather than by whoever called this.
+    await this.sql`
+      UPDATE authorizations
+      SET spent = GREATEST(spent - ${amount.toString()}, 0)
+      WHERE id = ${authorizationId}
+    `
+  }
+
   async attemptSpend(
     authorizationId: string,
     evaluate: (authorization: AuthorizationRecord) => SpendVerdict,

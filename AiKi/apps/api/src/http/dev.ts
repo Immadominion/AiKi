@@ -30,6 +30,7 @@ import { createApiServer } from './server.js'
 /** Absent means this deployment cannot prepare a delegation to sign. */
 const agentSessionKey = process.env.AGENT_SESSION_ADDRESS as `0x${string}` | undefined
 const accountFunderKey = process.env.ACCOUNT_FUNDER_PRIVATE_KEY as `0x${string}` | undefined
+const agentKey = process.env.AGENT_PRIVATE_KEY as `0x${string}` | undefined
 const enforcerRpc =
   process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
 
@@ -58,6 +59,8 @@ const persistence = databaseUrl
       // by AiKi would make the builder's badges a local fiction.
       enforcers: AIKI_ENFORCERS_BSC_TESTNET,
       ...(agentSessionKey ? { agentSessionKey } : {}),
+      ...(agentKey ? { agentKey } : {}),
+      enforcerRpcUrl: enforcerRpc,
       // Accounts too, so the browser walk is the same walk production does. A
       // dev API that could not deploy one would make the hire flow fall back to
       // "AiKi counts your limits" and look like a bug in the web.

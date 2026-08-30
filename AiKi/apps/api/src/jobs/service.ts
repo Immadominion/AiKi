@@ -140,6 +140,16 @@ export class JobService {
     return { allow: verdict.allow, rule: verdict.rule, reason: verdict.reason }
   }
 
+  /** Give back an amount counted against the cap that the chain then refused. */
+  async releaseSpend(authorizationId: string, amount: bigint): Promise<void> {
+    await this.store.releaseSpend(authorizationId, amount)
+  }
+
+  /** Append one event to a job's log without changing its status. */
+  async record(jobId: string, event: { type: JobEvent['type']; detail: string }): Promise<void> {
+    await this.store.appendEvents(jobId, [{ ...event, at: new Date().toISOString() }])
+  }
+
   async getAuthorization(id: string): Promise<AuthorizationRecord> {
     const record = await this.store.getAuthorization(id)
     if (!record)
