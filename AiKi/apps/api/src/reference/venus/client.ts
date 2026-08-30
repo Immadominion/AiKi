@@ -12,7 +12,16 @@ import {
 const comptrollerAbi = parseAbi([
   'function getAccountLiquidity(address account) view returns (uint256 errCode, uint256 liquidity, uint256 shortfall)',
   'function getAssetsIn(address account) view returns (address[])',
-  'function markets(address vToken) view returns (bool isListed, uint256 collateralFactorMantissa, bool isVenus)',
+  /*
+   * Four returns, not three. Venus's Comptroller keeps a liquidation threshold
+   * alongside the collateral factor: the factor bounds what you may borrow, the
+   * threshold decides when you are liquidated, and they are not always equal.
+   * Both BSC mainnet and testnet return the same seven-word struct, so reading
+   * the fourth field is safe on either; on testnet today they differ (0.75 and
+   * 0.80) and on mainnet they currently match, which is precisely why declaring
+   * only three of them looked correct for so long.
+   */
+  'function markets(address vToken) view returns (bool isListed, uint256 collateralFactorMantissa, bool isVenus, uint256 liquidationThresholdMantissa)',
   'function oracle() view returns (address)',
 ])
 const vTokenAbi = parseAbi([
@@ -49,11 +58,25 @@ function position(market: VenusMarketSnapshot): {
   const supplied =
     (market.vTokenBalance * market.exchangeRate * market.underlyingPrice) / (WAD * WAD)
   const borrowed = (market.borrowBalance * market.underlyingPrice) / WAD
-  const adjustedCollateral = (supplied * market.collateralFactor) / WAD
+  /*
+   * The liquidation threshold, not the collateral factor.
+   *
+   * A health factor answers one question — how close is this position to being
+   * taken — and the number that decides that is the threshold. Using the factor
+   * instead understates the health of every position where the two differ, and
+   * worse, it is then cross-checked below against `getAccountLiquidity`, which
+   * Venus computes from the threshold. The two disagree, the assessment reports
+   * itself INCONSISTENT, and the guardian refuses to act on a position it has
+   * read perfectly correctly. Observed on BSC testnet vUSDT, where the factor is
+   * 0.75 and the threshold 0.80: a $25 gap on $500 of collateral, and an agent
+   * that would never have repaid anything.
+   */
+  const adjustedCollateral = (supplied * market.liquidationThreshold) / WAD
   return {
     output: {
       vToken: market.vToken,
       collateralFactor: ratio(market.collateralFactor),
+      liquidationThreshold: ratio(market.liquidationThreshold),
       supplied: amount(supplied),
       borrowed: amount(borrowed),
       adjustedCollateral: amount(adjustedCollateral),
@@ -216,7 +239,7 @@ export class VenusClient implements VenusReader {
             args: [vToken],
           }),
         ])
-        const market = marketRaw as readonly [boolean, bigint, boolean]
+        const market = marketRaw as readonly [boolean, bigint, boolean, bigint]
         const accountSnapshot = accountSnapshotRaw as readonly [bigint, bigint, bigint, bigint]
         const underlyingPrice = underlyingPriceRaw as bigint
         if (!market[0]) throw new Error(`Venus returned a non-listed entered market: ${vToken}.`)
@@ -227,6 +250,10 @@ export class VenusClient implements VenusReader {
         return {
           vToken,
           collateralFactor: market[1],
+          // Venus has left this zero on markets it has not set it for; the
+          // collateral factor is the honest fallback, and it is what the
+          // Comptroller itself falls back to.
+          liquidationThreshold: market[3] === 0n ? market[1] : market[3],
           vTokenBalance: accountSnapshot[1],
           borrowBalance: accountSnapshot[2],
           exchangeRate: accountSnapshot[3],

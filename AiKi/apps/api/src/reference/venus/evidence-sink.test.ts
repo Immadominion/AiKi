@@ -14,6 +14,7 @@ it('persists a category assessment and each entered market as immutable evidence
       {
         vToken: '0x2222222222222222222222222222222222222222',
         collateralFactor: (8n * WAD) / 10n,
+        liquidationThreshold: (8n * WAD) / 10n,
         vTokenBalance: 100n * WAD,
         borrowBalance: 100n * WAD,
         exchangeRate: 2n * WAD,

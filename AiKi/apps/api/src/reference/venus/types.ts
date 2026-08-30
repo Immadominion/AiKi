@@ -3,6 +3,12 @@ export const WAD = 10n ** 18n
 export interface VenusMarketSnapshot {
   vToken: `0x${string}`
   collateralFactor: bigint
+  /**
+   * The ratio Venus actually liquidates at, which is not always the ratio it
+   * lends at. Venus's Comptroller keeps both, and `getAccountLiquidity` answers
+   * with this one.
+   */
+  liquidationThreshold: bigint
   vTokenBalance: bigint
   borrowBalance: bigint
   exchangeRate: bigint
@@ -34,6 +40,7 @@ export interface Amount {
 export interface VenusPosition {
   vToken: `0x${string}`
   collateralFactor: string
+  liquidationThreshold: string
   supplied: Amount
   borrowed: Amount
   adjustedCollateral: Amount
