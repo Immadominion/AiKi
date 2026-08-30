@@ -1,4 +1,4 @@
-import type { Address } from 'viem'
+import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
 import { PostgresJobStore } from '../jobs/postgres-store.js'
 import { JobService } from '../jobs/service.js'
 import { VenusClient } from '../reference/venus/client.js'
@@ -26,12 +26,20 @@ if (!databaseUrl) throw new Error('DATABASE_URL is required.')
  * the caveats refusing the repayment are on the same chain. Watching a position
  * on one chain while the limit lives on another would be theatre.
  */
-const chainId = Number(process.env.RUNNER_CHAIN_ID ?? '97')
+const deployment = AIKI_ENFORCERS_BSC_TESTNET
+const chainId = deployment.chainId
 const rpcUrl =
   process.env.RUNNER_RPC_URL ??
   process.env.ENFORCER_RPC_URL ??
   'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
-const manager = process.env.DELEGATION_MANAGER_ADDRESS as Address | undefined
+/*
+ * The manager comes from the pinned deployment, not from the environment. The
+ * caveats in every stored delegation were compiled against this exact address
+ * and its enforcers, so a manager set by an environment variable is a
+ * misconfiguration that would redeem a mandate through contracts nobody checked
+ * it against. It is the one address that must not be a knob.
+ */
+const manager = deployment.manager as `0x${string}`
 const relayerKey = process.env.AGENT_PRIVATE_KEY as `0x${string}` | undefined
 
 const intervalMs = Number(process.env.RUNNER_INTERVAL_MS ?? String(5 * 60_000))
@@ -46,14 +54,14 @@ try {
    * act still claims to be watching, which is the worst of both: the user
    * believes a guardian is on duty and nothing is.
    */
-  const canAct = Boolean(manager && relayerKey)
-  if (!canAct)
+  if (!relayerKey)
     console.warn(
-      'runner: DELEGATION_MANAGER_ADDRESS and AGENT_PRIVATE_KEY are unset, so no watch can act. Positions will be read and recorded only.',
+      'runner: AGENT_PRIVATE_KEY is unset, so no watch can act. Positions will be read and recorded only.',
     )
 
-  const chain: SweepChainConfig | null =
-    manager && relayerKey ? { rpcUrl, chainId, delegationManager: manager, relayerKey } : null
+  const chain: SweepChainConfig | null = relayerKey
+    ? { rpcUrl, chainId, delegationManager: manager, relayerKey }
+    : null
 
   const reader = new VenusClient(rpcUrl, undefined, chainId)
 
