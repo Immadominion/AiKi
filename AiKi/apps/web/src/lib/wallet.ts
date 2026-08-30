@@ -136,3 +136,39 @@ export const CONNECT_TOAST: Record<ConnectOutcome, string> = {
 }
 
 export type ConnectOutcome = 'injected' | 'unsigned' | 'simulated' | 'rejected'
+
+/**
+ * Sign a mandate, in the wallet, with the wallet's own typed-data prompt.
+ *
+ * `personal_sign` above proves who you are; this authorises what an agent may
+ * do with your money, and the two must look different to the person approving
+ * them. `eth_signTypedData_v4` is what makes that possible: a wallet renders
+ * the caveats as named fields rather than as a wall of hex, so somebody can read
+ * the cap they are agreeing to before they agree to it.
+ *
+ * The typed data comes from the API, which computed it from the mandate already
+ * stored and will verify the signature against the same bytes. Building it here
+ * would put a second copy of that logic in the browser, free to drift, and then
+ * a person would sign what their browser believed rather than what the chain
+ * will hold.
+ */
+export async function signMandate(
+  address: string,
+  typedData: { domain: unknown; types: unknown; primaryType: string; message: unknown },
+): Promise<`0x${string}` | 'declined'> {
+  const eth = provider()
+  if (!eth) return 'declined'
+  try {
+    const signature = (await eth.request({
+      method: 'eth_signTypedData_v4',
+      // Stringified, because that is what the method expects and several wallets
+      // reject an object outright rather than saying why.
+      params: [address, JSON.stringify(typedData)],
+    })) as string
+    return signature as `0x${string}`
+  } catch {
+    // Declining to sign is an ordinary answer and not an error. The caller
+    // reports that nothing was authorised, which is exactly what happened.
+    return 'declined'
+  }
+}

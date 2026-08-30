@@ -6,7 +6,14 @@ import { mandateConstraints } from '@/components/hire/mandate'
 import type { AgentKey } from '@/lib/agents'
 import { api as backend } from '@/lib/api'
 import { DETAILS } from '@/lib/detail'
-import { type ConnectOutcome, connectInjected, signIn, signOut, watchAccounts } from '@/lib/wallet'
+import {
+  type ConnectOutcome,
+  connectInjected,
+  signIn,
+  signMandate,
+  signOut,
+  watchAccounts,
+} from '@/lib/wallet'
 import { buildReceipt, runStep } from './script'
 import { demoState, freshState } from './seed'
 import { EMPTY, type Hire, type Job, MOCK_VERSION, type MockState } from './types'
@@ -34,7 +41,13 @@ interface MockApi {
     period: CapPeriod
     days: number
     approval: ApprovalMode
-  }) => Promise<string>
+    /**
+     * The job id, and who ends up holding the limits. `signed` means the chain
+     * refuses anything past them; `counted` means AiKi does. A hire is real
+     * either way and the difference has to reach the person, so it is returned
+     * rather than swallowed.
+     */
+  }) => Promise<{ jobId: string; mandate: 'signed' | 'counted' }>
   advance: (jobId: string) => void
   approve: (jobId: string) => void
   decline: (jobId: string) => void
@@ -177,8 +190,42 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
           // heard of is not a limit, and pretending otherwise is the one thing
           // this product cannot do.
           const authorization = await backend.authorize(constraints)
-          const job = await backend.createJob(authorization.id, `hire:${authorization.id}`)
           authorizationId = authorization.id
+
+          /*
+           * Turn the mandate into authority the chain holds.
+           *
+           * Everything above records what was chosen; this is where somebody
+           * actually grants it. It runs after the mandate exists because the API
+           * signs what it has already stored, never what this request supplies.
+           *
+           * A failure here is not fatal to the hire and must not be silent. The
+           * mandate is real either way, and the difference is who enforces it:
+           * signed means the chain refuses, unsigned means AiKi counts. Screens
+           * read that off the API rather than from anything decided here.
+           */
+          let mandateHeldBy: 'signed' | 'counted' = 'counted'
+          try {
+            const existing = await backend.account()
+            const account = existing.address ?? (await backend.createAccount()).address
+            const prep = await backend.prepareDelegation(authorization.id, account)
+            const signature = await signMandate(stateRef.current.address ?? '', {
+              domain: prep.domain,
+              types: prep.types,
+              primaryType: prep.primaryType,
+              message: prep.message,
+            })
+            if (signature !== 'declined') {
+              await backend.fileDelegation(authorization.id, { ...prep.unsigned, signature })
+              mandateHeldBy = 'signed'
+            }
+          } catch {
+            // Left as 'counted'. Never silent: somebody who believes the chain
+            // is holding their cap when it is not has been told the one thing
+            // this product may never get wrong.
+          }
+
+          const job = await backend.createJob(authorization.id, `hire:${authorization.id}`)
           const hire: Hire = {
             key: input.key,
             hiredAt: now,
@@ -210,7 +257,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
             hires: [...s.hires.filter((h) => h.key !== input.key), hire],
             jobs: [...s.jobs.filter((j) => j.key !== input.key), remoteJob],
           }))
-          return job.id
+          return { jobId: job.id, mandate: mandateHeldBy }
         }
 
         const jobId = nextId('job')
@@ -244,7 +291,9 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
           hires: [...s.hires.filter((h) => h.key !== input.key), hire],
           jobs: [...s.jobs.filter((j) => j.key !== input.key), job],
         }))
-        return jobId
+        // A simulated wallet signs nothing, so nothing is on chain and saying
+        // otherwise here would be the one lie this product cannot tell.
+        return { jobId, mandate: 'counted' as const }
       },
 
       advance: (jobId) =>

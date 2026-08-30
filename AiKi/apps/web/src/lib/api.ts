@@ -107,6 +107,30 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ constraints }),
     }),
+  /** The account this person's mandates spend from, or null if they have none. */
+  account: () =>
+    req<{ address: string | null; chainId: number; network: string | null }>('/v1/account'),
+  /** Deploys one. AiKi pays the gas; the account belongs to the caller. */
+  createAccount: () =>
+    req<{ address: string; chainId: number; created: boolean }>('/v1/account', { method: 'POST' }),
+  /**
+   * Exactly what to sign, computed by the side that will verify it. `message` is
+   * what the wallet signs; `unsigned` is what to post back, and carries the args
+   * the signature deliberately does not cover.
+   */
+  prepareDelegation: (id: string, delegator: string) =>
+    req<{
+      domain: unknown
+      types: unknown
+      primaryType: string
+      message: unknown
+      unsigned: Record<string, unknown>
+    }>(`/v1/authorizations/${id}/delegation?delegator=${delegator}`),
+  fileDelegation: (id: string, delegation: Record<string, unknown>) =>
+    req<{ id: string; delegator: string | null; delegationChainId: number | null }>(
+      `/v1/authorizations/${id}/delegation`,
+      { method: 'POST', body: JSON.stringify({ delegation }) },
+    ),
   authorize: (constraints: unknown[]) =>
     req<AuthorizationResponse>('/v1/authorizations', {
       method: 'POST',

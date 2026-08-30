@@ -449,8 +449,15 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
                   days,
                   approval,
                 })
-                  .then((jobId) => {
-                    say(`${row.name} is hired and starting now.`)
+                  .then(({ jobId, mandate }) => {
+                    // Which of the two happened is the difference between a
+                    // limit a contract refuses to exceed and one AiKi counts, so
+                    // it is said rather than assumed.
+                    say(
+                      mandate === 'signed'
+                        ? `${row.name} is hired. The chain holds your limits.`
+                        : `${row.name} is hired. AiKi holds your limits.`,
+                    )
                     router.push(jobHref(jobId))
                   })
                   .catch(() => {
