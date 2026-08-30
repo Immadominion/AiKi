@@ -69,13 +69,30 @@ export async function tick(input: TickInput): Promise<TickResult> {
     callData: erc20TransferCall(input.repayTo, decision.repay),
   })
 
-  if (outcome.status !== 'landed')
+  if (outcome.status !== 'landed') {
+    /*
+     * Give the cap back. `attempt` charged it before the chain had spoken,
+     * because checking and charging have to happen in one locked step, and the
+     * chain then refused. Left alone the counter would be ahead of reality.
+     *
+     * This matters far more on a loop than it does on a one-off action. A watch
+     * that fails four times against a 100 cap has spent nothing and has no room
+     * left, so the agent stops protecting the position for a reason that never
+     * happened. Looked up rather than passed in, so a caller cannot forget it.
+     */
+    const { authorizationId } = await input.jobs.getJob(input.jobId)
+    await input.jobs.releaseSpend(authorizationId, decision.repay)
+    await input.jobs.record(input.jobId, {
+      type: 'policy',
+      detail: `chain refused it: ${outcome.revertReason ?? 'reverted'}`,
+    })
     return {
       acted: false,
       reason: `The chain refused it: ${outcome.revertReason ?? 'reverted'}`,
       deniedBy: 'chain',
       repay: decision.repay,
     }
+  }
 
   return {
     acted: true,

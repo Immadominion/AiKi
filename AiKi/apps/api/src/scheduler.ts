@@ -1,16 +1,28 @@
 /**
- * The evidence engine, running on its own.
+ * The engine, running on its own.
  *
- * Indexing and probing are separate loops on separate clocks: the registry
- * grows on chain continuously, while probing is a courtesy call to someone
- * else's server and belongs on a slower one. Neither loop lets a failed pass
- * end the process, because a prober that dies on one bad endpoint stops being
- * a prober; it logs the failure and waits for its next turn.
+ * Three loops on three clocks. Indexing and probing build the evidence: the
+ * registry grows on chain continuously, while probing is a courtesy call to
+ * someone else's server and belongs on a slower clock. The runner is the third
+ * and it is a different kind of thing — it is the one that spends money, on
+ * behalf of people who are not watching.
+ *
+ * No loop lets a failed pass end the process. A prober that dies on one bad
+ * endpoint stops being a prober; a runner that dies on one unreachable RPC
+ * stops being a guardian, which is worse, because the user was told it was on
+ * duty. Each logs the failure and waits for its next turn.
  */
 import { spawn } from 'node:child_process'
 
 const INDEX_INTERVAL_MS = Number(process.env.INDEX_INTERVAL_MS ?? String(5 * 60_000))
 const PROBE_INTERVAL_MS = Number(process.env.PROBE_INTERVAL_MS ?? String(30 * 60_000))
+/*
+ * The fastest of the three. A position can go from healthy to liquidatable in
+ * the time between two blocks, and every minute of this interval is a minute
+ * the user is unprotected. It is bounded below by the trigger's own cooldown,
+ * which is what stops a fast clock repaying the same shortfall twice.
+ */
+const RUN_INTERVAL_MS = Number(process.env.RUN_INTERVAL_MS ?? String(60_000))
 
 function runOnce(label: string, script: string) {
   return new Promise<void>((resolve) => {
@@ -39,9 +51,12 @@ async function loop(label: string, script: string, intervalMs: number) {
 
 const here = new URL('.', import.meta.url).pathname
 console.log(
-  `evidence scheduler: index every ${INDEX_INTERVAL_MS / 60_000}m, probe every ${PROBE_INTERVAL_MS / 60_000}m`,
+  `scheduler: index every ${INDEX_INTERVAL_MS / 60_000}m, ` +
+    `probe every ${PROBE_INTERVAL_MS / 60_000}m, ` +
+    `run every ${RUN_INTERVAL_MS / 60_000}m`,
 )
 await Promise.all([
   loop('index', `${here}indexer/persist-cli.ts`, INDEX_INTERVAL_MS),
   loop('probe', `${here}prober/sweep-cli.ts`, PROBE_INTERVAL_MS),
+  loop('run', `${here}runner/sweep-cli.ts`, RUN_INTERVAL_MS),
 ])

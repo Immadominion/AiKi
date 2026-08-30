@@ -1,5 +1,5 @@
 import { type Address, createPublicClient, http, type PublicClient, parseAbi } from 'viem'
-import { bsc } from 'viem/chains'
+import { bsc, bscTestnet } from 'viem/chains'
 import { BSC_MAINNET } from '../../config/chains.js'
 import {
   type VenusAccountSnapshot,
@@ -132,14 +132,44 @@ export interface VenusReader {
   snapshot(account: Address): Promise<VenusAccountSnapshot>
 }
 
+/**
+ * Where Venus actually is, per chain.
+ *
+ * Deliberately its own small map rather than an entry in the chain-wide address
+ * book. Venus has a testnet deployment; most of what that book holds — the
+ * ERC-8004 registry, the commerce contracts — does not, and inventing addresses
+ * to satisfy the shape of a config object is how a zero address ends up looking
+ * configured and reading nothing.
+ */
+export const VENUS_DEPLOYMENTS: ReadonlyMap<number, { comptroller: Address; chain: typeof bsc }> =
+  new Map([
+    [56, { comptroller: BSC_MAINNET.contracts.venusComptroller as Address, chain: bsc }],
+    // Venus Unitroller on BSC testnet. Verified to have code before being used
+    // here: a comptroller address with no contract behind it reports every
+    // position as empty, which reads as "nothing to protect" rather than as an
+    // error, and is the most dangerous possible way for this to be wrong.
+    [
+      97,
+      {
+        comptroller: '0x94d1820b2D1c7c7452A163983Dc888CEC546b77D' as Address,
+        chain: bscTestnet as unknown as typeof bsc,
+      },
+    ],
+  ])
+
 export class VenusClient implements VenusReader {
   private readonly client: PublicClient
-  constructor(rpcUrl: string, client?: PublicClient) {
-    this.client = client ?? createPublicClient({ chain: bsc, transport: http(rpcUrl) })
+  private readonly comptroller: Address
+
+  constructor(rpcUrl: string, client?: PublicClient, chainId = 56) {
+    const deployment = VENUS_DEPLOYMENTS.get(chainId)
+    if (!deployment) throw new Error(`Venus is not deployed on chain ${chainId}.`)
+    this.comptroller = deployment.comptroller
+    this.client = client ?? createPublicClient({ chain: deployment.chain, transport: http(rpcUrl) })
   }
 
   async snapshot(account: Address): Promise<VenusAccountSnapshot> {
-    const comptroller = BSC_MAINNET.contracts.venusComptroller as Address
+    const comptroller = this.comptroller
     const [liquidityResultRaw, assetsRaw, oracleRaw] = await Promise.all([
       this.client.readContract({
         address: comptroller,

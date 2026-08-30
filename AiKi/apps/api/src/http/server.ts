@@ -22,6 +22,8 @@ import { JobService } from '../jobs/service.js'
 import { comparePassports, projectPassport } from '../projections/passport.js'
 import { assembleStats, projectStats, type StatsAggregate } from '../projections/stats.js'
 import { ReceiptService } from '../receipts/service.js'
+import { registerWatchRoutes } from '../runner/routes.js'
+import type { WatchStore } from '../runner/store.js'
 import { buildQuote } from '../settlement/pricing.js'
 import { publishedPrice } from '../settlement/published-price.js'
 import { asClientError, asProtocolError, asSchemaError, ClientError } from './errors.js'
@@ -89,6 +91,11 @@ export function createApiServer(input: {
   /** Mandate accounts: where a person's value lives. Absent means none can be made. */
   accounts?: { store: AccountStore; deployer: AccountDeployer }
   jobs?: JobService
+  /**
+   * Standing instructions to watch a position. Absent means this deployment can
+   * run agents on demand but nothing on a timer.
+   */
+  watches?: WatchStore
   receipts?: ReceiptService
   benchmarks?: BenchmarkService
   /** Omitted only in tests of the public surface; every mandate route needs it. */
@@ -130,6 +137,7 @@ export function createApiServer(input: {
         input.auth.signer.verify(readCookie(request.headers.cookie, SESSION_COOKIE)) ?? undefined
   })
   if (input.auth) registerAuthRoutes(app, input.auth)
+  if (input.watches) registerWatchRoutes(app, { jobs, watches: input.watches })
   /**
    * Only messages written for a caller reach a caller.
    *

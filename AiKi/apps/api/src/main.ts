@@ -23,6 +23,7 @@ import { VenusClient } from './reference/venus/client.js'
 import { createVenusReferenceServer } from './reference/venus/server.js'
 import { VenusYieldClient } from './reference/yield/client.js'
 import { createYieldServer } from './reference/yield/server.js'
+import { PostgresWatchStore } from './runner/store.js'
 
 const rpcUrl = process.env.BSC_RPC_URL
 const databaseUrl = process.env.DATABASE_URL
@@ -71,6 +72,7 @@ const agentKey = process.env.AGENT_PRIVATE_KEY as `0x${string}` | undefined
  */
 const accountFunderKey = process.env.ACCOUNT_FUNDER_PRIVATE_KEY as `0x${string}` | undefined
 const accountStore = new PostgresAccountStore(databaseUrl)
+const watchStore = new PostgresWatchStore(databaseUrl)
 const enforcerRpcUrl =
   process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
 const base = process.env.REFERENCE_AGENT_BASE_URL
@@ -107,6 +109,7 @@ const app = createApiServer({
       }
     : {}),
   jobs: new JobService(jobStore),
+  watches: watchStore,
   receipts: new ReceiptService(receiptSeed, receiptStore),
   auth: {
     signer: new SessionSigner(sessionSecret),
