@@ -4,6 +4,7 @@ import {
   createPublicClient,
   createWalletClient,
   encodeAbiParameters,
+  encodeFunctionData,
   type Hex,
   http,
   keccak256,
@@ -81,10 +82,10 @@ const atRisk = (over: Partial<Assessment> = {}): Assessment => ({
 })
 
 describe.skipIf(!reachable)('tick (against a real chain)', () => {
-  const lender = '0x0000000000000000000000000000000000001e4d' as Address
   let manager: Address
   let account: Address
   let token: Address
+  let market: Address
   let sessionEnforcer: Address
   let expiryEnforcer: Address
 
@@ -94,6 +95,7 @@ describe.skipIf(!reachable)('tick (against a real chain)', () => {
     account = await deploy('AiKiMandateAccount', [owner.address, manager])
     sessionEnforcer = await deploy('SessionTotalCapEnforcer', [manager])
     token = await deploy('MockERC20')
+    market = await deploy('MockVToken', [token])
     const hash = await wallet.writeContract({
       address: token,
       abi: parseAbi(['function mint(address to, uint256 amount)']),
@@ -101,13 +103,50 @@ describe.skipIf(!reachable)('tick (against a real chain)', () => {
       args: [account, 100_000n * WAD],
     })
     await publicClient.waitForTransactionReceipt({ hash })
+
+    // A debt to repay.
+    const borrowed = await wallet.writeContract({
+      address: market,
+      abi: parseAbi(['function setBorrow(address who, uint256 amount)']),
+      functionName: 'setBorrow',
+      args: [account, 100_000n * WAD],
+    })
+    await publicClient.waitForTransactionReceipt({ hash: borrowed })
+
+    /*
+     * The owner approves the market from their own account, once, exactly as a
+     * person approves a lending market they already use. This is deliberately
+     * not something the agent can do: the agent's standing authority is the
+     * repayment alone, so an allowance can only ever exist because the owner
+     * created it.
+     */
+    const approved = await wallet.writeContract({
+      address: account,
+      abi: parseAbi(['function execute(address target, uint256 value, bytes callData)']),
+      functionName: 'execute',
+      args: [
+        token,
+        0n,
+        encodeFunctionData({
+          abi: parseAbi(['function approve(address spender, uint256 amount) returns (bool)']),
+          functionName: 'approve',
+          args: [market, 1_000_000n * WAD],
+        }),
+      ],
+    })
+    await publicClient.waitForTransactionReceipt({ hash: approved })
   }, 120_000)
 
+  const debtOf = (who: Address) =>
+    publicClient.readContract({
+      address: market,
+      abi: parseAbi(['function borrowBalance(address) view returns (uint256)']),
+      functionName: 'borrowBalance',
+      args: [who],
+    }) as Promise<bigint>
+
   async function mandate(sessionCap: bigint): Promise<SignedDelegation> {
-    const selector = keccak256(new TextEncoder().encode('transfer(address,uint256)')).slice(
-      0,
-      10,
-    ) as Hex
+    const selector = keccak256(new TextEncoder().encode('repayBorrow(uint256)')).slice(0, 10) as Hex
     const siteType = {
       type: 'tuple[]',
       components: [
@@ -134,7 +173,7 @@ describe.skipIf(!reachable)('tick (against a real chain)', () => {
           enforcer: sessionEnforcer,
           terms: encodeAbiParameters(
             [{ type: 'address' }, { type: 'uint256' }, siteType],
-            [token, sessionCap, [{ target: token, selector, asset: token, argIndex: 1 }]],
+            [token, sessionCap, [{ target: market, selector, asset: token, argIndex: 0 }]],
           ),
           args: '0x',
         },
@@ -165,14 +204,6 @@ describe.skipIf(!reachable)('tick (against a real chain)', () => {
     return delegation
   }
 
-  const balanceOf = (who: Address) =>
-    publicClient.readContract({
-      address: token,
-      abi: parseAbi(['function balanceOf(address) view returns (uint256)']),
-      functionName: 'balanceOf',
-      args: [who],
-    }) as Promise<bigint>
-
   async function harness(cap: bigint, mandateCap = cap) {
     const jobs = new JobService()
     const authorization = await jobs.authorize(
@@ -185,7 +216,7 @@ describe.skipIf(!reachable)('tick (against a real chain)', () => {
       jobId: job.id,
       delegation: await mandate(mandateCap),
       asset: token,
-      repayTo: lender,
+      market,
       chain: {
         rpcUrl: RPC,
         chainId: CHAIN_ID,
@@ -197,20 +228,26 @@ describe.skipIf(!reachable)('tick (against a real chain)', () => {
 
   it('notices a position at risk and repays it on chain', async () => {
     const h = await harness(10_000n * WAD)
-    const before = await balanceOf(lender)
+    const before = await debtOf(account)
 
     const result = await tick({ ...h, assessment: atRisk(), state: { remaining: 10_000n * WAD } })
 
     expect(result.acted).toBe(true)
     expect(result.repay).toBe(120n * WAD + (120n * WAD) / 50n)
-    // The assertion that matters: the lender was actually paid.
-    expect(await balanceOf(lender)).toBe(before + (result.repay as bigint))
+    /*
+     * The assertion that matters, and it is about the DEBT rather than the
+     * market's balance. Both a transfer to the market and a real repayment move
+     * the same tokens to the same address; only one of them makes the position
+     * healthier, and a balance assertion would pass for the version of this
+     * agent that donates to the pool and leaves the user just as liquidatable.
+     */
+    expect(await debtOf(account)).toBe(before - (result.repay as bigint))
     expect((await h.jobs.getJob(h.jobId)).events.map((e) => e.type)).toContain('spend')
   }, 120_000)
 
   it('never sends anything when the assessment disagrees with the protocol', async () => {
     const h = await harness(10_000n * WAD)
-    const before = await balanceOf(lender)
+    const before = await debtOf(account)
 
     const result = await tick({
       ...h,
@@ -220,13 +257,13 @@ describe.skipIf(!reachable)('tick (against a real chain)', () => {
 
     expect(result.acted).toBe(false)
     expect(result.reason).toContain('inconsistent')
-    expect(await balanceOf(lender)).toBe(before)
+    expect(await debtOf(account)).toBe(before)
   }, 120_000)
 
   it('stops at the mandate rather than at the chain when the cap is the problem', async () => {
     // The engine's cap is below the repayment, so the action must never be sent.
     const h = await harness(10n * WAD, 10_000n * WAD)
-    const before = await balanceOf(lender)
+    const before = await debtOf(account)
 
     const result = await tick({ ...h, assessment: atRisk(), state: { remaining: 10_000n * WAD } })
 
@@ -235,19 +272,19 @@ describe.skipIf(!reachable)('tick (against a real chain)', () => {
     expect(result.reason).toContain('mandate refused')
     // Nothing reached the chain: a refusal upstream is cheaper and clearer than
     // a reverted transaction, and the user pays no gas for it.
-    expect(await balanceOf(lender)).toBe(before)
+    expect(await debtOf(account)).toBe(before)
   }, 120_000)
 
   it('is refused by the chain when the mandate and the caveats disagree', async () => {
     // The off-chain engine allows it; the on-chain caveat does not. This is the
     // case that would be invisible without T0, and it must still move nothing.
     const h = await harness(10_000n * WAD, 10n * WAD)
-    const before = await balanceOf(lender)
+    const before = await debtOf(account)
 
     const result = await tick({ ...h, assessment: atRisk(), state: { remaining: 10_000n * WAD } })
 
     expect(result.acted).toBe(false)
     expect(result.deniedBy).toBe('chain')
-    expect(await balanceOf(lender)).toBe(before)
+    expect(await debtOf(account)).toBe(before)
   }, 120_000)
 })

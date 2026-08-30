@@ -173,6 +173,23 @@ export async function execute(request: ExecutionRequest): Promise<ExecutionOutco
 }
 
 /** Calldata for an ERC-20 transfer, the only action shape v1 executes. */
+/**
+ * Repaying a loan, as opposed to sending money in the direction of one.
+ *
+ * A transfer to a vToken is a donation to the pool: the borrow is untouched and
+ * the position is no healthier than before. This is the call that actually
+ * reduces the debt, and it pulls the underlying from the account through an
+ * allowance the owner granted, so nothing moves that the owner did not permit
+ * twice over.
+ */
+export function venusRepayCall(amount: bigint): Hex {
+  return encodeFunctionData({
+    abi: parseAbi(['function repayBorrow(uint256 repayAmount) returns (uint256)']),
+    functionName: 'repayBorrow',
+    args: [amount],
+  })
+}
+
 export function erc20TransferCall(to: Address, amount: bigint): Hex {
   return encodeFunctionData({
     abi: parseAbi(['function transfer(address to, uint256 amount) returns (bool)']),

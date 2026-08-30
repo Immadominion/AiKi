@@ -14,6 +14,7 @@ const OWNER = `0x${'ab'.repeat(20)}`
 const STRANGER = `0x${'cd'.repeat(20)}`
 const TOKEN = `0x${'11'.repeat(20)}`
 const ACCOUNT = `0x${'22'.repeat(20)}`
+const MARKET = `0x${'33'.repeat(20)}`
 
 const cookie = {
   cookie: `aiki_session=${signer.issue(OWNER, 56)}`,
@@ -34,7 +35,7 @@ const START = {
   chainId: 97,
   minimumHealthFactor: '1.4',
   asset: TOKEN,
-  repayTo: TOKEN,
+  market: MARKET,
 }
 
 async function harness(options: { signed?: boolean; capped?: boolean } = {}) {
@@ -160,6 +161,55 @@ it('refuses a chain where AiKi cannot read Venus', async () => {
   })
   expect(response.statusCode).toBe(400)
   expect(response.json().error.code).toBe('WATCH_UNSUPPORTED_CHAIN')
+})
+
+it('refuses a mandate that does not permit repaying', async () => {
+  // Otherwise the chain refuses every pass forever, and from the outside it
+  // looks like an agent that just never does anything.
+  const jobs = new JobService(new InMemoryJobStore())
+  const watches = new InMemoryWatchStore()
+  const app = createApiServer({
+    observations: () => [],
+    jobs,
+    watches,
+    auth: {
+      signer,
+      nonces: new InMemoryNonceStore(),
+      domain: 'aiki.test',
+      secureCookies: false,
+      client: createPublicClient({ chain: bsc, transport: http('http://127.0.0.1:1') }),
+    },
+  })
+  apps.push(app)
+  const authorization = await jobs.authorize(
+    [
+      { kind: 'session_total_cap', value: '1000', tier: 'T0', label: 'cap' },
+      // transfer only, which cannot repay a loan.
+      { kind: 'selector_allowlist', value: ['0xa9059cbb'], tier: 'T0', label: 'selectors' },
+    ],
+    OWNER,
+  )
+  await jobs.attachDelegation(authorization.id, {
+    delegation: {
+      delegate: `0x${'44'.repeat(20)}`,
+      delegator: `0x${'55'.repeat(20)}`,
+      authority: `0x${'ff'.repeat(32)}`,
+      caveats: [],
+      salt: '1',
+      epoch: '0',
+      signature: `0x${'66'.repeat(65)}`,
+    } as never,
+    chainId: 97,
+  })
+  const job = await jobs.createJob(authorization.id, `k-${Math.random()}`)
+  const response = await app.inject({
+    method: 'POST',
+    url: `/v1/jobs/${job.id}/watch`,
+    headers: cookie,
+    payload: START,
+  })
+  expect(response.statusCode).toBe(409)
+  expect(response.json().error.code).toBe('WATCH_SELECTOR_NOT_ALLOWED')
 })
 
 it('will not start a second watch on the same job', async () => {

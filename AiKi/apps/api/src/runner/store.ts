@@ -22,7 +22,7 @@ export interface Watch {
   minimumHealthFactor: string
   /** What is repaid, and the market it is repaid into. */
   asset: string
-  repayTo: string
+  market: string
   status: WatchStatus
   createdAt: string
   /**
@@ -68,7 +68,7 @@ const normalise = (watch: Watch): Watch => ({
   ...watch,
   account: lower(watch.account),
   asset: lower(watch.asset),
-  repayTo: lower(watch.repayTo),
+  market: lower(watch.market),
 })
 
 export class InMemoryWatchStore implements WatchStore {
@@ -134,10 +134,10 @@ export class PostgresWatchStore implements WatchStore {
     const inserted = await this.sql<WatchRow[]>`
       INSERT INTO watches (
         job_id, authorization_id, account, chain_id, protocol,
-        minimum_health_factor, asset, repay_to, status, created_at
+        minimum_health_factor, asset, market, status, created_at
       ) VALUES (
         ${row.jobId}, ${row.authorizationId}, ${row.account}, ${row.chainId}, ${row.protocol},
-        ${row.minimumHealthFactor}, ${row.asset}, ${row.repayTo}, ${row.status}, ${row.createdAt}
+        ${row.minimumHealthFactor}, ${row.asset}, ${row.market}, ${row.status}, ${row.createdAt}
       )
       ON CONFLICT (job_id) DO NOTHING
       RETURNING *
@@ -225,7 +225,7 @@ interface WatchRow {
   protocol: string
   minimum_health_factor: string
   asset: string
-  repay_to: string
+  market: string
   status: string
   created_at: string | Date
   last_checked_at: string | Date | null
@@ -251,7 +251,7 @@ const toWatch = (row: WatchRow): Watch => {
     protocol: row.protocol as 'venus',
     minimumHealthFactor: row.minimum_health_factor,
     asset: row.asset,
-    repayTo: row.repay_to,
+    market: row.market,
     status: row.status as WatchStatus,
     createdAt: iso(row.created_at) ?? new Date(0).toISOString(),
     ...(lastCheckedAt ? { lastCheckedAt } : {}),

@@ -26,8 +26,11 @@ interface StartBody {
   chainId?: number
   minimumHealthFactor?: string
   asset?: string
-  repayTo?: string
+  market?: string
 }
+
+/** repayBorrow(uint256), the one call a guardian's standing authority covers. */
+const REPAY_BORROW = '0x0e752702'
 
 const address = (value: string | undefined, name: string): string => {
   if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(value))
@@ -97,6 +100,30 @@ export function registerWatchRoutes(app: FastifyInstance, config: WatchRoutesCon
           { code: 'WATCH_UNCAPPED', statusCode: 409 },
         )
 
+      /*
+       * A mandate that does not permit repaying is a watch that would be refused
+       * by the chain on every single pass, forever, and look from the outside
+       * like an agent that simply never does anything. Better to say so now,
+       * while the person is here to widen the mandate.
+       */
+      const market = address(body.market, 'Market')
+      const permits = (kind: 'selector_allowlist' | 'contract_allowlist', value: string) => {
+        const constraint = authorization.policy.constraints.find((c) => c.kind === kind)
+        if (!constraint) return true
+        const list = Array.isArray(constraint.value) ? constraint.value.map(String) : []
+        return list.some((entry) => entry.toLowerCase() === value)
+      }
+      if (!permits('selector_allowlist', REPAY_BORROW))
+        throw new ClientError(
+          'This mandate does not allow repaying a loan, so every attempt would be refused on chain.',
+          { code: 'WATCH_SELECTOR_NOT_ALLOWED', statusCode: 409 },
+        )
+      if (!permits('contract_allowlist', market))
+        throw new ClientError(
+          'This mandate does not allow acting on that market, so every attempt would be refused on chain.',
+          { code: 'WATCH_TARGET_NOT_ALLOWED', statusCode: 409 },
+        )
+
       const watch: Watch = {
         jobId: job.id,
         authorizationId: job.authorizationId,
@@ -105,7 +132,7 @@ export function registerWatchRoutes(app: FastifyInstance, config: WatchRoutesCon
         protocol: 'venus',
         minimumHealthFactor: parseMinimumHealthFactor(body.minimumHealthFactor ?? '1.25'),
         asset: address(body.asset, 'Asset'),
-        repayTo: address(body.repayTo, 'Repay target'),
+        market,
         status: 'active',
         createdAt: new Date().toISOString(),
       }

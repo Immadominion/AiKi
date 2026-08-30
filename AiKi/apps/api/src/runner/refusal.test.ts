@@ -61,7 +61,7 @@ const run = (jobs: JobService, jobId: string) =>
     assessment: AT_RISK,
     state: { remaining: 1000n * 10n ** 18n },
     asset: TOKEN,
-    repayTo: TOKEN,
+    market: TOKEN,
     chain: {
       rpcUrl: 'http://127.0.0.1:0',
       chainId: 97,

@@ -159,7 +159,7 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
       ...(watch.lastActedAt ? { lastActedAt: watch.lastActedAt } : {}),
     },
     asset: watch.asset as Address,
-    repayTo: watch.repayTo as Address,
+    market: watch.market as Address,
     chain,
     delegation,
     now: () => now,

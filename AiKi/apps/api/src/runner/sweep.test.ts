@@ -76,7 +76,7 @@ async function setup(options: { signed?: boolean; cap?: string; revoked?: boolea
     protocol: 'venus',
     minimumHealthFactor: '1.25',
     asset: TOKEN,
-    repayTo: TOKEN,
+    market: TOKEN,
     status: 'active',
     createdAt: new Date().toISOString(),
   }
@@ -193,7 +193,7 @@ it('claims a watch so a second scheduler cannot take it', async () => {
     protocol: 'venus',
     minimumHealthFactor: '1.25',
     asset: TOKEN,
-    repayTo: TOKEN,
+    market: TOKEN,
     status: 'active',
     createdAt: new Date().toISOString(),
   })

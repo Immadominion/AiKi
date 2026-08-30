@@ -23,9 +23,11 @@ CREATE TABLE IF NOT EXISTS watches (
   -- this is compared against an 18-decimal on-chain number, and binary floating
   -- point cannot hold 1.1 exactly.
   minimum_health_factor TEXT NOT NULL,
-  -- What gets repaid, and the market it is repaid into.
+  -- What gets repaid, and the lending market holding the debt. The repayment is
+  -- a call on the market that pulls the asset; sending the asset to the market
+  -- instead is a donation to the pool and leaves the borrow untouched.
   asset TEXT NOT NULL,
-  repay_to TEXT NOT NULL,
+  market TEXT NOT NULL,
 
   status TEXT NOT NULL DEFAULT 'active',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

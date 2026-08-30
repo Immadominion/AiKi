@@ -54,6 +54,19 @@ const AMOUNT_ARG_INDEX: Record<string, number> = {
   '0xa9059cbb': 1, // transfer(address,uint256)
   '0x23b872dd': 2, // transferFrom(address,address,uint256)
   '0x095ea7b3': 1, // approve(address,uint256)
+  /*
+   * repayBorrow(uint256) on a Venus vToken. The amount is the first argument,
+   * and the site prices it against a cap denominated in the UNDERLYING: the
+   * call is on the market, the money is the token. That is why a site carries
+   * its own asset rather than inferring one from the target.
+   *
+   * There is deliberately no site for the approve that has to precede it. The
+   * cap enforcer charges every call it can price, so counting both would charge
+   * one repayment twice and halve the mandate. The allowance is the owner's own
+   * one-time act on their own account, which is what approving a lending market
+   * is anyway; the standing authority an agent holds is this call alone.
+   */
+  '0x0e752702': 0, // repayBorrow(uint256)
 }
 
 const AMOUNT_SITE_TUPLE = {

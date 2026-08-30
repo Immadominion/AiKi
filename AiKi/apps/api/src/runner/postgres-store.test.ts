@@ -47,7 +47,6 @@ describe.skipIf(!url)('PostgresWatchStore', () => {
       status: 'AUTHORIZED',
       events: [],
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     })
     return { id, authorizationId }
   }
@@ -60,7 +59,7 @@ describe.skipIf(!url)('PostgresWatchStore', () => {
     protocol: 'venus',
     minimumHealthFactor: '1.25',
     asset: `0x${'11'.repeat(20)}`,
-    repayTo: `0x${'11'.repeat(20)}`,
+    market: `0x${'11'.repeat(20)}`,
     status: 'active',
     createdAt: new Date().toISOString(),
   })

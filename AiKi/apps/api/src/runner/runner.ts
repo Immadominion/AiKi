@@ -1,6 +1,6 @@
 import type { Address, Hex } from 'viem'
 import type { Action } from '../authority/policy.js'
-import { type ExecutionRequest, erc20TransferCall, execute } from '../execution/executor.js'
+import { type ExecutionRequest, execute, venusRepayCall } from '../execution/executor.js'
 import type { JobService } from '../jobs/service.js'
 import { type Assessment, decide, type TriggerState } from './trigger.js'
 
@@ -32,9 +32,9 @@ export interface TickInput {
   jobId: string
   assessment: Assessment
   state: TriggerState
-  /** Where the repayment is sent, and in what. */
+  /** What is repaid, and the market the debt is held in. */
   asset: Address
-  repayTo: Address
+  market: Address
   chain: Omit<ExecutionRequest, 'delegation' | 'action' | 'callData'>
   delegation: ExecutionRequest['delegation']
   now?: () => number
@@ -45,8 +45,13 @@ export async function tick(input: TickInput): Promise<TickResult> {
   if (!decision.act) return { acted: false, reason: decision.reason }
 
   const action: Action = {
-    target: input.asset,
-    selector: '0xa9059cbb',
+    /*
+     * The market, not the token. Repaying is a call on the lending market that
+     * pulls the underlying; sending the token to the market instead donates it
+     * to the pool and leaves the borrow exactly where it was.
+     */
+    target: input.market,
+    selector: '0x0e752702',
     asset: input.asset,
     amount: decision.repay,
     at: new Date(input.now?.() ?? Date.now()).toISOString(),
@@ -66,7 +71,7 @@ export async function tick(input: TickInput): Promise<TickResult> {
     ...input.chain,
     delegation: input.delegation,
     action,
-    callData: erc20TransferCall(input.repayTo, decision.repay),
+    callData: venusRepayCall(decision.repay),
   })
 
   if (outcome.status !== 'landed') {
