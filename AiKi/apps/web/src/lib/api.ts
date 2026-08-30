@@ -93,6 +93,23 @@ export interface AuthorizationResponse {
   enforcement?: Enforcement
 }
 
+export interface Watch {
+  jobId: string
+  account: string
+  chainId: number
+  protocol: string
+  minimumHealthFactor: string
+  asset: string
+  market: string
+  status: 'active' | 'stopped'
+  createdAt: string
+  lastCheckedAt?: string
+  lastActedAt?: string
+  lastReason?: string
+  /** Base units of the asset still available under the mandate. */
+  remaining?: string | null
+}
+
 export const api = {
   stats: () => req<EcosystemStats>('/v1/stats'),
   me: () => req<{ address: string; chainId: number }>('/v1/auth/me'),
@@ -155,6 +172,24 @@ export const api = {
       }
       heldBy: 'chain' | 'aiki'
     }>(`/v1/jobs/${jobId}/actions`, { method: 'POST', body: JSON.stringify(action) }),
+  /**
+   * What an agent is standing watch over, if anything.
+   *
+   * 404 is the ordinary answer for a job nobody has put a watch on, so callers
+   * treat it as "not watched" rather than as a failure.
+   */
+  watch: (jobId: string) => req<Watch>(`/v1/jobs/${jobId}/watch`),
+  startWatch: (
+    jobId: string,
+    body: {
+      account: string
+      chainId: number
+      minimumHealthFactor: string
+      asset: string
+      market: string
+    },
+  ) => req<Watch>(`/v1/jobs/${jobId}/watch`, { method: 'POST', body: JSON.stringify(body) }),
+  stopWatch: (jobId: string) => req<Watch>(`/v1/jobs/${jobId}/watch/stop`, { method: 'POST' }),
   authorize: (constraints: unknown[]) =>
     req<AuthorizationResponse>('/v1/authorizations', {
       method: 'POST',
