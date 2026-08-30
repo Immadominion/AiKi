@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { JobService } from '../jobs/service.js'
 import { InMemoryJobStore } from '../jobs/store.js'
+import { WAD } from '../reference/venus/types.js'
 import { tick } from './runner.js'
 import type { Assessment } from './trigger.js'
 
@@ -59,7 +60,7 @@ const run = (jobs: JobService, jobId: string) =>
     jobs,
     jobId,
     assessment: AT_RISK,
-    state: { remaining: 1000n * 10n ** 18n },
+    state: { remaining: 1000n * 10n ** 18n, price: WAD },
     asset: TOKEN,
     market: TOKEN,
     chain: {

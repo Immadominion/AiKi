@@ -150,12 +150,27 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
   const snapshot = await reader.snapshot(watch.account as Address)
   const assessment = assessVenusSnapshot(snapshot, watch.minimumHealthFactor)
 
+  /*
+   * The price of the thing being repaid, so the shortfall can be stated in the
+   * token the mandate is denominated in rather than in dollars. Taken from the
+   * same snapshot the assessment was derived from, so the two cannot be read a
+   * block apart and disagree.
+   */
+  const position = snapshot.markets.find(
+    (m) => m.vToken.toLowerCase() === watch.market.toLowerCase(),
+  )
+  if (!position)
+    // Not a halt: entering a market is something the owner can still do, and
+    // throwing the instruction away because it is not true yet would be rude.
+    return note(deps, watch, at, 'That account holds no position in the market being watched.')
+
   const result = await tick({
     jobs: deps.jobs,
     jobId: watch.jobId,
     assessment,
     state: {
       remaining: left,
+      price: position.underlyingPrice,
       ...(watch.lastActedAt ? { lastActedAt: watch.lastActedAt } : {}),
     },
     asset: watch.asset as Address,

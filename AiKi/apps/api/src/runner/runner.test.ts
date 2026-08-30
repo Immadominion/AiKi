@@ -230,7 +230,11 @@ describe.skipIf(!reachable)('tick (against a real chain)', () => {
     const h = await harness(10_000n * WAD)
     const before = await debtOf(account)
 
-    const result = await tick({ ...h, assessment: atRisk(), state: { remaining: 10_000n * WAD } })
+    const result = await tick({
+      ...h,
+      assessment: atRisk(),
+      state: { remaining: 10_000n * WAD, price: WAD },
+    })
 
     expect(result.acted).toBe(true)
     expect(result.repay).toBe(120n * WAD + (120n * WAD) / 50n)
@@ -252,7 +256,7 @@ describe.skipIf(!reachable)('tick (against a real chain)', () => {
     const result = await tick({
       ...h,
       assessment: atRisk({ consistency: { verified: false, detail: 'differs by 4e17' } }),
-      state: { remaining: 10_000n * WAD },
+      state: { remaining: 10_000n * WAD, price: WAD },
     })
 
     expect(result.acted).toBe(false)
@@ -265,7 +269,11 @@ describe.skipIf(!reachable)('tick (against a real chain)', () => {
     const h = await harness(10n * WAD, 10_000n * WAD)
     const before = await debtOf(account)
 
-    const result = await tick({ ...h, assessment: atRisk(), state: { remaining: 10_000n * WAD } })
+    const result = await tick({
+      ...h,
+      assessment: atRisk(),
+      state: { remaining: 10_000n * WAD, price: WAD },
+    })
 
     expect(result.acted).toBe(false)
     expect(result.deniedBy).toBe('session_total_cap')
@@ -281,7 +289,11 @@ describe.skipIf(!reachable)('tick (against a real chain)', () => {
     const h = await harness(10_000n * WAD, 10n * WAD)
     const before = await debtOf(account)
 
-    const result = await tick({ ...h, assessment: atRisk(), state: { remaining: 10_000n * WAD } })
+    const result = await tick({
+      ...h,
+      assessment: atRisk(),
+      state: { remaining: 10_000n * WAD, price: WAD },
+    })
 
     expect(result.acted).toBe(false)
     expect(result.deniedBy).toBe('chain')

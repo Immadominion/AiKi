@@ -26,8 +26,20 @@ export interface Assessment {
 export interface TriggerState {
   /** When this mandate last acted, so a slow recovery is not repaid twice. */
   lastActedAt?: string
-  /** Remaining headroom under the mandate's caps, in base units. */
+  /** Remaining headroom under the mandate's caps, in base units of the repaid asset. */
   remaining: bigint
+  /**
+   * The oracle price of the asset being repaid, in Venus's scaling: a price is
+   * quoted so that `tokens * price / 1e18` is an 18-decimal USD value, which
+   * means the scale is 1e(36 - decimals) and differs per token.
+   *
+   * It is here because a position is measured in dollars and a mandate is
+   * measured in tokens, and something has to convert between them before the
+   * two are ever compared. Doing it here rather than in the caller is the point:
+   * every number this function returns is then in the same units as the cap it
+   * was checked against.
+   */
+  price: bigint
 }
 
 export type Decision =
@@ -85,13 +97,28 @@ export function decide(assessment: Assessment, state: TriggerState, now = Date.n
   }
 
   const target = toWad(assessment.minimumHealthFactor)
-  const repay = repayToReach(
+  const shortfallUsd = repayToReach(
     BigInt(assessment.adjustedCollateral.amount),
     BigInt(assessment.borrowed.amount),
     target,
   )
-  if (repay === 0n)
+  if (shortfallUsd === 0n)
     return { act: false, reason: 'Position already meets its minimum health factor.' }
+
+  if (state.price <= 0n)
+    return { act: false, reason: 'No price for the repaid asset; refusing to guess an amount.' }
+
+  /*
+   * Dollars to tokens, and this conversion is the whole reason the price is
+   * threaded down here. A position's shortfall is an 18-decimal USD figure; a
+   * mandate's cap is in base units of a token that may have six decimals and
+   * may not be worth a dollar. Comparing the two directly, or handing the USD
+   * figure to repayBorrow, overstates the repayment by the product of both
+   * differences — a factor of 5e11 for USDT at $0.50, which the cap then
+   * refuses on every pass forever.
+   */
+  const repay = (shortfallUsd * WAD) / state.price
+  if (repay === 0n) return { act: false, reason: 'The shortfall rounds to nothing in this asset.' }
 
   if (state.remaining <= 0n)
     return { act: false, reason: 'The mandate has no headroom left; the user must raise the cap.' }

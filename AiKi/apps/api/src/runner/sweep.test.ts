@@ -11,6 +11,7 @@ const tickMock = tick as unknown as ReturnType<typeof vi.fn>
 
 const ACCOUNT = `0x${'aa'.repeat(20)}` as const
 const TOKEN = `0x${'bb'.repeat(20)}` as const
+const MARKET = `0x${'dd'.repeat(20)}` as const
 const OWNER = `0x${'cc'.repeat(20)}` as const
 
 const CHAIN = {
@@ -20,13 +21,27 @@ const CHAIN = {
   relayerKey: `0x${'33'.repeat(32)}` as `0x${string}`,
 }
 
-/** A snapshot the assessor will read as an untouched account. */
-const EMPTY_SNAPSHOT: VenusAccountSnapshot = {
+/**
+ * A snapshot holding the watched market. The balances are empty because these
+ * tests mock the tick; what matters is that the market being watched is present,
+ * since the sweep reads its price from here and refuses when it is absent.
+ */
+const SNAPSHOT: VenusAccountSnapshot = {
   account: ACCOUNT,
   observedAt: new Date().toISOString(),
   controllerLiquidity: 0n,
   controllerShortfall: 0n,
-  markets: [],
+  markets: [
+    {
+      vToken: MARKET,
+      collateralFactor: 8n * 10n ** 17n,
+      liquidationThreshold: 8n * 10n ** 17n,
+      vTokenBalance: 0n,
+      borrowBalance: 0n,
+      exchangeRate: 10n ** 18n,
+      underlyingPrice: 10n ** 18n,
+    },
+  ],
 }
 
 async function setup(options: { signed?: boolean; cap?: string; revoked?: boolean } = {}) {
@@ -76,7 +91,7 @@ async function setup(options: { signed?: boolean; cap?: string; revoked?: boolea
     protocol: 'venus',
     minimumHealthFactor: '1.25',
     asset: TOKEN,
-    market: TOKEN,
+    market: MARKET,
     status: 'active',
     createdAt: new Date().toISOString(),
   }
@@ -85,7 +100,7 @@ async function setup(options: { signed?: boolean; cap?: string; revoked?: boolea
   const deps: SweepDeps = {
     jobs,
     watches,
-    reader: () => ({ snapshot: async () => EMPTY_SNAPSHOT }),
+    reader: () => ({ snapshot: async () => SNAPSHOT }),
     chain: () => CHAIN,
   }
   return { jobs, watches, deps, job, authorizationId: authorization.id }
@@ -193,7 +208,7 @@ it('claims a watch so a second scheduler cannot take it', async () => {
     protocol: 'venus',
     minimumHealthFactor: '1.25',
     asset: TOKEN,
-    market: TOKEN,
+    market: MARKET,
     status: 'active',
     createdAt: new Date().toISOString(),
   })

@@ -13,7 +13,7 @@ const base = (over: Partial<Assessment> = {}): Assessment => ({
   ...over,
 })
 
-const headroom = { remaining: 10_000n * WAD }
+const headroom = { remaining: 10_000n * WAD, price: WAD }
 
 it('acts on a position at risk, and repays past the threshold rather than onto it', () => {
   const decision = decide(base(), headroom)
@@ -57,7 +57,7 @@ it('does not repay the same shortfall twice while the first repayment settles', 
 })
 
 it('spends what the mandate allows and says the fix is partial', () => {
-  const decision = decide(base(), { remaining: 50n * WAD })
+  const decision = decide(base(), { remaining: 50n * WAD, price: WAD })
   expect(decision.act).toBe(true)
   if (!decision.act) return
   expect(decision.repay).toBe(50n * WAD)
@@ -65,7 +65,7 @@ it('spends what the mandate allows and says the fix is partial', () => {
 })
 
 it('stops rather than acting when the mandate is exhausted', () => {
-  const decision = decide(base(), { remaining: 0n })
+  const decision = decide(base(), { remaining: 0n, price: WAD })
   expect(decision.act).toBe(false)
   expect(decision.reason).toContain('no headroom')
 })
@@ -79,4 +79,39 @@ it('computes a repayment that actually reaches the target', () => {
   // The resulting health factor must be at or above the target, not near it.
   expect((collateral * WAD) / after >= target).toBe(true)
   expect(repayToReach(collateral, 800n * WAD, target)).toBe(0n)
+})
+
+it('repays in the token, not in dollars', () => {
+  /*
+   * The live BSC testnet case, which is the one that exposes this: USDT has six
+   * decimals and the testnet oracle prices it at $0.50, so the position's
+   * numbers and the mandate's numbers differ by eighteen decimal places AND by
+   * a factor of two. $400 of collateral against $370 of debt needs $50 repaid to
+   * reach 1.25, plus the 2% overshoot, which is $51 — and $51 is 102 USDT.
+   *
+   * With the amount left in dollars this asks for 51e18 base units of a
+   * six-decimal token: fifty-one trillion USDT, overstated by 5e11, refused by
+   * the cap on every pass forever. An 18-decimal token worth exactly $1 makes
+   * the two units identical and hides all of it, which is why every other test
+   * here passed while the agent could not have worked.
+   */
+  const decision = decide(
+    {
+      status: 'AT_RISK',
+      minimumHealthFactor: '1.25',
+      adjustedCollateral: { amount: (400n * WAD).toString() },
+      borrowed: { amount: (370n * WAD).toString() },
+      consistency: { verified: true, detail: 'ok' },
+      observedAt: '2026-08-30T00:00:00.000Z',
+    },
+    { remaining: 1_000_000_000n, price: 5n * 10n ** 29n },
+  )
+  expect(decision.act).toBe(true)
+  if (!decision.act) return
+  expect(decision.repay).toBe(102_000_000n)
+})
+
+it('will not guess an amount without a price', () => {
+  const decision = decide(base(), { remaining: 10_000n * WAD, price: 0n })
+  expect(decision.act).toBe(false)
 })
