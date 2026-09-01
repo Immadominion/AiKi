@@ -87,3 +87,43 @@ it('keeps two jobs to the same agent separate', async () => {
   expect(await credits.balance(AGENT_OWNER)).toBe(20_000)
   expect(await credits.balance(TREASURY)).toBe(500)
 })
+
+/*
+ * Proven on production before this guard existed: funding the same job twice
+ * charged a buyer 2,050 points for a 1,025 point job, and both calls answered
+ * 200. The route read a balance, judged it sufficient, and charged, and two
+ * callers interleaved between the read and the write. A guard in the route
+ * cannot close that; the unique index on `reference` can, because the second
+ * writer loses in the database rather than in a comparison.
+ */
+it('charges once for a job however many times funding is called', async () => {
+  const { DuplicateCharge } = await import('../credits/store.js')
+  const credits = await funded(20_000)
+  const args = { credits, jobId: 'once', buyer: BUYER, totalPoints: 10_250 }
+
+  const first = await fundJob(args)
+  expect(first.held).toBe(10_250)
+  await expect(fundJob(args)).rejects.toBeInstanceOf(DuplicateCharge)
+  expect(await credits.balance(BUYER)).toBe(20_000 - 10_250)
+})
+
+it('refuses rather than part-funding a job the balance cannot cover', async () => {
+  const credits = await funded(10_000)
+  await expect(
+    fundJob({ credits, jobId: 'short', buyer: BUYER, totalPoints: 10_250 }),
+  ).rejects.toBeInstanceOf(InsufficientPoints)
+  /*
+   * Nothing taken, and specifically not the 10,000 that was there. Taking what
+   * is available and calling the rest a shortfall is right for a model turn
+   * already spent; for work not yet started it is money taken for something
+   * nobody bought.
+   */
+  expect(await credits.balance(BUYER)).toBe(10_000)
+})
+
+it('keeps funding separate per job', async () => {
+  const credits = await funded(30_000)
+  await fundJob({ credits, jobId: 'a', buyer: BUYER, totalPoints: 10_250 })
+  await fundJob({ credits, jobId: 'b', buyer: BUYER, totalPoints: 10_250 })
+  expect(await credits.balance(BUYER)).toBe(30_000 - 20_500)
+})

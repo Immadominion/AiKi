@@ -1,5 +1,5 @@
 import type { CreditStore } from '../credits/store.js'
-import { DuplicateDeposit } from '../credits/store.js'
+import { DuplicateDeposit, InsufficientBalance } from '../credits/store.js'
 import { priceJob } from './pricing.js'
 
 /**
@@ -48,19 +48,31 @@ export async function fundJob(input: {
   /** Total in points, which is price plus the fee, as quoted. */
   totalPoints: number
 }): Promise<{ held: number; buyerBalance: number }> {
-  const balance = await input.credits.balance(input.buyer)
-  // Checked before anything is taken. Charging what is there and calling the
-  // rest a shortfall is right for a model turn already spent; it is wrong for a
-  // job that has not started, because a partly funded job is not funded.
-  if (balance < input.totalPoints) throw new InsufficientPoints(input.totalPoints, balance)
-
-  const charge = await input.credits.charge({
-    owner: input.buyer,
-    points: input.totalPoints,
-    reason: 'job_funding',
-    detail: { jobId: input.jobId },
-  })
-  return { held: charge.charged, buyerBalance: charge.balance }
+  /*
+   * Both guarantees are the store's, taken under its row lock, not this
+   * function's taken hopefully beforehand.
+   *
+   * `exact` refuses rather than part-funding, because a partly funded job is
+   * money taken for work nobody bought. `reference` makes the charge happen at
+   * most once for this job, which is the thing a check-then-act cannot do:
+   * funding the same job twice charged a buyer 2,050 points for a 1,025 point
+   * job in production, both calls answering 200, because the balance was read
+   * outside the transaction that spent it.
+   */
+  try {
+    const charge = await input.credits.charge({
+      owner: input.buyer,
+      points: input.totalPoints,
+      reason: 'job_funding',
+      reference: `job:${input.jobId}:funding`,
+      exact: true,
+      detail: { jobId: input.jobId },
+    })
+    return { held: charge.charged, buyerBalance: charge.balance }
+  } catch (error) {
+    if (error instanceof InsufficientBalance) throw new InsufficientPoints(error.needed, error.held)
+    throw error
+  }
 }
 
 /**
