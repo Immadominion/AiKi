@@ -2,32 +2,39 @@
 
 import type { Measure } from '@aiki/contracts'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PageCard } from '@/components/shell/PageCard'
-import { AGENT_BG, AGENT_BY_KEY, AGENTS, type AgentKey } from '@/lib/agents'
+import { AGENTS, type AgentKey } from '@/lib/agents'
+import { api } from '@/lib/api'
 import { overlaps, separation, timeFor } from '@/lib/compare'
+import {
+  type CompareSubject,
+  isAgentId,
+  subjectFromFixture,
+  subjectFromPassport,
+} from '@/lib/compare-subjects'
 import { type Counts, DETAILS } from '@/lib/detail'
 import { formatScore } from '@/lib/format'
 import { aikiProbe, measureFrom } from '@/lib/measure'
-import { agentHref, route } from '@/lib/routes'
+import { agentHref, registryHref, route } from '@/lib/routes'
 
 const OBSERVED = '2026-08-22T04:10:00Z'
 const m = (c: Counts): Measure => measureFrom(c[0], c[1], aikiProbe(OBSERVED))
 
 const ROWS = [
-  { label: 'Overall', pick: (k: AgentKey) => DETAILS[k].checks },
-  { label: 'Answers when asked', pick: (k: AgentKey) => DETAILS[k].components.liveness },
+  { label: 'Overall', pick: (s: CompareSubject) => s.checks },
+  { label: 'Answers when asked', pick: (s: CompareSubject) => s.components.liveness },
   {
     label: 'Finishes what it starts',
-    pick: (k: AgentKey) => DETAILS[k].components.executionReliability,
+    pick: (s: CompareSubject) => s.components.executionReliability,
   },
-  { label: 'Result was worth it', pick: (k: AgentKey) => DETAILS[k].components.outcomeQuality },
-  { label: 'What others report', pick: (k: AgentKey) => DETAILS[k].components.reputation },
-  { label: 'Stayed inside its limits', pick: (k: AgentKey) => DETAILS[k].components.safety },
+  { label: 'Result was worth it', pick: (s: CompareSubject) => s.components.outcomeQuality },
+  { label: 'What others report', pick: (s: CompareSubject) => s.components.reputation },
+  { label: 'Stayed inside its limits', pick: (s: CompareSubject) => s.components.safety },
 ] as const
 
-function ScoreCell({ counts }: { counts: Counts }) {
-  if (counts[1] === 0) {
+function ScoreCell({ counts }: { counts: Counts | null }) {
+  if (!counts || counts[1] === 0) {
     return <span className="text-faint text-[13px] font-semibold">never observed</span>
   }
   const measure = m(counts)
@@ -53,36 +60,117 @@ export function CompareView() {
   const params = useSearchParams()
   const router = useRouter()
 
-  const keys = useMemo(() => {
-    const raw = (params.get('agents') ?? 'guardian,sentinel')
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s): s is AgentKey => s in DETAILS)
-    return (raw.length >= 2 ? raw : (['guardian', 'sentinel'] as AgentKey[])).slice(0, 3)
-  }, [params])
+  const asked = useMemo(
+    () =>
+      (params.get('agents') ?? 'guardian,sentinel')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 3),
+    [params],
+  )
 
-  const a = keys[0] as AgentKey
-  const b = keys[1] as AgentKey
+  /*
+   * Real agents are named by their token id, examples by a word. Asking to
+   * compare 315943 with 315944 used to fall through the fixture filter and
+   * silently render Guardian against Sentinel, so the page answered a question
+   * nobody asked with numbers nobody measured.
+   */
+  const wantsRegistry = asked.some(isAgentId)
+  const [live, setLive] = useState<CompareSubject[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    if (!wantsRegistry) return
+    let cancelled = false
+    setLive(null)
+    setFailed(false)
+    api
+      .compare(asked.filter(isAgentId))
+      .then((answer) => {
+        if (!cancelled) setLive(answer.agents.map(subjectFromPassport))
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [asked, wantsRegistry])
+
+  const fixtures = useMemo(() => {
+    const valid = asked.filter((k): k is AgentKey => k in DETAILS)
+    const keys = valid.length >= 2 ? valid : (['guardian', 'sentinel'] as AgentKey[])
+    return keys.slice(0, 3).map(subjectFromFixture)
+  }, [asked])
+
+  const subjects = wantsRegistry ? live : fixtures
+
+  if (failed)
+    return (
+      <PageCard
+        title="Compare"
+        count=""
+        back={{ href: '/explore', label: 'Explore' }}
+        tabs={[]}
+        tabHint=""
+      >
+        <p className="max-w-[620px] text-[13.5px]">
+          The registry could not be reached, so there is nothing to compare. This page will not fall
+          back to the example agents: a comparison of two agents you did not ask about is worse than
+          no comparison.
+        </p>
+      </PageCard>
+    )
+  if (!subjects)
+    return (
+      <PageCard
+        title="Compare"
+        count=""
+        back={{ href: '/explore', label: 'Explore' }}
+        tabs={[]}
+        tabHint=""
+      >
+        <p className="text-muted text-[13.5px]">Reading both passports…</p>
+      </PageCard>
+    )
+  if (subjects.length < 2)
+    return (
+      <PageCard
+        title="Compare"
+        count=""
+        back={{ href: '/explore', label: 'Explore' }}
+        tabs={[]}
+        tabHint=""
+      >
+        <p className="max-w-[620px] text-[13.5px]">Two agents are needed to compare.</p>
+      </PageCard>
+    )
+
+  const byKey = new Map(subjects.map((s) => [s.key, s]))
+  const keys = subjects.map((s) => s.key)
+  const S = (k: string): CompareSubject => byKey.get(k) as CompareSubject
+  const a = keys[0] as string
+  const b = keys[1] as string
   const grid = {
     gridTemplateColumns: `minmax(180px,1.2fr) repeat(${keys.length}, minmax(140px,1fr))`,
     minWidth: 480,
   }
 
-  const aM = m(DETAILS[a].checks)
-  const bM = m(DETAILS[b].checks)
+  const aM = m(S(a).checks)
+  const bM = m(S(b).checks)
   const tied = overlaps(aM, bM)
 
   // The thinner sample is the one that would have to grow to settle it.
-  const thinKey = DETAILS[a].checks[1] <= DETAILS[b].checks[1] ? a : b
+  const thinKey = S(a).checks[1] <= S(b).checks[1] ? a : b
   const fatKey = thinKey === a ? b : a
-  const sep = separation(DETAILS[thinKey].checks, m(DETAILS[fatKey].checks))
+  const sep = separation(S(thinKey).checks, m(S(fatKey).checks))
 
   // Cadence, straight from what we have actually observed of this agent.
   const daysKnown = Math.max(
     1,
-    Math.round((Date.parse(OBSERVED) - Date.parse(DETAILS[thinKey].registeredAt)) / 86_400_000),
+    Math.round((Date.parse(OBSERVED) - Date.parse(S(thinKey).registeredAt)) / 86_400_000),
   )
-  const perDay = DETAILS[thinKey].checks[1] / daysKnown
+  const perDay = S(thinKey).checks[1] / daysKnown
 
   const header = (
     <div className="flex flex-wrap items-start gap-[14px]">
@@ -91,18 +179,21 @@ export function CompareView() {
           <span
             key={k}
             className="flex size-[46px] items-center justify-center rounded-[15px] text-[18px] font-extrabold text-white ring-2 ring-white"
-            style={{ background: AGENT_BG[k], marginLeft: i ? -12 : 0 }}
+            style={{ background: S(k).bg, marginLeft: i ? -12 : 0 }}
           >
-            {AGENT_BY_KEY[k].initial}
+            {S(k).initial}
           </span>
         ))}
       </div>
       <div className="min-w-0 flex-1 basis-[240px]">
         <span className="block text-[19px] font-extrabold tracking-[-0.02em]">
-          {keys.map((k) => AGENT_BY_KEY[k].name).join(' vs ')}
+          {keys.map((k) => S(k).name).join(' vs ')}
         </span>
         <p className="text-muted mt-[3px] mb-0 text-[13px] leading-[1.45]">
-          Both claim the same work · compared on evidence AiKi collected itself
+          {/* This used to assert that both agents claim the same work, which was
+              true of the two examples it was written for and is not true of any
+              two agents a visitor picks. What IS always true is the second half. */}
+          Compared on evidence AiKi collected itself
         </p>
       </div>
     </div>
@@ -138,7 +229,7 @@ export function CompareView() {
               >
                 {tied
                   ? 'We cannot tell these apart yet.'
-                  : `${AGENT_BY_KEY[fatKey].name} is ahead on the evidence.`}
+                  : `${S(fatKey).name} is ahead on the evidence.`}
               </div>
 
               <p
@@ -147,10 +238,10 @@ export function CompareView() {
               >
                 {tied ? (
                   <>
-                    {AGENT_BY_KEY[a].name} scores{' '}
+                    {S(a).name} scores{' '}
                     <b className="font-bold tabular-nums">{formatScore(aM).text}</b> on a range of{' '}
                     {(aM.interval?.[0] ?? 0).toFixed(0)}–{(aM.interval?.[1] ?? 0).toFixed(0)};{' '}
-                    {AGENT_BY_KEY[b].name} scores{' '}
+                    {S(b).name} scores{' '}
                     <b className="font-bold tabular-nums">{formatScore(bM).text}</b> on{' '}
                     {(bM.interval?.[0] ?? 0).toFixed(0)}–{(bM.interval?.[1] ?? 0).toFixed(0)}. Those
                     ranges overlap, so the difference you can see is smaller than the uncertainty
@@ -170,18 +261,18 @@ export function CompareView() {
                   <p className="mt-[4px] mb-0 text-[12.5px] leading-[1.55] text-pretty text-[#6B5A34]">
                     {sep.checksNeeded === null ? (
                       <>
-                        Nothing we can wait for. At {AGENT_BY_KEY[thinKey].name}&rsquo;s observed
-                        rate its range settles overlapping {AGENT_BY_KEY[fatKey].name}&rsquo;s, so
-                        more of the same evidence will not separate them. A head-to-head run on
-                        identical inputs would.
+                        Nothing we can wait for. At {S(thinKey).name}&rsquo;s observed rate its
+                        range settles overlapping {S(fatKey).name}&rsquo;s, so more of the same
+                        evidence will not separate them. A head-to-head run on identical inputs
+                        would.
                       </>
                     ) : (
                       <>
                         About <b className="font-bold tabular-nums">{sep.checksNeeded}</b> more
-                        checks on {AGENT_BY_KEY[thinKey].name}, {timeFor(sep.checksNeeded, perDay)}{' '}
-                        at the {perDay.toFixed(1)} a day we have actually seen. If its current rate
-                        holds it would land {sep.wouldLand} {AGENT_BY_KEY[fatKey].name}, but that is
-                        a projection, not a result.
+                        checks on {S(thinKey).name}, {timeFor(sep.checksNeeded, perDay)} at the{' '}
+                        {perDay.toFixed(1)} a day we have actually seen. If its current rate holds
+                        it would land {sep.wouldLand} {S(fatKey).name}, but that is a projection,
+                        not a result.
                       </>
                     )}
                   </p>
@@ -201,11 +292,11 @@ export function CompareView() {
               >
                 <span
                   className="flex size-[24px] flex-none items-center justify-center rounded-[8px] text-[11px] font-extrabold text-white"
-                  style={{ background: AGENT_BG[k] }}
+                  style={{ background: S(k).bg }}
                 >
-                  {AGENT_BY_KEY[k].initial}
+                  {S(k).initial}
                 </span>
-                <span className="text-[13px] font-bold">{AGENT_BY_KEY[k].name}</span>
+                <span className="text-[13px] font-bold">{S(k).name}</span>
               </div>
             ))}
           </div>
@@ -217,7 +308,7 @@ export function CompareView() {
               </div>
               {keys.map((k) => (
                 <div key={k} className="border-l border-[rgb(26_26_25_/_0.05)] px-[14px] py-[13px]">
-                  <ScoreCell counts={r.pick(k)} />
+                  <ScoreCell counts={r.pick(S(k))} />
                 </div>
               ))}
             </div>
@@ -232,7 +323,7 @@ export function CompareView() {
                 key={k}
                 className="border-l border-[rgb(26_26_25_/_0.05)] px-[14px] py-[13px] text-[14px] font-extrabold tabular-nums"
               >
-                {AGENT_BY_KEY[k].price}
+                {S(k).price}
               </div>
             ))}
           </div>
@@ -242,7 +333,7 @@ export function CompareView() {
               Weakest limit held by
             </div>
             {keys.map((k) => {
-              const soft = DETAILS[k].enforcement.some((e) => e.tier !== 'T0' || !e.verified)
+              const soft = S(k).softEnforcement
               return (
                 <div key={k} className="border-l border-[rgb(26_26_25_/_0.05)] px-[14px] py-[13px]">
                   <span
@@ -268,10 +359,8 @@ export function CompareView() {
         </p>
 
         <div className="mt-[18px] flex flex-wrap items-center gap-[8px]">
-          <span className="text-muted text-[12.5px] font-semibold">
-            Compare {AGENT_BY_KEY[a].name} with
-          </span>
-          {AGENTS.filter((x) => x.key !== a).map((x) => (
+          <span className="text-muted text-[12.5px] font-semibold">Compare {S(a).name} with</span>
+          {(wantsRegistry ? [] : AGENTS.filter((x) => x.key !== a)).map((x) => (
             <button
               key={x.key}
               type="button"
@@ -289,10 +378,10 @@ export function CompareView() {
           <div className="flex-1" />
           <button
             type="button"
-            onClick={() => router.push(agentHref(a))}
+            onClick={() => router.push(wantsRegistry ? registryHref(a) : agentHref(a))}
             className="text-ink-app h-[32px] rounded-[11px] border-0 bg-[rgb(26_26_25_/_0.055)] px-3 text-[12.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)]"
           >
-            Open {AGENT_BY_KEY[a].name} →
+            Open {S(a).name} →
           </button>
         </div>
       </div>

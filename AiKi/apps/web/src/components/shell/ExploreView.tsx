@@ -248,7 +248,20 @@ export function ExploreView() {
           : `${AGENTS.length} agents · 4 kinds of work`
       }
       primary="Compare"
-      onPrimary={() => router.push(route('/compare?agents=guardian,sentinel'))}
+      /*
+       * Compare what is actually on screen. This always opened the same two
+       * example agents, so the button offered to compare a pair the visitor had
+       * not searched for and could not see.
+       */
+      onPrimary={() =>
+        router.push(
+          route(
+            live && live.length >= 2
+              ? `/compare?agents=${live[0]?.agentId},${live[1]?.agentId}`
+              : '/compare?agents=guardian,sentinel',
+          ),
+        )
+      }
       tabs={searching ? [] : ['Suggested', 'All', 'Tested most']}
       tabHint={
         searching

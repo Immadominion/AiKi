@@ -257,4 +257,17 @@ export const api = {
   search: (body: SearchRequest) =>
     req<ProjectedSearchResponse>('/v1/search', { method: 'POST', body: JSON.stringify(body) }),
   passport: (id: string) => req<ProjectedPassport>(`/v1/agents/${id}/passport`),
+  /**
+   * Two or more agents side by side, plus the server's own verdict on whether
+   * the evidence can separate them. `indistinguishable` is the answer the
+   * product exists to be able to give.
+   */
+  compare: (agentIds: string[]) =>
+    req<{ agents: ProjectedPassport[]; indistinguishable: boolean; reason: string }>(
+      '/v1/compare',
+      {
+        method: 'POST',
+        body: JSON.stringify({ agentIds }),
+      },
+    ),
 }
