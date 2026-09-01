@@ -1,5 +1,10 @@
 import type { CreditStore } from '../credits/store.js'
-import { DuplicateDeposit, InsufficientBalance } from '../credits/store.js'
+import {
+  DuplicateCharge,
+  DuplicateDeposit,
+  ESCROW_ACCOUNT,
+  InsufficientBalance,
+} from '../credits/store.js'
 import { priceJob } from './pricing.js'
 
 /**
@@ -60,15 +65,15 @@ export async function fundJob(input: {
    * outside the transaction that spent it.
    */
   try {
-    const charge = await input.credits.charge({
-      owner: input.buyer,
+    const moved = await input.credits.transfer({
+      from: input.buyer,
+      to: ESCROW_ACCOUNT,
       points: input.totalPoints,
       reason: 'job_funding',
       reference: `job:${input.jobId}:funding`,
-      exact: true,
       detail: { jobId: input.jobId },
     })
-    return { held: charge.charged, buyerBalance: charge.balance }
+    return { held: moved.moved, buyerBalance: moved.fromBalance }
   } catch (error) {
     if (error instanceof InsufficientBalance) throw new InsufficientPoints(error.needed, error.held)
     throw error
@@ -105,19 +110,29 @@ export async function settleJob(input: {
   const fee = Number(priced.platformFee)
   const toAgent = Number(priced.price)
 
+  /*
+   * Paid OUT OF ESCROW, not minted.
+   *
+   * These were deposits, so settling created points that had never been taken
+   * from anybody: the buyer's funding debited them and credited nobody, and
+   * settlement credited a seller from nowhere. The two happened to be equal, so
+   * the totals looked right while the ledger did not balance at any single
+   * moment and a funded-but-unsettled job's money existed in no account at all.
+   */
   let alreadySettled = false
-  const credit = async (owner: string, points: number, reason: string) => {
+  const pay = async (owner: string, points: number, reason: string) => {
     if (points <= 0) return
     try {
-      await input.credits.deposit({
-        owner,
+      await input.credits.transfer({
+        from: ESCROW_ACCOUNT,
+        to: owner,
         points,
         reason,
         reference: `job:${input.jobId}:${reason}`,
         detail: { jobId: input.jobId },
       })
     } catch (error) {
-      if (error instanceof DuplicateDeposit) {
+      if (error instanceof DuplicateCharge || error instanceof DuplicateDeposit) {
         alreadySettled = true
         return
       }
@@ -125,8 +140,8 @@ export async function settleJob(input: {
     }
   }
 
-  await credit(input.agentOwner, toAgent, 'job_earnings')
-  await credit(input.treasury, fee, 'platform_fee')
+  await pay(input.agentOwner, toAgent, 'job_earnings')
+  await pay(input.treasury, fee, 'platform_fee')
 
   return {
     held: Number(priced.total),
@@ -134,5 +149,46 @@ export async function settleJob(input: {
     fee,
     buyerBalance: await input.credits.balance(input.agentOwner),
     alreadySettled,
+  }
+}
+
+/**
+ * The money goes back.
+ *
+ * A payment system where money moves one way is not one. A job can be funded
+ * and then the agent fails, is revoked, is found to be a static page, or simply
+ * never runs, and until this existed the buyer's money stayed in escrow with no
+ * route out of it.
+ *
+ * Refunding is the same movement as settling, in the other direction and out of
+ * the same account, so it cannot pay out money that was never taken in. It is
+ * keyed on the job like every other leg, so it happens once.
+ */
+export async function refundJob(input: {
+  credits: CreditStore
+  jobId: string
+  buyer: string
+  totalPoints: number
+  /** Recorded on the entry, because a refund with no stated reason is an anomaly. */
+  because: string
+}): Promise<{ refunded: number; buyerBalance: number; alreadyRefunded: boolean }> {
+  try {
+    const moved = await input.credits.transfer({
+      from: ESCROW_ACCOUNT,
+      to: input.buyer,
+      points: input.totalPoints,
+      reason: 'job_refund',
+      reference: `job:${input.jobId}:refund`,
+      detail: { jobId: input.jobId, because: input.because },
+    })
+    return { refunded: moved.moved, buyerBalance: moved.toBalance, alreadyRefunded: false }
+  } catch (error) {
+    if (error instanceof DuplicateCharge)
+      return {
+        refunded: 0,
+        buyerBalance: await input.credits.balance(input.buyer),
+        alreadyRefunded: true,
+      }
+    throw error
   }
 }

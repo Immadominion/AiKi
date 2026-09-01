@@ -28,7 +28,7 @@ import { ReceiptService } from '../receipts/service.js'
 import { registerWatchRoutes } from '../runner/routes.js'
 import type { WatchStore } from '../runner/store.js'
 import { buildSearchQuery } from '../search/query.js'
-import { fundJob, InsufficientPoints, settleJob } from '../settlement/ledger.js'
+import { fundJob, InsufficientPoints, refundJob, settleJob } from '../settlement/ledger.js'
 import { buildQuote, priceJob, SETTLEMENT } from '../settlement/pricing.js'
 import { priceForQuote, publishedAsset } from '../settlement/published-price.js'
 import { asClientError, asProtocolError, asSchemaError, ClientError } from './errors.js'
@@ -1149,6 +1149,76 @@ export function createApiServer(input: {
         price: { amount, asset: SETTLEMENT.symbol, decimals: SETTLEMENT.decimals },
         note: "Recorded as the owner's stated price, not as something AiKi measured. A price published in the agent's own registration file takes precedence, because that one is public.",
       }
+    },
+  )
+
+  /**
+   * The money goes back.
+   *
+   * Only while the job is FUNDED, which is exactly the window where the money
+   * is sitting in escrow and nobody has been paid out of it. Once it is
+   * SETTLED the seller has been paid, and taking that back is a dispute rather
+   * than a refund: a different thing, with a second party, and it does not
+   * exist yet. Saying so is better than pretending this covers it.
+   */
+  app.post<{ Params: { id: string }; Body: { agentId?: string; because?: string } }>(
+    '/v1/jobs/:id/refund',
+    async (request, reply) => {
+      const session = requireSession(request, reply)
+      if (!session) return reply
+      const job = await ownedJob(request, reply, session.address, request.params.id)
+      if (!job) return reply
+      const credits = input.assistant?.credits
+      if (!credits)
+        return reply.code(503).send({
+          error: {
+            code: 'SETTLEMENT_UNAVAILABLE',
+            message: 'This deployment has no points ledger, so it cannot refund.',
+            retryable: false,
+          },
+        })
+      if (job.status !== 'FUNDED')
+        return reply.code(409).send({
+          error: {
+            code: 'JOB_NOT_REFUNDABLE',
+            message:
+              job.status === 'SETTLED'
+                ? 'This job is settled and the agent has been paid. Reversing that is a dispute, which AiKi does not handle yet.'
+                : `Only a funded job holds money to return. This one is ${job.status}.`,
+            retryable: false,
+          },
+        })
+
+      const agentId = request.body?.agentId
+      if (!agentId)
+        return reply.code(400).send({
+          error: {
+            code: 'AGENT_REQUIRED',
+            message: 'agentId is required to work out what was held.',
+            retryable: false,
+          },
+        })
+      const observations = await agentObservations([agentId])
+      const price = priceForQuote(agentId, observations)?.amount ?? null
+      if (price === null)
+        return reply.code(422).send({
+          error: {
+            code: 'AGENT_HAS_NO_PUBLISHED_PRICE',
+            message: 'Without a price there is no way to know what was held.',
+            retryable: false,
+          },
+        })
+
+      const total = Number(priceJob(BigInt(pointsForSettlement(price, SETTLEMENT.decimals))).total)
+      const back = await refundJob({
+        credits,
+        jobId: job.id,
+        buyer: session.address,
+        totalPoints: total,
+        because: request.body?.because?.slice(0, 200) ?? 'the buyer asked for it back',
+      })
+      await jobs.advance(job.id, 'CANCELLED', `Refunded ${back.refunded} points to the buyer.`)
+      return { jobId: job.id, ...back, status: 'CANCELLED' }
     },
   )
 

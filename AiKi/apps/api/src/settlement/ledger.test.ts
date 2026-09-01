@@ -127,3 +127,84 @@ it('keeps funding separate per job', async () => {
   await fundJob({ credits, jobId: 'b', buyer: BUYER, totalPoints: 10_250 })
   expect(await credits.balance(BUYER)).toBe(30_000 - 20_500)
 })
+
+/*
+ * The books, checked as books.
+ *
+ * Funding used to debit the buyer and credit nobody, and settling used to
+ * deposit to the seller out of nowhere. The two amounts matched, so the totals
+ * looked right while the ledger balanced at no single moment, and a funded job
+ * that was never settled held money that existed in no account at all.
+ */
+const sum = async (credits: InMemoryCreditStore, owners: string[]) => {
+  let total = 0
+  for (const o of owners) total += await credits.balance(o)
+  return total
+}
+
+it('never lets money exist in no account', async () => {
+  const { ESCROW_ACCOUNT } = await import('../credits/store.js')
+  const credits = await funded(20_000)
+  const everyone = [BUYER, AGENT_OWNER, TREASURY, ESCROW_ACCOUNT]
+  expect(await sum(credits, everyone)).toBe(20_000)
+
+  await fundJob({ credits, jobId: 'books', buyer: BUYER, totalPoints: 10_250 })
+  // Held, and visibly held: the marketplace owes this to somebody.
+  expect(await credits.balance(ESCROW_ACCOUNT)).toBe(10_250)
+  expect(await sum(credits, everyone)).toBe(20_000)
+
+  await settleJob({
+    credits,
+    jobId: 'books',
+    agentOwner: AGENT_OWNER,
+    treasury: TREASURY,
+    pricePoints: 10_000,
+  })
+  expect(await credits.balance(ESCROW_ACCOUNT)).toBe(0)
+  // Nothing minted and nothing burned, at any point in the sale.
+  expect(await sum(credits, everyone)).toBe(20_000)
+})
+
+it('gives the money back when the work does not happen', async () => {
+  const { ESCROW_ACCOUNT } = await import('../credits/store.js')
+  const { refundJob } = await import('./ledger.js')
+  const credits = await funded(20_000)
+
+  await fundJob({ credits, jobId: 'gone', buyer: BUYER, totalPoints: 10_250 })
+  const back = await refundJob({
+    credits,
+    jobId: 'gone',
+    buyer: BUYER,
+    totalPoints: 10_250,
+    because: 'the agent never answered',
+  })
+  expect(back.refunded).toBe(10_250)
+  expect(await credits.balance(BUYER)).toBe(20_000)
+  expect(await credits.balance(ESCROW_ACCOUNT)).toBe(0)
+
+  // A second attempt returns nothing and says so, rather than paying twice.
+  const again = await refundJob({
+    credits,
+    jobId: 'gone',
+    buyer: BUYER,
+    totalPoints: 10_250,
+    because: 'retry',
+  })
+  expect(again.alreadyRefunded).toBe(true)
+  expect(await credits.balance(BUYER)).toBe(20_000)
+})
+
+it('cannot refund a job nobody funded', async () => {
+  const { refundJob } = await import('./ledger.js')
+  const { InsufficientBalance } = await import('../credits/store.js')
+  const credits = await funded(20_000)
+  /*
+   * Refunds come out of escrow, so they can only return money that was taken
+   * in. Paying a refund out of thin air is how a marketplace pays out more than
+   * it ever held.
+   */
+  await expect(
+    refundJob({ credits, jobId: 'never', buyer: BUYER, totalPoints: 10_250, because: 'test' }),
+  ).rejects.toBeInstanceOf(InsufficientBalance)
+  expect(await credits.balance(BUYER)).toBe(20_000)
+})

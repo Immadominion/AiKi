@@ -97,8 +97,37 @@ export interface CreditStore {
      */
     exact?: boolean
   }): Promise<{ charged: number; balance: number; shortfall: number }>
+  /**
+   * Move points between two accounts, both legs or neither.
+   *
+   * Funding a job used to debit the buyer and credit nobody, so between taking
+   * the money and paying the seller it existed in no account at all: the ledger
+   * did not balance, and "where is the money for this job" had no answer in the
+   * record. Charging and depositing as two calls does not fix that, because the
+   * second can fail and leave the first standing.
+   *
+   * One transaction, one reference, so a retry moves nothing a second time.
+   */
+  transfer(input: {
+    from: string
+    to: string
+    points: number
+    reason: string
+    reference: string
+    detail?: Record<string, unknown>
+  }): Promise<{ moved: number; fromBalance: number; toBalance: number }>
   history(owner: string, limit?: number): Promise<CreditEntry[]>
 }
+
+/**
+ * Where a funded job's money sits until it is settled or returned.
+ *
+ * A house account rather than an address, because it is AiKi's obligation and
+ * not anybody's property: the sum of what is in here is what the marketplace
+ * owes buyers and sellers between the two halves of a sale, and it is meant to
+ * be readable as exactly that.
+ */
+export const ESCROW_ACCOUNT = 'aiki:escrow'
 
 const lower = (owner: string) => owner.toLowerCase()
 
@@ -159,6 +188,39 @@ export class InMemoryCreditStore implements CreditStore {
       charged,
       balance: balance - charged,
       shortfall: Math.max(0, input.points - charged),
+    }
+  }
+
+  async transfer(input: {
+    from: string
+    to: string
+    points: number
+    reason: string
+    reference: string
+    detail?: Record<string, unknown>
+  }) {
+    if (input.points <= 0) throw new Error('A transfer must move a positive number of points.')
+    if (this.entries.some((e) => e.reference === `${input.reference}:out`))
+      throw new DuplicateCharge(input.reference)
+    const from = await this.balance(input.from)
+    if (from < input.points) throw new InsufficientBalance(input.points, from)
+    const at = new Date().toISOString()
+    const leg = (owner: string, delta: number, suffix: string) =>
+      this.entries.push({
+        id: randomUUID(),
+        owner: lower(owner),
+        delta,
+        reason: input.reason,
+        reference: `${input.reference}:${suffix}`,
+        detail: input.detail ?? {},
+        createdAt: at,
+      })
+    leg(input.from, -input.points, 'out')
+    leg(input.to, input.points, 'in')
+    return {
+      moved: input.points,
+      fromBalance: await this.balance(input.from),
+      toBalance: await this.balance(input.to),
     }
   }
 
@@ -266,6 +328,66 @@ export class PostgresCreditStore implements CreditStore {
         charged,
         balance: balance - charged,
         shortfall: Math.max(0, input.points - charged),
+      }
+    })
+  }
+
+  /**
+   * Both legs in one transaction, so the money is never nowhere.
+   *
+   * The two references are one reference with a suffix, and the unique index on
+   * `reference` is what makes the whole movement happen at most once: a retry
+   * loses on the outbound leg before the inbound one is written.
+   */
+  async transfer(input: {
+    from: string
+    to: string
+    points: number
+    reason: string
+    reference: string
+    detail?: Record<string, unknown>
+  }) {
+    if (input.points <= 0) throw new Error('A transfer must move a positive number of points.')
+    return this.sql.begin(async (tx) => {
+      // Locked in a fixed order so two transfers between the same pair cannot
+      // take each other's locks and wait forever.
+      const pair = [lower(input.from), lower(input.to)].sort()
+      await tx`
+        SELECT owner FROM credit_balances
+        WHERE owner = ANY(${pair}) ORDER BY owner FOR UPDATE
+      `
+
+      const held = await tx<{ balance: string }[]>`
+        SELECT balance FROM credit_balances WHERE owner = ${lower(input.from)}
+      `
+      const fromBalance = Number(held[0]?.balance ?? 0)
+      if (fromBalance < input.points) throw new InsufficientBalance(input.points, fromBalance)
+
+      const write = async (owner: string, delta: number, suffix: string) => {
+        await tx`
+          INSERT INTO credit_entries (id, owner, delta, reason, reference, detail)
+          VALUES (${randomUUID()}, ${lower(owner)}, ${delta}, ${input.reason},
+                  ${`${input.reference}:${suffix}`},
+                  ${tx.json((input.detail ?? {}) as postgres.JSONValue)})
+        `
+        const rows = await tx<{ balance: string }[]>`
+          INSERT INTO credit_balances (owner, balance, updated_at)
+          VALUES (${lower(owner)}, ${delta}, now())
+          ON CONFLICT (owner) DO UPDATE
+            SET balance = credit_balances.balance + EXCLUDED.balance, updated_at = now()
+          RETURNING balance
+        `
+        return Number(rows[0]?.balance ?? 0)
+      }
+
+      try {
+        const nextFrom = await write(input.from, -input.points, 'out')
+        const nextTo = await write(input.to, input.points, 'in')
+        return { moved: input.points, fromBalance: nextFrom, toBalance: nextTo }
+      } catch (error) {
+        if ((error as { code?: string }).code === '23505')
+          throw new DuplicateCharge(input.reference)
+        throw error
       }
     })
   }
