@@ -250,7 +250,7 @@ function Steps({ steps }: { steps: AssistantStep[] }) {
           />
           <span>
             {TOOL_LABEL[s.tool] ?? s.tool}
-            {s.ok ? '' : ' — refused'}
+            {s.ok ? '' : ' (refused)'}
           </span>
         </li>
       ))}

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
+import { FAST_HOME } from '@/lib/routes'
 import { useMock } from '@/mock/store'
 
 const PREFERENCE_CHANGE = 'aiki:preference-change'
@@ -93,7 +94,7 @@ export function useModeNavigation() {
   const switchMode = useCallback(
     (next: HomeLayout) => {
       setLayout(next)
-      router.replace(next === 'fast' ? '/' : '/market')
+      router.replace(next === 'fast' ? FAST_HOME : '/market')
     },
     [router, setLayout],
   )

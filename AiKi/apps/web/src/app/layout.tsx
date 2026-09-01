@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from 'next'
 import { Plus_Jakarta_Sans } from 'next/font/google'
-import { DevPanel } from '@/mock/DevPanel'
-import { MockProvider } from '@/mock/store'
 import './globals.css'
 
 const jakarta = Plus_Jakarta_Sans({
@@ -12,7 +10,7 @@ const jakarta = Plus_Jakarta_Sans({
 })
 
 const DESCRIPTION =
-  'Find an agent that can actually do the job, know what the evidence supports, give it exactly enough power, and get a receipt anyone can verify. On BNB Chain.'
+  'Find an agent that answers. Set what it can spend. See every move. Built on BNB Chain.'
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://useaiki.xyz'),
@@ -57,10 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Skip to content
         </a>
-        <MockProvider>
-          {children}
-          <DevPanel />
-        </MockProvider>
+        {children}
       </body>
     </html>
   )

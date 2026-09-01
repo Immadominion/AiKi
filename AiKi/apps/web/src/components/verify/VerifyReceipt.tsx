@@ -43,7 +43,7 @@ const VERDICT_COPY: Record<Verdict, { title: string; body: string; tone: string 
   },
   unsupported: {
     title: 'Your browser cannot verify this locally.',
-    body: 'It lacks WebCrypto Ed25519 support. We will not substitute our own word for a check your browser cannot make — try a current Chrome, Safari, or Firefox.',
+    body: 'It lacks WebCrypto Ed25519 support. We will not substitute our own word for a check your browser cannot make. Try a current Chrome, Safari, or Firefox.',
     tone: '#B45309',
   },
 }

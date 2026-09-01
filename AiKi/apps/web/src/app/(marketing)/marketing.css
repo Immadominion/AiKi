@@ -1,0 +1,18 @@
+/*
+ * Global, and scoped to the marketing route group by being imported only from
+ * its layout.
+ *
+ * The landing owns its own scrolling: wheel, touch and keys are intercepted
+ * and each gesture moves exactly one chapter. A native scrollbar is therefore
+ * a control that does nothing, sitting over artwork, so it is hidden rather
+ * than left to advertise a behaviour the page does not have.
+ */
+html {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+}

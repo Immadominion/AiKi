@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { useLayoutPref } from '@/components/shell/prefs'
-import { route } from '@/lib/routes'
+import { FAST_HOME, route } from '@/lib/routes'
 import { DOC_GROUPS, DOCS } from './content'
 
 /**
@@ -22,7 +22,7 @@ export function DocsShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false)
 
   const slug = path.split('/').filter(Boolean).at(-1) ?? ''
-  const backHref = layout === 'fast' ? '/' : '/market'
+  const backHref = layout === 'fast' ? FAST_HOME : route('/market')
 
   const rail = (
     <nav className="flex flex-col gap-[20px]">
@@ -89,7 +89,7 @@ export function DocsShell({ children }: { children: React.ReactNode }) {
         </button>
 
         <Link
-          href={route(backHref)}
+          href={backHref}
           className="hidden h-9 items-center rounded-[12px] bg-[rgb(20_20_20_/_0.05)] px-[14px] text-[13px] font-bold text-[#141414] transition-colors hover:bg-[rgb(20_20_20_/_0.09)] sm:flex"
         >
           Open AiKi

@@ -22,7 +22,7 @@ export function VerifyEntry() {
       <div className="text-[15px] font-bold">Check an execution receipt</div>
       <p className="text-muted mt-[6px] mb-0 text-[13px] leading-[1.55] text-pretty">
         Every completed job prints a receipt id. Your browser rebuilds the signed bytes and checks
-        the signature itself — the server is not asked to vouch for its own work.
+        the signature itself. The server is not asked to vouch for its own work.
       </p>
       <div className="mt-[14px] flex gap-[8px]">
         <input

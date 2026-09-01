@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { AGENT_BG, AGENTS } from '@/lib/agents'
 import { useEscapeLayer } from '@/lib/escape'
-import { agentHref, route } from '@/lib/routes'
+import { agentHref, FAST_HOME, route } from '@/lib/routes'
 import { rankTask, TASKS } from '@/lib/tasks'
 import { useModeNavigation } from './prefs'
 
@@ -22,7 +22,7 @@ const DESTINATIONS = [
   {
     label: 'Fast mode',
     sub: 'One question, full screen',
-    href: '/',
+    href: FAST_HOME,
     glyph: '⌂',
     keys: ['home', 'fast', 'ask', 'start'],
   },
@@ -150,7 +150,7 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
           sub: d.sub,
           glyph: d.glyph,
           run: () => {
-            if (d.href === '/') switchMode('fast')
+            if (d.href === FAST_HOME) switchMode('fast')
             else if (d.href === '/market') switchMode('manual')
             else router.push(route(d.href))
           },

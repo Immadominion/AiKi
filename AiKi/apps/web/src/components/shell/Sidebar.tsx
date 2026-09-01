@@ -20,7 +20,7 @@ import { useState } from 'react'
 import { usePalette } from '@/components/shell/CommandPalette'
 import { useHoverIcon } from '@/components/ui/AnimatedIcon'
 import { useToast } from '@/components/ui/Toast'
-import { route } from '@/lib/routes'
+import { FAST_HOME, route } from '@/lib/routes'
 import { shortAddress } from '@/lib/wallet'
 import { useAccount, useIsPhone, useModeNavigation, useTour } from './prefs'
 
@@ -268,7 +268,7 @@ export function Sidebar({
                   key={raw.label}
                   item={
                     raw.label === 'Home'
-                      ? { ...raw, href: layout === 'fast' ? '/' : '/market' }
+                      ? { ...raw, href: layout === 'fast' ? FAST_HOME : '/market' }
                       : raw
                   }
                   path={path}
@@ -368,7 +368,7 @@ export function Sidebar({
                   'Show me around',
                   () => {
                     replay()
-                    router.push(route(layout === 'fast' ? '/' : '/market'))
+                    router.push(layout === 'fast' ? FAST_HOME : route('/market'))
                   },
                 ],
                 ['Your limits', () => router.push(route('/limits'))],
