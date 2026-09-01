@@ -5,7 +5,7 @@
     "dockerfilePath": "apps/api/Dockerfile"
   },
   "deploy": {
-    "startCommand": "pnpm --filter @aiki/api db:migrate && pnpm --filter @aiki/api start",
+    "startCommand": "pnpm --filter @aiki/api db:migrate && (pnpm --filter @aiki/api credits:check || true) && pnpm --filter @aiki/api start",
     "healthcheckPath": "/healthz",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",

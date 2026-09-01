@@ -25,7 +25,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "index": "tsx src/indexer/cli.ts",
-    "search:check": "tsx src/http/search-check.ts"
+    "search:check": "tsx src/http/search-check.ts",
+    "credits:check": "tsx src/credits/reconcile-cli.ts"
   },
   "dependencies": {
     "@aiki/contracts": "workspace:*",

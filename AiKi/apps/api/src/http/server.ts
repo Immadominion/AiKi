@@ -1058,6 +1058,47 @@ export function createApiServer(input: {
           },
         })
       /*
+       * Everything that can refuse, refuses BEFORE the claim.
+       *
+       * The claim moves the job to SETTLED, and it used to run first: a job
+       * with no recorded sale was marked settled and then refused, so it read
+       * as paid while nobody had been paid and no route would touch it again.
+       * An agent with no owner did the same and left the buyer's money in
+       * escrow with settlement closed and refund refusing SETTLED jobs. Reading
+       * is not a race, so none of this weakens the guard below.
+       */
+      const sale = job.sale
+      if (!sale)
+        return reply.code(409).send({
+          error: {
+            code: 'JOB_NOT_FUNDED',
+            message: 'This job records no sale, so there is nothing to settle and nobody to pay.',
+            retryable: false,
+          },
+        })
+      /*
+       * Whom to pay and how much are read from the sale, never from the caller.
+       *
+       * This route took agentId in its body and priced from live observations,
+       * so a buyer could settle naming an agent whose owner was themselves and
+       * have the escrow paid to their own address, and a price that moved
+       * between funding and settlement paid the seller a different number from
+       * the one the buyer was charged. Both were verified.
+       */
+      const agentId = sale.agentId
+      const observations = await agentObservations([agentId])
+      const passport = projectPassport(agentId, observations)
+      const owner = passport.identity?.owner
+      if (!owner)
+        return reply.code(422).send({
+          error: {
+            code: 'AGENT_HAS_NO_OWNER',
+            message: 'The registry records no owner for this agent, so there is nobody to pay.',
+            retryable: false,
+          },
+        })
+
+      /*
        * Claim the payout before any money moves.
        *
        * Settling and refunding both draw on one pooled escrow account and used
@@ -1085,36 +1126,6 @@ export function createApiServer(input: {
           },
         })
 
-      /*
-       * Whom to pay and how much are read from the sale, never from the caller.
-       *
-       * This route took agentId in its body and priced from live observations,
-       * so a buyer could settle naming an agent whose owner was themselves and
-       * have the escrow paid to their own address, and a price that moved
-       * between funding and settlement paid the seller a different number from
-       * the one the buyer was charged. Both were verified.
-       */
-      const sale = job.sale
-      if (!sale)
-        return reply.code(409).send({
-          error: {
-            code: 'JOB_NOT_FUNDED',
-            message: 'This job records no sale, so there is nothing to settle and nobody to pay.',
-            retryable: false,
-          },
-        })
-      const agentId = sale.agentId
-      const observations = await agentObservations([agentId])
-      const passport = projectPassport(agentId, observations)
-      const owner = passport.identity?.owner
-      if (!owner)
-        return reply.code(422).send({
-          error: {
-            code: 'AGENT_HAS_NO_OWNER',
-            message: 'The registry records no owner for this agent, so there is nobody to pay.',
-            retryable: false,
-          },
-        })
       const legs = await settleJob({
         credits,
         jobId: job.id,
@@ -1248,6 +1259,19 @@ export function createApiServer(input: {
             retryable: false,
           },
         })
+      // Read first, claim second. Cancelling a job and then refusing to refund
+      // it leaves somebody looking at a cancelled job that still has their
+      // money, which is the worst of both answers.
+      const sale = job.sale
+      if (!sale)
+        return reply.code(409).send({
+          error: {
+            code: 'JOB_NOT_FUNDED',
+            message: 'This job records no sale, so no money was taken for it.',
+            retryable: false,
+          },
+        })
+
       // The same claim, from the other side. Only one of settle and refund can
       // take a job out of FUNDED, so only one can be paid out of the escrow.
       const claimedRefund = await jobs.claim(
@@ -1264,16 +1288,6 @@ export function createApiServer(input: {
               job.status === 'SETTLED'
                 ? 'This job is settled and the agent has been paid. Reversing that is a dispute, which AiKi does not handle yet.'
                 : `Only a funded job holds money to return. This one is ${job.status}.`,
-            retryable: false,
-          },
-        })
-
-      const sale = job.sale
-      if (!sale)
-        return reply.code(409).send({
-          error: {
-            code: 'JOB_NOT_FUNDED',
-            message: 'This job records no sale, so no money was taken for it.',
             retryable: false,
           },
         })
