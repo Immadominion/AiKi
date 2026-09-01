@@ -1,7 +1,9 @@
 'use client'
 
+import type { ProjectedPassport } from '@aiki/contracts'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { paletteFor } from '@/components/home/live-shards'
 import { CoverageBlock } from '@/components/shell/CoverageBlock'
 import { AgentCell, Cell, DataTable, RowActions } from '@/components/shell/DataTable'
 import { PageCard } from '@/components/shell/PageCard'
@@ -9,12 +11,27 @@ import { useSaved } from '@/components/shell/prefs'
 import { EvidenceBars } from '@/components/ui/EvidenceBars'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, AGENTS } from '@/lib/agents'
+import { api } from '@/lib/api'
 import { DETAILS } from '@/lib/detail'
 import { EXAMPLE_EVIDENCE_COLUMN, EXAMPLE_FOOTNOTE, exampleBanner } from '@/lib/examples'
 import { useRegistryCoverage } from '@/lib/live'
-import { agentHref, route } from '@/lib/routes'
-import { search } from '@/lib/search'
+import { agentHref, registryHref, route } from '@/lib/routes'
 import { TASKS } from '@/lib/tasks'
+
+/**
+ * One row, one line of meaning.
+ *
+ * Registration descriptions run to paragraphs, and one agent's ran long enough
+ * to make its row four hundred pixels tall and push every other agent off the
+ * screen. The first sentence is taken whole rather than cut mid-word, so what
+ * is shown is still the operator's own wording and not our paraphrase of it.
+ */
+function summarise(description: string | null): string {
+  const text = (description ?? '').trim()
+  if (!text) return 'Declares no description'
+  const first = text.split(/(?<=\.)\s/)[0] ?? text
+  return first.length > 150 ? `${first.slice(0, 147).trimEnd()}...` : first
+}
 
 export function ExploreView() {
   const params = useSearchParams()
@@ -23,10 +40,43 @@ export function ExploreView() {
   const router = useRouter()
   const { toggle, isSaved } = useSaved()
 
-  const outcome = useMemo(() => search(q), [q])
   const registry = useRegistryCoverage()
   const searching = q.trim().length > 0
-  const nothing = searching && outcome.results.length === 0
+
+  /*
+   * A search here now asks the marketplace, not the example set.
+   *
+   * The banner on this page has always said these six are examples, which was
+   * honest and was also the whole problem: the reason given was that "almost no
+   * registry entry publishes what an agent can do". Registrations do carry a
+   * description and service names, and /v1/search now ranks agents on them, so
+   * the reason has stopped being true and the page can answer for real.
+   *
+   * Browsing with no query still shows the examples, still labelled, because
+   * there is no measured way to rank agents for somebody who has not said what
+   * they want.
+   */
+  const [live, setLive] = useState<ProjectedPassport[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    if (!searching) return
+    let cancelled = false
+    setLive(null)
+    setFailed(false)
+    api
+      .search({ query: q, limit: 25 })
+      .then((answer) => {
+        if (!cancelled) setLive(answer.results)
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [q, searching])
+
+  const nothing = searching && live !== null && live.length === 0
 
   // What you actually hold, so "Suggested" means something rather than being a
   // relabelled default sort.
@@ -89,6 +139,70 @@ export function ExploreView() {
     />
   )
 
+  /**
+   * Real agents, with the evidence AiKi actually holds.
+   *
+   * No price column: almost nothing in the registry publishes one, and a blank
+   * that reads as free is worse than a column that is not there. The evidence
+   * cell says the trial count out loud, because a score over three probes and a
+   * score over three hundred are different claims.
+   */
+  const liveTable = (rows: ProjectedPassport[]) => (
+    <DataTable
+      cols="minmax(200px,1.5fr) minmax(220px,1.6fr) minmax(170px,1.2fr) 152px"
+      minWidth="760px"
+      columns={[
+        { label: 'Agent', glyph: '◍' },
+        { label: 'What it says it does', glyph: '⌬' },
+        { label: 'What we measured', glyph: '⊞' },
+        { label: '', glyph: '', align: 'end' },
+      ]}
+      rows={rows.map((p) => {
+        const trials = p.checks?.trials ?? 0
+        const answering = p.liveness === 'LIVE'
+        return {
+          id: p.agentId,
+          cells: [
+            <AgentCell
+              key="a"
+              initial={(p.name ?? p.agentId)
+                .replace(/^AiKi\s+/i, '')
+                .charAt(0)
+                .toUpperCase()}
+              name={(p.name ?? `Agent ${p.agentId}`).replace(/^AiKi\s+/i, '')}
+              sub={`token ${p.agentId}`}
+              bg={paletteFor(p.agentId).bg}
+            />,
+            <Cell key="b" color="var(--color-body)">
+              {summarise(p.description)}
+            </Cell>,
+            <EvidenceBars
+              key="c"
+              filled={answering ? Math.min(5, Math.max(1, Math.round(trials / 6))) : 1}
+              label={
+                answering
+                  ? `Answering · ${trials} ${trials === 1 ? 'check' : 'checks'}`
+                  : `${p.liveness.replace(/_/g, ' ').toLowerCase()} · ${trials} ${trials === 1 ? 'check' : 'checks'}`
+              }
+              tone={answering ? (trials >= 20 ? 'strong' : 'fair') : 'thin'}
+            />,
+            <RowActions
+              key="d"
+              actions={[
+                {
+                  label: 'View',
+                  primary: true,
+                  onClick: () => router.push(registryHref(p.agentId)),
+                },
+              ]}
+            />,
+          ],
+        }
+      })}
+      footnote="Ranked on what each agent's own registration says it does, and filtered to the ones that answered a probe. The count beside each is how many probes it has answered."
+    />
+  )
+
   const noMatch = (
     <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-5">
       <div className="flex items-start gap-[11px]">
@@ -130,9 +244,7 @@ export function ExploreView() {
       title={searching ? 'Results' : 'Explore'}
       count={
         searching
-          ? outcome.understood
-            ? `for “${q}” · read as ${outcome.understood.toLowerCase()}`
-            : `for “${q}”`
+          ? `for “${q}”${live ? ` · ${live.length} from the registry` : ''}`
           : `${AGENTS.length} agents · 4 kinds of work`
       }
       primary="Compare"
@@ -147,15 +259,26 @@ export function ExploreView() {
               'Most illustrative checks first',
             ]
       }
-      banner={banner}
+      banner={searching ? undefined : banner}
       panels={searching ? undefined : [table(suggested), table(AGENTS), table(testedMost)]}
     >
       {searching ? (
         <>
           <div className="mb-[18px]">
-            <CoverageBlock shown={outcome.results.length} coverage={registry} />
+            <CoverageBlock shown={live?.length ?? 0} coverage={registry} />
           </div>
-          {nothing ? noMatch : table(outcome.results)}
+          {failed ? (
+            <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-5 text-[13.5px]">
+              The registry could not be reached, so this page is showing nothing rather than
+              guessing. Try again in a moment.
+            </div>
+          ) : live === null ? (
+            <div className="text-muted px-[18px] py-5 text-[13.5px]">Asking the registry…</div>
+          ) : nothing ? (
+            noMatch
+          ) : (
+            liveTable(live)
+          )}
         </>
       ) : null}
     </PageCard>

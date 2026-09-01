@@ -36,7 +36,7 @@ const PALETTE = [
 
 const FALLBACK = { bg: 'linear-gradient(135deg,#FF4D00,#FF8A3D)', glow: 'rgb(255 77 0 / 0.5)' }
 
-const paletteFor = (agentId: string): { bg: string; glow: string } => {
+export const paletteFor = (agentId: string): { bg: string; glow: string } => {
   let hash = 0
   for (const ch of agentId) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
   return PALETTE[hash % PALETTE.length] ?? FALLBACK
