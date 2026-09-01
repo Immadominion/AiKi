@@ -124,6 +124,7 @@ export function liveShards(passports: readonly ProjectedPassport[]): ShardSpec[]
     oneEach(passports)
       .slice(0, 6)
       .map((passport) => ({
+        agentId: passport.agentId,
         initial: initialOf(passport.name, passport.agentId),
         name: (passport.name ?? `Agent ${passport.agentId}`).replace(/^AiKi\s+/i, ''),
         capability: capabilityOf(passport),

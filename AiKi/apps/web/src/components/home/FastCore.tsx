@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { api } from '@/lib/api'
-import { agentHref } from '@/lib/routes'
+import { agentHref, registryHref } from '@/lib/routes'
 import type { Task } from '@/lib/tasks'
 import { AskField } from './AskField'
 import { FastChat } from './FastChat'
@@ -131,7 +131,17 @@ export function FastCore({
         shards={shards}
         frame={frame}
         hideBelow={frame.hideBelow}
-        onPick={(name) => router.push(agentHref(name.toLowerCase()))}
+        /*
+         * A real agent is addressed by its token id, which is the page that
+         * carries the evidence: every probe, the score floor and its interval,
+         * and the reciprocal proof. Only the remaining fixture cards still
+         * route by name, and they are the ones that were named after routes.
+         */
+        onPick={(shard) =>
+          router.push(
+            shard.agentId ? registryHref(shard.agentId) : agentHref(shard.name.toLowerCase()),
+          )
+        }
       />
 
       <div

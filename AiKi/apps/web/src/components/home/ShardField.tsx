@@ -16,7 +16,7 @@ export function ShardField({
   hideBelow = 'lg',
 }: {
   shards: ShardSpec[]
-  onPick: (name: string) => void
+  onPick: (shard: ShardSpec) => void
   /** Which box the cluster is measured against. */
   frame?: Frame
   hideBelow?: 'lg' | 'xl'
@@ -36,7 +36,7 @@ export function ShardField({
             />
             <button
               type="button"
-              onClick={() => onPick(s.name)}
+              onClick={() => onPick(s)}
               className="relative block w-full border-0 bg-none p-0"
               style={st.button}
             >

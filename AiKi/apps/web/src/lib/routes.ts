@@ -9,6 +9,8 @@ import type { Route } from 'next'
  */
 export const FAST_HOME = '/app' as Route
 export const agentHref = (key: string) => `/agent/${key}` as Route
+/** A real agent, addressed by its ERC-8004 token id. */
+export const registryHref = (agentId: string) => `/registry/${agentId}` as Route
 export const hireHref = (key: string) => `/agent/${key}/hire` as Route
 export const jobHref = (id: string) => `/jobs/${id}` as Route
 export const receiptHref = (id: string) => `/receipts/${id}` as Route

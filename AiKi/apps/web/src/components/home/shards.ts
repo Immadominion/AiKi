@@ -87,6 +87,16 @@ export interface ShardSpec {
   initial: string
   name: string
   capability: string
+  /**
+   * The ERC-8004 token id, when the card is a real agent.
+   *
+   * Cards used to be routed by lowercasing their display name into a fixture
+   * key, which worked only while every name WAS a fixture key. Real agents are
+   * called things like "Venus Health Factor Guardian", and that produced
+   * /agent/venus%20health%20factor%20guardian, which answers "Agent not found".
+   * An id is the thing that identifies an agent; a display name never was.
+   */
+  agentId?: string
   state: string
   stateDot: string
   stateColor: string
@@ -194,7 +204,8 @@ const SLOTS = [
 type Occupant = Pick<
   ShardSpec,
   'initial' | 'name' | 'capability' | 'state' | 'stateDot' | 'stateColor' | 'bg' | 'glow'
->
+> &
+  Partial<Pick<ShardSpec, 'agentId'>>
 
 const GUARDIAN = {
   initial: 'G',
