@@ -17,7 +17,7 @@ import type { Constraint } from '../authority/policy.js'
 import { type BenchmarkRun, BenchmarkService, benchmarkEvidence } from '../benchmarks/service.js'
 import type { EnforcerDeployment } from '../config/enforcers.js'
 import { pointsForSettlement } from '../credits/pricing.js'
-import type { Observation } from '../evidence/types.js'
+import type { NewObservation, Observation } from '../evidence/types.js'
 import { parseIntent } from '../intent/parser.js'
 import { act, parseAction } from '../jobs/act.js'
 import { JobService } from '../jobs/service.js'
@@ -29,7 +29,7 @@ import type { WatchStore } from '../runner/store.js'
 import { buildSearchQuery } from '../search/query.js'
 import { fundJob, InsufficientPoints, settleJob } from '../settlement/ledger.js'
 import { buildQuote, priceJob, SETTLEMENT } from '../settlement/pricing.js'
-import { publishedAsset, publishedPrice } from '../settlement/published-price.js'
+import { priceForQuote, publishedAsset } from '../settlement/published-price.js'
 import { asClientError, asProtocolError, asSchemaError, ClientError } from './errors.js'
 
 /**
@@ -126,6 +126,16 @@ export function createApiServer(input: {
    * serves Manual mode only, and says so rather than failing oddly.
    */
   assistant?: AssistantConfig
+  /**
+   * Record a fact. Present only where the deployment has a writable store.
+   *
+   * Needed so an agent's OWNER can list it. Until they could, an agent was
+   * quotable only if its registration file carried a price, which meant editing
+   * a JSON document at a URL you control, and four agents on the whole chain
+   * had done it. A marketplace nobody can join from the supply side grows only
+   * as fast as we index.
+   */
+  appendObservation?: (observation: NewObservation) => Promise<unknown>
   /**
    * Where AiKi's own fee lands. Absent means this deployment quotes a fee it has
    * nowhere to put, so it refuses to settle rather than keeping the money in a
@@ -549,7 +559,8 @@ export function createApiServer(input: {
         `This agent publishes its price in ${declaredAsset}, and AiKi settles in ${SETTLEMENT.symbol}. Quoting it would restate the price in a currency the agent never named.`,
       )
 
-    const price = publishedPrice(request.body.agentId, observations)
+    const quoted = priceForQuote(request.body.agentId, observations)
+    const price = quoted?.amount ?? null
     // A price we do not have is not a price of zero. Quoting free work that is
     // not free is the same class of mistake as reporting an unmeasured field as
     // a measurement, and this endpoint used to do exactly that.
@@ -928,9 +939,12 @@ export function createApiServer(input: {
         reply.code(422).send({ error: { code, message, retryable: false } })
       if (passport.liveness !== 'LIVE')
         return fail('AGENT_NOT_QUOTABLE', 'Only LIVE agents may be hired.')
-      const price = publishedPrice(agentId, observations)
+      const price = priceForQuote(agentId, observations)?.amount ?? null
       if (price === null)
-        return fail('AGENT_HAS_NO_PUBLISHED_PRICE', 'This agent publishes no price.')
+        return fail(
+          'AGENT_HAS_NO_PUBLISHED_PRICE',
+          'This agent publishes no price and its owner has listed none.',
+        )
 
       /*
        * Converted before it is charged. An agent publishes its price in base
@@ -1010,7 +1024,7 @@ export function createApiServer(input: {
             retryable: false,
           },
         })
-      const price = publishedPrice(agentId, observations)
+      const price = priceForQuote(agentId, observations)?.amount ?? null
       if (price === null)
         return reply.code(422).send({
           error: {
@@ -1033,6 +1047,97 @@ export function createApiServer(input: {
         `Paid ${legs.paidToAgent} points to ${owner}, kept ${legs.fee} as the quoted fee.`,
       )
       return { jobId: job.id, agentId, paidTo: owner, ...legs, status: 'SETTLED' }
+    },
+  )
+
+  /**
+   * The supply side: an owner puts their own agent up for hire.
+   *
+   * Everything else on this marketplace is something AiKi went and found. This
+   * is the one route where the other party acts, and it is the difference
+   * between a directory that grows when we index and a venue people join.
+   *
+   * The gate is ownership, checked against the address the registry recorded
+   * when the token was minted. It is chain-derived and it is not live: a token
+   * transferred since registration is not reflected until the indexer sees it,
+   * so this says who the registry last told us owns the agent, which is stated
+   * in the response rather than implied.
+   */
+  app.post<{ Params: { agentId: string }; Body: { priceAmount?: string } }>(
+    '/v1/agents/:agentId/listing',
+    async (request, reply) => {
+      const session = requireSession(request, reply)
+      if (!session) return reply
+      if (!input.appendObservation)
+        return reply.code(503).send({
+          error: {
+            code: 'LISTING_UNAVAILABLE',
+            message: 'This deployment cannot record listings.',
+            retryable: false,
+          },
+        })
+
+      const amount = request.body?.priceAmount
+      if (typeof amount !== 'string' || !/^\d+$/.test(amount))
+        return reply.code(400).send({
+          error: {
+            code: 'INVALID_PRICE',
+            message: `priceAmount must be a whole number of base units of ${SETTLEMENT.symbol}, which has ${SETTLEMENT.decimals} decimals.`,
+            retryable: false,
+          },
+        })
+
+      const agentId = request.params.agentId
+      const observations = await agentObservations([agentId])
+      const passport = projectPassport(agentId, observations)
+      const owner = passport.identity?.owner
+      if (!owner)
+        return reply.code(404).send({
+          error: {
+            code: 'AGENT_NOT_INDEXED',
+            message: 'AiKi holds no registration for this agent, so it cannot tell who owns it.',
+            retryable: false,
+          },
+        })
+      if (owner.toLowerCase() !== session.address.toLowerCase())
+        return reply.code(403).send({
+          error: {
+            code: 'NOT_THE_OWNER',
+            message: `The registry records ${owner} as this agent's owner. Only that address can list it.`,
+            retryable: false,
+          },
+        })
+
+      const now = new Date().toISOString()
+      await input.appendObservation({
+        subject: {
+          type: 'agent',
+          chainId: passport.chainId ?? 56,
+          registry: passport.registry ?? '',
+          agentId,
+        },
+        predicate: 'marketplace.listing',
+        /*
+         * Class D: the owner said it. The OWNERSHIP is chain-derived and
+         * checked, the price is a declaration, and calling a stated price a
+         * measurement is the mistake this whole product is arranged against.
+         */
+        evidenceClass: 'D',
+        value: { price: { amount, asset: SETTLEMENT.symbol, decimals: SETTLEMENT.decimals } },
+        validAt: now,
+        observedAt: now,
+        source: `owner:${owner.toLowerCase()}`,
+        method: 'marketplace-listing/v1',
+        // One listing per owner per instant; relisting supersedes by being newer.
+        dedupeKey: `listing:${agentId}:${now}`,
+      })
+
+      return {
+        agentId,
+        listedBy: owner,
+        price: { amount, asset: SETTLEMENT.symbol, decimals: SETTLEMENT.decimals },
+        note: "Recorded as the owner's stated price, not as something AiKi measured. A price published in the agent's own registration file takes precedence, because that one is public.",
+      }
     },
   )
 

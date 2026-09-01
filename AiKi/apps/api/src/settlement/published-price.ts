@@ -45,3 +45,39 @@ export function publishedAsset(agentId: string, observations: Observation[]): st
   const asset = manifest?.pricing?.asset
   return typeof asset === 'string' && asset.length > 0 ? asset : null
 }
+
+/**
+ * The price the owner listed with AiKi, if they have.
+ *
+ * Separate from `publishedPrice` on purpose. A price in the registration file
+ * is public: everyone who reads the agent sees the same number. A listing is
+ * something the owner told AiKi, authenticated by proving they own the token.
+ * Both are declarations by the same party, and they are not the same claim, so
+ * a caller has to be able to tell which one it is quoting.
+ */
+export function listedPrice(agentId: string, observations: Observation[]): bigint | null {
+  const listing = observations
+    .filter((o) => o.subject.agentId === agentId && o.predicate === 'marketplace.listing')
+    .sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0]
+
+  const amount = (listing?.value.price as { amount?: unknown } | undefined)?.amount
+  return typeof amount === 'string' && /^\d+$/.test(amount) ? BigInt(amount) : null
+}
+
+/**
+ * What to charge, and where the number came from.
+ *
+ * The registration file wins when it carries a price. It is the agent's public
+ * declaration, and letting a private listing quietly override a public number
+ * would let an owner show the world one price and AiKi another.
+ */
+export function priceForQuote(
+  agentId: string,
+  observations: Observation[],
+): { amount: bigint; source: 'registration' | 'owner-listing' } | null {
+  const published = publishedPrice(agentId, observations)
+  if (published !== null) return { amount: published, source: 'registration' }
+  const listed = listedPrice(agentId, observations)
+  if (listed !== null) return { amount: listed, source: 'owner-listing' }
+  return null
+}

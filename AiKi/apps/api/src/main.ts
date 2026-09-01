@@ -106,6 +106,7 @@ const app = createApiServer({
   observationsForAgents: (agentIds) => store.observationsForAgents(agentIds),
   searchAgents: (query) => store.searchAgents(query),
   ...(treasury ? { settlementTreasury: treasury } : {}),
+  appendObservation: (observation) => store.append(observation),
   enforcers: AIKI_ENFORCERS_BSC_TESTNET,
   ...(agentSessionKey ? { agentSessionKey } : {}),
   ...(agentKey ? { agentKey } : {}),
