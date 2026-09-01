@@ -24,7 +24,7 @@ it('moves money in three legs that add up', async () => {
     jobId: 'j1',
     agentOwner: AGENT_OWNER,
     treasury: TREASURY,
-    totalPoints: total,
+    pricePoints: 10_000,
   })
   expect(legs.paidToAgent + legs.fee).toBe(total)
   expect(await credits.balance(AGENT_OWNER)).toBe(legs.paidToAgent)
@@ -54,7 +54,7 @@ it('pays once however many times settlement is retried', async () => {
     jobId: 'j3',
     agentOwner: AGENT_OWNER,
     treasury: TREASURY,
-    totalPoints: 10_250,
+    pricePoints: 10_000,
   })
   expect(once.alreadySettled).toBe(false)
 
@@ -63,7 +63,7 @@ it('pays once however many times settlement is retried', async () => {
     jobId: 'j3',
     agentOwner: AGENT_OWNER,
     treasury: TREASURY,
-    totalPoints: 10_250,
+    pricePoints: 10_000,
   })
   // A retry is not a mistake, and it is not a second payment either.
   expect(twice.alreadySettled).toBe(true)
@@ -80,7 +80,7 @@ it('keeps two jobs to the same agent separate', async () => {
       jobId,
       agentOwner: AGENT_OWNER,
       treasury: TREASURY,
-      totalPoints: 10_250,
+      pricePoints: 10_000,
     })
   }
   // Keyed on the job, so the second sale is a second payment.

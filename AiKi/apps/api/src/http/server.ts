@@ -16,6 +16,7 @@ import type { ChainReader } from '../authority/chain-reader.js'
 import type { Constraint } from '../authority/policy.js'
 import { type BenchmarkRun, BenchmarkService, benchmarkEvidence } from '../benchmarks/service.js'
 import type { EnforcerDeployment } from '../config/enforcers.js'
+import { pointsForSettlement } from '../credits/pricing.js'
 import type { Observation } from '../evidence/types.js'
 import { parseIntent } from '../intent/parser.js'
 import { act, parseAction } from '../jobs/act.js'
@@ -911,15 +912,13 @@ export function createApiServer(input: {
 
       const agentId = request.body?.agentId
       if (!agentId)
-        return reply
-          .code(400)
-          .send({
-            error: {
-              code: 'AGENT_REQUIRED',
-              message: 'agentId is required to price the job.',
-              retryable: false,
-            },
-          })
+        return reply.code(400).send({
+          error: {
+            code: 'AGENT_REQUIRED',
+            message: 'agentId is required to price the job.',
+            retryable: false,
+          },
+        })
 
       // Priced from the agent's own published price, through the same reader
       // the quote uses, so funding and quoting cannot disagree.
@@ -933,7 +932,14 @@ export function createApiServer(input: {
       if (price === null)
         return fail('AGENT_HAS_NO_PUBLISHED_PRICE', 'This agent publishes no price.')
 
-      const total = Number(priceJob(price).total)
+      /*
+       * Converted before it is charged. An agent publishes its price in base
+       * units of the settlement asset; a balance is in points. Charging one as
+       * the other asked a buyer for 102,500,000,000,000,000 points for a job
+       * priced at ten cents.
+       */
+      const pricePoints = pointsForSettlement(price, SETTLEMENT.decimals)
+      const total = Number(priceJob(BigInt(pricePoints)).total)
       try {
         const held = await fundJob({
           credits: input.assistant.credits,
@@ -945,11 +951,9 @@ export function createApiServer(input: {
         return { jobId: job.id, agentId, ...held, status: 'FUNDED' }
       } catch (error) {
         if (error instanceof InsufficientPoints)
-          return reply
-            .code(402)
-            .send({
-              error: { code: 'INSUFFICIENT_POINTS', message: error.message, retryable: false },
-            })
+          return reply.code(402).send({
+            error: { code: 'INSUFFICIENT_POINTS', message: error.message, retryable: false },
+          })
         throw error
       }
     },
@@ -988,15 +992,13 @@ export function createApiServer(input: {
 
       const agentId = request.body?.agentId
       if (!agentId)
-        return reply
-          .code(400)
-          .send({
-            error: {
-              code: 'AGENT_REQUIRED',
-              message: 'agentId is required to pay the agent.',
-              retryable: false,
-            },
-          })
+        return reply.code(400).send({
+          error: {
+            code: 'AGENT_REQUIRED',
+            message: 'agentId is required to pay the agent.',
+            retryable: false,
+          },
+        })
       const observations = await agentObservations([agentId])
       const passport = projectPassport(agentId, observations)
       const owner = passport.identity?.owner
@@ -1023,7 +1025,7 @@ export function createApiServer(input: {
         jobId: job.id,
         agentOwner: owner,
         treasury,
-        totalPoints: Number(priceJob(price).total),
+        pricePoints: pointsForSettlement(price, SETTLEMENT.decimals),
       })
       await jobs.advance(
         job.id,

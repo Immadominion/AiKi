@@ -58,3 +58,22 @@ it('explains a charge in the terms it was computed from', () => {
 it('defaults to a model that exists and can call tools', () => {
   expect(MODELS[DEFAULT_MODEL]).toBeDefined()
 })
+
+it('counts a settlement price in points rather than in its own base units', async () => {
+  const { pointsForSettlement, POINTS_PER_USD } = await import('./pricing.js')
+  /*
+   * The settlement token on BNB Chain carries eighteen decimals, so 0.1 of it
+   * is 1e17 base units. Charged as points that is a hundred million billion,
+   * which is what funding a job asked for before this conversion existed.
+   */
+  expect(pointsForSettlement(10n ** 17n, 18)).toBe(1_000)
+  expect(pointsForSettlement(1025n * 10n ** 14n, 18)).toBe(1_025)
+  // One whole token is a dollar, and a dollar is the published rate.
+  expect(pointsForSettlement(10n ** 18n, 18)).toBe(POINTS_PER_USD)
+  // Six-decimal assets land on the same answer, which is the point of taking
+  // the decimals rather than assuming them.
+  expect(pointsForSettlement(1_000_000n, 6)).toBe(POINTS_PER_USD)
+  expect(pointsForSettlement(0n, 18)).toBe(0)
+  // A remainder is absorbed, never charged to somebody who was not quoted it.
+  expect(pointsForSettlement(1n, 18)).toBe(0)
+})

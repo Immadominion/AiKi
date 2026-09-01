@@ -78,11 +78,18 @@ export async function settleJob(input: {
   agentOwner: string
   /** Where AiKi's fee goes. */
   treasury: string
-  totalPoints: number
+  /**
+   * The agent's price IN POINTS, not the total.
+   *
+   * Taking the total and dividing back out by the fee rate is how the sale and
+   * the invoice start to disagree: the division does not land on an integer,
+   * and the rounding is a second opinion about a number that was already
+   * settled when the job was quoted. The fee is derived here from the same
+   * `priceJob` the quote used, from the same input.
+   */
+  pricePoints: number
 }): Promise<SettlementLegs & { alreadySettled: boolean }> {
-  // Split from the total with the same arithmetic that quoted it, so the sale
-  // and the invoice cannot disagree about the fee.
-  const priced = priceJob(BigInt(Math.max(0, Math.round(input.totalPoints / 1.025))))
+  const priced = priceJob(BigInt(Math.max(0, Math.trunc(input.pricePoints))))
   const fee = Number(priced.platformFee)
   const toAgent = Number(priced.price)
 
@@ -110,7 +117,7 @@ export async function settleJob(input: {
   await credit(input.treasury, fee, 'platform_fee')
 
   return {
-    held: input.totalPoints,
+    held: Number(priced.total),
     paidToAgent: toAgent,
     fee,
     buyerBalance: await input.credits.balance(input.agentOwner),

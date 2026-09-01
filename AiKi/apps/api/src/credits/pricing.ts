@@ -104,3 +104,22 @@ export const WELCOME_GRANT_POINTS = 5_000
 export function pointsForUsdt(baseUnits: bigint): number {
   return Number((baseUnits * BigInt(POINTS_PER_USD)) / 1_000_000n)
 }
+
+/**
+ * An amount of a settlement token, in points.
+ *
+ * A price is a number AND the thing it is counted in, and these two are counted
+ * in different things: an agent publishes its price in base units of the
+ * settlement asset, which carries eighteen decimals on BNB Chain, while a
+ * balance is in points at ten thousand to the dollar. Charging one as if it
+ * were the other is a factor of 10^14, and it is exactly what funding a job did
+ * before this existed: it asked a buyer for 102,500,000,000,000,000 points for
+ * a job priced at ten cents.
+ *
+ * Rounds DOWN, on the same rule the fee follows: the remainder is absorbed
+ * rather than charged to somebody who was never quoted it.
+ */
+export function pointsForSettlement(baseUnits: bigint, decimals: number): number {
+  if (baseUnits < 0n) throw new Error('A price cannot be negative.')
+  return Number((baseUnits * BigInt(POINTS_PER_USD)) / 10n ** BigInt(decimals))
+}
