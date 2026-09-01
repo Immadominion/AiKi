@@ -24,3 +24,24 @@ export function publishedPrice(agentId: string, observations: Observation[]): bi
     return BigInt(amount)
   return null
 }
+
+/**
+ * The asset an agent publishes its price in, or null if it names none.
+ *
+ * Kept beside `publishedPrice` because the two are one fact. A quote settles in
+ * AiKi's settlement asset whatever the agent said, so a caller has to be able to
+ * check that the agent said the same thing before the number means anything: a
+ * price of 100000 is ten cents in a six-decimal token and a millionth of a cent
+ * in an eighteen-decimal one.
+ */
+export function publishedAsset(agentId: string, observations: Observation[]): string | null {
+  const registration = observations
+    .filter(
+      (o) => o.subject.agentId === agentId && o.predicate === 'erc8004.registration_resolution',
+    )
+    .sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0]
+
+  const manifest = registration?.value.manifest as { pricing?: { asset?: unknown } } | undefined
+  const asset = manifest?.pricing?.asset
+  return typeof asset === 'string' && asset.length > 0 ? asset : null
+}

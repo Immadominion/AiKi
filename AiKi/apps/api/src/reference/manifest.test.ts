@@ -84,12 +84,13 @@ describe('first-party registration manifests', () => {
       { publicBaseUrl: 'https://api.example', agentId: '315886' },
       spec,
     )
-    expect(manifest.pricing).toEqual({ amount: '100000', asset: 'USDT' })
+    // 0.1 of the settlement asset, which carries eighteen decimals on BNB Chain.
+    expect(manifest.pricing).toEqual({ amount: '100000000000000000', asset: 'U' })
 
     const { parseManifest } = await import('../prober/registration.js')
     const resolved = parseManifest(JSON.stringify(manifest))
     expect(resolved.status).toBe('resolved')
-    expect(resolved.manifest?.pricing?.amount).toBe('100000')
+    expect(resolved.manifest?.pricing?.amount).toBe('100000000000000000')
 
     const { publishedPrice } = await import('../settlement/published-price.js')
     const priced = publishedPrice('315886', [
@@ -107,7 +108,7 @@ describe('first-party registration manifests', () => {
         dedupeKey: 'x',
       },
     ])
-    expect(priced).toBe(100_000n)
+    expect(priced).toBe(100_000_000_000_000_000n)
   })
 
   it('drops a price it cannot authorise a payment against', async () => {
@@ -121,13 +122,13 @@ describe('first-party registration manifests', () => {
 
     // A fraction, a negative, a word and a bare object are all unpayable. None
     // may be rounded, coerced or defaulted into a number somebody could sign.
-    expect(withPricing({ amount: '0.1', asset: 'USDT' })).toBeUndefined()
-    expect(withPricing({ amount: -5, asset: 'USDT' })).toBeUndefined()
+    expect(withPricing({ amount: '0.1', asset: 'U' })).toBeUndefined()
+    expect(withPricing({ amount: -5, asset: 'U' })).toBeUndefined()
     expect(withPricing({ amount: 'free' })).toBeUndefined()
-    expect(withPricing({ asset: 'USDT' })).toBeUndefined()
+    expect(withPricing({ asset: 'U' })).toBeUndefined()
     expect(withPricing('cheap')).toBeUndefined()
     // Zero is a real, stated price and must survive: free is not the same as unpriced.
-    expect(withPricing({ amount: 0, asset: 'USDT' })).toEqual({ amount: '0', asset: 'USDT' })
+    expect(withPricing({ amount: 0, asset: 'U' })).toEqual({ amount: '0', asset: 'U' })
   })
 
   it('refuses an identity it cannot honestly publish', () => {

@@ -26,8 +26,8 @@ import { ReceiptService } from '../receipts/service.js'
 import { registerWatchRoutes } from '../runner/routes.js'
 import type { WatchStore } from '../runner/store.js'
 import { buildSearchQuery } from '../search/query.js'
-import { buildQuote } from '../settlement/pricing.js'
-import { publishedPrice } from '../settlement/published-price.js'
+import { buildQuote, SETTLEMENT } from '../settlement/pricing.js'
+import { publishedAsset, publishedPrice } from '../settlement/published-price.js'
 import { asClientError, asProtocolError, asSchemaError, ClientError } from './errors.js'
 
 /**
@@ -558,6 +558,20 @@ export function createApiServer(input: {
 
     if (passport.liveness !== 'LIVE')
       return fail('AGENT_NOT_QUOTABLE', 'Only LIVE agents may issue a marketplace quote.')
+
+    /*
+     * A price is a number AND the thing it is counted in, and this route settles
+     * every quote in `SETTLEMENT` regardless of what the agent published. An
+     * agent asking for 100000 of a six-decimal token, quoted as 100000 of an
+     * eighteen-decimal one, has been repriced by a factor of a trillion without
+     * anybody being told. So the currency has to agree before the number is used.
+     */
+    const declaredAsset = publishedAsset(request.body.agentId, observations)
+    if (declaredAsset !== null && declaredAsset !== SETTLEMENT.symbol)
+      return fail(
+        'AGENT_PRICES_IN_ANOTHER_ASSET',
+        `This agent publishes its price in ${declaredAsset}, and AiKi settles in ${SETTLEMENT.symbol}. Quoting it would restate the price in a currency the agent never named.`,
+      )
 
     const price = publishedPrice(request.body.agentId, observations)
     // A price we do not have is not a price of zero. Quoting free work that is

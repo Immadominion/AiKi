@@ -19,6 +19,7 @@
 
 import { BSC_MAINNET } from '../config/chains.js'
 import { REGISTRATION_TYPE } from '../prober/registration.js'
+import { SETTLEMENT } from '../settlement/pricing.js'
 
 export interface ReferenceRegistrationConfig {
   /** Public HTTPS origin this process is reachable at. */
@@ -38,15 +39,24 @@ export interface ReferenceManifestSpec {
 }
 
 /**
- * What one assessment costs, in USDT base units (six decimals), so 100000 is
- * $0.10.
+ * What one assessment costs: 0.1 of the settlement asset.
+ *
+ * Denominated in `SETTLEMENT` rather than in a symbol chosen here, because the
+ * asset a quote settles in is decided by the marketplace and not by the agent,
+ * and the two must not be allowed to drift apart. The settlement token on BNB
+ * Chain carries EIGHTEEN decimals, so 0.1 is 1e17 and not the 1e5 that six
+ * decimals would suggest: getting that wrong is a 10^12 error in the price,
+ * in the direction of quoting real work as very nearly free.
  *
  * Every reference agent charges the same, because they do the same amount of
  * work: one read of live chain state and one verdict. A published price is what
  * makes an agent quotable, and until these carried one, `/v1/quotes` refused
  * every hire on the marketplace including AiKi's own.
  */
-export const REFERENCE_PRICE = { amount: '100000', asset: 'USDT' } as const
+export const REFERENCE_PRICE = {
+  amount: (10n ** BigInt(SETTLEMENT.decimals) / 10n).toString(),
+  asset: SETTLEMENT.symbol,
+} as const
 
 export const REFERENCE_REGISTRY = `eip155:${BSC_MAINNET.id}:${BSC_MAINNET.contracts.erc8004Identity}`
 
