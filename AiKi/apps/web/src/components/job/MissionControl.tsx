@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { Approvals } from '@/components/job/Approvals'
 import { OnChainRecord } from '@/components/job/OnChainRecord'
 import { Settlement } from '@/components/job/Settlement'
 import { WatchPanel } from '@/components/job/WatchPanel'
@@ -218,6 +219,9 @@ export function MissionControl({ jobId }: { jobId: string }) {
         </div>
 
         <div className="flex flex-col gap-[14px] xl:sticky xl:top-0 xl:self-start">
+          {/* First in the column, because it is the only thing here that is
+              waiting on the person reading it. Renders nothing when nothing is. */}
+          <Approvals jobId={job.id} />
           <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] p-[18px]">
             <div className="text-muted text-[12.5px] font-semibold">Spent against your cap</div>
             <div className="mt-[10px]">

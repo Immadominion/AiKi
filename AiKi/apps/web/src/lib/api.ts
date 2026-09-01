@@ -282,6 +282,40 @@ export const api = {
       expiresAt: string
       priceSource: 'registration' | 'owner-listing'
     }>('/v1/quotes', { method: 'POST', body: JSON.stringify({ agentId }) }),
+  /**
+   * What the agent is waiting to be allowed to do.
+   *
+   * Amounts arrive as strings and stay strings. A uint256 is not a JSON number,
+   * and this is the screen where somebody agrees to one, so the last digits of
+   * what they are agreeing to must not be lost to a float.
+   */
+  approvals: (jobId: string) =>
+    req<{
+      jobId: string
+      approvals: {
+        id: string
+        target: string
+        selector: string
+        asset: string
+        amount: string
+        reason: string
+        status: 'pending' | 'approved' | 'declined' | 'used'
+        requestedAt: string
+        decidedAt?: string
+      }[]
+    }>(`/v1/jobs/${jobId}/approvals`),
+  /**
+   * Say yes or no to one waiting action.
+   *
+   * Answering does not make it happen. The agent's next check finds the answer
+   * and acts on it, which is why every sentence around this says "next time it
+   * checks" rather than claiming the thing is done.
+   */
+  decideApproval: (jobId: string, approvalId: string, decision: 'approved' | 'declined') =>
+    req<{ id: string; status: string; amount: string }>(
+      `/v1/jobs/${jobId}/approvals/${approvalId}`,
+      { method: 'POST', body: JSON.stringify({ decision }) },
+    ),
   /** Take the quoted total from the buyer. Nothing reaches the agent yet. */
   fundJob: (jobId: string, agentId: string) =>
     req<{ jobId: string; held: number; buyerBalance: number; status: string }>(

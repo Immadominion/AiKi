@@ -12,6 +12,8 @@ import { type HireSubject, isAgentId } from './subject'
 import { enforcementNote, limitFor, tierWording, useMandatePreview } from './useMandatePreview'
 
 const PER_ACTION = [40, 80, 150] as const
+/** Where "ask me over an amount" starts asking. */
+const ASK_ABOVE = [5, 20, 50] as const
 const RENEWING = [120, 250, 500] as const
 const DAYS = [30, 90, 365] as const
 
@@ -141,7 +143,17 @@ export function MandateBuilder({ subject }: { subject: HireSubject }) {
   const [budget, setBudget] = useState<number>(250)
   const [period, setPeriod] = useState<CapPeriod>('per_month')
   const [days, setDays] = useState<number>(90)
-  const [approval, setApproval] = useState<Approval>('approve_above_threshold')
+  /*
+   * Acts inside the limits, by default.
+   *
+   * The default used to be "ask me over an amount" while nothing asked
+   * anybody, so it cost nothing. It costs something now: an agent hired and
+   * left alone would stop and wait. Somebody who wants to be asked can say so
+   * in one click, and the limits above still hold either way.
+   */
+  const [approval, setApproval] = useState<Approval>('automatic')
+  /** Only meaningful for "ask me over an amount", and only shown for it. */
+  const [askAbove, setAskAbove] = useState<number>(20)
 
   const spends = d.capabilities.some((c) => c.permissions.some((p) => p.startsWith('spend_')))
 
@@ -164,11 +176,12 @@ export function MandateBuilder({ subject }: { subject: HireSubject }) {
         capCents: budget * 100,
         perActionCents: spends ? perAction * 100 : 0,
         days,
+        approval: { mode: approval, thresholdCents: askAbove * 100 },
         // From the agent, not from the person hiring: what it may move is a
         // description of the agent, and widening it is not a user's choice.
         spends: d.spends,
       }),
-    [budget, perAction, days, spends, d.spends],
+    [budget, perAction, days, spends, d.spends, approval, askAbove],
   )
   const preview = useMandatePreview(constraints)
 
@@ -403,6 +416,26 @@ export function MandateBuilder({ subject }: { subject: HireSubject }) {
                   </span>
                 </button>
               ))}
+              {/*
+               * The amount, asked for only when it means something.
+               *
+               * "Ask me over an amount" needs an amount and this screen never
+               * collected one, so the mode described a rule with a blank in it.
+               * It sits inside the option rather than beside the spend limits
+               * because it is not a limit: nothing here refuses anything, it
+               * decides what interrupts you.
+               */}
+              {approval === 'approve_above_threshold' ? (
+                <div className="mt-[2px] ml-[25px] flex flex-wrap items-center gap-[10px]">
+                  <span className="text-muted text-[12.5px] font-semibold">Ask me above</span>
+                  <Choice
+                    options={ASK_ABOVE}
+                    value={askAbove}
+                    onChange={setAskAbove}
+                    format={(v) => `$${v}`}
+                  />
+                </div>
+              ) : null}
             </div>
           </Control>
         </div>
@@ -468,6 +501,7 @@ export function MandateBuilder({ subject }: { subject: HireSubject }) {
                   period,
                   days,
                   approval,
+                  askAboveCents: askAbove * 100,
                 })
                   .then(({ jobId, mandate }) => {
                     // Which of the two happened is the difference between a

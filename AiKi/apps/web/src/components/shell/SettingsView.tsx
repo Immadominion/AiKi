@@ -123,26 +123,35 @@ export function SettingsView() {
           />
         </Section>
 
+        {/*
+         * Rewritten to describe what exists.
+         *
+         * This section used to promise that AiKi would interrupt you, that an
+         * approval carried a deadline, and that approval requests were the one
+         * thing we would not let you silence. There was no notification system,
+         * no deadline, and until the approval gate shipped, no approvals: three
+         * sentences of comfort about machinery that was not there, on the
+         * screen where somebody decides how much to trust this.
+         *
+         * There is still no push channel. Saying where things appear is worth
+         * less than a notification and is at least true.
+         */}
         <Section
           id="notifications"
-          title="Notifications"
-          note="AiKi only interrupts you for two things: something needs your approval, or something was refused. Everything else waits in Activity."
+          title="What reaches you, and where"
+          note="AiKi does not send you anything yet: no email, no push, no phone. Everything below appears in the app, and this section says where, so nothing here reads as a promise to reach you somewhere else."
         >
           <Row
-            title="Approval requests"
-            body="Always on. An approval has a deadline, and a missed deadline is a missed action. This is the one thing we will not let you silence."
+            title="Actions waiting for you"
+            body="When your mandate says to ask first, the agent stops and the request appears on that job's page. It stays there until you answer, and the agent will not act until you do. Nothing expires and nothing is lost, but nothing chases you either."
           />
           <Row
             title="Blocked actions"
-            body="An agent tried something outside your limits and was refused. Worth knowing even though nothing happened."
-            action="On"
-            onAction={() => say('Blocked actions stay on. They are how you know your limits hold.')}
+            body="An agent tried something outside your limits and was refused. It appears in the job's event stream, which is append-only, so a refusal cannot be quietly dropped later."
           />
           <Row
             title="Routine activity"
-            body="Checks that found nothing to do, and actions well inside your limits."
-            action="Off"
-            onAction={() => say('Routine activity stays in Activity rather than notifying you.')}
+            body="Checks that found nothing to do, and actions well inside your limits. Same stream, same page, no interruption."
           />
         </Section>
 

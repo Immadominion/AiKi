@@ -20,10 +20,20 @@ const ORDER: EnforcementTier[] = ['T0', 'T1', 'T2', 'T3']
 export const weakest = (tiers: EnforcementTier[]): EnforcementTier =>
   tiers.reduce((w, t) => (ORDER.indexOf(t) > ORDER.indexOf(w) ? t : w), 'T0')
 
+export type ApprovalMode = 'automatic' | 'notify' | 'approve_above_threshold' | 'approve_every'
+
 export interface MandateInput {
   capCents: number
   perActionCents: number
   days: number
+  /**
+   * Whether a person has to say yes before the agent acts, and above what.
+   *
+   * Sent with the mandate, which it was not for the life of the product: this
+   * screen offered four modes, none of them reached the API, and the agent
+   * acted regardless of which was chosen.
+   */
+  approval: { mode: ApprovalMode; thresholdCents: number }
   /**
    * What the agent may move. Empty means it cannot move anything.
    *
@@ -89,7 +99,7 @@ const MOVES_MONEY = [
 export function mandateConstraints(input: MandateInput): {
   kind: string
   label: string
-  value: string | string[]
+  value: string | string[] | { mode: string; threshold: string }
   tier: EnforcementTier
 }[] {
   const expiresAt = new Date(Date.now() + input.days * 86_400_000).toISOString()
@@ -156,9 +166,36 @@ export function mandateConstraints(input: MandateInput): {
           : []),
       ]
     : []
+  /*
+   * Always sent, including for "just do it".
+   *
+   * A mandate that records the choice can be read back and shown, and an absent
+   * constraint would be indistinguishable from a mandate made before approvals
+   * existed. The API treats automatic and notify as acting immediately, so
+   * saying so costs nothing and settles what was chosen.
+   */
+  const approval = {
+    kind: 'approval',
+    label:
+      input.approval.mode === 'approve_every'
+        ? 'Asks you before every action'
+        : input.approval.mode === 'approve_above_threshold'
+          ? `Asks you before anything over ${usd(input.approval.thresholdCents)}`
+          : input.approval.mode === 'notify'
+            ? 'Acts, and tells you as it happens'
+            : 'Acts inside these limits without asking',
+    value: {
+      mode: input.approval.mode,
+      threshold: baseUnits(input.approval.thresholdCents, decimals),
+    },
+    // Claimed and overwritten by the API, like every other tier here. It will
+    // come back T2: no contract can wait for a person.
+    tier: 'T2' as EnforcementTier,
+  }
   return [
     ...scope,
     ...caps,
+    approval,
     {
       kind: 'expiry',
       label: `Expires ${expiresAt.slice(0, 10)}`,

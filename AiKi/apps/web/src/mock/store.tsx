@@ -42,6 +42,8 @@ interface MockApi {
     period: CapPeriod
     days: number
     approval: ApprovalMode
+    /** Where "ask me over an amount" starts asking. Ignored by the other modes. */
+    askAboveCents: number
     /** What this job is called in your list. */
     title: string
     /** What was hired, so every later screen reads it instead of a fixture. */
@@ -199,6 +201,9 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
             perActionCents: input.perActionCents,
             days: input.days,
             spends: input.spends,
+            // Sent with the mandate, which it was not before: the choice lived
+            // in this browser and the agent acted regardless of it.
+            approval: { mode: input.approval, thresholdCents: input.askAboveCents },
           })
           // No silent fallback to a local mandate: a limit the server never
           // heard of is not a limit, and pretending otherwise is the one thing
