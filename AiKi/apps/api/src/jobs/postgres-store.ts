@@ -37,6 +37,7 @@ interface JobRow {
   sold_agent_id: string | null
   sold_price_points: string | number | null
   sold_total_points: string | number | null
+  sold_outlay: string | number | null
 }
 
 interface EventRow {
@@ -242,13 +243,14 @@ export class PostgresJobStore implements JobStore {
    */
   async recordSale(
     jobId: string,
-    sale: { agentId: string; pricePoints: number; totalPoints: number },
+    sale: { agentId: string; pricePoints: number; totalPoints: number; outlay: bigint },
   ) {
     const rows = await this.sql<{ id: string }[]>`
       UPDATE jobs
          SET sold_agent_id = ${sale.agentId},
              sold_price_points = ${sale.pricePoints},
              sold_total_points = ${sale.totalPoints},
+             sold_outlay = ${sale.outlay.toString()},
              updated_at = now()
        WHERE id = ${jobId} AND sold_agent_id IS NULL
       RETURNING id
@@ -278,6 +280,12 @@ export class PostgresJobStore implements JobStore {
               // numeric, and a string here compares as text.
               pricePoints: Number(row.sold_price_points),
               totalPoints: Number(row.sold_total_points),
+              /*
+               * Read as a string and parsed, never through Number. A uint256
+               * amount loses precision the moment it becomes a float, and the
+               * number this one feeds is a spend cap.
+               */
+              outlay: BigInt(row.sold_outlay ?? 0),
             },
           }
         : {}),

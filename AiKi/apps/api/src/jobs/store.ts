@@ -57,7 +57,7 @@ export interface JobRecord {
    * address they controlled, and re-pricing meant the seller could be paid a
    * different number from the one the buyer was charged.
    */
-  sale?: { agentId: string; pricePoints: number; totalPoints: number }
+  sale?: { agentId: string; pricePoints: number; totalPoints: number; outlay: bigint }
 }
 
 /** What an evaluator returns: a verdict, plus what it costs when allowed. */
@@ -102,7 +102,7 @@ export interface JobStore {
    */
   recordSale(
     jobId: string,
-    sale: { agentId: string; pricePoints: number; totalPoints: number },
+    sale: { agentId: string; pricePoints: number; totalPoints: number; outlay: bigint },
   ): Promise<void>
   createAuthorization(record: AuthorizationRecord): Promise<AuthorizationRecord>
   getAuthorization(id: string): Promise<AuthorizationRecord | null>
@@ -227,7 +227,7 @@ export class InMemoryJobStore implements JobStore {
 
   async recordSale(
     jobId: string,
-    sale: { agentId: string; pricePoints: number; totalPoints: number },
+    sale: { agentId: string; pricePoints: number; totalPoints: number; outlay: bigint },
   ) {
     const job = this.jobs.get(jobId)
     if (!job) throw new ClientError('Job not found.', { statusCode: 404, code: 'NOT_FOUND' })

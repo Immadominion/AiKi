@@ -1024,13 +1024,15 @@ export function createApiServer(input: {
        * different terms mean two funders raced and the second must lose, or a
        * buyer could change who gets paid after the fact.
        */
-      const terms = { agentId, pricePoints, totalPoints: total }
+      const outlay = priceJob(price).total
+      const terms = { agentId, pricePoints, totalPoints: total, outlay }
       const sold = job.sale
       if (sold) {
         if (
           sold.agentId !== terms.agentId ||
           sold.pricePoints !== terms.pricePoints ||
-          sold.totalPoints !== terms.totalPoints
+          sold.totalPoints !== terms.totalPoints ||
+          sold.outlay !== terms.outlay
         )
           return reply.code(409).send({
             error: {
@@ -1043,6 +1045,33 @@ export function createApiServer(input: {
         await jobs.recordSale(job.id, terms)
       }
 
+      /*
+       * The mandate decides whether this hire may happen at all.
+       *
+       * It did not, until now. Neither money route consulted the authorization
+       * it ran under: a revoked mandate still funded, an expired one still
+       * funded, and what a hire cost counted against no cap. Contract-enforced
+       * limits are the thing this product is for, and the one route that spends
+       * money went around them.
+       *
+       * Counted in base units of the settlement asset, because that is the unit
+       * caps are written in, and including the fee, because the fee is money
+       * the buyer parts with. It is asked here, immediately before the money
+       * moves and after every other refusal, so that nothing between the two
+       * can return while an allowance stands charged for a hire that did not
+       * happen.
+       */
+      const verdict = await jobs.attemptPurchase(
+        job.authorizationId,
+        outlay,
+        new Date().toISOString(),
+      )
+      if (!verdict.allow)
+        return reply.code(403).send({
+          error: { code: 'MANDATE_REFUSED', message: verdict.reason, retryable: false },
+        })
+      const releaseCap = () => jobs.releaseSpend(job.authorizationId, outlay)
+
       try {
         const held = await fundJob({
           credits: input.assistant.credits,
@@ -1053,10 +1082,12 @@ export function createApiServer(input: {
         await jobs.advance(job.id, 'FUNDED', `Buyer funded ${total} points for agent ${agentId}.`)
         return { jobId: job.id, agentId, ...held, status: 'FUNDED' }
       } catch (error) {
-        if (error instanceof InsufficientPoints)
+        if (error instanceof InsufficientPoints) {
+          await releaseCap()
           return reply.code(402).send({
             error: { code: 'INSUFFICIENT_POINTS', message: error.message, retryable: false },
           })
+        }
         /*
          * The ledger refused a second movement for this job, which is the
          * answer rather than a failure: the job is paid for and the buyer paid
@@ -1064,6 +1095,9 @@ export function createApiServer(input: {
          * money and then died before writing FUNDED.
          */
         if (error instanceof DuplicateCharge) {
+          // A retry of a funding that already went through. The cap was charged
+          // for it the first time, so the charge this call made comes back.
+          await releaseCap()
           await jobs.advance(job.id, 'FUNDED', `Funding confirmed for agent ${agentId}.`)
           return reply.code(409).send({
             error: {
@@ -1073,6 +1107,7 @@ export function createApiServer(input: {
             },
           })
         }
+        await releaseCap()
         throw error
       }
     },
@@ -1343,6 +1378,15 @@ export function createApiServer(input: {
         totalPoints: sale.totalPoints,
         because: request.body?.because?.slice(0, 200) ?? 'the buyer asked for it back',
       })
+      /*
+       * The cap gets it back too. Funding counted this hire against the
+       * mandate's lifetime total, and the money has now gone back to the buyer,
+       * so leaving the charge standing would spend somebody's allowance on a
+       * purchase that was undone. Exactly the number that was charged, read off
+       * the sale, because working it out again from the points would round a
+       * second time and disagree with the first.
+       */
+      await jobs.releaseSpend(job.authorizationId, sale.outlay)
       await jobs.advance(job.id, 'CANCELLED', `Refunded ${back.refunded} points to the buyer.`)
       return { jobId: job.id, ...back, status: 'CANCELLED' }
     },

@@ -97,3 +97,47 @@ export function evaluatePolicy(
   }
   return { allow: true, rule: 'policy', reason: 'Action conforms to compiled constraints.' }
 }
+
+/**
+ * Whether a mandate permits buying something, and for how much.
+ *
+ * Hiring an agent moves the buyer's money, and until this existed the payment
+ * path did not consult the mandate at all: a revoked authorization still
+ * funded, an expired one still funded, and what a hire cost counted against no
+ * cap. The whole authority system, which is what AiKi is for, was bypassed by
+ * the one route that spends.
+ *
+ * Not every constraint applies. `contract_allowlist` and `selector_allowlist`
+ * describe calls an agent may make on chain, and paying for the agent is not
+ * one of them: refusing a hire because the mandate names a lending market would
+ * be enforcing a rule against something it was never written about.
+ * `asset_scope` is the same shape of mistake in the other direction, since the
+ * marketplace settles in one asset regardless of what the agent then trades.
+ *
+ * What does apply is everything that means "no more money": revoked, expired,
+ * too big for one action, or past the total this mandate was ever allowed to
+ * spend. Those are refusals about the money, and money is what this is.
+ */
+export function evaluatePurchase(
+  policy: CompiledPolicy,
+  purchase: { amount: bigint; at: string },
+  spent: bigint,
+): { allow: boolean; rule: string; reason: string } {
+  if (policy.expiresAt) {
+    const at = Date.parse(purchase.at)
+    // Fail closed on an unreadable timestamp, on the same reasoning as above: a
+    // NaN comparison is false, so a garbage time would slip past an expired
+    // mandate rather than being refused by it.
+    if (Number.isNaN(at))
+      return { allow: false, rule: 'expiry', reason: 'Purchase timestamp is not a valid time.' }
+    if (at >= Date.parse(policy.expiresAt))
+      return { allow: false, rule: 'expiry', reason: 'Authorization has expired.' }
+  }
+  for (const c of policy.constraints) {
+    if (c.kind === 'per_action_cap' && purchase.amount > BigInt(String(c.value)))
+      return { allow: false, rule: c.kind, reason: 'This hire exceeds the per-action cap.' }
+    if (c.kind === 'session_total_cap' && spent + purchase.amount > BigInt(String(c.value)))
+      return { allow: false, rule: c.kind, reason: 'This hire exceeds the lifetime session cap.' }
+  }
+  return { allow: true, rule: 'policy', reason: 'The hire is inside the mandate.' }
+}

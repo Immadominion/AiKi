@@ -14,7 +14,15 @@ import { InMemoryJobStore, type JobRecord } from './store.js'
  */
 
 const POLICY = { hash: '0xhash', constraints: [] } as unknown as CompiledPolicy
-const SOLD = { agentId: '315943', pricePoints: 1_000, totalPoints: 1_025 }
+/* `outlay` is what the buyer parted with in base units of the settlement asset,
+ * which is the unit a mandate's caps are written in. Points are the wrong unit
+ * for a cap by a factor of 10^14. */
+const SOLD = {
+  agentId: '315943',
+  pricePoints: 1_000,
+  totalPoints: 1_025,
+  outlay: 102_500_000_000_000_000n,
+}
 
 async function jobFor(store: InMemoryJobStore, authId: string, key: string) {
   await store.createAuthorization({

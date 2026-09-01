@@ -107,6 +107,40 @@ describe.skipIf(!url)('PostgresJobStore', () => {
     expect(verdict.allow).toBe(true)
     expect((await service.getAuthorization(auth.id)).spent).toBe(huge)
   })
+
+  it('lets only one of two concurrent hires fit under a cap only one fits under', async () => {
+    /*
+     * The reason this is a database test and not an in-memory one. Two buyers,
+     * or one buyer in two tabs, funding at the same moment against a mandate
+     * with room for one: reading the total and then deciding lets both through,
+     * and the money is gone before anybody notices. The row lock in
+     * `attemptSpend` is what actually decides, so it has to be exercised
+     * against a real database.
+     */
+    const jobs = new JobService(store())
+    const tenth = 100_000_000_000_000_000n
+    const auth = await jobs.authorize(
+      [
+        {
+          kind: 'session_total_cap',
+          value: tenth.toString(),
+          tier: 'T1',
+          label: 'Room for exactly one',
+        },
+      ],
+      `0x${'cd'.repeat(20)}`,
+    )
+    const at = new Date().toISOString()
+
+    const [first, second] = await Promise.all([
+      jobs.attemptPurchase(auth.id, tenth, at),
+      jobs.attemptPurchase(auth.id, tenth, at),
+    ])
+
+    expect([first.allow, second.allow].filter(Boolean)).toHaveLength(1)
+    // And the loser counted nothing, so the mandate is not quietly overdrawn.
+    expect((await jobs.getAuthorization(auth.id)).spent).toBe(tenth)
+  })
 })
 
 it.skipIf(!databaseUrl)(

@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
-import { type Action, type Constraint, compilePolicy, evaluatePolicy } from '../authority/policy.js'
+import {
+  type Action,
+  type Constraint,
+  compilePolicy,
+  evaluatePolicy,
+  evaluatePurchase,
+} from '../authority/policy.js'
 import { ClientError } from '../http/errors.js'
 import {
   type AuthorizationRecord,
@@ -140,6 +146,36 @@ export class JobService {
     return { allow: verdict.allow, rule: verdict.rule, reason: verdict.reason }
   }
 
+  /**
+   * Whether this mandate permits buying something, counted against its caps.
+   *
+   * The same locked read-decide-increment `attempt` uses, for the same reason:
+   * two hires must not both fit under a cap only one of them fits under. It is
+   * a separate method rather than a flag on `attempt` because a purchase is
+   * evaluated against a different subset of the constraints, and because a hire
+   * is not an on-chain call and should not be logged as one.
+   */
+  async attemptPurchase(
+    authorizationId: string,
+    amount: bigint,
+    at: string,
+  ): Promise<{ allow: boolean; rule: string; reason: string }> {
+    const verdict = await this.store.attemptSpend(authorizationId, (auth) => {
+      if (auth.status !== 'active')
+        return {
+          allow: false,
+          rule: 'authorization_status',
+          reason: `This mandate is ${auth.status}, so it cannot pay for anything.`,
+          spend: 0n,
+        }
+      const decision = evaluatePurchase(auth.policy, { amount, at }, auth.spent)
+      return { ...decision, spend: decision.allow ? amount : 0n }
+    })
+    if (!verdict)
+      throw new ClientError('Authorization not found.', { statusCode: 404, code: 'NOT_FOUND' })
+    return { allow: verdict.allow, rule: verdict.rule, reason: verdict.reason }
+  }
+
   /** Give back an amount counted against the cap that the chain then refused. */
   async releaseSpend(authorizationId: string, amount: bigint): Promise<void> {
     await this.store.releaseSpend(authorizationId, amount)
@@ -172,7 +208,7 @@ export class JobService {
   /** Fix the terms of a sale, once. See JobStore.recordSale. */
   async recordSale(
     jobId: string,
-    sale: { agentId: string; pricePoints: number; totalPoints: number },
+    sale: { agentId: string; pricePoints: number; totalPoints: number; outlay: bigint },
   ): Promise<void> {
     await this.store.recordSale(jobId, sale)
   }
