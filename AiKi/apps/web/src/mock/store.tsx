@@ -54,7 +54,7 @@ interface MockApi {
      * This was read out of the example table, so hiring anything not in that
      * table was impossible: there was no row to read the permission from.
      */
-    spends: { asset: `0x${string}`; symbol: string }[]
+    spends: { asset: `0x${string}`; symbol: string; decimals: number }[]
     /**
      * The job id, and who ends up holding the limits. `signed` means the chain
      * refuses anything past them; `counted` means AiKi does. A hire is real

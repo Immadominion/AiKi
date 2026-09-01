@@ -24,8 +24,32 @@ export interface MandateInput {
   capCents: number
   perActionCents: number
   days: number
-  /** What the agent may move. Empty means it cannot move anything. */
-  spends: { asset: `0x${string}`; symbol: string }[]
+  /**
+   * What the agent may move. Empty means it cannot move anything.
+   *
+   * `decimals` is not decoration. A cap is sent to the API as a whole number of
+   * an asset's base units and compiled straight into on-chain caveat terms, and
+   * this screen thinks in dollars, so something has to do the conversion.
+   */
+  spends: { asset: `0x${string}`; symbol: string; decimals: number }[]
+}
+
+/**
+ * A dollar amount as base units of the asset the cap applies to.
+ *
+ * Verified wrong on production before this existed. A mandate labelled "Never
+ * spend more than $250.00 in total" was sent with the value `25000`, which as
+ * base units of an eighteen-decimal asset is 0.000000000000025 of a token: a
+ * factor of 10^16 out. Compiled into a caveat, the chain would have refused
+ * every transaction the agent tried, and the screen said $250 the whole time.
+ *
+ * The settlement asset is dollar-pegged, so a dollar is a token and this is a
+ * unit conversion rather than a price. There is no oracle here and this must
+ * not become one: an asset that is not pegged cannot have a dollar cap
+ * expressed this way, and saying so is better than guessing a rate.
+ */
+function baseUnits(cents: number, decimals: number): string {
+  return ((BigInt(Math.round(cents)) * 10n ** BigInt(decimals)) / 100n).toString()
 }
 
 /**
@@ -99,12 +123,23 @@ export function mandateConstraints(input: MandateInput): {
   // An agent that cannot move anything needs no spend caps, and sending them
   // anyway would put two limits on the mandate that govern nothing. The screen
   // already says it cannot spend; the mandate should agree.
+  /*
+   * One number, applied to each asset in scope.
+   *
+   * The API compiles a cap into one caveat per asset with the same figure, and
+   * refuses a policy carrying two caveats of the same kind, so there is exactly
+   * one cap value and it has to mean something for every asset it covers. With
+   * mixed decimals it cannot, so the smallest is taken: that makes the cap
+   * smaller than asked for rather than larger, which is the direction a limit
+   * should err in when it cannot be exact.
+   */
+  const decimals = input.spends.length ? Math.min(...input.spends.map((s) => s.decimals)) : 18
   const caps = assets.length
     ? [
         {
           kind: 'session_total_cap',
           label: `Never spend more than ${usd(input.capCents)} in total`,
-          value: String(input.capCents),
+          value: baseUnits(input.capCents, decimals),
           // Claimed, and overwritten by the API, which decides this against its
           // deployed enforcers. Nothing here may be rendered as a verdict.
           tier: 'T2' as EnforcementTier,
@@ -114,7 +149,7 @@ export function mandateConstraints(input: MandateInput): {
               {
                 kind: 'per_action_cap',
                 label: `Never spend more than ${usd(input.perActionCents)} at once`,
-                value: String(input.perActionCents),
+                value: baseUnits(input.perActionCents, decimals),
                 tier: 'T2' as EnforcementTier,
               },
             ]

@@ -74,7 +74,7 @@ export interface AgentDetail {
    * Empty means the agent cannot move anything, which is a real answer and a
    * stronger one than any cap.
    */
-  spends: { asset: `0x${string}`; symbol: string }[]
+  spends: { asset: `0x${string}`; symbol: string; decimals: number }[]
   enforcement: EnforcementLine[]
   risks: { label: string; severity: 'info' | 'warn' | 'critical'; detail: string }[]
   evidence: { cls: EvidenceClass; count: number; summary: string }[]
@@ -86,8 +86,17 @@ export interface AgentDetail {
  * decimals. USDT is 6 decimals on most other chains, and assuming that here
  * would make every cap wrong by a factor of a trillion.
  */
-const USDT = { asset: '0x55d398326f99059fF775485246999027B3197955', symbol: 'USDT' } as const
-const WBNB = { asset: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', symbol: 'WBNB' } as const
+// Both carry eighteen decimals on BNB Chain, not the six USDT uses elsewhere.
+const USDT = {
+  asset: '0x55d398326f99059fF775485246999027B3197955',
+  symbol: 'USDT',
+  decimals: 18,
+} as const
+const WBNB = {
+  asset: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
+  symbol: 'WBNB',
+  decimals: 18,
+} as const
 
 const OBSERVED = '2026-08-22T04:10:00Z'
 

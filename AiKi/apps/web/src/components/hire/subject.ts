@@ -23,7 +23,7 @@ export interface HireSubject {
   priceModel: string
   capabilities: { name: string; does: string; permissions: string[] }[]
   /** Assets this agent may move. Empty means it only reads. */
-  spends: { asset: `0x${string}`; symbol: string }[]
+  spends: { asset: `0x${string}`; symbol: string; decimals: number }[]
 }
 
 export const isAgentId = (key: string) => /^\d+$/.test(key)
@@ -59,7 +59,7 @@ export function hireSubjectFromFixture(key: AgentKey): HireSubject {
 export function hireSubjectFromPassport(
   passport: ProjectedPassport,
   quote: { price: string; asset: string; decimals: number } | null,
-  settlementAsset: { address: `0x${string}`; symbol: string },
+  settlementAsset: { address: `0x${string}`; symbol: string; decimals: number },
 ): HireSubject {
   const display = (passport.name ?? `Agent ${passport.agentId}`).replace(/^AiKi\s+/i, '')
   const priced = quote
@@ -81,6 +81,14 @@ export function hireSubjectFromPassport(
         permissions: ['spend_settlement_asset'],
       },
     ],
-    spends: [{ asset: settlementAsset.address, symbol: settlementAsset.symbol }],
+    spends: [
+      {
+        asset: settlementAsset.address,
+        symbol: settlementAsset.symbol,
+        // Carried through because a spend cap is denominated in base units of
+        // this asset, and the screen that sets one thinks in dollars.
+        decimals: settlementAsset.decimals,
+      },
+    ],
   }
 }

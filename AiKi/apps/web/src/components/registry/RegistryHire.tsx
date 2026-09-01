@@ -54,6 +54,7 @@ export function RegistryHire({ agentId }: { agentId: string }) {
             {
               address: (quote?.settlementAsset.address ?? '0x0') as `0x${string}`,
               symbol: quote?.price.asset ?? 'U',
+              decimals: quote?.settlementAsset.decimals ?? 18,
             },
           ),
         )

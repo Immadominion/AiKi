@@ -157,8 +157,12 @@ export function MandateBuilder({ subject }: { subject: HireSubject }) {
   const constraints = useMemo(
     () =>
       mandateConstraints({
-        capCents: budget,
-        perActionCents: spends ? perAction : 0,
+        // Cents, the same as the hire below sends. The preview used to pass
+        // whole dollars here and the hire multiplied by a hundred, so the
+        // mandate shown was a hundredth of the mandate created, on the one
+        // screen whose entire purpose is showing what is about to be signed.
+        capCents: budget * 100,
+        perActionCents: spends ? perAction * 100 : 0,
         days,
         // From the agent, not from the person hiring: what it may move is a
         // description of the agent, and widening it is not a user's choice.
