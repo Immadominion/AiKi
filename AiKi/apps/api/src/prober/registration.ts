@@ -15,6 +15,36 @@ export interface RegistrationManifest {
   registrations: { agentId?: string; agentRegistry?: string }[]
   supportedTrust: string[]
   active?: boolean
+  /**
+   * What the agent says one call costs, in base units of `asset`.
+   *
+   * This parser is a whitelist, so a field it does not name is dropped. Pricing
+   * was not named, which made `publishedPrice` unable to return anything but
+   * null for every agent on the chain: `/v1/quotes` refused every hire with
+   * AGENT_HAS_NO_PUBLISHED_PRICE, and no registration file could have changed
+   * that, because the number never survived resolution. Quoting is the second
+   * half of "find an agent and hire it", so the field has to come through.
+   */
+  pricing?: { amount?: string; asset?: string }
+}
+
+/**
+ * A price is kept only in the exact shape a payment can be authorised against:
+ * an integer count of base units, plus the asset those units are in. Anything
+ * else is dropped rather than coerced, because a price that has been guessed at
+ * is worse than no price at all.
+ */
+function declaredPricing(value: unknown): { amount?: string; asset?: string } | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const { amount, asset } = value as { amount?: unknown; asset?: unknown }
+  const normalised =
+    typeof amount === 'string' && /^\d+$/.test(amount)
+      ? amount
+      : typeof amount === 'number' && Number.isSafeInteger(amount) && amount >= 0
+        ? String(amount)
+        : undefined
+  if (normalised === undefined) return undefined
+  return { amount: normalised, ...(typeof asset === 'string' ? { asset } : {}) }
 }
 
 export interface RegistrationResolution {
@@ -69,7 +99,12 @@ function registrationClaims(value: unknown): { agentId?: string; agentRegistry?:
   })
 }
 
-function parseManifest(
+/**
+ * Exported because it is the pure half of resolution: everything that decides
+ * what a registration file MEANS, with no network in it. Resolution can only be
+ * tested against a live host; this can be tested against a string.
+ */
+export function parseManifest(
   text: string,
 ): Omit<RegistrationResolution, 'uri' | 'scheme' | 'fetchedAt' | 'zeroCost'> {
   let source: unknown
@@ -81,6 +116,7 @@ function parseManifest(
   if (!source || typeof source !== 'object')
     return { status: 'invalid', detail: 'Registration content must be a JSON object.' }
   const value = source as Record<string, unknown>
+  const pricing = declaredPricing(value.pricing)
   const manifest: RegistrationManifest = {
     ...(typeof value.type === 'string' ? { type: value.type } : {}),
     ...(typeof value.name === 'string' ? { name: value.name } : {}),
@@ -92,6 +128,7 @@ function parseManifest(
       ? value.supportedTrust.filter((item): item is string => typeof item === 'string')
       : [],
     ...(typeof value.active === 'boolean' ? { active: value.active } : {}),
+    ...(pricing ? { pricing } : {}),
   }
   if (manifest.type !== REGISTRATION_TYPE)
     return {

@@ -250,6 +250,25 @@ export interface SearchCoverage {
   matchedBeforeFilters: number
   excludedUnverified: number
   exclusionReasons: Partial<Record<LivenessState, number>>
+  /**
+   * Set when ranking stopped at its ceiling, which makes every count above a
+   * floor rather than a total. A truncated count printed as a total is the same
+   * untruth in a smaller font, so the flag travels with the numbers.
+   */
+  truncated?: boolean
+}
+
+/**
+ * What the marketplace actually searched for.
+ *
+ * Ranking that the caller cannot see the inputs to is not ranking they can
+ * check. `terms` is what survived of their words; `expandedWith` is every term
+ * AiKi added and the reason it was added. Expansion only ever adds, so nothing
+ * a user typed can be silently dropped from the query.
+ */
+export interface SearchQueryEcho {
+  terms: string[]
+  expandedWith: { term: string; why: string }[]
 }
 
 export interface SearchResponse {
@@ -257,6 +276,7 @@ export interface SearchResponse {
   nextCursor?: string
   total: number
   coverage: SearchCoverage
+  query?: SearchQueryEcho
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

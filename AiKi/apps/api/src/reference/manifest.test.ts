@@ -69,6 +69,67 @@ describe('first-party registration manifests', () => {
     ).toMatchObject({ state: 'IMPOSTOR_STATIC', rule: 'D1' })
   })
 
+  /*
+   * The whole hire path in one assertion.
+   *
+   * These three steps are owned by three different files, and for as long as the
+   * middle one dropped `pricing` the outer two agreed with each other and were
+   * both wrong: every agent on the chain quoted AGENT_HAS_NO_PUBLISHED_PRICE,
+   * and no registration file anywhere could have fixed it. Testing the round
+   * trip is the only thing that would have caught that, because each half is
+   * correct on its own.
+   */
+  it('publishes a price that survives resolution and can be quoted', async () => {
+    const manifest = referenceManifest(
+      { publicBaseUrl: 'https://api.example', agentId: '315886' },
+      spec,
+    )
+    expect(manifest.pricing).toEqual({ amount: '100000', asset: 'USDT' })
+
+    const { parseManifest } = await import('../prober/registration.js')
+    const resolved = parseManifest(JSON.stringify(manifest))
+    expect(resolved.status).toBe('resolved')
+    expect(resolved.manifest?.pricing?.amount).toBe('100000')
+
+    const { publishedPrice } = await import('../settlement/published-price.js')
+    const priced = publishedPrice('315886', [
+      {
+        id: 'x',
+        subject: { type: 'agent', chainId: 56, registry: '0xr', agentId: '315886' },
+        predicate: 'erc8004.registration_resolution',
+        value: { manifest: resolved.manifest },
+        validAt: '2026-09-01T00:00:00.000Z',
+        observedAt: '2026-09-01T00:00:00.000Z',
+        recordedAt: '2026-09-01T00:00:00.000Z',
+        source: 'test',
+        method: 'test',
+        evidenceClass: 'B',
+        dedupeKey: 'x',
+      },
+    ])
+    expect(priced).toBe(100_000n)
+  })
+
+  it('drops a price it cannot authorise a payment against', async () => {
+    const { parseManifest } = await import('../prober/registration.js')
+    const base = referenceManifest(
+      { publicBaseUrl: 'https://api.example', agentId: '315886' },
+      spec,
+    )
+    const withPricing = (pricing: unknown) =>
+      parseManifest(JSON.stringify({ ...base, pricing })).manifest?.pricing
+
+    // A fraction, a negative, a word and a bare object are all unpayable. None
+    // may be rounded, coerced or defaulted into a number somebody could sign.
+    expect(withPricing({ amount: '0.1', asset: 'USDT' })).toBeUndefined()
+    expect(withPricing({ amount: -5, asset: 'USDT' })).toBeUndefined()
+    expect(withPricing({ amount: 'free' })).toBeUndefined()
+    expect(withPricing({ asset: 'USDT' })).toBeUndefined()
+    expect(withPricing('cheap')).toBeUndefined()
+    // Zero is a real, stated price and must survive: free is not the same as unpriced.
+    expect(withPricing({ amount: 0, asset: 'USDT' })).toEqual({ amount: '0', asset: 'USDT' })
+  })
+
   it('refuses an identity it cannot honestly publish', () => {
     expect(referenceBase({ publicBaseUrl: 'http://api.example', agentId: '1' })).toBeNull()
     expect(referenceBase({ publicBaseUrl: 'https://api.example', agentId: 'pending' })).toBeNull()

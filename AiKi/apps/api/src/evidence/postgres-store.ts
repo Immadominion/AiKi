@@ -22,6 +22,15 @@ const iso = (value: string | Date): string => (value instanceof Date ? value.toI
  * and is the same boundary fix the timestamps needed.
  */
 
+/**
+ * How many matching agents are ranked before the page is cut.
+ *
+ * A one-word query can match thousands of agents, and every one of them costs
+ * ranking work on a route anybody can call. Stopping at a ceiling bounds that,
+ * and `truncated` tells the caller the counts became a floor.
+ */
+const MATCH_CEILING = 2_000
+
 export class PostgresEvidenceStore implements EvidenceStore {
   private readonly sql: postgres.Sql
   constructor(databaseUrl: string) {
@@ -245,6 +254,104 @@ export class PostgresEvidenceStore implements EvidenceStore {
       ORDER BY observed_at DESC
     `
     return rows.map(toObservation)
+  }
+
+  /**
+   * The agents whose own registration text matches a query, ranked, chosen in SQL.
+   *
+   * Three things about this are deliberate.
+   *
+   * It selects AGENTS and returns identities, not observations. The caller then
+   * asks `observationsForAgents` for the small set it actually needs. Returning
+   * every row of every match instead would put the whole ranking population
+   * through `projectPassport`, which re-scans its observation array once per
+   * agent: for a common word that is tens of thousands of rows and seconds of
+   * blocked event loop, on a route with no authentication in front of it.
+   *
+   * It counts over the whole match set rather than over the returned page, so
+   * `matchedBeforeFilters` and the exclusion reasons describe the population.
+   * Describing a page while claiming to describe the population is the exact
+   * failure this method exists to remove.
+   *
+   * It matches only what an agent SAYS about itself: the name, description and
+   * service names in its registration file, plus its id. Nothing here is a
+   * measurement of what an agent can do, because the store holds no such
+   * measurement, and a search that implied otherwise would be inventing one.
+   */
+  async searchAgents(input: { tsquery: string; states: string[]; limit: number }) {
+    const rows = await this.sql<
+      {
+        chain_id: number
+        reg: string
+        agent_id: string
+        state: string
+        rank: number
+        wanted: boolean
+      }[]
+    >`
+      WITH latest_state AS (
+        SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
+          chain_id, lower(registry_address) AS reg, agent_id,
+          value->>'state' AS state
+        FROM observations
+        WHERE predicate = 'agent.liveness_verdict'
+        ORDER BY chain_id, lower(registry_address), agent_id, observed_at DESC
+      ),
+      latest_manifest AS (
+        SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
+          chain_id, lower(registry_address) AS reg, agent_id,
+          value->'manifest' AS m
+        FROM observations
+        WHERE predicate = 'erc8004.registration_resolution'
+        ORDER BY chain_id, lower(registry_address), agent_id, observed_at DESC
+      ),
+      doc AS (
+        SELECT
+          s.chain_id, s.reg, s.agent_id, s.state,
+          setweight(to_tsvector('simple', s.agent_id), 'D') ||
+          setweight(to_tsvector('english', coalesce(m.m->>'name', '')), 'A') ||
+          setweight(to_tsvector('english', coalesce(m.m->>'description', '')), 'B') ||
+          setweight(to_tsvector('english', coalesce((
+            -- Service names are hyphenated slugs, and a hyphen would otherwise
+            -- keep "venus-health-factor-assessment" as one unsearchable token.
+            SELECT string_agg(replace(sv->>'name', '-', ' '), ' ')
+            FROM jsonb_array_elements(coalesce(m.m->'services', '[]'::jsonb)) sv
+          ), '')), 'C') AS tsv
+        FROM latest_state s
+        LEFT JOIN latest_manifest m
+          ON m.chain_id = s.chain_id AND m.reg = s.reg AND m.agent_id = s.agent_id
+      )
+      SELECT chain_id, reg, agent_id, state,
+             ts_rank(tsv, q) AS rank,
+             (state = ANY(${input.states})) AS wanted
+      FROM doc, to_tsquery('english', ${input.tsquery}) q
+      WHERE tsv @@ q
+      ORDER BY wanted DESC, rank DESC, agent_id
+      LIMIT ${MATCH_CEILING}
+    `
+
+    const wanted = rows.filter((row) => row.wanted)
+    const excluded: Record<string, number> = {}
+    for (const row of rows) {
+      if (row.wanted) continue
+      excluded[row.state] = (excluded[row.state] ?? 0) + 1
+    }
+    return {
+      matches: wanted.slice(0, input.limit).map((row) => ({
+        chainId: row.chain_id,
+        registry: row.reg,
+        agentId: row.agent_id,
+      })),
+      total: wanted.length,
+      matchedBeforeFilters: rows.length,
+      exclusionReasons: excluded,
+      /*
+       * True when the match set hit the ceiling, so the counts above are a floor
+       * rather than a total. The caller has to say so: a truncated count printed
+       * as a total is the same lie in a smaller font.
+       */
+      truncated: rows.length >= MATCH_CEILING,
+    }
   }
 
   async observationsForLiveness(states: string[], agentLimit = 1_000) {

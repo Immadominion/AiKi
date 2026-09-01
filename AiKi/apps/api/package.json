@@ -24,7 +24,8 @@
     "reference:verify": "tsx src/reference/verify-cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "index": "tsx src/indexer/cli.ts"
+    "index": "tsx src/indexer/cli.ts",
+    "search:check": "tsx src/http/search-check.ts"
   },
   "dependencies": {
     "@aiki/contracts": "workspace:*",

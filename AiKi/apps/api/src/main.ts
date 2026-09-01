@@ -104,6 +104,7 @@ const app = createApiServer({
   statsAggregate: () => store.statsAggregate(),
   observationsForLiveness: (states) => store.observationsForLiveness(states),
   observationsForAgents: (agentIds) => store.observationsForAgents(agentIds),
+  searchAgents: (query) => store.searchAgents(query),
   enforcers: AIKI_ENFORCERS_BSC_TESTNET,
   ...(agentSessionKey ? { agentSessionKey } : {}),
   ...(agentKey ? { agentKey } : {}),

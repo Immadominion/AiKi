@@ -37,6 +37,17 @@ export interface ReferenceManifestSpec {
   version?: string
 }
 
+/**
+ * What one assessment costs, in USDT base units (six decimals), so 100000 is
+ * $0.10.
+ *
+ * Every reference agent charges the same, because they do the same amount of
+ * work: one read of live chain state and one verdict. A published price is what
+ * makes an agent quotable, and until these carried one, `/v1/quotes` refused
+ * every hire on the marketplace including AiKi's own.
+ */
+export const REFERENCE_PRICE = { amount: '100000', asset: 'USDT' } as const
+
 export const REFERENCE_REGISTRY = `eip155:${BSC_MAINNET.id}:${BSC_MAINNET.contracts.erc8004Identity}`
 
 /** Returns the normalised base URL, or null if it is not a usable public identity. */
@@ -83,6 +94,7 @@ export function referenceManifest(
     ],
     registrations: [{ agentId: config.agentId, agentRegistry: REFERENCE_REGISTRY }],
     supportedTrust: [],
+    pricing: { ...REFERENCE_PRICE },
   }
 }
 
