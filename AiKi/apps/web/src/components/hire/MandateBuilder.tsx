@@ -24,21 +24,29 @@ const PERIOD_LABEL: Record<CapPeriod, string> = {
   total: 'in total, ever',
 }
 
+/*
+ * Three, not four.
+ *
+ * "Tell me each time: it acts, and you get a notification as it happens" is
+ * gone, because AiKi sends nobody anything. There is no email, no push and no
+ * phone number, so that mode did exactly what "just do it" does and the only
+ * thing separating them was the sentence describing the part that did not
+ * exist. Offering both would be selling a distinction on the strength of
+ * machinery nobody built.
+ *
+ * The API still understands `notify`, so a mandate created before this reads
+ * back correctly. It comes back when there is something to notify with.
+ */
 const APPROVALS = [
   {
     key: 'automatic',
     label: 'Just do it',
-    note: 'It acts inside these limits without asking. You are told after.',
-  },
-  {
-    key: 'notify',
-    label: 'Tell me each time',
-    note: 'It acts, and you get a notification as it happens.',
+    note: 'It acts inside these limits without asking. Everything it does is in the job\'s activity.',
   },
   {
     key: 'approve_above_threshold',
     label: 'Ask me over an amount',
-    note: 'Small actions go through. Anything larger waits for you.',
+    note: 'Smaller actions go through. Anything over the amount you set stops and waits for you.',
   },
   {
     key: 'approve_every',
