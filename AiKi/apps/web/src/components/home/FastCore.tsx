@@ -72,7 +72,9 @@ export function FastCore({
   useEffect(() => {
     let cancelled = false
     api
-      .search({ limit: 6 })
+      // Drawn wide because one operator holds most of the answering agents;
+      // six distinct names need more than six rows to find.
+      .search({ limit: 60 })
       .then((answer) => {
         if (!cancelled) setLive(liveShards(answer.results))
       })

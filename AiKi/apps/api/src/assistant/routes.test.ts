@@ -3,6 +3,7 @@ import { bsc } from 'viem/chains'
 import { afterEach, expect, it, vi } from 'vitest'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
+import { WELCOME_GRANT_POINTS } from '../credits/pricing.js'
 import { InMemoryCreditStore } from '../credits/store.js'
 import { createApiServer } from '../http/server.js'
 
@@ -60,7 +61,19 @@ it('refuses to run a turn nobody can pay for, before spending a token', async ()
   // The alternative is discovering afterwards that the balance was empty, which
   // means the turn was free for them and not for AiKi.
   runMock.mockReset()
-  const { app } = harness()
+  const { app, credits } = harness()
+  /*
+   * A new account is granted points precisely so it does not meet this wall on
+   * arrival, so the empty state now has to be reached by spending. Asking once
+   * issues the grant; taking it back leaves the account genuinely unable to pay,
+   * which is the condition under test.
+   */
+  await app.inject({ method: 'GET', url: '/v1/credits', headers: cookie })
+  await credits.charge({
+    owner: OWNER,
+    points: WELCOME_GRANT_POINTS,
+    reason: 'test:drain',
+  })
   const res = await ask(app)
   expect(res.statusCode).toBe(402)
   expect(res.json().error.code).toBe('ASSISTANT_NO_CREDIT')
@@ -87,9 +100,9 @@ it('charges what the turn actually used, and says how', async () => {
   expect(res.statusCode).toBe(200)
   const body = res.json()
   expect(body.cost.points).toBe(780)
-  expect(body.cost.balance).toBe(9_220)
+  expect(body.cost.balance).toBe(9_220 + WELCOME_GRANT_POINTS)
   expect(body.cost.explanation).toContain('780 points')
-  expect(await credits.balance(OWNER)).toBe(9_220)
+  expect(await credits.balance(OWNER)).toBe(9_220 + WELCOME_GRANT_POINTS)
 })
 
 it('shows which tools ran, and which of them changed something', async () => {
@@ -138,7 +151,7 @@ it('still charges when the turn ran badly', async () => {
   const body = (await ask(app)).json()
   expect(body.truncated).toBe(true)
   expect(body.cost.points).toBe(1_950)
-  expect(await credits.balance(OWNER)).toBe(3_050)
+  expect(await credits.balance(OWNER)).toBe(3_050 + WELCOME_GRANT_POINTS)
 })
 
 it('takes what is left and reports the shortfall when a turn overruns', async () => {
@@ -155,9 +168,12 @@ it('takes what is left and reports the shortfall when a turn overruns', async ()
   await credits.deposit({ owner: OWNER, points: 300, reason: 'deposit', reference: '0x4' })
   const { app } = harness({ credits })
 
+  // The grant lands when the turn is asked for, so the account holds it too and
+  // an overrun has to exceed both before there is any shortfall to report.
+  const funded = 300 + WELCOME_GRANT_POINTS
   const body = (await ask(app)).json()
-  expect(body.cost.points).toBe(300)
-  expect(body.cost.shortfall).toBe(7_700)
+  expect(body.cost.points).toBe(funded)
+  expect(body.cost.shortfall).toBe(8_000 - funded)
   expect(await credits.balance(OWNER)).toBe(0)
 })
 
@@ -176,9 +192,11 @@ it('reports a balance in money as well as points', async () => {
   await credits.deposit({ owner: OWNER, points: 34_000, reason: 'deposit', reference: '0x6' })
   const { app } = harness({ credits })
   const body = (await app.inject({ method: 'GET', url: '/v1/credits', headers: cookie })).json()
-  expect(body.balance).toBe(34_000)
-  expect(body.worthUsd).toBeCloseTo(3.4)
-  expect(body.history).toHaveLength(1)
+  expect(body.balance).toBe(34_000 + WELCOME_GRANT_POINTS)
+  expect(body.worthUsd).toBeCloseTo((34_000 + WELCOME_GRANT_POINTS) / 10_000)
+  // The deposit and the grant, both real movements, both on the statement.
+  expect(body.history).toHaveLength(2)
+  expect(body.history.map((e: { reason: string }) => e.reason)).toContain('welcome')
 })
 
 it('will not let a stranger read or spend somebody else’s points', async () => {

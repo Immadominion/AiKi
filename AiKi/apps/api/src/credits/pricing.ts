@@ -85,6 +85,21 @@ export function explainCost(model: string, usage: Usage): string {
  */
 export const MINIMUM_BALANCE_POINTS = 200
 
+/**
+ * What a new account is given, once, so that trying Fast mode costs nothing.
+ *
+ * 5,000 points is fifty cents, which is roughly fifteen questions. Without it
+ * the first thing a new visitor met was a 402 telling them to send USDT to a
+ * treasury address before they could ask anything at all, which is an absurd
+ * thing to require of somebody still deciding whether the product works. The
+ * grant is a real credit entry with its own reason, not a fake balance, and it
+ * appears in the history like every other movement.
+ *
+ * It is keyed on the address, and `deposit` refuses a duplicate reference, so
+ * one address can only ever receive it once.
+ */
+export const WELCOME_GRANT_POINTS = 5_000
+
 /** 1 USDT (six decimals) becomes this many points. */
 export function pointsForUsdt(baseUnits: bigint): number {
   return Number((baseUnits * BigInt(POINTS_PER_USD)) / 1_000_000n)

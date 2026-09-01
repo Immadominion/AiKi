@@ -8,6 +8,7 @@ import {
   MINIMUM_BALANCE_POINTS,
   MODELS,
   POINTS_PER_USD,
+  WELCOME_GRANT_POINTS,
 } from '../credits/pricing.js'
 import { type CreditStore, DuplicateDeposit } from '../credits/store.js'
 import { ClientError } from '../http/errors.js'
@@ -42,9 +43,34 @@ const MAX_TURN_CHARS = 8000
 export function registerAssistantRoutes(app: FastifyInstance, config: AssistantConfig) {
   const model = config.model ?? DEFAULT_MODEL
 
+  /**
+   * The one-off welcome grant, issued the first time an account is looked at.
+   *
+   * Idempotent by construction: the reference is the address, and `deposit`
+   * rejects a reference it has already credited, so a refresh, a retry or two
+   * concurrent requests all leave the account with exactly one grant. Failure
+   * to grant is never fatal, because a visitor who cannot be given free points
+   * should still be able to read their balance.
+   */
+  async function withWelcomeGrant(address: string): Promise<void> {
+    try {
+      await config.credits.deposit({
+        owner: address,
+        points: WELCOME_GRANT_POINTS,
+        reason: 'welcome',
+        reference: `welcome:${address.toLowerCase()}`,
+        detail: { note: 'One-time grant so a new account can try Fast mode without paying first.' },
+      })
+    } catch (error) {
+      if (error instanceof DuplicateDeposit) return
+      app.log.warn({ err: error }, 'welcome grant failed')
+    }
+  }
+
   app.get('/v1/credits', async (request, reply) => {
     const session = requireSession(request, reply)
     if (!session) return reply
+    await withWelcomeGrant(session.address)
     const [balance, history] = await Promise.all([
       config.credits.balance(session.address),
       config.credits.history(session.address, 20),
@@ -129,6 +155,7 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
        * afterwards that nobody can pay — means the turn was free for them and
        * not for AiKi.
        */
+      await withWelcomeGrant(session.address)
       const balance = await config.credits.balance(session.address)
       if (balance < MINIMUM_BALANCE_POINTS)
         throw new ClientError(

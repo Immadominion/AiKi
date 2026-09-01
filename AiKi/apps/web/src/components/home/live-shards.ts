@@ -96,14 +96,39 @@ function stateOf(passport: ProjectedPassport): {
   }
 }
 
+/**
+ * One card per distinct agent NAME.
+ *
+ * The BSC registry is dominated by fleets: a single operator holds 90 of the
+ * 243 agents that answer at all, every one of them registered under the same
+ * name and description. Six slots filled by two operators is a true picture of
+ * the registry and a useless shopfront, and a visitor reading the same card
+ * twice assumes the page is broken rather than that the registry is. Ranking
+ * already put the best of each fleet first, so keeping the first of each name
+ * loses nothing and shows five more real agents.
+ */
+function oneEach(passports: readonly ProjectedPassport[]): ProjectedPassport[] {
+  const seen = new Set<string>()
+  const kept: ProjectedPassport[] = []
+  for (const passport of passports) {
+    const key = (passport.name ?? passport.agentId).trim().toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    kept.push(passport)
+  }
+  return kept
+}
+
 export function liveShards(passports: readonly ProjectedPassport[]): ShardSpec[] {
   return seatOccupants(
-    passports.slice(0, 6).map((passport) => ({
-      initial: initialOf(passport.name, passport.agentId),
-      name: (passport.name ?? `Agent ${passport.agentId}`).replace(/^AiKi\s+/i, ''),
-      capability: capabilityOf(passport),
-      ...stateOf(passport),
-      ...paletteFor(passport.agentId),
-    })),
+    oneEach(passports)
+      .slice(0, 6)
+      .map((passport) => ({
+        initial: initialOf(passport.name, passport.agentId),
+        name: (passport.name ?? `Agent ${passport.agentId}`).replace(/^AiKi\s+/i, ''),
+        capability: capabilityOf(passport),
+        ...stateOf(passport),
+        ...paletteFor(passport.agentId),
+      })),
   )
 }

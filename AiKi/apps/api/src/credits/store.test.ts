@@ -72,3 +72,43 @@ it('charges nothing when there is nothing to charge', async () => {
   expect(out.shortfall).toBe(50)
   expect(await credits.history(OWNER)).toHaveLength(0)
 })
+
+/*
+ * The welcome grant has one job and one hazard: a new account must be able to
+ * try Fast mode without paying, and no account may collect the grant twice.
+ * Both live in the reference, so both are tested through the store rather than
+ * through the route that calls it.
+ */
+it('grants a new account its welcome points exactly once', async () => {
+  const { InMemoryCreditStore } = await import('./store.js')
+  const { WELCOME_GRANT_POINTS } = await import('./pricing.js')
+  const store = new InMemoryCreditStore()
+  const owner = '0xABCdef0000000000000000000000000000000001'
+  const grant = () =>
+    store.deposit({
+      owner,
+      points: WELCOME_GRANT_POINTS,
+      reason: 'welcome',
+      reference: `welcome:${owner.toLowerCase()}`,
+    })
+
+  expect(await grant()).toBe(WELCOME_GRANT_POINTS)
+  // A refresh, a retry, a second tab: all the same reference, all refused.
+  await expect(grant()).rejects.toThrow()
+  // Case must not be a way around it, since an address is the same address.
+  await expect(
+    store.deposit({
+      owner: owner.toLowerCase(),
+      points: WELCOME_GRANT_POINTS,
+      reason: 'welcome',
+      reference: `welcome:${owner.toLowerCase()}`,
+    }),
+  ).rejects.toThrow()
+  expect(await store.balance(owner)).toBe(WELCOME_GRANT_POINTS)
+})
+
+it('gives enough to actually ask something', async () => {
+  const { WELCOME_GRANT_POINTS, MINIMUM_BALANCE_POINTS } = await import('./pricing.js')
+  // A grant below the floor to ask would be a grant that does nothing.
+  expect(WELCOME_GRANT_POINTS).toBeGreaterThan(MINIMUM_BALANCE_POINTS)
+})
