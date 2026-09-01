@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { compilePolicy } from '../authority/policy.js'
+import { SETTLEMENT } from '../settlement/pricing.js'
 import { PostgresJobStore } from './postgres-store.js'
 import { JobService } from './service.js'
 
@@ -121,6 +122,9 @@ describe.skipIf(!url)('PostgresJobStore', () => {
     const tenth = 100_000_000_000_000_000n
     const auth = await jobs.authorize(
       [
+        // A cap governs a purchase only in the asset it names, so the mandate
+        // has to name the one AiKi settles in.
+        { kind: 'asset_scope', value: [SETTLEMENT.address], tier: 'T1', label: 'Settles in U' },
         {
           kind: 'session_total_cap',
           value: tenth.toString(),
@@ -133,8 +137,8 @@ describe.skipIf(!url)('PostgresJobStore', () => {
     const at = new Date().toISOString()
 
     const [first, second] = await Promise.all([
-      jobs.attemptPurchase(auth.id, tenth, at),
-      jobs.attemptPurchase(auth.id, tenth, at),
+      jobs.attemptPurchase(auth.id, tenth, at, SETTLEMENT.address),
+      jobs.attemptPurchase(auth.id, tenth, at, SETTLEMENT.address),
     ])
 
     expect([first.allow, second.allow].filter(Boolean)).toHaveLength(1)

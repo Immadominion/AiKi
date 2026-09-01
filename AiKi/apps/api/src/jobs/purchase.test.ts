@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
 import type { Constraint } from '../authority/policy.js'
+import { SETTLEMENT } from '../settlement/pricing.js'
 import { JobService } from './service.js'
 import { InMemoryJobStore } from './store.js'
 
@@ -19,7 +20,14 @@ import { InMemoryJobStore } from './store.js'
 const TENTH = 100_000_000_000_000_000n
 const OWNER = `0x${'ab'.repeat(20)}`
 
+/**
+ * The asset AiKi settles in. A mandate has to name it, or its caps are
+ * denominated in something else and cannot govern a purchase here.
+ */
+const U = SETTLEMENT.address
+
 const cap = (total: bigint): Constraint[] => [
+  { kind: 'asset_scope', value: [U], tier: 'T1', label: 'Settles in U' },
   { kind: 'session_total_cap', value: total.toString(), tier: 'T1', label: 'Lifetime cap' },
 ]
 
@@ -30,7 +38,7 @@ it('refuses to pay for anything under a revoked mandate', async () => {
   const auth = await jobs.authorize(cap(TENTH * 10n), OWNER)
   await jobs.revoke(auth.id)
 
-  const verdict = await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString())
+  const verdict = await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString(), U)
   expect(verdict.allow).toBe(false)
   expect(verdict.rule).toBe('authorization_status')
   // Revoking is the one control a person has after the fact, and a revoked
@@ -48,7 +56,7 @@ it('refuses to pay for anything under an expired mandate', async () => {
     OWNER,
   )
 
-  const verdict = await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString())
+  const verdict = await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString(), U)
   expect(verdict.allow).toBe(false)
   expect(verdict.rule).toBe('expiry')
 })
@@ -58,10 +66,10 @@ it('counts what a hire costs against the lifetime cap', async () => {
   // Room for two hires at a tenth each, and not a third.
   const auth = await jobs.authorize(cap(TENTH * 2n), OWNER)
 
-  expect((await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString())).allow).toBe(true)
-  expect((await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString())).allow).toBe(true)
+  expect((await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString(), U)).allow).toBe(true)
+  expect((await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString(), U)).allow).toBe(true)
 
-  const third = await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString())
+  const third = await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString(), U)
   expect(third.allow).toBe(false)
   expect(third.rule).toBe('session_total_cap')
   // Refused, so nothing was counted for it: a denial must not eat the allowance.
@@ -78,7 +86,7 @@ it('refuses a single hire bigger than the per-action cap', async () => {
     OWNER,
   )
 
-  const verdict = await jobs.attemptPurchase(auth.id, TENTH * 2n, new Date().toISOString())
+  const verdict = await jobs.attemptPurchase(auth.id, TENTH * 2n, new Date().toISOString(), U)
   expect(verdict.allow).toBe(false)
   expect(verdict.rule).toBe('per_action_cap')
 })
@@ -106,7 +114,7 @@ it('does not refuse a hire because the mandate names a contract', async () => {
     OWNER,
   )
 
-  expect((await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString())).allow).toBe(true)
+  expect((await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString(), U)).allow).toBe(true)
 })
 
 it('gives the cap back when a hire is refunded', async () => {
@@ -115,10 +123,48 @@ it('gives the cap back when a hire is refunded', async () => {
   const jobs = service()
   const auth = await jobs.authorize(cap(TENTH), OWNER)
 
-  expect((await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString())).allow).toBe(true)
+  expect((await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString(), U)).allow).toBe(true)
   await jobs.releaseSpend(auth.id, TENTH)
   expect((await jobs.getAuthorization(auth.id)).spent).toBe(0n)
 
   // And the allowance is genuinely usable again, not merely reported as zero.
-  expect((await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString())).allow).toBe(true)
+  expect((await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString(), U)).allow).toBe(true)
+})
+
+it('will not spend a budget denominated in another currency', async () => {
+  /*
+   * The nearest real example, and the reason this check exists. Fast mode
+   * builds a lending mandate capped in a six-decimal testnet USDT. The
+   * marketplace settles in an eighteen-decimal asset. Those two numbers differ
+   * by 10^12 before anybody has spent anything, and there is no oracle here to
+   * convert one into the other, so a cap of "100 USDT" says nothing whatever
+   * about whether a hire priced in U is allowed.
+   */
+  const jobs = service()
+  const testnetUsdt = '0xa11c8d9dc9b66e209ef60f0c8d969d3cd988782c'
+  const auth = await jobs.authorize(
+    [
+      { kind: 'asset_scope', value: [testnetUsdt], tier: 'T0', label: 'Only USDT' },
+      { kind: 'session_total_cap', value: '100000000', tier: 'T0', label: '100 USDT in total' },
+    ],
+    OWNER,
+  )
+
+  const verdict = await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString(), U)
+  expect(verdict.allow).toBe(false)
+  expect(verdict.rule).toBe('asset_scope')
+  // Refused, not waved through. An unpinned cap is an absent one, and this is
+  // the route that spends money.
+  expect((await jobs.getAuthorization(auth.id)).spent).toBe(0n)
+})
+
+it('will not spend under a mandate that names no asset at all', async () => {
+  const jobs = service()
+  const auth = await jobs.authorize(
+    [{ kind: 'session_total_cap', value: (TENTH * 10n).toString(), tier: 'T1', label: 'Cap' }],
+    OWNER,
+  )
+  const verdict = await jobs.attemptPurchase(auth.id, TENTH, new Date().toISOString(), U)
+  expect(verdict.allow).toBe(false)
+  expect(verdict.reason).toMatch(/names no asset/)
 })

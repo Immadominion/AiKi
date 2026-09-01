@@ -1,22 +1,22 @@
 .page {
-  /* The original warm identity: paper, cream, ink, one orange. What changed
-     from round one is the GRAMMAR — centred statement, edge instruments,
-     pills and docks — not the colours. */
-  --z-deep: #eee8db;
-  --z-deep-2: #e5ddcc;
-  --z-panel: rgb(255 253 248 / 0.84);
-  --z-panel-solid: #fffdf8;
-  --z-paper: #171715;
-  --z-faint: rgb(23 23 21 / 0.6);
-  --z-dim: rgb(23 23 21 / 0.42);
-  --market-paper: #fffdf8;
-  --market-cream: #f4efe3;
-  --market-ink: #171715;
+  /* Crisp paper and electric agent colours. The legacy --market-orange
+     variable remains as an internal alias so this pass does not disturb the
+     page's interaction or scene choreography. */
+  --z-deep: #f4f6ff;
+  --z-deep-2: #e8ecfb;
+  --z-panel: rgb(255 255 255 / 0.88);
+  --z-panel-solid: #ffffff;
+  --z-paper: #090b12;
+  --z-faint: rgb(9 11 18 / 0.64);
+  --z-dim: rgb(9 11 18 / 0.46);
+  --market-paper: #ffffff;
+  --market-cream: #eef2ff;
+  --market-ink: #090b12;
   --market-muted: var(--z-faint);
-  --market-line: rgb(23 23 21 / 0.14);
-  --market-orange: #ff4d00;
-  --market-yellow: #f3ba2f;
-  --market-teal: #00a092;
+  --market-line: rgb(9 11 18 / 0.14);
+  --market-orange: #2f5bff;
+  --market-yellow: #c8f43d;
+  --market-teal: #00a990;
   position: relative;
   min-height: 100%;
   overflow: clip;
@@ -31,7 +31,7 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: #eee8db;
+  background: var(--z-deep);
 }
 
 .scene canvas {
@@ -52,7 +52,7 @@
   z-index: 1;
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgb(238 232 219 / 0.66) 0%, transparent 22%, transparent 52%, rgb(238 232 219 / 0.9) 88%);
+    linear-gradient(180deg, rgb(244 246 255 / 0.58) 0%, transparent 22%, transparent 52%, rgb(244 246 255 / 0.88) 88%);
   transition: opacity 400ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -352,6 +352,19 @@
   text-align: center;
 }
 
+.heroScout {
+  position: absolute;
+  right: clamp(24px, 6vw, 96px);
+  bottom: clamp(42px, 10vh, 104px);
+  z-index: 1;
+  width: clamp(104px, 10vw, 142px);
+  height: auto;
+  filter: drop-shadow(0 18px 18px rgb(22 38 86 / 0.16));
+  pointer-events: none;
+  user-select: none;
+  animation: scoutHover 4.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 .heroEyebrow {
   margin: 0 0 clamp(16px, 2.6vh, 28px);
   /* No halo. It reads by ink weight, not by a white glow behind it. */
@@ -488,6 +501,30 @@
   box-shadow: 0 34px 90px -48px rgb(36 27 17 / 0.5);
 }
 
+.decoratedPanel {
+  overflow: visible;
+}
+
+.panelSticker {
+  position: absolute;
+  z-index: 3;
+  height: auto;
+  filter: drop-shadow(0 16px 16px rgb(26 45 96 / 0.16));
+  pointer-events: none;
+  user-select: none;
+}
+
+.signalPanel .sourceNote {
+  max-width: 270px;
+}
+
+.signalSticker {
+  right: -34px;
+  bottom: -72px;
+  width: 150px;
+  transform: rotate(7deg);
+}
+
 .chapterKicker {
   position: relative;
   z-index: 1;
@@ -560,22 +597,35 @@
   padding: 10px 13px;
   border: 0;
   border-radius: 18px;
-  background: #f2efe8;
+  background: #eef2ff;
 }
 
-.checkIcon {
-  display: grid;
+.checkStickerFrame {
+  position: relative;
+  display: block;
   flex: 0 0 auto;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 13px;
-  background: var(--market-ink);
-  color: white;
+  width: 62px;
+  height: 48px;
 }
 
-.checkRows > div:last-child .checkIcon {
-  background: var(--market-teal);
+.checkSticker {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 78px;
+  height: auto;
+  filter: drop-shadow(0 8px 8px rgb(26 45 96 / 0.14));
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  user-select: none;
+}
+
+.scanSticker {
+  transform: translate(-52%, -50%) rotate(-6deg);
+}
+
+.verifySticker {
+  transform: translate(-48%, -50%) rotate(5deg);
 }
 
 .checkRows p {

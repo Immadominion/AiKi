@@ -1150,6 +1150,7 @@ export function createApiServer(input: {
         job.authorizationId,
         outlay,
         new Date().toISOString(),
+        SETTLEMENT.address,
       )
       if (!verdict.allow)
         return reply.code(403).send({

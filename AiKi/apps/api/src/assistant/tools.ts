@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk'
+import { SETTLEMENT } from '../settlement/pricing.js'
 
 /**
  * What Fast mode can actually do, and the one rule that makes it safe.
@@ -63,6 +64,52 @@ const guardianConstraints = (perActionUsdt: number, totalUsdt: number, days: num
     value: toBaseUnits(totalUsdt),
     tier: 'T0',
     label: `${totalUsdt} USDT in total`,
+  },
+]
+
+/**
+ * A mandate for buying things through AiKi, rather than for acting on chain.
+ *
+ * Deliberately a different shape from the guardian one above, because it caps a
+ * different pot. The guardian mandate caps what an agent may move in a lending
+ * market, denominated in that market's asset. This caps what it may SPEND in
+ * the marketplace, denominated in the asset the marketplace settles in, and the
+ * two are different currencies with no oracle between them: a hundred of one is
+ * not a hundred of the other, and AiKi refuses to pretend otherwise.
+ *
+ * Tier is claimed and overwritten by the API. It comes back T2, because AiKi's
+ * points ledger is not on chain and no contract can hold a limit on it.
+ */
+const spendingConstraints = (totalUnits: number, perTaskUnits: number, days: number) => [
+  {
+    kind: 'expiry',
+    value: new Date(Date.now() + days * 86_400_000).toISOString(),
+    tier: 'T2',
+    label: `expires in ${days} days`,
+  },
+  {
+    kind: 'asset_scope',
+    value: [SETTLEMENT.address],
+    tier: 'T2',
+    label: `only ${SETTLEMENT.symbol}, which is what AiKi settles in`,
+  },
+  {
+    kind: 'session_total_cap',
+    value: (
+      BigInt(Math.round(totalUnits * 1e6)) *
+      10n ** BigInt(SETTLEMENT.decimals - 6)
+    ).toString(),
+    tier: 'T2',
+    label: `${totalUnits} ${SETTLEMENT.symbol} of work in total`,
+  },
+  {
+    kind: 'per_action_cap',
+    value: (
+      BigInt(Math.round(perTaskUnits * 1e6)) *
+      10n ** BigInt(SETTLEMENT.decimals - 6)
+    ).toString(),
+    tier: 'T2',
+    label: `${perTaskUnits} ${SETTLEMENT.symbol} on any one thing`,
   },
 ]
 
@@ -196,15 +243,126 @@ export const TOOLS: Anthropic.Tool[] = [
       required: ['mandate_id'],
     },
   },
+  {
+    name: 'create_spending_mandate',
+    description:
+      'Create a mandate for BUYING work through AiKi, which is a different pot from a mandate ' +
+      'for acting on chain and cannot be substituted for one. Required before posting a task. ' +
+      'Amounts are in the asset AiKi settles in, and there is no conversion from any other.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        total: { type: 'number', description: 'Most that may be spent on work in total.' },
+        per_task: { type: 'number', description: 'Most that may be spent on any one task.' },
+        expires_in_days: { type: 'number' },
+      },
+      required: ['total', 'per_task'],
+    },
+  },
+  {
+    name: 'open_tasks',
+    description:
+      'Work other people have posted and funded, that anybody may claim. Also returns the list ' +
+      'of kinds a task may be, which is an allowlist: anything not on it cannot be asked for.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'post_task',
+    description:
+      'Pay for work you cannot do yourself, to be done by whoever claims it, INCLUDING A HUMAN. ' +
+      'Use this when the thing needed is judgement, local knowledge, or anything no listed agent ' +
+      'measurably does. The money is taken now and held until you accept what comes back, so ask ' +
+      'the person you are acting for before spending theirs. Say in the brief what "done" looks ' +
+      'like, because whoever claims it can only work from that sentence.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        brief: {
+          type: 'string',
+          description: 'What is wanted and how the result will be judged.',
+        },
+        kind: {
+          type: 'string',
+          description:
+            'One of: research, review, writing, data, translation, design, code, verify. ' +
+            'Call open_tasks to see what each means.',
+        },
+        price_points: { type: 'number', description: 'What the person doing it is paid.' },
+        mandate_id: {
+          type: 'string',
+          description: 'A spending mandate. The cost counts against its limits.',
+        },
+      },
+      required: ['title', 'brief', 'kind', 'price_points', 'mandate_id'],
+    },
+  },
+  {
+    name: 'my_tasks',
+    description: 'Work you posted and work you claimed, with what state each is in.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'accept_task',
+    description:
+      'Accept work handed in on a task you posted, which pays whoever did it out of the money ' +
+      'already held. Read the submission first and say what it contains before doing this: it is ' +
+      'the moment somebody is paid, and it cannot be undone.',
+    input_schema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' } },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'decline_task',
+    description:
+      'Say work handed in is not what was asked for. This does NOT refund: somebody did the ' +
+      'work, and the money stays held while the disagreement stands. AiKi does not resolve ' +
+      'disputes yet, so say that plainly rather than implying somebody will arbitrate.',
+    input_schema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' }, because: { type: 'string' } },
+      required: ['task_id', 'because'],
+    },
+  },
+  {
+    name: 'claim_task',
+    description:
+      'Take a task from the board and commit to doing it. The money is already held, so it is ' +
+      'there whether or not the poster changes their mind.',
+    input_schema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' } },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'submit_task',
+    description: 'Hand in work on a task you claimed. Once, so make it the finished thing.',
+    input_schema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' }, submission: { type: 'string' } },
+      required: ['task_id', 'submission'],
+    },
+  },
 ]
 
 /** Tools that change something. Named so the runner can say what it is about to do. */
 export const MUTATING = new Set([
   'create_mandate',
+  'create_spending_mandate',
   'hire',
   'watch_position',
   'stop_watching',
   'revoke_mandate',
+  // Everything that moves money on the task board. `accept_task` most of all:
+  // it is the moment a person is paid and there is no route back from it.
+  'post_task',
+  'claim_task',
+  'submit_task',
+  'accept_task',
+  'decline_task',
 ])
 
 export async function runTool(
@@ -292,6 +450,34 @@ export async function runTool(
         market: VENUS.market,
       })
     }
+    case 'create_spending_mandate':
+      return post('/v1/authorizations', {
+        constraints: spendingConstraints(
+          Number(args.total),
+          Number(args.per_task),
+          Number(args.expires_in_days ?? 30),
+        ),
+      })
+    case 'open_tasks':
+      return call('/v1/tasks')
+    case 'my_tasks':
+      return call('/v1/tasks/mine')
+    case 'post_task':
+      return post('/v1/tasks', {
+        title: args.title,
+        brief: args.brief,
+        kind: args.kind,
+        pricePoints: Math.trunc(Number(args.price_points)),
+        authorizationId: args.mandate_id,
+      })
+    case 'claim_task':
+      return post(`/v1/tasks/${args.task_id}/claim`)
+    case 'submit_task':
+      return post(`/v1/tasks/${args.task_id}/submit`, { submission: args.submission })
+    case 'accept_task':
+      return post(`/v1/tasks/${args.task_id}/accept`)
+    case 'decline_task':
+      return post(`/v1/tasks/${args.task_id}/decline`, { because: args.because })
     case 'watch_status':
       return call(`/v1/jobs/${args.job_id}/watch`)
     case 'stop_watching':

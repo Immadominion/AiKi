@@ -231,6 +231,14 @@ export class JobService {
     authorizationId: string,
     amount: bigint,
     at: string,
+    /**
+     * What the purchase is paid in.
+     *
+     * Passed rather than assumed, because the whole point of the check is that
+     * a mandate capped in one asset says nothing about spending another, and a
+     * default would quietly reintroduce exactly that.
+     */
+    asset: string,
   ): Promise<{ allow: boolean; rule: string; reason: string }> {
     const verdict = await this.store.attemptSpend(authorizationId, (auth) => {
       if (auth.status !== 'active')
@@ -240,7 +248,7 @@ export class JobService {
           reason: `This mandate is ${auth.status}, so it cannot pay for anything.`,
           spend: 0n,
         }
-      const decision = evaluatePurchase(auth.policy, { amount, at }, auth.spent)
+      const decision = evaluatePurchase(auth.policy, { amount, at, asset }, auth.spent)
       return { ...decision, spend: decision.allow ? amount : 0n }
     })
     if (!verdict)

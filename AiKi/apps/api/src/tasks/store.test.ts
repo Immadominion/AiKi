@@ -127,3 +127,38 @@ describe.skipIf(!url)('PostgresTaskStore', () => {
     expect((await tasks.mine(POSTER, 200)).some((t) => t.id === task.id)).toBe(true)
   })
 })
+
+/*
+ * Regression, found by a security review of the commit that introduced these
+ * routes and confirmed against the database.
+ *
+ * Cancelling accepted CANCELLED as a source status, copied from the settlement
+ * routes where re-entry is wanted. The refund transfer is idempotent by
+ * reference so a second cancel moved no money and looked harmless. Releasing
+ * the mandate's spend is NOT idempotent: it subtracts every time. Post a task,
+ * cancel it, cancel it again and again, and the spend counter walks down to
+ * zero while money spent on other tasks stays spent. The cap stops meaning
+ * anything, which is an unlimited budget reached through a button that appears
+ * to do nothing.
+ */
+describe.skipIf(!process.env.DATABASE_URL)('cancelling twice', () => {
+  it('cancels once, so the cap can only be given back once', async () => {
+    const tasks = new PostgresTaskStore(process.env.DATABASE_URL as string)
+    const task = await tasks.create({
+      poster: `0x${'d4'.repeat(20)}`,
+      title: 'Cancel twice',
+      brief: 'Post it and take it back, and take it back again.',
+      kind: 'research',
+      pricePoints: 1_000,
+      feePoints: 25,
+      totalPoints: 1_025,
+      outlay: 102_500_000_000_000_000n,
+    })
+
+    expect(await tasks.advance(task.id, ['OPEN'], 'CANCELLED', 'took it back')).not.toBeNull()
+    // The second attempt has to lose, because the route releases the cap only
+    // when this returns a row.
+    expect(await tasks.advance(task.id, ['OPEN'], 'CANCELLED', 'took it back again')).toBeNull()
+    await tasks.close()
+  })
+})

@@ -173,9 +173,38 @@ export function needsApproval(policy: CompiledPolicy, amount: bigint): boolean {
 
 export function evaluatePurchase(
   policy: CompiledPolicy,
-  purchase: { amount: bigint; at: string },
+  purchase: { amount: bigint; at: string; asset: string },
   spent: bigint,
 ): { allow: boolean; rule: string; reason: string } {
+  /*
+   * The cap has to be denominated in the thing being spent.
+   *
+   * A mandate's caps are a number of base units of the asset it scopes. The
+   * marketplace settles in one asset regardless of what the agent then trades,
+   * so a mandate scoped to something else has caps that say nothing about
+   * buying here: comparing them would be comparing two currencies, and there is
+   * no oracle in this system to convert between them. The nearest real example
+   * is a mandate Fast mode builds for a lending agent, capped in a six-decimal
+   * testnet USDT, against a marketplace that settles in an eighteen-decimal
+   * asset. Those numbers differ by 10^12 before anybody has spent anything.
+   *
+   * Refused rather than waved through. An unpinned cap is not a permissive cap,
+   * it is an absent one, and this is the route that spends money.
+   */
+  const scopes = policy.constraints.filter((c) => c.kind === 'asset_scope')
+  const inScope = scopes.some((c) =>
+    (Array.isArray(c.value) ? c.value : [c.value])
+      .map((v) => String(v).toLowerCase())
+      .includes(purchase.asset.toLowerCase()),
+  )
+  if (!inScope)
+    return {
+      allow: false,
+      rule: 'asset_scope',
+      reason: scopes.length
+        ? 'This mandate is scoped to a different asset from the one AiKi settles in, so its limits cannot govern a purchase here.'
+        : 'This mandate names no asset, so there is no limit that governs spending here.',
+    }
   if (policy.expiresAt) {
     const at = Date.parse(purchase.at)
     // Fail closed on an unreadable timestamp, on the same reasoning as above: a

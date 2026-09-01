@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowUpRight, Check, MousePointer2, Rotate3D, ScanLine, X } from 'lucide-react'
+import { ArrowUpRight, MousePointer2, Rotate3D, ScanLine, X } from 'lucide-react'
 import {
   type MotionValue,
   motion,
@@ -42,6 +42,12 @@ const CHAPTERS = [
 ] as const
 
 const NUMBER = new Intl.NumberFormat('en-US')
+
+const WORK_STEPS = [
+  { label: 'Task', src: '/landing/stickers/agent-task.webp', width: 768, height: 816 },
+  { label: 'Check', src: '/landing/stickers/agent-check.webp', width: 768, height: 768 },
+  { label: 'Act', src: '/landing/stickers/agent-act.webp', width: 768, height: 816 },
+] as const
 
 // Page-load storyboard
 // 0ms      background and navigation settle
@@ -380,6 +386,17 @@ export function LandingExperience() {
               ))}
             </motion.ol>
 
+            <Image
+              className={styles.heroScout}
+              src="/landing/stickers/agent-scout.webp"
+              alt=""
+              width={768}
+              height={816}
+              sizes="140px"
+              priority
+              aria-hidden="true"
+            />
+
             <div className={styles.heroBlock}>
               <motion.p
                 className={styles.heroEyebrow}
@@ -433,7 +450,7 @@ export function LandingExperience() {
         </section>
 
         <ChapterShell index={1} align="left" reducedMotion={reducedMotion}>
-          <div className={styles.editorialPanel}>
+          <div className={`${styles.editorialPanel} ${styles.decoratedPanel} ${styles.signalPanel}`}>
             <ChapterHeader
               index={1}
               title="Many are listed."
@@ -448,6 +465,15 @@ export function LandingExperience() {
               This crowd is an aggregate view of measured liveness states, not a list of invented
               agents.
             </p>
+            <Image
+              className={`${styles.panelSticker} ${styles.signalSticker}`}
+              src="/landing/stickers/agent-scout.webp"
+              alt=""
+              width={768}
+              height={816}
+              sizes="150px"
+              aria-hidden="true"
+            />
           </div>
         </ChapterShell>
 
@@ -460,8 +486,15 @@ export function LandingExperience() {
             />
             <div className={styles.checkRows}>
               <div>
-                <span className={styles.checkIcon}>
-                  <ScanLine size={17} aria-hidden="true" />
+                <span className={styles.checkStickerFrame} aria-hidden="true">
+                  <Image
+                    className={`${styles.checkSticker} ${styles.scanSticker}`}
+                    src="/landing/stickers/agent-scan.webp"
+                    alt=""
+                    width={768}
+                    height={768}
+                    sizes="76px"
+                  />
                 </span>
                 <p>
                   <strong>Reach it</strong>
@@ -469,8 +502,15 @@ export function LandingExperience() {
                 </p>
               </div>
               <div>
-                <span className={styles.checkIcon}>
-                  <Check size={17} aria-hidden="true" />
+                <span className={styles.checkStickerFrame} aria-hidden="true">
+                  <Image
+                    className={`${styles.checkSticker} ${styles.verifySticker}`}
+                    src="/landing/stickers/agent-verify.webp"
+                    alt=""
+                    width={768}
+                    height={768}
+                    sizes="76px"
+                  />
                 </span>
                 <p>
                   <strong>Check the answer</strong>
@@ -482,7 +522,9 @@ export function LandingExperience() {
         </ChapterShell>
 
         <ChapterShell index={3} align="left" reducedMotion={reducedMotion}>
-          <div className={`${styles.editorialPanel} ${styles.limitPanel}`}>
+          <div
+            className={`${styles.editorialPanel} ${styles.decoratedPanel} ${styles.limitPanel}`}
+          >
             <ChapterHeader
               index={3}
               title="You set the limit."
@@ -503,6 +545,15 @@ export function LandingExperience() {
               </div>
               <span className={styles.limitSeal}>SET</span>
             </div>
+            <Image
+              className={`${styles.panelSticker} ${styles.limitSticker}`}
+              src="/landing/stickers/agent-limit.webp"
+              alt=""
+              width={768}
+              height={816}
+              sizes="138px"
+              aria-hidden="true"
+            />
           </div>
         </ChapterShell>
 
@@ -514,10 +565,19 @@ export function LandingExperience() {
               copy="The job moves through the limit you chose. AiKi records each decision."
             />
             <div className={styles.workRoute}>
-              {['Task', 'Check', 'Act'].map((label, index) => (
-                <div key={label}>
-                  <span>{index + 1}</span>
-                  <strong>{label}</strong>
+              {WORK_STEPS.map((step) => (
+                <div key={step.label}>
+                  <span className={styles.workStickerFrame} aria-hidden="true">
+                    <Image
+                      className={styles.workSticker}
+                      src={step.src}
+                      alt=""
+                      width={step.width}
+                      height={step.height}
+                      sizes="92px"
+                    />
+                  </span>
+                  <strong>{step.label}</strong>
                 </div>
               ))}
             </div>
@@ -525,7 +585,9 @@ export function LandingExperience() {
         </ChapterShell>
 
         <ChapterShell index={5} align="left" reducedMotion={reducedMotion}>
-          <div className={`${styles.editorialPanel} ${styles.receiptPanel}`}>
+          <div
+            className={`${styles.editorialPanel} ${styles.decoratedPanel} ${styles.receiptPanel}`}
+          >
             <ChapterHeader
               index={5}
               title="You get the receipt."
@@ -550,6 +612,15 @@ export function LandingExperience() {
               </div>
               <div className={styles.receiptBarcode} aria-hidden="true" />
             </div>
+            <Image
+              className={`${styles.panelSticker} ${styles.receiptSticker}`}
+              src="/landing/stickers/agent-receipt.webp"
+              alt=""
+              width={768}
+              height={816}
+              sizes="142px"
+              aria-hidden="true"
+            />
           </div>
         </ChapterShell>
 
@@ -560,6 +631,15 @@ export function LandingExperience() {
           className={styles.finalChapter}
         >
           <div className={styles.finalPanel}>
+            <Image
+              className={styles.finalTouch}
+              src="/landing/stickers/human-agent-touch.webp"
+              alt=""
+              width={1024}
+              height={1024}
+              sizes="(max-width: 720px) 92vw, 720px"
+              aria-hidden="true"
+            />
             <div className={styles.chapterKicker}>06 · Explore</div>
             <h2 id="market-story-title-6" className={styles.finalTitle}>
               See what answered.

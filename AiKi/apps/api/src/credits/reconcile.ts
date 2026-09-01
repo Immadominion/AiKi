@@ -114,10 +114,22 @@ export async function checkLedger(sql: postgres.Sql): Promise<LedgerFinding[]> {
     SELECT coalesce(sum(sold_total_points), 0) AS owed, count(*) AS jobs
       FROM jobs WHERE status = 'FUNDED'
   `
+  /*
+   * Tasks draw on the same escrow, so they have to be counted here or this check
+   * turns red the first time somebody posts work. Money is held from the moment
+   * a task is funded until it is accepted or taken back: OPEN and CLAIMED and
+   * SUBMITTED are all "somebody is owed this", and so is DISPUTED, which is the
+   * whole point of a dispute. SETTLED has been paid out and CANCELLED refunded.
+   */
+  const [tasksOwed] = await sql<{ owed: string; tasks: string }[]>`
+    SELECT coalesce(sum(total_points), 0) AS owed, count(*) AS tasks
+      FROM tasks WHERE status IN ('OPEN', 'CLAIMED', 'SUBMITTED', 'DISPUTED')
+  `
+  const commitments = n(owed?.owed) + n(tasksOwed?.owed)
   findings.push({
-    check: 'escrow holds exactly what funded jobs are owed',
-    ok: n(held?.balance) === n(owed?.owed),
-    detail: `escrow holds ${n(held?.balance)}, ${n(owed?.jobs)} funded jobs are owed ${n(owed?.owed)}`,
+    check: 'escrow holds exactly what is owed on funded work',
+    ok: n(held?.balance) === commitments,
+    detail: `escrow holds ${n(held?.balance)}; ${n(owed?.jobs)} funded jobs owe ${n(owed?.owed)} and ${n(tasksOwed?.tasks)} live tasks owe ${n(tasksOwed?.owed)}`,
   })
 
   /*

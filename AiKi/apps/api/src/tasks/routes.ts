@@ -179,6 +179,7 @@ export function registerTaskRoutes(
         request.body.authorizationId,
         outlay,
         new Date().toISOString(),
+        SETTLEMENT.address,
       )
       if (!verdict.allow)
         return reply.code(403).send({
@@ -432,9 +433,24 @@ export function registerTaskRoutes(
         error: { code: 'TASK_NOT_FOUND', message: 'No such task of yours.', retryable: false },
       })
 
+    /*
+     * From OPEN only, and CANCELLED is deliberately not a source.
+     *
+     * Allowing re-entry here was a way to spend a mandate without limit. The
+     * refund transfer is idempotent by reference, so a second cancel moved no
+     * money and looked harmless, but `releaseSpend` is not: it subtracts every
+     * time it is called. Post a task, cancel it, cancel it again, and again,
+     * and the mandate's spend counter walks down to zero while the money spent
+     * on OTHER tasks stays spent. The cap stops meaning anything.
+     *
+     * A crash between this write and the refund below leaves the money in
+     * escrow against a cancelled task, which is visible in the ledger check and
+     * recoverable by hand. That is the right way round: money briefly stuck and
+     * countable beats a cap that quietly resets.
+     */
     const cancelled = await input.tasks.advance(
       task.id,
-      ['OPEN', 'CANCELLED'],
+      ['OPEN'],
       'CANCELLED',
       'The poster took it back.',
     )
@@ -445,11 +461,14 @@ export function registerTaskRoutes(
           message:
             task.status === 'CLAIMED' || task.status === 'SUBMITTED'
               ? 'Somebody is working on this. The money stays where it is until they hand it in.'
-              : `Only open work can be taken back. This one is ${task.status}.`,
+              : task.status === 'CANCELLED'
+                ? 'This one is already cancelled and the money is already back.'
+                : `Only open work can be taken back. This one is ${task.status}.`,
           retryable: false,
         },
       })
 
+    let refunded = true
     try {
       await credits.transfer({
         from: ESCROW_ACCOUNT,
@@ -460,9 +479,13 @@ export function registerTaskRoutes(
         detail: { taskId: task.id },
       })
     } catch (error) {
+      // Already refunded. The cap was released with it, so it must not be
+      // released a second time.
       if (!(error instanceof DuplicateCharge)) throw error
+      refunded = false
     }
-    if (task.authorizationId) await input.jobs.releaseSpend(task.authorizationId, task.outlay)
+    if (refunded && task.authorizationId)
+      await input.jobs.releaseSpend(task.authorizationId, task.outlay)
 
     return { ...cancelled, outlay: cancelled.outlay.toString(), refundedPoints: task.totalPoints }
   })
