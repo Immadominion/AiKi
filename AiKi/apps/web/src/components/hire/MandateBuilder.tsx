@@ -41,7 +41,7 @@ const APPROVALS = [
   {
     key: 'automatic',
     label: 'Just do it',
-    note: 'It acts inside these limits without asking. Everything it does is in the job\'s activity.',
+    note: "It acts inside these limits without asking. Everything it does is in the job's activity.",
   },
   {
     key: 'approve_above_threshold',

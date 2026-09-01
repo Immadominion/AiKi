@@ -450,7 +450,9 @@ export function LandingExperience() {
         </section>
 
         <ChapterShell index={1} align="left" reducedMotion={reducedMotion}>
-          <div className={`${styles.editorialPanel} ${styles.decoratedPanel} ${styles.signalPanel}`}>
+          <div
+            className={`${styles.editorialPanel} ${styles.decoratedPanel} ${styles.signalPanel}`}
+          >
             <ChapterHeader
               index={1}
               title="Many are listed."
@@ -522,9 +524,7 @@ export function LandingExperience() {
         </ChapterShell>
 
         <ChapterShell index={3} align="left" reducedMotion={reducedMotion}>
-          <div
-            className={`${styles.editorialPanel} ${styles.decoratedPanel} ${styles.limitPanel}`}
-          >
+          <div className={`${styles.editorialPanel} ${styles.decoratedPanel} ${styles.limitPanel}`}>
             <ChapterHeader
               index={3}
               title="You set the limit."

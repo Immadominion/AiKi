@@ -4,6 +4,7 @@ import {
   ActivityIcon,
   BellIcon,
   BookOpenIcon,
+  ClipboardIcon,
   CodeIcon,
   CompassIcon,
   HeartIcon,
@@ -54,6 +55,9 @@ const GROUPS: { label: string; items: Item[] }[] = [
       // The registry is the only surface built entirely from measurement, and it
       // was reachable only from a link inside a search result.
       { label: 'Registry', icon: LayersIcon, href: '/registry' },
+      // The other side of the marketplace: work nobody has listed, that a person
+      // can do and be paid for.
+      { label: 'Work', icon: ClipboardIcon, href: '/work' },
       { label: 'My agents', icon: LayoutGridIcon, href: '/agents' },
     ],
   },

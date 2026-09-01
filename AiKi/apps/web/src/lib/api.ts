@@ -118,6 +118,28 @@ export interface AssistantStep {
   mutating: boolean
 }
 
+export interface TaskSummary {
+  id: string
+  poster: string
+  authorizationId?: string
+  title: string
+  brief: string
+  kind: string
+  pricePoints: number
+  feePoints: number
+  totalPoints: number
+  /** Base units of the settlement asset, as a string: a uint256 is not a number. */
+  outlay: string
+  status: 'OPEN' | 'CLAIMED' | 'SUBMITTED' | 'SETTLED' | 'CANCELLED' | 'DISPUTED'
+  claimedBy?: string
+  claimedAt?: string
+  submission?: string
+  submittedAt?: string
+  resolution?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface AssistantTurn {
   reply: string
   steps: AssistantStep[]
@@ -282,6 +304,46 @@ export const api = {
       expiresAt: string
       priceSource: 'registration' | 'owner-listing'
     }>('/v1/quotes', { method: 'POST', body: JSON.stringify({ agentId }) }),
+  /**
+   * Work somebody posted and funded, that anybody may claim.
+   *
+   * The other shape of trade. A hire picks a listed agent and pays its published
+   * price; a task is work nobody has listed, funded before it is visible, that
+   * whoever can do it takes. It is the only way an agent can buy something from
+   * a person, because a person has no listing and no URL that answers a probe.
+   */
+  tasks: () => req<{ kinds: Record<string, string>; tasks: TaskSummary[] }>('/v1/tasks'),
+  myTasks: () => req<{ tasks: TaskSummary[] }>('/v1/tasks/mine'),
+  task: (id: string) => req<TaskSummary>(`/v1/tasks/${id}`),
+  postTask: (task: {
+    title: string
+    brief: string
+    kind: string
+    pricePoints: number
+    authorizationId?: string
+  }) =>
+    req<TaskSummary & { heldPoints: number }>('/v1/tasks', {
+      method: 'POST',
+      body: JSON.stringify(task),
+    }),
+  claimTask: (id: string) => req<TaskSummary>(`/v1/tasks/${id}/claim`, { method: 'POST' }),
+  submitTask: (id: string, submission: string) =>
+    req<TaskSummary>(`/v1/tasks/${id}/submit`, {
+      method: 'POST',
+      body: JSON.stringify({ submission }),
+    }),
+  acceptTask: (id: string) =>
+    req<TaskSummary & { paidTo: string; paidPoints: number; feePoints: number }>(
+      `/v1/tasks/${id}/accept`,
+      { method: 'POST' },
+    ),
+  declineTask: (id: string, because: string) =>
+    req<TaskSummary & { note: string }>(`/v1/tasks/${id}/decline`, {
+      method: 'POST',
+      body: JSON.stringify({ because }),
+    }),
+  cancelTask: (id: string) =>
+    req<TaskSummary & { refundedPoints: number }>(`/v1/tasks/${id}/cancel`, { method: 'POST' }),
   /**
    * What the agent is waiting to be allowed to do.
    *
