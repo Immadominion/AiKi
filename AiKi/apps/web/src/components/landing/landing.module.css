@@ -886,7 +886,7 @@
 
 .finalTouch {
   position: absolute;
-  bottom: -43%;
+  bottom: -51%;
   left: 50%;
   z-index: 0;
   width: min(760px, 126%);
@@ -2289,7 +2289,7 @@
   }
 
   .finalTouch {
-    bottom: -31%;
+    bottom: -39%;
     width: 148%;
     opacity: 0.28;
   }

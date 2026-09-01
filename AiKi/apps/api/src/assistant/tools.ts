@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk'
+import { settlementForPoints } from '../credits/pricing.js'
 import { SETTLEMENT } from '../settlement/pricing.js'
 
 /**
@@ -79,8 +80,15 @@ const guardianConstraints = (perActionUsdt: number, totalUsdt: number, days: num
  *
  * Tier is claimed and overwritten by the API. It comes back T2, because AiKi's
  * points ledger is not on chain and no contract can hold a limit on it.
+ *
+ * Denominated in POINTS, which is what a task costs and what a balance is
+ * counted in, and converted here to the base units a cap is stored in. It took
+ * settlement units at first and a real turn read that as points: asked to set up
+ * a mandate for a five hundred point task, the model proposed a total of 500,
+ * which would have been ten thousand times what anybody intended. One unit
+ * across the whole buying flow, converted in one place.
  */
-const spendingConstraints = (totalUnits: number, perTaskUnits: number, days: number) => [
+const spendingConstraints = (totalPoints: number, perTaskPoints: number, days: number) => [
   {
     kind: 'expiry',
     value: new Date(Date.now() + days * 86_400_000).toISOString(),
@@ -95,21 +103,15 @@ const spendingConstraints = (totalUnits: number, perTaskUnits: number, days: num
   },
   {
     kind: 'session_total_cap',
-    value: (
-      BigInt(Math.round(totalUnits * 1e6)) *
-      10n ** BigInt(SETTLEMENT.decimals - 6)
-    ).toString(),
+    value: settlementForPoints(totalPoints, SETTLEMENT.decimals).toString(),
     tier: 'T2',
-    label: `${totalUnits} ${SETTLEMENT.symbol} of work in total`,
+    label: `${totalPoints} points of work in total`,
   },
   {
     kind: 'per_action_cap',
-    value: (
-      BigInt(Math.round(perTaskUnits * 1e6)) *
-      10n ** BigInt(SETTLEMENT.decimals - 6)
-    ).toString(),
+    value: settlementForPoints(perTaskPoints, SETTLEMENT.decimals).toString(),
     tier: 'T2',
-    label: `${perTaskUnits} ${SETTLEMENT.symbol} on any one thing`,
+    label: `${perTaskPoints} points on any one thing`,
   },
 ]
 
@@ -248,12 +250,19 @@ export const TOOLS: Anthropic.Tool[] = [
     description:
       'Create a mandate for BUYING work through AiKi, which is a different pot from a mandate ' +
       'for acting on chain and cannot be substituted for one. Required before posting a task. ' +
-      'Amounts are in the asset AiKi settles in, and there is no conversion from any other.',
+      'Amounts are in POINTS, the same unit a task price is in, so a mandate for one 500 point ' +
+      'task is total 500.',
     input_schema: {
       type: 'object',
       properties: {
-        total: { type: 'number', description: 'Most that may be spent on work in total.' },
-        per_task: { type: 'number', description: 'Most that may be spent on any one task.' },
+        total: {
+          type: 'number',
+          description: 'Most that may be spent on work in total, in points.',
+        },
+        per_task: {
+          type: 'number',
+          description: 'Most that may be spent on any one task, in points.',
+        },
         expires_in_days: { type: 'number' },
       },
       required: ['total', 'per_task'],
