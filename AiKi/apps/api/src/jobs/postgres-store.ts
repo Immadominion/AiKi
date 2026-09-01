@@ -212,6 +212,28 @@ export class PostgresJobStore implements JobStore {
   }
 
   /**
+   * One conditional UPDATE, so exactly one caller wins.
+   *
+   * `WHERE status = ANY(from)` is the whole guard: two callers racing to pay out
+   * of the same escrow both match the read but only one matches the write.
+   */
+  async claim(jobId: string, from: JobStatus[], to: JobStatus, detail: string) {
+    return this.sql.begin(async (tx) => {
+      const rows = await tx<{ id: string }[]>`
+        UPDATE jobs SET status = ${to}, updated_at = now()
+         WHERE id = ${jobId} AND status = ANY(${from})
+        RETURNING id
+      `
+      if (rows.length === 0) return false
+      await tx`
+        INSERT INTO job_events (job_id, type, detail, at)
+        VALUES (${jobId}, 'status', ${detail}, now())
+      `
+      return true
+    })
+  }
+
+  /**
    * Fix the terms, once.
    *
    * The WHERE clause is the guard: it only matches a job that has not been sold

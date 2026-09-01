@@ -9,6 +9,7 @@ import {
   MODELS,
   POINTS_PER_USD,
   WELCOME_GRANT_POINTS,
+  WELCOME_GRANTS_PER_DAY,
 } from '../credits/pricing.js'
 import { type CreditStore, DuplicateDeposit } from '../credits/store.js'
 import { ClientError } from '../http/errors.js'
@@ -54,6 +55,13 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
    */
   async function withWelcomeGrant(address: string): Promise<void> {
     try {
+      /*
+       * Bounded before it is issued. An address costs nothing to make, so
+       * without a ceiling this route hands out real model spend to anybody who
+       * can sign a message, as many times as they can be bothered to.
+       */
+      const since = new Date(Date.now() - 86_400_000).toISOString()
+      if ((await config.credits.countSince('welcome', since)) >= WELCOME_GRANTS_PER_DAY) return
       await config.credits.deposit({
         owner: address,
         points: WELCOME_GRANT_POINTS,

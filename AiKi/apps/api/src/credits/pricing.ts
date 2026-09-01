@@ -100,6 +100,20 @@ export const MINIMUM_BALANCE_POINTS = 200
  */
 export const WELCOME_GRANT_POINTS = 5_000
 
+/**
+ * The most this can cost AiKi in a day.
+ *
+ * Signing in costs a signature and nothing else, so an address is free and
+ * unlimited, and a grant keyed on the address is a faucet: every grant is real
+ * model spend somebody else pays for. This is the number that turns an
+ * unbounded liability into a line item. Two hundred grants is a thousand
+ * dollars of points a day, which is a decision rather than an accident.
+ *
+ * When it is reached, new accounts are told plainly that the free allowance is
+ * gone for today, rather than being handed a balance that silently is not there.
+ */
+export const WELCOME_GRANTS_PER_DAY = 200
+
 /** 1 USDT (six decimals) becomes this many points. */
 export function pointsForUsdt(baseUnits: bigint): number {
   return Number((baseUnits * BigInt(POINTS_PER_USD)) / 1_000_000n)

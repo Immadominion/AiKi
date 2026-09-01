@@ -112,3 +112,31 @@ it('gives enough to actually ask something', async () => {
   // A grant below the floor to ask would be a grant that does nothing.
   expect(WELCOME_GRANT_POINTS).toBeGreaterThan(MINIMUM_BALANCE_POINTS)
 })
+
+it('stops handing out free points once the day is spent', async () => {
+  const { InMemoryCreditStore } = await import('./store.js')
+  const { WELCOME_GRANT_POINTS, WELCOME_GRANTS_PER_DAY } = await import('./pricing.js')
+  const store = new InMemoryCreditStore()
+  const since = new Date(Date.now() - 86_400_000).toISOString()
+
+  /*
+   * Signing in costs a signature and nothing else, so an address is free and
+   * unlimited. A grant keyed on the address with no ceiling hands out real
+   * model spend to anybody willing to make another wallet.
+   */
+  for (let n = 0; n < 3; n += 1)
+    await store.deposit({
+      owner: `0x${String(n).padStart(40, '0')}`,
+      points: WELCOME_GRANT_POINTS,
+      reason: 'welcome',
+      reference: `welcome:${n}`,
+    })
+
+  expect(await store.countSince('welcome', since)).toBe(3)
+  // Counted by reason, so a deposit somebody actually paid for is not mistaken
+  // for a giveaway.
+  await store.deposit({ owner: '0xpaid', points: 50_000, reason: 'deposit', reference: '0xtx' })
+  expect(await store.countSince('welcome', since)).toBe(3)
+  expect(await store.countSince('welcome', new Date(Date.now() + 1000).toISOString())).toBe(0)
+  expect(WELCOME_GRANTS_PER_DAY).toBeGreaterThan(0)
+})

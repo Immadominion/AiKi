@@ -158,6 +158,17 @@ export class JobService {
    * so of the twelve states the contract defines, those two existed only as
    * type members.
    */
+  /**
+   * Take exclusive ownership of a job's next state. See JobStore.claim.
+   *
+   * Returns false when somebody else got there first, which for the two payout
+   * routes is the whole point: only one of settling and refunding may take a
+   * job out of FUNDED, so only one can be paid out of the shared escrow.
+   */
+  async claim(jobId: string, from: JobStatus[], to: JobStatus, detail: string): Promise<boolean> {
+    return this.store.claim(jobId, from, to, detail)
+  }
+
   /** Fix the terms of a sale, once. See JobStore.recordSale. */
   async recordSale(
     jobId: string,

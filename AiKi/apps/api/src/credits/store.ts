@@ -117,6 +117,15 @@ export interface CreditStore {
     detail?: Record<string, unknown>
   }): Promise<{ moved: number; fromBalance: number; toBalance: number }>
   history(owner: string, limit?: number): Promise<CreditEntry[]>
+  /**
+   * How many entries of one reason have been written since a moment.
+   *
+   * Exists to bound the welcome grant. Signing in costs nothing but a
+   * signature, so an address is free and unlimited, and a grant keyed on the
+   * address is a faucet: every 5,000 points is real model spend AiKi pays for,
+   * and nothing capped how many were handed out.
+   */
+  countSince(reason: string, since: string): Promise<number>
 }
 
 /**
@@ -222,6 +231,10 @@ export class InMemoryCreditStore implements CreditStore {
       fromBalance: await this.balance(input.from),
       toBalance: await this.balance(input.to),
     }
+  }
+
+  async countSince(reason: string, since: string) {
+    return this.entries.filter((e) => e.reason === reason && e.createdAt >= since).length
   }
 
   async history(owner: string, limit = 25) {
@@ -390,6 +403,14 @@ export class PostgresCreditStore implements CreditStore {
         throw error
       }
     })
+  }
+
+  async countSince(reason: string, since: string) {
+    const rows = await this.sql<{ n: string }[]>`
+      SELECT count(*) AS n FROM credit_entries
+       WHERE reason = ${reason} AND created_at >= ${since}
+    `
+    return Number(rows[0]?.n ?? 0)
   }
 
   async history(owner: string, limit = 25) {

@@ -79,6 +79,21 @@ export interface SpendVerdict {
  */
 export interface JobStore {
   /**
+   * Move a job from one of `from` to `to`, and say whether this caller did it.
+   *
+   * The payout guard. Settling and refunding both take money out of one pooled
+   * escrow account and used different idempotency keys, so the unique index
+   * could not see them racing: run concurrently they both read FUNDED, both
+   * decided they were allowed, and both paid out against a single funding, with
+   * the second payment coming from other buyers' money in the same account.
+   *
+   * Reading a status and then acting on it cannot fix that. This is one
+   * conditional UPDATE, so exactly one caller matches and the other is told it
+   * lost.
+   */
+  claim(jobId: string, from: JobStatus[], to: JobStatus, detail: string): Promise<boolean>
+
+  /**
    * Fix the terms of a sale. Refuses if this job has already been sold.
    *
    * Required, not optional. A store that quietly does not record the sale can
@@ -197,6 +212,17 @@ export class InMemoryJobStore implements JobStore {
   async jobByIdempotencyKey(key: string) {
     const id = this.byKey.get(key)
     return id ? this.getJob(id) : null
+  }
+
+  async claim(jobId: string, from: JobStatus[], to: JobStatus, detail: string) {
+    const job = this.jobs.get(jobId)
+    if (!job || !from.includes(job.status)) return false
+    this.jobs.set(jobId, {
+      ...job,
+      status: to,
+      events: [...job.events, { type: 'status', detail, at: new Date().toISOString() }],
+    })
+    return true
   }
 
   async recordSale(

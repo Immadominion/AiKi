@@ -1057,7 +1057,26 @@ export function createApiServer(input: {
             retryable: false,
           },
         })
-      if (job.status !== 'FUNDED' && job.status !== 'COMPLETED')
+      /*
+       * Claim the payout before any money moves.
+       *
+       * Settling and refunding both draw on one pooled escrow account and used
+       * different idempotency keys, so the unique index could not see them
+       * racing: run at the same time they both read FUNDED, both judged
+       * themselves allowed, and both paid out against a single funding, the
+       * second one out of other buyers' money sitting in the same account.
+       *
+       * SETTLED is allowed as a source so a run that claimed and then died
+       * before the money moved can finish; the transfers are idempotent by
+       * reference, so re-entering pays nobody twice.
+       */
+      const claimed = await jobs.claim(
+        job.id,
+        ['FUNDED', 'COMPLETED', 'SETTLED'],
+        'SETTLED',
+        'Settlement claimed.',
+      )
+      if (!claimed)
         return reply.code(409).send({
           error: {
             code: 'JOB_NOT_SETTLEABLE',
@@ -1229,7 +1248,15 @@ export function createApiServer(input: {
             retryable: false,
           },
         })
-      if (job.status !== 'FUNDED')
+      // The same claim, from the other side. Only one of settle and refund can
+      // take a job out of FUNDED, so only one can be paid out of the escrow.
+      const claimedRefund = await jobs.claim(
+        job.id,
+        ['FUNDED', 'CANCELLED'],
+        'CANCELLED',
+        'Refund claimed.',
+      )
+      if (!claimedRefund)
         return reply.code(409).send({
           error: {
             code: 'JOB_NOT_REFUNDABLE',
