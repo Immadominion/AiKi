@@ -2249,19 +2249,19 @@
   }
 
   .signalSticker {
-    right: -28px;
+    right: -4px;
     bottom: -58px;
     width: 120px;
   }
 
   .limitSticker {
-    right: -30px;
+    right: -4px;
     bottom: -66px;
     width: 120px;
   }
 
   .receiptSticker {
-    right: -28px;
+    right: -4px;
     bottom: -64px;
     width: 116px;
   }
@@ -2292,6 +2292,16 @@
     bottom: -39%;
     width: 148%;
     opacity: 0.28;
+  }
+}
+
+/* At tablet widths the final headline fits on one line, making the card much
+   shorter. Keep the hand illustration anchored to the actions instead of
+   letting it rise behind the copy. */
+@media (min-width: 721px) and (max-width: 900px) {
+  .finalTouch {
+    bottom: -80%;
+    opacity: 0.32;
   }
 }
 

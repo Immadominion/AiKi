@@ -31,6 +31,18 @@ const STATE_WORD: Record<TaskSummary['status'], string> = {
 
 const short = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`
 
+const passed = (at?: string) => Boolean(at && Date.parse(at) < Date.now())
+
+/** "in 4 hours", "3 days ago". Coarse on purpose: an exact minute is false precision. */
+function when(at?: string): string {
+  if (!at) return ''
+  const ms = Date.parse(at) - Date.now()
+  const hours = Math.round(Math.abs(ms) / 3_600_000)
+  const size =
+    hours < 48 ? `${hours || 1} hour${hours === 1 ? '' : 's'}` : `${Math.round(hours / 24)} days`
+  return ms > 0 ? `in ${size}` : `${size} ago`
+}
+
 function Money({ points }: { points: number }) {
   // Points, because that is what a balance is counted in and what a person is
   // actually paid. Rendering a dollar figure here would be a second opinion
@@ -205,6 +217,46 @@ export function WorkBoard() {
                     </button>
                   ) : null}
 
+                  {/* The clock, on whichever side it is running. Somebody has to
+                      be able to see how long they have without reading docs. */}
+                  {!posted && t.status === 'CLAIMED' && t.claimExpiresAt ? (
+                    <p className="text-faint mt-[7px] mb-0 text-[11.5px] font-semibold">
+                      {passed(t.claimExpiresAt)
+                        ? 'Your time ran out, so this is back on the board for somebody else.'
+                        : `Hand it in ${when(t.claimExpiresAt)} or it goes back on the board.`}
+                    </p>
+                  ) : null}
+                  {posted && t.status === 'SUBMITTED' && t.reviewExpiresAt ? (
+                    <p className="text-faint mt-[7px] mb-0 text-[11.5px] font-semibold">
+                      {passed(t.reviewExpiresAt)
+                        ? 'You did not answer in time, so they can take the payment.'
+                        : `Answer ${when(t.reviewExpiresAt)}, or they can take the payment.`}
+                    </p>
+                  ) : null}
+
+                  {/* Nobody's finished work is held hostage by silence. */}
+                  {!posted && t.status === 'SUBMITTED' && passed(t.reviewExpiresAt) ? (
+                    <button
+                      type="button"
+                      disabled={busy === t.id}
+                      onClick={() =>
+                        act(
+                          t.id,
+                          () => api.releaseTask(t.id),
+                          `Paid. ${t.pricePoints.toLocaleString()} points are yours.`,
+                        )
+                      }
+                      className="bg-ink-app hover:bg-orange-app mt-[10px] h-[34px] rounded-[10px] border-0 px-[15px] text-[12.5px] font-bold text-white transition-colors disabled:opacity-50"
+                    >
+                      Take the payment
+                    </button>
+                  ) : !posted && t.status === 'SUBMITTED' ? (
+                    <p className="text-faint mt-[7px] mb-0 text-[11.5px] font-semibold">
+                      Waiting on the poster. If they say nothing by {when(t.reviewExpiresAt)}, you
+                      can take the payment yourself.
+                    </p>
+                  ) : null}
+
                   {t.status === 'DISPUTED' ? (
                     <p className="text-muted mt-[9px] mb-0 text-[12px] leading-[1.5]">
                       The money stays in escrow against this task. AiKi does not resolve disputes
@@ -235,7 +287,8 @@ export function WorkBoard() {
                   {t.brief}
                 </p>
                 <div className="text-faint mt-[7px] text-[11.5px] font-semibold">
-                  {kinds[t.kind] ?? t.kind} · posted by {short(t.poster)}
+                  {kinds[t.kind] ?? t.kind} · posted by {short(t.poster)} · {t.workHours}h to do it
+                  {t.status === 'CLAIMED' ? ' · the last claimant ran out of time' : ''}
                 </div>
                 <button
                   type="button"

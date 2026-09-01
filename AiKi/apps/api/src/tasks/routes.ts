@@ -105,6 +105,7 @@ export function registerTaskRoutes(
       brief?: string
       kind?: string
       pricePoints?: number
+      workHours?: number
       authorizationId?: string
     }
   }>('/v1/tasks', async (request, reply) => {
@@ -151,6 +152,14 @@ export function registerTaskRoutes(
           retryable: false,
         },
       })
+
+    /*
+     * How long whoever claims it has. The poster chooses, because only they know
+     * whether this is twenty minutes or two days, and it is bounded so a task
+     * cannot be posted with a window long enough to lock the money up for a
+     * year by accident.
+     */
+    const workHours = Math.min(720, Math.max(1, Math.trunc(Number(request.body?.workHours ?? 48))))
 
     const priced = priceJob(BigInt(pricePoints))
     const total = Number(priced.total)
@@ -199,6 +208,7 @@ export function registerTaskRoutes(
       feePoints: Number(priced.platformFee),
       totalPoints: total,
       outlay,
+      workHours,
     })
 
     try {
@@ -254,7 +264,9 @@ export function registerTaskRoutes(
             ? 'No such task.'
             : task.poster === session.address.toLowerCase()
               ? 'You posted this one. Somebody else has to do it.'
-              : `Somebody already took this. It is ${task.status}.`,
+              : task.status === 'CLAIMED'
+                ? 'Somebody is working on this. It becomes claimable again if they run out of time.'
+                : `This one is ${task.status}.`,
           retryable: false,
         },
       })
@@ -363,6 +375,80 @@ export function registerTaskRoutes(
       paidTo: task.claimedBy,
       paidPoints: task.pricePoints,
       feePoints: task.feePoints,
+    }
+  })
+
+  /**
+   * Take the payment for work the poster never answered.
+   *
+   * The mirror of the claim deadline, and the more important of the two, because
+   * here the work has already been done. A poster who goes quiet holding somebody
+   * else's finished work should not also be holding their money. After the review
+   * window the person who did it releases the payment themselves.
+   *
+   * A poster who thinks the work is wrong has a button that says so, and using
+   * it stops this. Doing nothing is not a way to avoid paying.
+   */
+  app.post<{ Params: { id: string } }>('/v1/tasks/:id/release', async (request, reply) => {
+    const session = requireSession(request, reply)
+    if (!session) return reply
+    const credits = input.credits
+    const treasury = input.settlementTreasury
+    if (!credits || !treasury)
+      return reply.code(503).send({
+        error: {
+          code: 'SETTLEMENT_UNAVAILABLE',
+          message: 'This deployment has no points ledger or no treasury, so it cannot pay.',
+          retryable: false,
+        },
+      })
+
+    const task = await input.tasks.get(request.params.id)
+    if (!task)
+      return reply.code(404).send({
+        error: { code: 'TASK_NOT_FOUND', message: 'No such task.', retryable: false },
+      })
+
+    const released = await input.tasks.claimLapsedReview(task.id, session.address)
+    if (!released)
+      return reply.code(409).send({
+        error: {
+          code: 'NOT_RELEASABLE',
+          message:
+            task.claimedBy !== session.address.toLowerCase()
+              ? 'This is not work you handed in.'
+              : task.status !== 'SUBMITTED'
+                ? `This one is ${task.status}, so there is nothing waiting on the poster.`
+                : `The poster still has until ${task.reviewExpiresAt} to answer.`,
+          retryable: false,
+        },
+      })
+
+    const pay = async (to: string, points: number, reason: string) => {
+      if (points <= 0) return
+      try {
+        await credits.transfer({
+          from: ESCROW_ACCOUNT,
+          to,
+          points,
+          reason,
+          reference: `task:${task.id}:${reason}`,
+          detail: { taskId: task.id, released: true },
+        })
+      } catch (error) {
+        if (!(error instanceof DuplicateCharge)) throw error
+      }
+    }
+    // The same two legs and the same references accepting uses, so whichever
+    // way a task ends it pays once and the ledger reads the same.
+    await pay(session.address, task.pricePoints, 'task_earnings')
+    await pay(treasury, task.feePoints, 'platform_fee')
+
+    return {
+      ...released,
+      outlay: released.outlay.toString(),
+      paidTo: session.address,
+      paidPoints: task.pricePoints,
     }
   })
 

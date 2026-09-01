@@ -133,6 +133,11 @@ export interface TaskSummary {
   status: 'OPEN' | 'CLAIMED' | 'SUBMITTED' | 'SETTLED' | 'CANCELLED' | 'DISPUTED'
   claimedBy?: string
   claimedAt?: string
+  workHours: number
+  /** When the claim lapses and the work goes back on the board. */
+  claimExpiresAt?: string
+  /** When the poster runs out of time and the claimant may take the payment. */
+  reviewExpiresAt?: string
   submission?: string
   submittedAt?: string
   resolution?: string
@@ -320,6 +325,7 @@ export const api = {
     brief: string
     kind: string
     pricePoints: number
+    workHours?: number
     authorizationId?: string
   }) =>
     req<TaskSummary & { heldPoints: number }>('/v1/tasks', {
@@ -341,6 +347,11 @@ export const api = {
     req<TaskSummary & { note: string }>(`/v1/tasks/${id}/decline`, {
       method: 'POST',
       body: JSON.stringify({ because }),
+    }),
+  /** Take payment for work the poster never answered. Only after the review window. */
+  releaseTask: (id: string) =>
+    req<TaskSummary & { paidTo: string; paidPoints: number }>(`/v1/tasks/${id}/release`, {
+      method: 'POST',
     }),
   cancelTask: (id: string) =>
     req<TaskSummary & { refundedPoints: number }>(`/v1/tasks/${id}/cancel`, { method: 'POST' }),

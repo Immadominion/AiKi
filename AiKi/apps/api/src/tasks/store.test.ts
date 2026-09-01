@@ -1,3 +1,4 @@
+import type postgres from 'postgres'
 import { afterAll, describe, expect, it } from 'vitest'
 import { PostgresTaskStore } from './store.js'
 
@@ -40,6 +41,7 @@ describe.skipIf(!url)('PostgresTaskStore', () => {
       feePoints: 25,
       totalPoints: 1_025,
       outlay: 102_500_000_000_000_000n,
+      workHours: 48,
     })
 
   it('lets exactly one person claim a task', async () => {
@@ -153,6 +155,7 @@ describe.skipIf(!process.env.DATABASE_URL)('cancelling twice', () => {
       feePoints: 25,
       totalPoints: 1_025,
       outlay: 102_500_000_000_000_000n,
+      workHours: 48,
     })
 
     expect(await tasks.advance(task.id, ['OPEN'], 'CANCELLED', 'took it back')).not.toBeNull()
@@ -160,5 +163,109 @@ describe.skipIf(!process.env.DATABASE_URL)('cancelling twice', () => {
     // when this returns a row.
     expect(await tasks.advance(task.id, ['OPEN'], 'CANCELLED', 'took it back again')).toBeNull()
     await tasks.close()
+  })
+})
+
+/*
+ * Neither side can strand the other's money by going quiet.
+ *
+ * Both holes shipped in the first version of the board and both are the same
+ * shape: one party stops answering and the other has no route at all.
+ * Cancelling is refused from CLAIMED on purpose, so a claimant who vanished
+ * locked the poster's money behind them; and a poster who never answered
+ * finished work held both the work and the payment.
+ *
+ * Fixed with a clock, and tested by moving the clock rather than waiting.
+ */
+describe.skipIf(!process.env.DATABASE_URL)('deadlines', () => {
+  const tasks = () => new PostgresTaskStore(process.env.DATABASE_URL as string)
+  const POSTER = `0x${'e5'.repeat(20)}`
+  const FIRST = `0x${'f6'.repeat(20)}`
+  const SECOND = `0x${'07'.repeat(20)}`
+
+  const post = (store: PostgresTaskStore) =>
+    store.create({
+      poster: POSTER,
+      title: 'Deadline check',
+      brief: 'Claim it and go quiet.',
+      kind: 'research',
+      pricePoints: 500,
+      feePoints: 12,
+      totalPoints: 512,
+      outlay: 51_200_000_000_000_000n,
+      workHours: 48,
+    })
+
+  /** Reaching past the store, because the point is what happens when time passes. */
+  const age = async (store: PostgresTaskStore, id: string, column: string) => {
+    const raw = (store as unknown as { sql: postgres.Sql }).sql
+    await raw`UPDATE tasks SET ${raw(column)} = now() - interval '1 minute' WHERE id = ${id}`
+  }
+
+  it('puts work back on the board when its claimant runs out of time', async () => {
+    const store = tasks()
+    const task = await post(store)
+    await store.claim(task.id, FIRST)
+
+    // While the claim stands, nobody else can take it.
+    expect(await store.claim(task.id, SECOND)).toBeNull()
+    expect((await store.open(500)).some((t) => t.id === task.id)).toBe(false)
+
+    await age(store, task.id, 'claim_expires_at')
+
+    // Once it lapses the work is available again, with no sweep having run.
+    expect((await store.open(500)).some((t) => t.id === task.id)).toBe(true)
+    const takenOver = await store.claim(task.id, SECOND)
+    expect(takenOver?.claimedBy).toBe(SECOND.toLowerCase())
+    // And the new claimant gets a full window rather than inheriting a dead one.
+    expect(new Date(takenOver?.claimExpiresAt as string).getTime()).toBeGreaterThan(Date.now())
+    await store.close()
+  })
+
+  it('will not accept work from somebody whose claim has already lapsed', async () => {
+    // Otherwise a claimant who lost the task could still hand in against it and
+    // overwrite whatever the person who took it over is doing.
+    const store = tasks()
+    const task = await post(store)
+    await store.claim(task.id, FIRST)
+    await age(store, task.id, 'claim_expires_at')
+
+    expect(await store.submit(task.id, FIRST, 'late')).toBeNull()
+    await store.close()
+  })
+
+  it('lets the person who did the work take payment when the poster goes quiet', async () => {
+    const store = tasks()
+    const task = await post(store)
+    await store.claim(task.id, FIRST)
+    await store.submit(task.id, FIRST, 'Here is what I found.')
+
+    // Not before the window is up.
+    expect(await store.claimLapsedReview(task.id, FIRST)).toBeNull()
+
+    await age(store, task.id, 'review_expires_at')
+
+    // And not by anybody else, however long it has been.
+    expect(await store.claimLapsedReview(task.id, SECOND)).toBeNull()
+    const released = await store.claimLapsedReview(task.id, FIRST)
+    expect(released?.status).toBe('SETTLED')
+    expect(released?.resolution).toMatch(/did not answer in time/)
+    // Once only: the payment legs run after this and must not run twice.
+    expect(await store.claimLapsedReview(task.id, FIRST)).toBeNull()
+    await store.close()
+  })
+
+  it('stops the clock when the poster actually answers', async () => {
+    // Declining is answering. A poster who says no has engaged, and the release
+    // route must not then pay out over their objection.
+    const store = tasks()
+    const task = await post(store)
+    await store.claim(task.id, FIRST)
+    await store.submit(task.id, FIRST, 'Here it is.')
+    await store.advance(task.id, ['SUBMITTED'], 'DISPUTED', 'not what I asked for')
+    await age(store, task.id, 'review_expires_at')
+
+    expect(await store.claimLapsedReview(task.id, FIRST)).toBeNull()
+    await store.close()
   })
 })

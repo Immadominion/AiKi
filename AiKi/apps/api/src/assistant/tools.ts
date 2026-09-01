@@ -298,6 +298,12 @@ export const TOOLS: Anthropic.Tool[] = [
             'Call open_tasks to see what each means.',
         },
         price_points: { type: 'number', description: 'What the person doing it is paid.' },
+        work_hours: {
+          type: 'number',
+          description:
+            'How long whoever claims it has to hand it in, before the work goes back on the ' +
+            'board. Default 48. Match it to the size of the job.',
+        },
         mandate_id: {
           type: 'string',
           description: 'A spending mandate. The cost counts against its limits.',
@@ -347,6 +353,18 @@ export const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'release_task',
+    description:
+      'Take payment for work you handed in that the poster never answered. Only works once the ' +
+      'review window has passed. A poster who declined has answered, and this will not override ' +
+      'that.',
+    input_schema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' } },
+      required: ['task_id'],
+    },
+  },
+  {
     name: 'submit_task',
     description: 'Hand in work on a task you claimed. Once, so make it the finished thing.',
     input_schema: {
@@ -372,6 +390,7 @@ export const MUTATING = new Set([
   'submit_task',
   'accept_task',
   'decline_task',
+  'release_task',
 ])
 
 export async function runTool(
@@ -477,6 +496,7 @@ export async function runTool(
         brief: args.brief,
         kind: args.kind,
         pricePoints: Math.trunc(Number(args.price_points)),
+        ...(args.work_hours ? { workHours: Math.trunc(Number(args.work_hours)) } : {}),
         authorizationId: args.mandate_id,
       })
     case 'claim_task':
@@ -485,6 +505,8 @@ export async function runTool(
       return post(`/v1/tasks/${args.task_id}/submit`, { submission: args.submission })
     case 'accept_task':
       return post(`/v1/tasks/${args.task_id}/accept`)
+    case 'release_task':
+      return post(`/v1/tasks/${args.task_id}/release`)
     case 'decline_task':
       return post(`/v1/tasks/${args.task_id}/decline`, { because: args.because })
     case 'watch_status':

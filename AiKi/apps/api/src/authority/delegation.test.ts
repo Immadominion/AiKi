@@ -83,6 +83,13 @@ it('changes the digest when anything that IS signed changes', () => {
   expect(digestOf(other)).not.toBe(base)
 })
 
+/*
+ * Twenty seconds, because this asks a public testnet node what IT thinks the
+ * hash is, which is the whole point: agreeing with ourselves proves nothing
+ * about what a wallet will be asked to sign. A slow round trip inside the
+ * default five seconds reads as "the manager disagrees" when it means "the RPC
+ * was slow", and that is the worst possible false alarm to have on this check.
+ */
 it('agrees with the deployed manager about what is being signed', async () => {
   const client = createPublicClient({ transport: http(RPC) })
   const d = sample()
@@ -109,4 +116,4 @@ it('agrees with the deployed manager about what is being signed', async () => {
     return
   }
   expect(digestOf(d)).toBe(onchain)
-})
+}, 20_000)
