@@ -1,6 +1,7 @@
 import type { SignedDelegation } from '@aiki/contracts'
 import postgres from 'postgres'
 import type { CompiledPolicy } from '../authority/policy.js'
+import { ClientError } from '../http/errors.js'
 import type {
   AuthorizationRecord,
   AuthorizationStatus,
@@ -33,6 +34,9 @@ interface JobRow {
   status: JobStatus
   idempotency_key: string
   created_at: string | Date
+  sold_agent_id: string | null
+  sold_price_points: string | number | null
+  sold_total_points: string | number | null
 }
 
 interface EventRow {
@@ -207,6 +211,33 @@ export class PostgresJobStore implements JobStore {
     }) as Promise<SpendVerdict | null>
   }
 
+  /**
+   * Fix the terms, once.
+   *
+   * The WHERE clause is the guard: it only matches a job that has not been sold
+   * yet, so two funders racing cannot both write terms, and the caller is told
+   * which one lost rather than the second quietly overwriting the first.
+   */
+  async recordSale(
+    jobId: string,
+    sale: { agentId: string; pricePoints: number; totalPoints: number },
+  ) {
+    const rows = await this.sql<{ id: string }[]>`
+      UPDATE jobs
+         SET sold_agent_id = ${sale.agentId},
+             sold_price_points = ${sale.pricePoints},
+             sold_total_points = ${sale.totalPoints},
+             updated_at = now()
+       WHERE id = ${jobId} AND sold_agent_id IS NULL
+      RETURNING id
+    `
+    if (rows.length === 0)
+      throw new ClientError('This job has already been sold.', {
+        statusCode: 409,
+        code: 'JOB_ALREADY_FUNDED',
+      })
+  }
+
   private async hydrate(row: JobRow): Promise<JobRecord> {
     const events = await this.sql<EventRow[]>`
       SELECT type, detail, at FROM job_events WHERE job_id = ${row.id} ORDER BY seq
@@ -217,6 +248,17 @@ export class PostgresJobStore implements JobStore {
       status: row.status,
       idempotencyKey: row.idempotency_key,
       createdAt: iso(row.created_at),
+      ...(row.sold_agent_id && row.sold_price_points !== null && row.sold_total_points !== null
+        ? {
+            sale: {
+              agentId: row.sold_agent_id,
+              // BIGINT arrives as a string; every comparison downstream is
+              // numeric, and a string here compares as text.
+              pricePoints: Number(row.sold_price_points),
+              totalPoints: Number(row.sold_total_points),
+            },
+          }
+        : {}),
       events: events.map((event) => ({
         type: event.type,
         detail: event.detail,

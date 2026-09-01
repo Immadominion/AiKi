@@ -314,6 +314,9 @@ it.skipIf(!databaseUrl)(
     const store = new PostgresEvidenceStore(url)
     const registry = `0xwindow-${Date.now()}`
     const agentId = `window-${Date.now()}`
+    // Unique for the same reason: this fixture must not have to outrank the
+    // real registry to prove a point about windows.
+    const term = `sentinel${Date.now()}`
     const subject = { type: 'agent' as const, chainId: 56, registry, agentId }
     const base = {
       subject,
@@ -342,8 +345,8 @@ it.skipIf(!databaseUrl)(
         predicate: 'erc8004.registration_resolution',
         value: {
           manifest: {
-            name: 'Test Venus Health Factor Guardian',
-            description: 'Watches lending positions and reports liquidation risk.',
+            name: `Test ${term} Guardian`,
+            description: `Watches lending positions and reports ${term} liquidation risk.`,
             services: [{ name: 'venus-health-factor-assessment', endpoint: 'https://x/1' }],
           },
         },
@@ -384,7 +387,7 @@ it.skipIf(!databaseUrl)(
 
       // Selecting agents does not. Both readers must still see it whole.
       const byName = await store.searchAgents({
-        tsquery: 'guardian | venus',
+        tsquery: term,
         states: ['LIVE'],
         limit: 20,
       })
@@ -395,7 +398,7 @@ it.skipIf(!databaseUrl)(
 
       // And it is findable by what it DOES, not only by what it is called.
       const byCapability = await store.searchAgents({
-        tsquery: 'liquidation | lending',
+        tsquery: `${term} | liquidation`,
         states: ['LIVE'],
         limit: 20,
       })
@@ -427,6 +430,15 @@ it.skipIf(!databaseUrl)(
     const store = new PostgresEvidenceStore(url)
     const registry = `0xcatalogue-${Date.now()}`
     const stamp = Date.now()
+    /*
+     * A term unique to this run.
+     *
+     * Searching a word every previous run also used meant fifty-four fixtures
+     * competed for one page and the newest lost: the test passed on an empty
+     * database and failed once enough runs had piled up. A test whose result
+     * depends on how many times it has been run is not a test.
+     */
+    const term = `beacon${stamp}`
     const subject = (agentId: string) => ({
       type: 'agent' as const,
       chainId: 56,
@@ -457,7 +469,7 @@ it.skipIf(!databaseUrl)(
         await store.append({
           subject: subject(agentId),
           predicate: 'erc8004.registration_resolution',
-          value: { manifest: { name: `Beacon ${suffix}`, description: 'A beacon agent.' } },
+          value: { manifest: { name: `${term} ${suffix}`, description: `A ${term} agent.` } },
           validAt: at,
           observedAt: at,
           source: 'test',
@@ -479,7 +491,7 @@ it.skipIf(!databaseUrl)(
           })
       }
 
-      const found = await store.searchAgents({ tsquery: 'beacon', states: null, limit: 50 })
+      const found = await store.searchAgents({ tsquery: term, states: null, limit: 50 })
       const mine = found.matches.filter((m) => m.agentId.endsWith(String(stamp)))
 
       // All three are listed. The unprobed one is a real listing with an honest
@@ -493,7 +505,7 @@ it.skipIf(!databaseUrl)(
       expect(found.byState.IMPOSTOR_STATIC).toBeGreaterThanOrEqual(1)
 
       // A caller may still ask for a filter; it is just not the default.
-      const onlyLive = await store.searchAgents({ tsquery: 'beacon', states: ['LIVE'], limit: 50 })
+      const onlyLive = await store.searchAgents({ tsquery: term, states: ['LIVE'], limit: 50 })
       expect(onlyLive.matches.filter((m) => m.agentId.endsWith(String(stamp)))).toHaveLength(1)
     } finally {
       await store.close()

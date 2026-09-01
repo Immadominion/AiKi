@@ -1,5 +1,6 @@
 import type { SignedDelegation } from '@aiki/contracts'
 import type { CompiledPolicy } from '../authority/policy.js'
+import { ClientError } from '../http/errors.js'
 
 export type AuthorizationStatus = 'pending' | 'active' | 'revoked' | 'expired'
 export type JobStatus =
@@ -47,6 +48,16 @@ export interface JobRecord {
   events: JobEvent[]
   idempotencyKey: string
   createdAt: string
+  /**
+   * The terms of the sale, fixed when the buyer paid.
+   *
+   * Absent until funding. Settlement reads the agent and the amount from HERE
+   * rather than from the request body and a fresh look at the registry, because
+   * a caller naming the agent meant a buyer could have the money paid to an
+   * address they controlled, and re-pricing meant the seller could be paid a
+   * different number from the one the buyer was charged.
+   */
+  sale?: { agentId: string; pricePoints: number; totalPoints: number }
 }
 
 /** What an evaluator returns: a verdict, plus what it costs when allowed. */
@@ -67,6 +78,17 @@ export interface SpendVerdict {
  * still owns the policy, which it passes in as the evaluator.
  */
 export interface JobStore {
+  /**
+   * Fix the terms of a sale. Refuses if this job has already been sold.
+   *
+   * Required, not optional. A store that quietly does not record the sale can
+   * still take a buyer's money, and settlement then finds no terms and refuses
+   * forever: the money would sit in escrow with nothing able to release it.
+   */
+  recordSale(
+    jobId: string,
+    sale: { agentId: string; pricePoints: number; totalPoints: number },
+  ): Promise<void>
   createAuthorization(record: AuthorizationRecord): Promise<AuthorizationRecord>
   getAuthorization(id: string): Promise<AuthorizationRecord | null>
   revokeAuthorization(id: string, at: string): Promise<AuthorizationRecord | null>
@@ -175,6 +197,21 @@ export class InMemoryJobStore implements JobStore {
   async jobByIdempotencyKey(key: string) {
     const id = this.byKey.get(key)
     return id ? this.getJob(id) : null
+  }
+
+  async recordSale(
+    jobId: string,
+    sale: { agentId: string; pricePoints: number; totalPoints: number },
+  ) {
+    const job = this.jobs.get(jobId)
+    if (!job) throw new ClientError('Job not found.', { statusCode: 404, code: 'NOT_FOUND' })
+    // Once, so two funders racing cannot both write terms.
+    if (job.sale)
+      throw new ClientError('This job has already been sold.', {
+        statusCode: 409,
+        code: 'JOB_ALREADY_FUNDED',
+      })
+    this.jobs.set(jobId, { ...job, sale })
   }
 
   async appendEvents(jobId: string, events: JobEvent[], status?: JobStatus) {

@@ -965,6 +965,41 @@ export function createApiServer(input: {
        */
       const pricePoints = pointsForSettlement(price, SETTLEMENT.decimals)
       const total = Number(priceJob(BigInt(pricePoints)).total)
+      /*
+       * Terms first, money second, and both recoverable if the process dies
+       * between them.
+       *
+       * They live in different tables and cannot share a transaction, so one
+       * order has to be chosen and its failure mode handled rather than hoped
+       * about. Money first would leave, on a crash, a funded job with no terms:
+       * settlement would find no agent to pay and refunding needs the terms
+       * too, so the money would be genuinely stuck. Terms first leaves a job
+       * that is sold and unpaid, which a retry finishes.
+       *
+       * So an already-sold job does not fail here. It is compared: identical
+       * terms mean this is that retry and it should carry on to the money;
+       * different terms mean two funders raced and the second must lose, or a
+       * buyer could change who gets paid after the fact.
+       */
+      const terms = { agentId, pricePoints, totalPoints: total }
+      const sold = job.sale
+      if (sold) {
+        if (
+          sold.agentId !== terms.agentId ||
+          sold.pricePoints !== terms.pricePoints ||
+          sold.totalPoints !== terms.totalPoints
+        )
+          return reply.code(409).send({
+            error: {
+              code: 'JOB_ALREADY_SOLD',
+              message: `This job was already sold: agent ${sold.agentId} for ${sold.totalPoints} points.`,
+              retryable: false,
+            },
+          })
+      } else {
+        await jobs.recordSale(job.id, terms)
+      }
+
       try {
         const held = await fundJob({
           credits: input.assistant.credits,
@@ -972,13 +1007,29 @@ export function createApiServer(input: {
           buyer: session.address,
           totalPoints: total,
         })
-        await jobs.advance(job.id, 'FUNDED', `Buyer funded ${total} points.`)
+        await jobs.advance(job.id, 'FUNDED', `Buyer funded ${total} points for agent ${agentId}.`)
         return { jobId: job.id, agentId, ...held, status: 'FUNDED' }
       } catch (error) {
         if (error instanceof InsufficientPoints)
           return reply.code(402).send({
             error: { code: 'INSUFFICIENT_POINTS', message: error.message, retryable: false },
           })
+        /*
+         * The ledger refused a second movement for this job, which is the
+         * answer rather than a failure: the job is paid for and the buyer paid
+         * once. Advancing the status here is what recovers a run that moved the
+         * money and then died before writing FUNDED.
+         */
+        if (error instanceof DuplicateCharge) {
+          await jobs.advance(job.id, 'FUNDED', `Funding confirmed for agent ${agentId}.`)
+          return reply.code(409).send({
+            error: {
+              code: 'JOB_ALREADY_FUNDED',
+              message: 'This job has already been paid for. Nothing was taken again.',
+              retryable: false,
+            },
+          })
+        }
         throw error
       }
     },
@@ -1015,15 +1066,25 @@ export function createApiServer(input: {
           },
         })
 
-      const agentId = request.body?.agentId
-      if (!agentId)
-        return reply.code(400).send({
+      /*
+       * Whom to pay and how much are read from the sale, never from the caller.
+       *
+       * This route took agentId in its body and priced from live observations,
+       * so a buyer could settle naming an agent whose owner was themselves and
+       * have the escrow paid to their own address, and a price that moved
+       * between funding and settlement paid the seller a different number from
+       * the one the buyer was charged. Both were verified.
+       */
+      const sale = job.sale
+      if (!sale)
+        return reply.code(409).send({
           error: {
-            code: 'AGENT_REQUIRED',
-            message: 'agentId is required to pay the agent.',
+            code: 'JOB_NOT_FUNDED',
+            message: 'This job records no sale, so there is nothing to settle and nobody to pay.',
             retryable: false,
           },
         })
+      const agentId = sale.agentId
       const observations = await agentObservations([agentId])
       const passport = projectPassport(agentId, observations)
       const owner = passport.identity?.owner
@@ -1035,22 +1096,13 @@ export function createApiServer(input: {
             retryable: false,
           },
         })
-      const price = priceForQuote(agentId, observations)?.amount ?? null
-      if (price === null)
-        return reply.code(422).send({
-          error: {
-            code: 'AGENT_HAS_NO_PUBLISHED_PRICE',
-            message: 'No price to settle.',
-            retryable: false,
-          },
-        })
-
       const legs = await settleJob({
         credits,
         jobId: job.id,
         agentOwner: owner,
         treasury,
-        pricePoints: pointsForSettlement(price, SETTLEMENT.decimals),
+        // The price the buyer actually paid, not today's.
+        pricePoints: sale.pricePoints,
       })
       await jobs.advance(
         job.id,
@@ -1189,32 +1241,22 @@ export function createApiServer(input: {
           },
         })
 
-      const agentId = request.body?.agentId
-      if (!agentId)
-        return reply.code(400).send({
+      const sale = job.sale
+      if (!sale)
+        return reply.code(409).send({
           error: {
-            code: 'AGENT_REQUIRED',
-            message: 'agentId is required to work out what was held.',
-            retryable: false,
-          },
-        })
-      const observations = await agentObservations([agentId])
-      const price = priceForQuote(agentId, observations)?.amount ?? null
-      if (price === null)
-        return reply.code(422).send({
-          error: {
-            code: 'AGENT_HAS_NO_PUBLISHED_PRICE',
-            message: 'Without a price there is no way to know what was held.',
+            code: 'JOB_NOT_FUNDED',
+            message: 'This job records no sale, so no money was taken for it.',
             retryable: false,
           },
         })
 
-      const total = Number(priceJob(BigInt(pointsForSettlement(price, SETTLEMENT.decimals))).total)
       const back = await refundJob({
         credits,
         jobId: job.id,
         buyer: session.address,
-        totalPoints: total,
+        // Exactly what was taken, read from the sale rather than recomputed.
+        totalPoints: sale.totalPoints,
         because: request.body?.because?.slice(0, 200) ?? 'the buyer asked for it back',
       })
       await jobs.advance(job.id, 'CANCELLED', `Refunded ${back.refunded} points to the buyer.`)

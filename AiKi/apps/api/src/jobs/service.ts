@@ -158,6 +158,14 @@ export class JobService {
    * so of the twelve states the contract defines, those two existed only as
    * type members.
    */
+  /** Fix the terms of a sale, once. See JobStore.recordSale. */
+  async recordSale(
+    jobId: string,
+    sale: { agentId: string; pricePoints: number; totalPoints: number },
+  ): Promise<void> {
+    await this.store.recordSale(jobId, sale)
+  }
+
   async advance(jobId: string, status: JobStatus, detail: string): Promise<void> {
     await this.store.appendEvents(
       jobId,
