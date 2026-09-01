@@ -140,7 +140,9 @@ export function projectPassport(agentId: string, observations: Observation[]): P
   )
   const registered = latestOf(own.filter((o) => o.predicate === 'erc8004.agent_registered'))
   const reciprocal = latestOf(own.filter((o) => o.predicate === 'erc8004.reciprocal_proof'))
-  const manifest = registration?.value.manifest as { name?: unknown } | undefined
+  const manifest = registration?.value.manifest as
+    | { name?: unknown; description?: unknown }
+    | undefined
   const reciprocalVerified = reciprocal ? reciprocal.value.verified === true : null
   const reciprocalDetail =
     typeof reciprocal?.value.detail === 'string' ? reciprocal.value.detail : null
@@ -172,6 +174,16 @@ export function projectPassport(agentId: string, observations: Observation[]): P
     chainId: own[0]?.subject.chainId ?? null,
     registry: own[0]?.subject.registry ?? null,
     name: typeof manifest?.name === 'string' ? manifest.name : null,
+    /*
+     * What the agent says it does, in its own words.
+     *
+     * Surfaced because the marketplace has to be able to tell a visitor what
+     * an agent is FOR, and the only alternative to quoting the registration
+     * was writing a description ourselves. A capability line we invented,
+     * shown beside evidence we measured, would put a claim nobody made next
+     * to numbers that are true, and the reader cannot tell which is which.
+     */
+    description: typeof manifest?.description === 'string' ? manifest.description : null,
     liveness: state,
     livenessDetail,
     lastProbeAt: latestVerdict?.observedAt ?? null,

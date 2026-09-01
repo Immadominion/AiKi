@@ -688,6 +688,8 @@ export interface ProjectedPassport {
   registry: string | null
   /** From the resolved registration manifest; agents without one have no name. */
   name: string | null
+  /** What the agent's own registration says it does. A quote, never our summary. */
+  description: string | null
   liveness: LivenessState
   livenessDetail: string | null
   lastProbeAt: Timestamp | null

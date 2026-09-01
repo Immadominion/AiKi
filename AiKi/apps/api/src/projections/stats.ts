@@ -147,7 +147,8 @@ export function aggregateStats(observations: Observation[]): StatsAggregate {
     const manifest = o.value.manifest
     if (!manifest || typeof manifest !== 'object') continue
     const category = classifyDeclared(declaredText(manifest as Record<string, unknown>))
-    const bucket = (categories[category] ??= { agents: 0, live: 0 })
+    const bucket = categories[category] ?? { agents: 0, live: 0 }
+    categories[category] = bucket
     bucket.agents += 1
     if (asLiveness(latestVerdict.get(key)?.value.state) === 'LIVE') bucket.live += 1
   }

@@ -1,15 +1,17 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
+import { api } from '@/lib/api'
 import { agentHref } from '@/lib/routes'
 import type { Task } from '@/lib/tasks'
 import { AskField } from './AskField'
 import { FastChat } from './FastChat'
 import { HistoryRail } from './HistoryRail'
+import { liveShards } from './live-shards'
 import { ShardField } from './ShardField'
-import { type Frame, SHARDS_DISCOVER, SHARDS_RETURNING } from './shards'
+import { type Frame, SHARDS_RETURNING, type ShardSpec } from './shards'
 
 /**
  * Fast mode's actual content, independent of the box it sits in.
@@ -52,8 +54,38 @@ export function FastCore({
   const say = useToast()
   const router = useRouter()
 
+  /*
+   * The cards are the registry, not a picture of one.
+   *
+   * These were six invented agents with invented probe counts, sitting under a
+   * line promising that everything on this page is measured. A visitor had no
+   * way to tell that Guardian and its 174 checks were not in the registry, and
+   * on a product whose whole argument is that nobody else checks, that is the
+   * most expensive thing on the screen to get wrong.
+   *
+   * `live` is null until the answer arrives and stays null if it never does.
+   * The field renders empty in that case, deliberately: an empty marketplace is
+   * a true statement about a marketplace we cannot currently read, and the
+   * fixtures were not.
+   */
+  const [live, setLive] = useState<ShardSpec[] | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    api
+      .search({ limit: 6 })
+      .then((answer) => {
+        if (!cancelled) setLive(liveShards(answer.results))
+      })
+      .catch(() => {
+        if (!cancelled) setLive([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const first = !connected
-  const shards = first ? SHARDS_DISCOVER : SHARDS_RETURNING
+  const shards = live ?? (first ? [] : SHARDS_RETURNING)
 
   const submit = (q: string) => {
     if (!q) {

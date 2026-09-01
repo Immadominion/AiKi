@@ -223,7 +223,8 @@ export class PostgresEvidenceStore implements EvidenceStore {
     for (const row of declared) {
       if (!row.manifest || typeof row.manifest !== 'object') continue
       const category = classifyDeclared(declaredText(row.manifest as Record<string, unknown>))
-      const bucket = (categories[category] ??= { agents: 0, live: 0 })
+      const bucket = categories[category] ?? { agents: 0, live: 0 }
+      categories[category] = bucket
       bucket.agents += 1
       if (asLiveness(row.state) === 'LIVE') bucket.live += 1
     }

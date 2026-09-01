@@ -239,11 +239,11 @@ const HARBOR = {
   glow: 'rgb(14 165 233 / 0.4)',
 }
 
-const seat = (occupants: Occupant[]): ShardSpec[] =>
+export const seatOccupants = (occupants: Occupant[]): ShardSpec[] =>
   occupants.map((o, i) => ({ ...SLOTS[i % SLOTS.length], ...o }) as ShardSpec)
 
 /** Returning: every shard says what that agent last did for you. */
-export const SHARDS_RETURNING: ShardSpec[] = seat([
+export const SHARDS_RETURNING: ShardSpec[] = seatOccupants([
   {
     ...GUARDIAN,
     state: 'Protected your position, 2m ago',
@@ -274,7 +274,7 @@ const BY_EVIDENCE = [
   { agent: SENTINEL, key: 'sentinel' as const },
 ].sort((a, b) => DETAILS[b.key].checks[1] - DETAILS[a.key].checks[1])
 
-export const SHARDS_DISCOVER: ShardSpec[] = seat(
+export const SHARDS_DISCOVER: ShardSpec[] = seatOccupants(
   BY_EVIDENCE.map(({ agent, key }) => {
     const row = AGENT_BY_KEY[key]
     const tone =
