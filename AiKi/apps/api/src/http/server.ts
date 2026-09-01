@@ -76,11 +76,14 @@ export function createApiServer(input: {
    * over the capped page cannot see the agents whose rows have aged out, and
    * those are exactly the agents that have been busy.
    */
-  searchAgents?: (input: { tsquery: string; states: string[]; limit: number }) => Promise<{
-    matches: { chainId: number; registry: string; agentId: string }[]
+  searchAgents?: (input: {
+    tsquery: string | null
+    states: string[] | null
+    limit: number
+  }) => Promise<{
+    matches: { chainId: number; registry: string; agentId: string; state: string }[]
     total: number
-    matchedBeforeFilters: number
-    exclusionReasons: Record<string, number>
+    byState: Record<string, number>
     truncated: boolean
   }>
   /**
@@ -361,102 +364,39 @@ export function createApiServer(input: {
     },
     async (request) => {
       const query = request.body.query?.toLowerCase()
-      // The contract's documented default: unverified agents are hidden but
-      // counted. Passing filters.liveness explicitly overrides it.
-      const wanted = request.body.filters?.liveness ?? ['LIVE', 'DEGRADED']
-
-      /*
-       * With no text query, the wanted states can be selected in SQL, so the
-       * answer covers every agent in them instead of whichever ones sit in the
-       * newest page of observations. Measured on production before this existed:
-       * /v1/stats counted 13 LIVE agents and this route could see 4, and the 4
-       * were simply the most recently probed, which were our own.
-       *
-       * A text query still runs over the capped page, because narrowing to the
-       * wanted states first would make "how many did the filter exclude" a count
-       * of agents that never matched the query. That path keeps its old window,
-       * and its limits are the same as they were.
-       */
-      const scoped =
-        !query && !!input.observationsForLiveness && !!input.statsAggregate && wanted.length > 0
-      if (scoped && input.observationsForLiveness && input.statsAggregate) {
-        const [observations, agg] = await Promise.all([
-          input.observationsForLiveness(wanted),
-          input.statsAggregate(),
-        ])
-        const ids = [...new Set(observations.map((o) => o.subject.agentId))]
-        const results = ids
-          .map((id) => projectPassport(id, observations))
-          .filter((p) => wanted.includes(p.liveness))
-        const limit = clampLimit(request.body.limit)
-
-        // Counted over every row, so the honesty block agrees with /v1/stats
-        // rather than with one page of it.
-        const total = agg.indexed?.totalAgents ?? 0
-        const unprobed = Math.max(0, total - agg.probed.agentsProbed)
-        const exclusionReasons: Partial<Record<string, number>> = {}
-        let excludedUnverified = 0
-        const note = (state: string, count: number) => {
-          if (count <= 0 || wanted.includes(state)) return
-          exclusionReasons[state] = (exclusionReasons[state] ?? 0) + count
-          if (state !== 'LIVE' && state !== 'DEGRADED') excludedUnverified += count
-        }
-        for (const [state, count] of Object.entries(agg.probed.byRawState)) note(state, count)
-        note('UNPROBED', unprobed)
-
-        return {
-          results: results.slice(0, limit),
-          total: results.length,
-          coverage: {
-            indexedAgents: total,
-            // No query means everything indexed matched before the filter ran.
-            matchedBeforeFilters: total,
-            excludedUnverified,
-            exclusionReasons,
-          },
-        }
-      }
-
       const limit = clampLimit(request.body.limit)
 
       /*
-       * Matching on what an agent SAYS it does, chosen in SQL.
+       * The catalogue is the registry, not the part of it we approve of.
        *
-       * The path this replaces read the capped `observations()` page and matched
-       * substrings against the projected name. Both halves were broken, and
-       * together they made the marketplace unable to find its own agents.
+       * This defaulted to LIVE and DEGRADED and dropped everything else, so the
+       * marketplace listed 243 agents of more than sixteen thousand indexed. No
+       * marketplace personally uses every item it lists, and gating the listing
+       * on our own probe made the catalogue one tenth of one percent of the
+       * chain and made the product unfinishable: it was only ever complete once
+       * we had probed everything.
        *
-       * The window: a projection over the newest ten thousand rows sees whichever
-       * agents were written most recently, and an agent's identity is ONE row
-       * while its work is thousands. Measured on production, the Venus guardian
-       * had 102 rows inside the page and every one of them was telemetry: its
-       * registration and its verdict had both been pushed out by its own output.
-       * It therefore projected as nameless and UNPROBED, and was filtered away.
-       * The harder an agent worked, the less findable it became.
+       * So evidence ranks now, and does not exclude. An agent we have watched
+       * answer is first, one nobody has probed is next, one we have caught
+       * serving the same bytes to every input is last, and every row says which
+       * it is. A filter is still available to a caller who asks for one.
        *
-       * The match: a substring of the name cannot answer "protect my loan from
-       * liquidation", because no agent is called that. Ranking the registration
-       * text can, and it is still only ever the agent's own declaration. AiKi
-       * holds no measurement of what an agent is able to do, so search must not
-       * imply one.
+       * Hiring stays gated on evidence. You can read the page of a suspended
+       * seller; you cannot buy from them.
        */
-      if (input.searchAgents) {
-        const built = buildSearchQuery(query ?? '')
-        /*
-         * How many agents exist to have been searched, counted over every row.
-         * This is the denominator the honesty block is read against, so it is the
-         * size of the registry AiKi has indexed and never the size of this answer.
-         */
-        const indexedAgents = input.statsAggregate
-          ? ((await input.statsAggregate()).indexed?.totalAgents ?? 0)
-          : 0
+      const states = request.body.filters?.liveness ?? null
 
-        if (!built.tsquery)
+      if (input.searchAgents) {
+        const built = query ? buildSearchQuery(query) : null
+        // A query that survives to nothing is not a request to list everything.
+        if (built && !built.tsquery)
           return {
             results: [],
             total: 0,
             coverage: {
-              indexedAgents,
+              indexedAgents: input.statsAggregate
+                ? ((await input.statsAggregate()).indexed?.totalAgents ?? 0)
+                : 0,
               matchedBeforeFilters: 0,
               excludedUnverified: 0,
               exclusionReasons: {},
@@ -464,40 +404,51 @@ export function createApiServer(input: {
             query: { terms: built.terms, expandedWith: built.expandedWith },
           }
 
-        const found = await input.searchAgents({ tsquery: built.tsquery, states: wanted, limit })
-        // Only the page is projected. Projecting the whole match set would re-scan
-        // its observations once per agent, which for a common word is seconds of
-        // blocked event loop on a route that needs no credentials to call.
+        const [found, agg] = await Promise.all([
+          input.searchAgents({ tsquery: built?.tsquery ?? null, states, limit }),
+          input.statsAggregate ? input.statsAggregate() : Promise.resolve(null),
+        ])
+
+        // Only the page is projected. Projecting the whole match set would
+        // re-scan its observations once per agent, which for a common word is
+        // seconds of blocked event loop on a route needing no credentials.
         const observations = await agentObservations(found.matches.map((m) => m.agentId))
         const results = found.matches.map((m) => projectPassport(m.agentId, observations))
 
-        let excludedUnverified = 0
-        for (const [state, count] of Object.entries(found.exclusionReasons))
-          if (state !== 'LIVE' && state !== 'DEGRADED') excludedUnverified += count
+        /*
+         * Not "excluded" any more, because nothing is. This says what the listed
+         * set is MADE of, so a reader can see at a glance how much of it AiKi has
+         * actually watched.
+         */
+        const unverified = Object.entries(found.byState).reduce(
+          (n, [state, count]) => (state === 'LIVE' || state === 'DEGRADED' ? n : n + count),
+          0,
+        )
 
         return {
           results,
           total: found.total,
           coverage: {
-            indexedAgents,
-            matchedBeforeFilters: found.matchedBeforeFilters,
-            excludedUnverified,
-            exclusionReasons: found.exclusionReasons,
-            // A count that stopped at the ceiling is a floor, and says so.
+            indexedAgents: agg?.indexed?.totalAgents ?? 0,
+            matchedBeforeFilters: found.total,
+            excludedUnverified: states ? unverified : 0,
+            exclusionReasons: found.byState,
             ...(found.truncated ? { truncated: true } : {}),
           },
-          // What was searched for, including anything the expander added. A ranking
-          // the caller cannot see the inputs to is not one they can trust.
-          query: { terms: built.terms, expandedWith: built.expandedWith },
+          ...(built ? { query: { terms: built.terms, expandedWith: built.expandedWith } } : {}),
         }
       }
 
       /*
-       * The in-memory fallback, for deployments with no SQL search: a substring
-       * match over the projected name. It is weaker and it is the old behaviour,
-       * so nothing gets worse where the scoped reader is absent.
+       * No SQL search on this deployment. Read the widest correct source we
+       * have: `observationsForLiveness` selects AGENTS in SQL and is unwindowed,
+       * so a filtered read still cannot lose an agent to the newest-page cap.
+       * Only a deployment with neither falls back to the capped page.
        */
-      const observations = await input.observations()
+      const observations =
+        states && input.observationsForLiveness
+          ? await input.observationsForLiveness(states)
+          : await input.observations()
       const ids = [...new Set(observations.map((o) => o.subject.agentId))]
       const terms = query ? query.split(/\s+/).filter(Boolean) : []
       const matched = ids
@@ -512,26 +463,43 @@ export function createApiServer(input: {
                 passport.liveness.toLowerCase().includes(term),
             ),
         )
-      const kept = matched.filter((p) => wanted.includes(p.liveness))
-      // The honesty block: what the filter removed, counted by why — and
-      // excludedUnverified counts only the unverified among them, since a LIVE
-      // agent removed by an explicit filter was excluded, not unverified.
-      const exclusionReasons: Partial<Record<string, number>> = {}
+      const kept = states ? matched.filter((p) => states.includes(p.liveness)) : matched
+
+      /*
+       * Counted over every row where the deployment can do that, so the block
+       * agrees with /v1/stats rather than with one page of it.
+       */
+      const agg = input.statsAggregate ? await input.statsAggregate() : null
+      const byState: Partial<Record<string, number>> = {}
       let excludedUnverified = 0
-      for (const passport of matched) {
-        if (wanted.includes(passport.liveness)) continue
-        exclusionReasons[passport.liveness] = (exclusionReasons[passport.liveness] ?? 0) + 1
-        if (passport.liveness !== 'LIVE' && passport.liveness !== 'DEGRADED')
-          excludedUnverified += 1
+      if (states && agg) {
+        const total = agg.indexed?.totalAgents ?? 0
+        const unprobed = Math.max(0, total - agg.probed.agentsProbed)
+        const note = (state: string, count: number) => {
+          if (count <= 0 || states.includes(state)) return
+          byState[state] = (byState[state] ?? 0) + count
+          if (state !== 'LIVE' && state !== 'DEGRADED') excludedUnverified += count
+        }
+        for (const [state, count] of Object.entries(agg.probed.byRawState)) note(state, count)
+        note('UNPROBED', unprobed)
+      } else {
+        for (const passport of matched) {
+          if (states?.includes(passport.liveness) === false) {
+            byState[passport.liveness] = (byState[passport.liveness] ?? 0) + 1
+            if (passport.liveness !== 'LIVE' && passport.liveness !== 'DEGRADED')
+              excludedUnverified += 1
+          }
+        }
       }
+
       return {
         results: kept.slice(0, limit),
         total: kept.length,
         coverage: {
-          indexedAgents: ids.length,
-          matchedBeforeFilters: matched.length,
+          indexedAgents: agg?.indexed?.totalAgents ?? ids.length,
+          matchedBeforeFilters: agg && states ? (agg.indexed?.totalAgents ?? 0) : matched.length,
           excludedUnverified,
-          exclusionReasons,
+          exclusionReasons: byState,
         },
       }
     },

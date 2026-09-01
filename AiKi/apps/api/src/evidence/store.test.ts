@@ -322,6 +322,20 @@ it.skipIf(!databaseUrl)(
       evidenceClass: 'B' as const,
     }
     try {
+      /*
+       * The chain event first. The catalogue is built from agents the registry
+       * told us about, so an agent carrying observations but no registration is
+       * not a listing at all. This fixture only passed while search read
+       * whichever rows happened to exist.
+       */
+      await store.append({
+        ...base,
+        predicate: 'erc8004.agent_registered',
+        value: { owner: '0x1', agentURI: 'https://x/1.json' },
+        validAt: '2026-01-01T00:00:00.000Z',
+        observedAt: '2026-01-01T00:00:00.000Z',
+        dedupeKey: `${agentId}:registered`,
+      })
       // Its identity and its verdict, written once and long ago.
       await store.append({
         ...base,
@@ -386,6 +400,101 @@ it.skipIf(!databaseUrl)(
         limit: 20,
       })
       expect(byCapability.matches.map((m) => m.agentId)).toContain(agentId)
+    } finally {
+      await store.close()
+    }
+  },
+)
+
+/*
+ * The catalogue is the registry, not our opinion of it.
+ *
+ * Search used to default to LIVE and DEGRADED and DROP the rest, which listed
+ * 243 agents out of more than sixteen thousand indexed. No marketplace
+ * personally uses every item it lists, and gating the listing on our own probe
+ * made the catalogue a tenth of a percent of the chain, and the product
+ * unfinishable: complete only once we had probed everything.
+ *
+ * Evidence ranks now. Everything is listed, the best-evidenced first, and every
+ * row carries the state so it can say what it is.
+ */
+it.skipIf(!databaseUrl)(
+  'lists agents it has never probed, and ranks them below ones it has',
+  async () => {
+    const url = process.env.DATABASE_URL
+    if (!url) return
+    const { PostgresEvidenceStore } = await import('./postgres-store.js')
+    const store = new PostgresEvidenceStore(url)
+    const registry = `0xcatalogue-${Date.now()}`
+    const stamp = Date.now()
+    const subject = (agentId: string) => ({
+      type: 'agent' as const,
+      chainId: 56,
+      registry,
+      agentId,
+    })
+    const at = '2026-01-01T00:00:00.000Z'
+    try {
+      // Three agents that all say "beacon": one answering, one never probed, one
+      // caught serving the same bytes to every input.
+      for (const [suffix, state] of [
+        ['answering', 'LIVE'],
+        ['unprobed', null],
+        ['fake', 'IMPOSTOR_STATIC'],
+      ] as const) {
+        const agentId = `cat-${suffix}-${stamp}`
+        await store.append({
+          subject: subject(agentId),
+          predicate: 'erc8004.agent_registered',
+          value: { owner: '0x1', agentURI: 'https://x/a.json' },
+          validAt: at,
+          observedAt: at,
+          source: 'test',
+          method: 'test',
+          evidenceClass: 'A',
+          dedupeKey: `${agentId}:registered`,
+        })
+        await store.append({
+          subject: subject(agentId),
+          predicate: 'erc8004.registration_resolution',
+          value: { manifest: { name: `Beacon ${suffix}`, description: 'A beacon agent.' } },
+          validAt: at,
+          observedAt: at,
+          source: 'test',
+          method: 'test',
+          evidenceClass: 'B',
+          dedupeKey: `${agentId}:registration`,
+        })
+        if (state)
+          await store.append({
+            subject: subject(agentId),
+            predicate: 'agent.liveness_verdict',
+            value: { state },
+            validAt: at,
+            observedAt: at,
+            source: 'test',
+            method: 'test',
+            evidenceClass: 'B',
+            dedupeKey: `${agentId}:verdict`,
+          })
+      }
+
+      const found = await store.searchAgents({ tsquery: 'beacon', states: null, limit: 50 })
+      const mine = found.matches.filter((m) => m.agentId.endsWith(String(stamp)))
+
+      // All three are listed. The unprobed one is a real listing with an honest
+      // label, and the impostor is listed so the page can say what it is.
+      expect(mine).toHaveLength(3)
+      expect(mine.map((m) => m.state)).toEqual(['LIVE', 'UNPROBED', 'IMPOSTOR_STATIC'])
+
+      // The state travels with the row, because a listing nobody can label is a
+      // listing nobody can judge.
+      expect(found.byState.LIVE).toBeGreaterThanOrEqual(1)
+      expect(found.byState.IMPOSTOR_STATIC).toBeGreaterThanOrEqual(1)
+
+      // A caller may still ask for a filter; it is just not the default.
+      const onlyLive = await store.searchAgents({ tsquery: 'beacon', states: ['LIVE'], limit: 50 })
+      expect(onlyLive.matches.filter((m) => m.agentId.endsWith(String(stamp)))).toHaveLength(1)
     } finally {
       await store.close()
     }

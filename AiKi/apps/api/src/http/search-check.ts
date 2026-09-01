@@ -83,5 +83,26 @@ for (const agentId of ['315943', '315944', '315945', '315946']) {
   console.log(`  ${agentId} -> ${response.statusCode} ${body.error?.code ?? 'quoted'}`)
 }
 
+/*
+ * Browsing is open, hiring is not. A catalogue that lists a known impostor is
+ * only honest if you still cannot buy from it.
+ */
+console.log('\nbrowse vs hire:')
+for (const agentId of ['315943', '310108']) {
+  const listed = await app.inject({
+    method: 'POST',
+    url: '/v1/search',
+    payload: { query: agentId },
+  })
+  const found = (listed.json() as { results: { agentId: string; liveness: string }[] }).results
+  const quote = await app.inject({ method: 'POST', url: '/v1/quotes', payload: { agentId } })
+  const body = quote.json() as { error?: { code: string } }
+  console.log(
+    `  ${agentId}  listed=${found.some((r) => r.agentId === agentId)}` +
+      ` state=${found.find((r) => r.agentId === agentId)?.liveness ?? '-'}` +
+      `  hire=${quote.statusCode} ${body.error?.code ?? 'QUOTED'}`,
+  )
+}
+
 await app.close()
 await store.close()

@@ -321,7 +321,27 @@ export class PostgresEvidenceStore implements EvidenceStore {
    * measurement of what an agent can do, because the store holds no such
    * measurement, and a search that implied otherwise would be inventing one.
    */
-  async searchAgents(input: { tsquery: string; states: string[]; limit: number }) {
+  /**
+   * The catalogue, ranked by what AiKi knows, never trimmed to it.
+   *
+   * This used to take a list of liveness states and DROP everything outside it,
+   * which defaulted to LIVE and DEGRADED and therefore listed 243 agents out of
+   * more than sixteen thousand indexed. That is not a marketplace of BSC agents,
+   * it is a directory of the ones we happen to have probed and liked, and no
+   * marketplace works that way: none of them personally use every item they
+   * list. It also made the product unfinishable, since the catalogue was only
+   * ever complete once we had probed the whole chain.
+   *
+   * Evidence now RANKS instead of filtering. An agent we have watched answer
+   * comes first, an agent nobody has probed comes next, and an agent we have
+   * caught returning the same bytes to every input comes last, but all three are
+   * listed and every one of them carries its state so the row can say what it
+   * is. Browsing is open; hiring is what stays gated, which is exactly how a
+   * marketplace treats a seller it has suspended.
+   *
+   * `states` is now an optional filter a caller may ask for, not a default.
+   */
+  async searchAgents(input: { tsquery: string | null; states: string[] | null; limit: number }) {
     const rows = await this.sql<
       {
         chain_id: number
@@ -329,7 +349,7 @@ export class PostgresEvidenceStore implements EvidenceStore {
         agent_id: string
         state: string
         rank: number
-        wanted: boolean
+        described: boolean
       }[]
     >`
       WITH latest_state AS (
@@ -348,10 +368,24 @@ export class PostgresEvidenceStore implements EvidenceStore {
         WHERE predicate = 'erc8004.registration_resolution'
         ORDER BY chain_id, lower(registry_address), agent_id, observed_at DESC
       ),
+      /*
+       * Every agent the chain has told us about, not only the probed ones. An
+       * agent nobody has got to yet is a real listing with an honest label, and
+       * leaving it out is how the catalogue stayed at one tenth of one percent.
+       */
+      registered AS (
+        SELECT DISTINCT chain_id, lower(registry_address) AS reg, agent_id
+        FROM observations
+        WHERE predicate = 'erc8004.agent_registered'
+      ),
       doc AS (
         SELECT
-          s.chain_id, s.reg, s.agent_id, s.state,
-          setweight(to_tsvector('simple', s.agent_id), 'D') ||
+          r.chain_id, r.reg, r.agent_id,
+          COALESCE(s.state, 'UNPROBED') AS state,
+          -- A row with no resolved manifest has no name and nothing to read, so
+          -- it is a stub rather than a listing. Still listed, still last.
+          (m.m IS NOT NULL) AS described,
+          setweight(to_tsvector('simple', r.agent_id), 'D') ||
           setweight(to_tsvector('english', coalesce(m.m->>'name', '')), 'A') ||
           setweight(to_tsvector('english', coalesce(m.m->>'description', '')), 'B') ||
           setweight(to_tsvector('english', coalesce((
@@ -360,39 +394,52 @@ export class PostgresEvidenceStore implements EvidenceStore {
             SELECT string_agg(replace(sv->>'name', '-', ' '), ' ')
             FROM jsonb_array_elements(coalesce(m.m->'services', '[]'::jsonb)) sv
           ), '')), 'C') AS tsv
-        FROM latest_state s
+        FROM registered r
+        LEFT JOIN latest_state s
+          ON s.chain_id = r.chain_id AND s.reg = r.reg AND s.agent_id = r.agent_id
         LEFT JOIN latest_manifest m
-          ON m.chain_id = s.chain_id AND m.reg = s.reg AND m.agent_id = s.agent_id
+          ON m.chain_id = r.chain_id AND m.reg = r.reg AND m.agent_id = r.agent_id
       )
-      SELECT chain_id, reg, agent_id, state,
-             ts_rank(tsv, q) AS rank,
-             (state = ANY(${input.states})) AS wanted
-      FROM doc, to_tsquery('english', ${input.tsquery}) q
-      WHERE tsv @@ q
-      ORDER BY wanted DESC, rank DESC, agent_id
+      SELECT chain_id, reg, agent_id, state, described,
+        /*
+         * Evidence order. Watched-and-answering beats unknown, and unknown beats
+         * known-broken, because "we have not checked" is a better thing to say
+         * about a listing than "we checked and it is a static page".
+         */
+        (CASE state
+           WHEN 'LIVE' THEN 6
+           WHEN 'DEGRADED' THEN 5
+           WHEN 'UNPROBED' THEN 4
+           WHEN 'DECLARED_ONLY' THEN 3
+           WHEN 'PLACEHOLDER_URL' THEN 2
+           WHEN 'IMPOSTOR_STATIC' THEN 1
+           ELSE 0
+         END) AS rank
+      FROM doc
+      WHERE (${input.tsquery}::text IS NULL OR tsv @@ to_tsquery('english', ${input.tsquery}))
+        AND (${input.states}::text[] IS NULL OR state = ANY(${input.states}))
+      ORDER BY
+        described DESC,
+        rank DESC,
+        CASE WHEN ${input.tsquery}::text IS NULL THEN 0
+             ELSE ts_rank(tsv, to_tsquery('english', ${input.tsquery})) END DESC,
+        agent_id
       LIMIT ${MATCH_CEILING}
     `
 
-    const wanted = rows.filter((row) => row.wanted)
-    const excluded: Record<string, number> = {}
-    for (const row of rows) {
-      if (row.wanted) continue
-      excluded[row.state] = (excluded[row.state] ?? 0) + 1
-    }
+    const byState: Record<string, number> = {}
+    for (const row of rows) byState[row.state] = (byState[row.state] ?? 0) + 1
+
     return {
-      matches: wanted.slice(0, input.limit).map((row) => ({
+      matches: rows.slice(0, input.limit).map((row) => ({
         chainId: row.chain_id,
         registry: row.reg,
         agentId: row.agent_id,
+        state: row.state,
       })),
-      total: wanted.length,
-      matchedBeforeFilters: rows.length,
-      exclusionReasons: excluded,
-      /*
-       * True when the match set hit the ceiling, so the counts above are a floor
-       * rather than a total. The caller has to say so: a truncated count printed
-       * as a total is the same lie in a smaller font.
-       */
+      total: rows.length,
+      /** What the listed set is made of, so a row's label has a denominator. */
+      byState,
       truncated: rows.length >= MATCH_CEILING,
     }
   }
