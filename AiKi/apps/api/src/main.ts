@@ -103,6 +103,7 @@ const app = createApiServer({
     (await store.getCheckpoint(COVERAGE_START_STREAM))?.lastIndexedBlock ?? null,
   statsAggregate: () => store.statsAggregate(),
   observationsForLiveness: (states) => store.observationsForLiveness(states),
+  observationsForAgents: (agentIds) => store.observationsForAgents(agentIds),
   enforcers: AIKI_ENFORCERS_BSC_TESTNET,
   ...(agentSessionKey ? { agentSessionKey } : {}),
   ...(agentKey ? { agentKey } : {}),

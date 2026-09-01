@@ -65,6 +65,11 @@ export function createApiServer(input: {
    */
   observationsForLiveness?: (states: string[]) => Observation[] | Promise<Observation[]>
   /**
+   * Every observation for named agents, unwindowed. A per-agent claim must not
+   * depend on how recently that agent happened to be written.
+   */
+  observationsForAgents?: (agentIds: string[]) => Observation[] | Promise<Observation[]>
+  /**
    * AiKi's own deployed mandate suite, when there is one. Its absence is not an
    * error: a deployment with no enforcers counts every limit itself and says so.
    */
@@ -189,6 +194,17 @@ export function createApiServer(input: {
    * A job belongs to whoever owns its authorization. Deriving it rather than
    * copying it onto the job means the two can never disagree.
    */
+  /*
+   * Observations for specific agents, falling back to the windowed page only
+   * where a deployment has not wired the scoped reader (the in-memory store in
+   * tests). The fallback is the old behaviour, so nothing gets worse; the
+   * production path stops depending on the window.
+   */
+  async function agentObservations(agentIds: string[]) {
+    if (input.observationsForAgents) return input.observationsForAgents(agentIds)
+    return input.observations()
+  }
+
   async function ownedJob(
     request: Parameters<typeof requireSession>[0],
     reply: Parameters<typeof requireSession>[1],
@@ -236,7 +252,7 @@ export function createApiServer(input: {
       : projectStats(await input.observations(), opts)
   })
   app.get<{ Params: { agentId: string } }>('/v1/agents/:agentId/passport', async (request) =>
-    projectPassport(request.params.agentId, await input.observations()),
+    projectPassport(request.params.agentId, await agentObservations([request.params.agentId])),
   )
   app.post<{ Body: { agentIds: string[] } }>('/v1/compare', async (request, reply) => {
     if (!Array.isArray(request.body.agentIds) || request.body.agentIds.length < 2)
@@ -264,7 +280,7 @@ export function createApiServer(input: {
           requestId: request.headers['x-request-id'],
         },
       })
-    const observations = await input.observations()
+    const observations = await agentObservations(request.body.agentIds)
     const passports = request.body.agentIds.map((id) => projectPassport(id, observations))
     return { agents: passports, ...comparePassports(passports) }
   })

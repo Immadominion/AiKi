@@ -221,6 +221,32 @@ export class PostgresEvidenceStore implements EvidenceStore {
    * their rows, so an agent is either wholly present or wholly absent, never
    * half-remembered.
    */
+  /**
+   * Every observation belonging to specific agents, with no window at all.
+   *
+   * A passport is a claim about ONE agent, so reading it off `list()`'s
+   * newest-ten-thousand page made it a claim about how recently that agent
+   * happened to be probed. Measured on production: `/v1/search` reported agent
+   * 315943 as LIVE, named, with eight predicates, while
+   * `/v1/agents/315943/passport` reported UNPROBED, no name and a zero score at
+   * the same instant, because the reference agents' continuous assessments had
+   * pushed its rows out of the page. UNPROBED is a positive claim — the UI
+   * renders it as "No probe has ever touched it" — so the window did not make
+   * the page empty, it made the page lie.
+   *
+   * Selecting by agent means the answer cannot depend on how busy the store has
+   * been since.
+   */
+  async observationsForAgents(agentIds: string[]) {
+    if (agentIds.length === 0) return []
+    const rows = await this.sql<ObservationRow[]>`
+      SELECT * FROM observations
+      WHERE agent_id = ANY(${agentIds})
+      ORDER BY observed_at DESC
+    `
+    return rows.map(toObservation)
+  }
+
   async observationsForLiveness(states: string[], agentLimit = 1_000) {
     if (states.length === 0) return []
     const rows = await this.sql<ObservationRow[]>`

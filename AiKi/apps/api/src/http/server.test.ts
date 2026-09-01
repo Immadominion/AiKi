@@ -766,3 +766,74 @@ it('finds an agent by one word of a question, not only by the whole phrase', asy
   // Still a name match: a word that names nothing still finds nothing.
   expect(await ask('pancake')).toBe(0)
 })
+
+it('reports an agent the same way on its passport as in search', async () => {
+  /*
+   * These two routes disagreed in production: /v1/search returned agent 315943
+   * as LIVE, named, with eight predicates, while /v1/agents/315943/passport
+   * returned UNPROBED, no name and a zero score at the same instant. The
+   * passport projected over the newest-10,000 page, and the reference agents'
+   * continuous assessments had pushed that agent's rows out of it.
+   *
+   * UNPROBED is a positive claim rendered as "No probe has ever touched it", so
+   * the window did not make the passport empty, it made it lie.
+   */
+  const store = new InMemoryEvidenceStore()
+  const base = {
+    validAt: '2026-01-01T00:00:00.000Z',
+    observedAt: '2026-01-01T00:00:00.000Z',
+    source: 'test',
+    method: 'test',
+    evidenceClass: 'B' as const,
+  }
+  const subject = { type: 'agent', chainId: 56, registry: '0x8004', agentId: '315943' } as const
+  await store.append({
+    ...base,
+    subject,
+    predicate: 'agent.liveness_verdict',
+    value: { state: 'LIVE' },
+    dedupeKey: 'sub-live',
+  })
+  await store.append({
+    ...base,
+    subject,
+    predicate: 'erc8004.registration_resolution',
+    value: { resolved: true, manifest: { name: 'AiKi Venus Health Factor Guardian' } },
+    dedupeKey: 'sub-name',
+  })
+
+  // Newer noise from other agents, exactly what saturated the window in
+  // production. The windowed reader sees only these.
+  const noise = Array.from({ length: 40 }, (_, i) => ({
+    ...base,
+    observedAt: '2026-02-01T00:00:00.000Z',
+    subject: { type: 'agent', chainId: 56, registry: '0x8004', agentId: `n${i}` } as const,
+    predicate: 'agent.liveness_verdict',
+    value: { state: 'LIVE' },
+    dedupeKey: `noise-${i}`,
+  }))
+  for (const n of noise) await store.append(n)
+
+  const all = () => store.observations
+  const app = createApiServer({
+    // The window: newest rows only, which is what list(10_000) degrades to.
+    observations: () => all().slice(-10),
+    // The scoped reader: every row for the named agents, whatever their age.
+    observationsForAgents: (ids) => all().filter((o) => ids.includes(o.subject.agentId)),
+  })
+  apps.push(app)
+
+  const passport = (await app.inject({ method: 'GET', url: '/v1/agents/315943/passport' })).json()
+
+  expect(passport.liveness).toBe('LIVE')
+  expect(passport.name).toBe('AiKi Venus Health Factor Guardian')
+
+  const compared = (
+    await app.inject({
+      method: 'POST',
+      url: '/v1/compare',
+      payload: { agentIds: ['315943', 'n0'] },
+    })
+  ).json()
+  expect(compared.agents[0].liveness).toBe('LIVE')
+})
