@@ -1025,41 +1025,22 @@ export function createApiServer(input: {
        * buyer could change who gets paid after the fact.
        */
       const outlay = priceJob(price).total
-      const terms = { agentId, pricePoints, totalPoints: total, outlay }
-      const sold = job.sale
-      if (sold) {
-        if (
-          sold.agentId !== terms.agentId ||
-          sold.pricePoints !== terms.pricePoints ||
-          sold.totalPoints !== terms.totalPoints ||
-          sold.outlay !== terms.outlay
-        )
-          return reply.code(409).send({
-            error: {
-              code: 'JOB_ALREADY_SOLD',
-              message: `This job was already sold: agent ${sold.agentId} for ${sold.totalPoints} points.`,
-              retryable: false,
-            },
-          })
-      } else {
-        await jobs.recordSale(job.id, terms)
-      }
-
       /*
-       * The mandate decides whether this hire may happen at all.
+       * The mandate decides whether this hire may happen at all, before
+       * anything is written down for it.
        *
-       * It did not, until now. Neither money route consulted the authorization
-       * it ran under: a revoked mandate still funded, an expired one still
-       * funded, and what a hire cost counted against no cap. Contract-enforced
-       * limits are the thing this product is for, and the one route that spends
-       * money went around them.
+       * It did not decide at all until now. Neither money route consulted the
+       * authorization it ran under: a revoked mandate still funded, an expired
+       * one still funded, and what a hire cost counted against no cap.
+       * Contract-enforced limits are the thing this product is for, and the one
+       * route that spends money went around them.
        *
        * Counted in base units of the settlement asset, because that is the unit
        * caps are written in, and including the fee, because the fee is money
-       * the buyer parts with. It is asked here, immediately before the money
-       * moves and after every other refusal, so that nothing between the two
-       * can return while an allowance stands charged for a hire that did not
-       * happen.
+       * the buyer parts with. From here the allowance stands charged, so every
+       * path that ends without the money moving gives it back: a refusal that
+       * quietly eats somebody's cap is a second way to lose money, slower and
+       * harder to see than the first.
        */
       const verdict = await jobs.attemptPurchase(
         job.authorizationId,
@@ -1071,6 +1052,28 @@ export function createApiServer(input: {
           error: { code: 'MANDATE_REFUSED', message: verdict.reason, retryable: false },
         })
       const releaseCap = () => jobs.releaseSpend(job.authorizationId, outlay)
+
+      const terms = { agentId, pricePoints, totalPoints: total, outlay }
+      const sold = job.sale
+      if (sold) {
+        if (
+          sold.agentId !== terms.agentId ||
+          sold.pricePoints !== terms.pricePoints ||
+          sold.totalPoints !== terms.totalPoints ||
+          sold.outlay !== terms.outlay
+        ) {
+          await releaseCap()
+          return reply.code(409).send({
+            error: {
+              code: 'JOB_ALREADY_SOLD',
+              message: `This job was already sold: agent ${sold.agentId} for ${sold.totalPoints} points.`,
+              retryable: false,
+            },
+          })
+        }
+      } else {
+        await jobs.recordSale(job.id, terms)
+      }
 
       try {
         const held = await fundJob({
