@@ -135,6 +135,24 @@ export function pointsForUsdt(baseUnits: bigint): number {
 }
 
 /**
+ * Points as an amount of the settlement asset. The inverse of the next one.
+ *
+ * Exact, not approximate, and that matters. A task's price is named in points
+ * because that is what a person has a balance of, while a mandate's caps are
+ * written in base units, so posting work under a mandate has to state the same
+ * money in both. Deriving one from the other with rounding in between is how a
+ * spend and the cap counting it start to disagree, and the disagreement is
+ * invisible until somebody is refused for a limit they are inside.
+ *
+ * One point is a ten-thousandth of a unit, so on an eighteen-decimal asset this
+ * is a multiplication by 10^14 and nothing is lost.
+ */
+export function settlementForPoints(points: number, decimals: number): bigint {
+  if (points < 0) throw new Error('A price cannot be negative.')
+  return (BigInt(Math.trunc(points)) * 10n ** BigInt(decimals)) / BigInt(POINTS_PER_USD)
+}
+
+/**
  * An amount of a settlement token, in points.
  *
  * A price is a number AND the thing it is counted in, and these two are counted

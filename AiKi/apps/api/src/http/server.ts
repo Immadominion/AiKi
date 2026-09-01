@@ -31,6 +31,8 @@ import { buildSearchQuery } from '../search/query.js'
 import { fundJob, InsufficientPoints, refundJob, settleJob } from '../settlement/ledger.js'
 import { buildQuote, priceJob, SETTLEMENT } from '../settlement/pricing.js'
 import { priceForQuote, publishedAsset } from '../settlement/published-price.js'
+import { registerTaskRoutes } from '../tasks/routes.js'
+import type { TaskStore } from '../tasks/store.js'
 import { asClientError, asProtocolError, asSchemaError, ClientError } from './errors.js'
 
 /**
@@ -153,6 +155,12 @@ export function createApiServer(input: {
    * the route says exactly that instead of implying everything is fine.
    */
   ledgerHealth?: () => Promise<{ check: string; ok: boolean }[]>
+  /**
+   * Work posted for somebody else to do. Absent means this deployment has no
+   * task board and the routes are not registered at all, rather than present
+   * and answering that they cannot help.
+   */
+  tasks?: TaskStore
   /** Omitted only in tests of the public surface; every mandate route needs it. */
   auth?: AuthConfig
 }) {
@@ -194,6 +202,19 @@ export function createApiServer(input: {
   if (input.auth) registerAuthRoutes(app, input.auth)
   if (input.watches) registerWatchRoutes(app, { jobs, watches: input.watches })
   if (input.assistant) registerAssistantRoutes(app, input.assistant)
+  /*
+   * The other shape of trade. A hire picks a listed agent and pays its published
+   * price; a task is work nobody has listed, funded before it is visible, that
+   * whoever can do it claims. It is the only way an agent can buy something from
+   * a person, because a person has no listing and no URL that answers a probe.
+   */
+  if (input.tasks)
+    registerTaskRoutes(app, {
+      tasks: input.tasks,
+      ...(input.assistant?.credits ? { credits: input.assistant.credits } : {}),
+      jobs,
+      ...(input.settlementTreasury ? { settlementTreasury: input.settlementTreasury } : {}),
+    })
   /**
    * Only messages written for a caller reach a caller.
    *

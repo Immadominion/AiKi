@@ -28,6 +28,7 @@ import { createVenusReferenceServer } from './reference/venus/server.js'
 import { VenusYieldClient } from './reference/yield/client.js'
 import { createYieldServer } from './reference/yield/server.js'
 import { PostgresWatchStore } from './runner/store.js'
+import { PostgresTaskStore } from './tasks/store.js'
 
 const rpcUrl = process.env.BSC_RPC_URL
 const databaseUrl = process.env.DATABASE_URL
@@ -86,6 +87,7 @@ const creditStore = new PostgresCreditStore(databaseUrl)
  * runs when somebody asks, not on a loop.
  */
 const ledgerSql = postgres(databaseUrl, { max: 1 })
+const taskStore = new PostgresTaskStore(databaseUrl)
 
 /*
  * Fast mode. Absent key means this deployment serves Manual mode only and says
@@ -117,6 +119,7 @@ const app = createApiServer({
   observationsForAgents: (agentIds) => store.observationsForAgents(agentIds),
   searchAgents: (query) => store.searchAgents(query),
   ...(treasury ? { settlementTreasury: treasury } : {}),
+  tasks: taskStore,
   // Names and verdicts only. The route is public and the amounts are not.
   ledgerHealth: async () => (await checkLedger(ledgerSql)).map(({ check, ok }) => ({ check, ok })),
   appendObservation: (observation) => store.append(observation),
