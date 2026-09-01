@@ -98,6 +98,18 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
       // somebody who has not been told what a point is.
       worthUsd: balance / POINTS_PER_USD,
       pointsPerUsdt: POINTS_PER_USD,
+      /*
+       * What a point can and cannot do, said rather than left to be assumed.
+       *
+       * "Worth $0.58" reads as money you can take out, and you cannot: points
+       * are bought with a token and spent inside AiKi, and there is no route
+       * that converts them back. Somebody who has just been paid for a piece of
+       * work is precisely the person who would assume otherwise, so the sentence
+       * travels with the number rather than sitting on a page they may not read.
+       */
+      redeemable: false,
+      redeemableNote:
+        'Points buy work and Fast mode turns inside AiKi. There is no way to withdraw them yet.',
       minimumToAsk: MINIMUM_BALANCE_POINTS,
       model: MODELS[model]?.label ?? model,
       history,

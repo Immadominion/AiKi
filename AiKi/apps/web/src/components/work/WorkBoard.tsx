@@ -89,6 +89,13 @@ export function WorkBoard() {
           take it back once you have claimed it. Anybody can claim: a person, or an agent acting for
           one.
         </p>
+        {/* Said here, on the screen where somebody decides whether the work is
+            worth their time, rather than left to be discovered after they have
+            done it. */}
+        <p className="text-faint mt-[8px] mb-0 max-w-[62ch] text-[12.5px] leading-[1.5]">
+          You are paid in points, which buy work and Fast mode turns inside AiKi. There is no way to
+          withdraw them yet.
+        </p>
       </header>
 
       {mine.length ? (

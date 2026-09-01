@@ -26,7 +26,18 @@ export interface LedgerFinding {
 
 const n = (value: unknown) => Number(value ?? 0)
 
-export async function checkLedger(sql: postgres.Sql): Promise<LedgerFinding[]> {
+export async function checkLedger(
+  sql: postgres.Sql,
+  /**
+   * What the treasury actually holds, in points.
+   *
+   * Passed in rather than read here, because it lives on a chain and this file
+   * reads a database. Absent means the deployment cannot see its own treasury,
+   * which is reported as a failed check and not as a passed one: an unverified
+   * solvency claim and a verified one must not look the same.
+   */
+  backingPoints?: number | null,
+): Promise<LedgerFinding[]> {
   const findings: LedgerFinding[] = []
 
   /*
@@ -175,6 +186,37 @@ export async function checkLedger(sql: postgres.Sql): Promise<LedgerFinding[]> {
     detail: stuck.length
       ? stuck.map((h) => `turn ${h.turn} still holds ${n(h.held)}`).join(', ')
       : 'every hold taken for a turn has been resolved',
+  })
+
+  /*
+   * Is there money behind the points people hold.
+   *
+   * Points are sold for a token that sits in a treasury, and they are also given
+   * away: a welcome grant mints points against no deposit at all, deliberately,
+   * because it is cheaper than losing every visitor at a payment screen. That
+   * makes AiKi's obligations larger than its deposits BY DESIGN, and the honest
+   * thing is to say by how much rather than to leave it as something a person
+   * would have to reconstruct from the ledger.
+   *
+   * What must hold is narrower and is the real promise: every point somebody
+   * PAID for is still backed by the token they paid with. Granted points are a
+   * marketing cost AiKi carries. Sold points are somebody else's money.
+   */
+  const [issued] = await sql<{ sold: string; granted: string }[]>`
+    SELECT
+      coalesce(-sum(delta) FILTER (WHERE reason = 'deposit'), 0) AS sold,
+      coalesce(-sum(delta) FILTER (WHERE reason <> 'deposit'), 0) AS granted
+    FROM credit_entries WHERE owner = ${ISSUANCE_ACCOUNT}
+  `
+  const sold = n(issued?.sold)
+  const granted = n(issued?.granted)
+  findings.push({
+    check: 'every point somebody paid for is still backed',
+    ok: typeof backingPoints === 'number' && backingPoints >= sold,
+    detail:
+      typeof backingPoints === 'number'
+        ? `${sold} points sold and ${backingPoints} points of backing held; ${granted} more were granted, which AiKi carries`
+        : `${sold} points sold and ${granted} granted, but the treasury could not be read, so this is unverified`,
   })
 
   return findings

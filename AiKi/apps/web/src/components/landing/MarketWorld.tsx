@@ -42,34 +42,34 @@ import type { LandingAgentNode, LandingMarketAggregate } from './market-data'
 
 type Vec3 = [number, number, number]
 
-/** The page's own paper. Clear colour, fog and ground must all begin here. */
-const CANVAS = '#fff8e7'
+/** The page's own cool paper. Clear colour, fog and ground begin here. */
+const CANVAS = '#f4f6ff'
 
 const PALETTE = {
-  ink: '#11110e',
-  paper: '#fffaf0',
-  bone: '#f1dfb8',
-  quiet: '#99a49a',
-  orange: '#ff4f00',
-  yellow: '#ffd637',
-  cyan: '#4fdbea',
-  lime: '#cfff47',
-  violet: '#735cff',
-  street: '#d7e5df',
-  dash: '#fff8e7',
-  cloud: '#fffdf7',
+  ink: '#090b12',
+  paper: '#ffffff',
+  bone: '#dfe6ff',
+  quiet: '#748096',
+  orange: '#2f5bff',
+  yellow: '#c8f43d',
+  cyan: '#24d8ff',
+  lime: '#9eff43',
+  violet: '#7657ff',
+  street: '#dce4f5',
+  dash: '#ffffff',
+  cloud: '#ffffff',
 } as const
 
-/** Near-white tints keep the kit legible while giving each district an identity. */
+/** Cool bright tints keep every district distinct without staining the page beige. */
 const DISTRICT_TINTS = [
-  '#fff9ed',
-  '#eafcff',
-  '#f4ffde',
-  '#fff3d0',
-  '#f2efff',
-  '#fff0e7',
-  '#eaf7ff',
-  '#f8ffe9',
+  '#e3ebff',
+  '#dffaff',
+  '#edffd8',
+  '#ffe8f3',
+  '#ece5ff',
+  '#dff8f2',
+  '#e7f2ff',
+  '#f2e8ff',
 ] as const
 
 const KIT = '/landing/models/kaykit-city'
@@ -331,7 +331,7 @@ function surfaceProfile(path: string): SurfaceProfile {
     return {
       roughness: 0.68,
       metalness: 0.08,
-      tint: '#fffdfa',
+      tint: '#f7faff',
       textureRoughness: true,
     }
   }
@@ -345,10 +345,10 @@ function surfaceProfile(path: string): SurfaceProfile {
   }
 
   if (path.endsWith('/bush.gltf')) {
-    return { roughness: 1, metalness: 0, tint: '#f1ffdf' }
+    return { roughness: 1, metalness: 0, tint: '#eaffd2' }
   }
 
-  return { roughness: 0.84, metalness: 0, tint: '#fffaf0' }
+  return { roughness: 0.84, metalness: 0, tint: '#f7f9ff' }
 }
 
 /**
@@ -567,7 +567,7 @@ function Ground({ plinths }: { plinths: KitPlacement[] }) {
       plinths.map((p) => ({
         position: [p.position[0], 0.017, p.position[2]] as Vec3,
         scale: [2.2, 0.014, 2.2] as Vec3,
-        color: '#e9ddc6',
+        color: '#dce3f4',
       })),
     [plinths],
   )
@@ -842,7 +842,7 @@ function AgentBuilding({
       >
         <mesh position={[0, 0.017, 0]} receiveShadow>
           <boxGeometry args={[1.9, 0.014, 1.9]} />
-          <meshStandardMaterial color="#e9ddc6" roughness={1} />
+          <meshStandardMaterial color="#dce3f4" roughness={1} />
         </mesh>
         <mesh position={[0, height / 2 + 0.01, 0]} castShadow receiveShadow>
           <boxGeometry args={[1.62, height, 1.62]} />
@@ -922,13 +922,13 @@ function Sky({
     <>
       <color attach="background" args={[CANVAS]} />
       <fog attach="fog" args={[CANVAS, 34, 72]} />
-      <hemisphereLight ref={hemisphere} args={['#fffdf7', '#c6dcd8', 1.24]} />
+      <hemisphereLight ref={hemisphere} args={['#ffffff', '#c9d7ff', 1.24]} />
       <directionalLight
         ref={key}
         castShadow
         position={[24, 31, -16]}
         intensity={2.75}
-        color="#fffaf0"
+        color="#ffffff"
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
         shadow-camera-near={4}
@@ -980,7 +980,7 @@ const CAMERA_POSES: readonly AuthoredCameraPose[] = [
     fov: 36,
     fogNear: 34,
     fogFar: 72,
-    fogColor: '#fff8e7',
+    fogColor: '#f4f6ff',
   },
   {
     target: [-5.4, 0.72, 4.8],
@@ -990,7 +990,7 @@ const CAMERA_POSES: readonly AuthoredCameraPose[] = [
     fov: 38,
     fogNear: 24,
     fogFar: 58,
-    fogColor: '#f1fbe9',
+    fogColor: '#efffe8',
   },
   {
     target: [5.8, 0.75, -4.6],
@@ -1000,7 +1000,7 @@ const CAMERA_POSES: readonly AuthoredCameraPose[] = [
     fov: 33,
     fogNear: 20,
     fogFar: 51,
-    fogColor: '#eefbfc',
+    fogColor: '#eafaff',
   },
   {
     target: [7.4, 0.7, -7.2],
@@ -1010,7 +1010,7 @@ const CAMERA_POSES: readonly AuthoredCameraPose[] = [
     fov: 30,
     fogNear: 17,
     fogFar: 45,
-    fogColor: '#fff4dc',
+    fogColor: '#f1ecff',
   },
   {
     target: [-3.2, 0.68, 6.2],
@@ -1020,7 +1020,7 @@ const CAMERA_POSES: readonly AuthoredCameraPose[] = [
     fov: 34,
     fogNear: 15,
     fogFar: 40,
-    fogColor: '#edf9f4',
+    fogColor: '#ecfff8',
   },
   {
     target: [1.2, 0.22, -3.8],
@@ -1030,7 +1030,7 @@ const CAMERA_POSES: readonly AuthoredCameraPose[] = [
     fov: 31,
     fogNear: 29,
     fogFar: 68,
-    fogColor: '#fff8e7',
+    fogColor: '#f4f6ff',
   },
   {
     target: [0, 0.4, -2],
@@ -1040,7 +1040,7 @@ const CAMERA_POSES: readonly AuthoredCameraPose[] = [
     fov: 39,
     fogNear: 44,
     fogFar: 92,
-    fogColor: '#effafa',
+    fogColor: '#eafaff',
   },
 ] as const
 

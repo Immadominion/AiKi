@@ -11,6 +11,7 @@ import { viemChainReader } from './authority/chain-reader.js'
 import { AIKI_ENFORCERS_BSC_TESTNET } from './config/enforcers.js'
 import { checkLedger } from './credits/reconcile.js'
 import { PostgresCreditStore } from './credits/store.js'
+import { treasuryBackingPoints } from './credits/treasury.js'
 import { PostgresEvidenceStore } from './evidence/postgres-store.js'
 import { createApiServer } from './http/server.js'
 import { COVERAGE_START_STREAM } from './indexer/evidence-sink.js'
@@ -105,6 +106,14 @@ const creditsToken =
   '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c'
 const enforcerRpcUrl =
   process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
+/*
+ * Named once and used twice: the route that credits a payment, and the check
+ * that asks whether the payments are still there. Two copies of this would be
+ * two opinions about which treasury is AiKi's.
+ */
+const deposits = treasury
+  ? { rpcUrl: enforcerRpcUrl, chainId: 97, token: creditsToken, treasury }
+  : undefined
 const base = process.env.REFERENCE_AGENT_BASE_URL
 const venusId = process.env.VENUS_GUARDIAN_AGENT_ID
 const rebalancerId = process.env.PANCAKE_REBALANCER_AGENT_ID
@@ -121,7 +130,11 @@ const app = createApiServer({
   ...(treasury ? { settlementTreasury: treasury } : {}),
   tasks: taskStore,
   // Names and verdicts only. The route is public and the amounts are not.
-  ledgerHealth: async () => (await checkLedger(ledgerSql)).map(({ check, ok }) => ({ check, ok })),
+  ledgerHealth: async () =>
+    (await checkLedger(ledgerSql, await treasuryBackingPoints(deposits))).map(({ check, ok }) => ({
+      check,
+      ok,
+    })),
   appendObservation: (observation) => store.append(observation),
   enforcers: AIKI_ENFORCERS_BSC_TESTNET,
   ...(agentSessionKey ? { agentSessionKey } : {}),
@@ -152,16 +165,7 @@ const app = createApiServer({
     ...(assistantKey ? { apiKey: assistantKey } : {}),
     ...(process.env.ASSISTANT_MODEL ? { model: process.env.ASSISTANT_MODEL } : {}),
     selfUrl: `http://127.0.0.1:${Number(process.env.PORT ?? '3000')}`,
-    ...(treasury
-      ? {
-          deposits: {
-            rpcUrl: enforcerRpcUrl,
-            chainId: 97,
-            token: creditsToken,
-            treasury,
-          },
-        }
-      : {}),
+    ...(deposits ? { deposits } : {}),
   },
   receipts: new ReceiptService(receiptSeed, receiptStore),
   auth: {
