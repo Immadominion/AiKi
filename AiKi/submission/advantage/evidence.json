@@ -1,0 +1,286 @@
+{
+  "generatedAt": "2026-09-01T16:29:00Z",
+  "marketplace": "https://www.useaiki.xyz",
+  "chain": "BNB Smart Chain mainnet (56)",
+  "tasks": [
+    {
+      "id": 1,
+      "category": "security",
+      "question": "An agent called Liquidation Desk says it protects loans. Is it safe to hire?",
+      "naive": {
+        "arm": "manual, the check people actually run",
+        "seconds": 1.19,
+        "steps": [
+          {
+            "step": "GET the declared endpoint once",
+            "status": 200,
+            "bytes": 43523
+          }
+        ],
+        "conclusion": "HTTP 200 with a full page. Reads as a working agent. You hire it.",
+        "correct": false,
+        "costUsd": 0.0
+      },
+      "manual": {
+        "arm": "manual",
+        "seconds": 3.91,
+        "steps": [
+          {
+            "step": "GET declared id",
+            "status": 200,
+            "bytes": 43523,
+            "sha256": "f4a7208f08b1cff7",
+            "contentType": "text/html"
+          },
+          {
+            "step": "GET someone else's id",
+            "status": 200,
+            "bytes": 43523,
+            "sha256": "f4a7208f08b1cff7",
+            "contentType": "text/html"
+          },
+          {
+            "step": "GET an id that cannot exist",
+            "status": 200,
+            "bytes": 43523,
+            "sha256": "f4a7208f08b1cff7",
+            "contentType": "text/html"
+          }
+        ],
+        "distinctResponses": 1,
+        "conclusion": "Every id returns byte-identical bytes, so it is a static page, not an agent.",
+        "correct": true,
+        "costUsd": 0.0
+      },
+      "agent": {
+        "arm": "agent",
+        "seconds": 1.78,
+        "verdict": "IMPOSTOR_STATIC",
+        "detail": "Returned byte-identical responses (MD5 2067c4db\u2026) for 3 different inputs including a nonsense id. This is a static page, not an agent service.",
+        "risks": [
+          {
+            "severity": "critical",
+            "label": "Static page posing as an agent"
+          }
+        ],
+        "hireAttempt": {
+          "status": 422,
+          "code": "AGENT_NOT_QUOTABLE"
+        },
+        "conclusion": "AiKi refuses to sell it.",
+        "correct": true,
+        "costUsd": 0.0
+      }
+    },
+    {
+      "id": 2,
+      "category": "discovery",
+      "question": "Find an agent that will protect my Venus loan from liquidation.",
+      "manual": {
+        "arm": "manual",
+        "seconds": 49.13,
+        "candidatesChecked": 6,
+        "steps": [
+          {
+            "agent": "310108",
+            "name": "Liquidation Desk",
+            "readRegistration": true
+          },
+          {
+            "agent": "310109",
+            "name": "Whale Tracker",
+            "readRegistration": true
+          },
+          {
+            "agent": "310110",
+            "name": "Volatility Desk",
+            "readRegistration": true
+          },
+          {
+            "agent": "310103",
+            "name": "Legend",
+            "readRegistration": true
+          },
+          {
+            "agent": "310105",
+            "name": "Benok",
+            "readRegistration": true
+          },
+          {
+            "agent": "315943",
+            "name": "AiKi Venus Health Factor Guardian",
+            "readRegistration": true
+          }
+        ],
+        "keptWithoutProbing": 6,
+        "conclusion": "Reading registrations alone keeps every candidate, including the impostors, because a registration file cannot tell you whether the service behind it works.",
+        "costUsd": 0.0
+      },
+      "agent": {
+        "arm": "agent",
+        "seconds": 1.3,
+        "returned": 7,
+        "top": [
+          {
+            "agentId": "315943",
+            "name": "AiKi Venus Health Factor Guardian",
+            "liveness": "LIVE",
+            "checks": {
+              "successes": 26,
+              "trials": 26
+            }
+          },
+          {
+            "agentId": "324818",
+            "name": "RangeReset",
+            "liveness": "DEGRADED",
+            "checks": {
+              "successes": 0,
+              "trials": 1
+            }
+          },
+          {
+            "agentId": "315946",
+            "name": "AiKi Venus Yield Optimiser",
+            "liveness": "LIVE",
+            "checks": {
+              "successes": 25,
+              "trials": 25
+            }
+          },
+          {
+            "agentId": "322046",
+            "name": "Venus Yield Lens",
+            "liveness": "DEGRADED",
+            "checks": {
+              "successes": 0,
+              "trials": 1
+            }
+          },
+          {
+            "agentId": "320964",
+            "name": "Yield Scout",
+            "liveness": "DEGRADED",
+            "checks": {
+              "successes": 0,
+              "trials": 1
+            }
+          }
+        ],
+        "coverage": {
+          "indexedAgents": 16548,
+          "matchedBeforeFilters": 73,
+          "excludedUnverified": 66,
+          "exclusionReasons": {
+            "UNREACHABLE": 4,
+            "PLACEHOLDER_URL": 8,
+            "IMPOSTOR_STATIC": 54
+          }
+        },
+        "queryEcho": {
+          "terms": [
+            "protect",
+            "loan",
+            "liquidation"
+          ],
+          "expandedWith": [
+            {
+              "term": "health",
+              "why": "risk is asked about in words no manifest uses"
+            },
+            {
+              "term": "factor",
+              "why": "risk is asked about in words no manifest uses"
+            },
+            {
+              "term": "risk",
+              "why": "risk is asked about in words no manifest uses"
+            },
+            {
+              "term": "position",
+              "why": "risk is asked about in words no manifest uses"
+            },
+            {
+              "term": "lending",
+              "why": "english stems liquidation and liquidity alike"
+            },
+            {
+              "term": "collateral",
+              "why": "english stems liquidation and liquidity alike"
+            },
+            {
+              "term": "venus",
+              "why": "english stems liquidation and liquidity alike"
+            }
+          ]
+        },
+        "conclusion": "One call, ranked, with the unverified counted and excluded.",
+        "costUsd": 0.0
+      }
+    },
+    {
+      "id": 3,
+      "category": "trading",
+      "question": "Is my PancakeSwap v3 grid on WBNB/USDT in range right now?",
+      "manual": {
+        "arm": "manual",
+        "seconds": 4.37,
+        "steps": [
+          {
+            "step": "factory.getPool(WBNB,USDT,500)",
+            "result": "0x36696169c63e42cd08ce11f5deebbcebae652050"
+          },
+          {
+            "step": "pool.slot0() -> tick",
+            "result": -65298
+          },
+          {
+            "step": "pool.tickSpacing()",
+            "result": 10
+          },
+          {
+            "step": "compute active band",
+            "result": {
+              "lower": -65300,
+              "upper": -65290
+            }
+          }
+        ],
+        "currentTick": -65298,
+        "inRange": true,
+        "activeBand": {
+          "lower": -65300,
+          "upper": -65290
+        },
+        "conclusion": "Four contract reads and the arithmetic, per check, every time you want to know.",
+        "costUsd": 0.0
+      },
+      "agent": {
+        "arm": "agent",
+        "seconds": 1.08,
+        "currentTick": -65298,
+        "state": "IN_GRID",
+        "recommendation": "WAIT",
+        "activeBand": {
+          "lower": -65300,
+          "upper": -65290
+        },
+        "activeGridIndex": 30,
+        "evidencePersisted": true,
+        "conclusion": "One call, and the answer is recorded as evidence rather than read and lost.",
+        "costUsd": 0.1
+      }
+    }
+  ],
+  "scale": {
+    "indexedAgents": 16548,
+    "agentsProbed": 8792,
+    "impostorStatic": 2183,
+    "answeringForReal": 243,
+    "looksAliveToANaiveCheck": 2426,
+    "shareOfNaiveLiveThatIsFake": 0.9,
+    "manualSecondsPerAgent": 1.3,
+    "manualHoursToCheckWhatAiKiHasChecked": 3.2,
+    "note": "One pass. Liveness is not a property you establish once."
+  }
+}
