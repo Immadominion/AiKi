@@ -1,6 +1,7 @@
 import type { EcosystemStats } from '@aiki/contracts'
 import { BSC_MAINNET } from '../config/chains.js'
 import type { Observation } from '../evidence/types.js'
+import { classifyDeclared, declaredText } from './categories.js'
 import { asLiveness } from './passport.js'
 
 const subjectKey = (o: Observation) =>
@@ -48,6 +49,15 @@ export interface StatsAggregate {
     byRawState: Record<string, number>
     lastProbeSweepAt: string | null
   }
+  /**
+   * Agents grouped by what their OWN registration says they do.
+   *
+   * Only agents that resolved a manifest are counted, because an agent that
+   * declared nothing has not failed to match a rule, it has said nothing to
+   * match. Filing it under `other` would report a declaration that does not
+   * exist, so the totals here are deliberately smaller than `indexed`.
+   */
+  categories: Record<string, { agents: number; live: number }>
 }
 
 /** Fold an aggregate into the published shape. The one place the rules live. */
@@ -88,7 +98,7 @@ export function assembleStats(agg: StatsAggregate, input: StatsInput = {}): Ecos
       lastProbeSweepAt: agg.probed.lastProbeSweepAt,
     },
     reputation: null,
-    categories: {},
+    categories: agg.categories,
   }
 }
 
@@ -125,7 +135,25 @@ export function aggregateStats(observations: Observation[]): StatsAggregate {
     if (!lastIndexedAt || o.observedAt > lastIndexedAt) lastIndexedAt = o.observedAt
   }
 
+  const latestManifest = new Map<string, Observation>()
+  for (const o of observations) {
+    if (o.predicate !== 'erc8004.registration_resolution') continue
+    const key = subjectKey(o)
+    const held = latestManifest.get(key)
+    if (!held || o.observedAt > held.observedAt) latestManifest.set(key, o)
+  }
+  const categories: Record<string, { agents: number; live: number }> = {}
+  for (const [key, o] of latestManifest) {
+    const manifest = o.value.manifest
+    if (!manifest || typeof manifest !== 'object') continue
+    const category = classifyDeclared(declaredText(manifest as Record<string, unknown>))
+    const bucket = (categories[category] ??= { agents: 0, live: 0 })
+    bucket.agents += 1
+    if (asLiveness(latestVerdict.get(key)?.value.state) === 'LIVE') bucket.live += 1
+  }
+
   return {
+    categories,
     indexed: {
       totalAgents: indexedAgents.size,
       bscAgents: indexedBsc.size,

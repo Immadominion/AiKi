@@ -1,4 +1,6 @@
 import postgres from 'postgres'
+import { classifyDeclared, declaredText } from '../projections/categories.js'
+import { asLiveness } from '../projections/passport.js'
 import type { StatsAggregate } from '../projections/stats.js'
 import { materializeObservation } from './store.js'
 import type { AppendResult, EvidenceStore, IndexerCheckpoint, NewObservation } from './types.js'
@@ -187,7 +189,47 @@ export class PostgresEvidenceStore implements EvidenceStore {
       byRawState[row.state ?? 'null'] = (byRawState[row.state ?? 'null'] ?? 0) + n
     }
 
+    /*
+     * Classification happens in JavaScript, over one row per agent, using the
+     * SAME function the in-memory aggregate uses. Encoding the rules a second
+     * time in SQL would put two regex dialects one edit apart from disagreeing,
+     * which is exactly the drift the parity test between these two aggregates
+     * exists to catch.
+     */
+    const declared = await this.sql<
+      { agent_id: string; manifest: unknown; state: string | null }[]
+    >`
+      WITH latest_manifest AS (
+        SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
+          chain_id, lower(registry_address) AS reg, agent_id, value->'manifest' AS manifest
+        FROM observations
+        WHERE predicate = 'erc8004.registration_resolution'
+        ORDER BY chain_id, lower(registry_address), agent_id, observed_at DESC
+      ),
+      latest_state AS (
+        SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
+          chain_id, lower(registry_address) AS reg, agent_id, value->>'state' AS state
+        FROM observations
+        WHERE predicate = 'agent.liveness_verdict'
+        ORDER BY chain_id, lower(registry_address), agent_id, observed_at DESC
+      )
+      SELECT m.agent_id, m.manifest, s.state
+      FROM latest_manifest m
+      LEFT JOIN latest_state s
+        ON s.chain_id = m.chain_id AND s.reg = m.reg AND s.agent_id = m.agent_id
+      WHERE m.manifest IS NOT NULL
+    `
+    const categories: Record<string, { agents: number; live: number }> = {}
+    for (const row of declared) {
+      if (!row.manifest || typeof row.manifest !== 'object') continue
+      const category = classifyDeclared(declaredText(row.manifest as Record<string, unknown>))
+      const bucket = (categories[category] ??= { agents: 0, live: 0 })
+      bucket.agents += 1
+      if (asLiveness(row.state) === 'LIVE') bucket.live += 1
+    }
+
     return {
+      categories,
       indexed: {
         totalAgents: num(indexed?.total_agents) ?? 0,
         bscAgents: num(indexed?.bsc_agents) ?? 0,

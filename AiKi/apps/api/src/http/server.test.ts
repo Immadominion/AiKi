@@ -210,6 +210,7 @@ it('finds agents a capped read model has already forgotten, and counts exclusion
     // The store, selected in SQL: it can see both.
     observationsForLiveness: () => [verdict('recent', 'LIVE'), verdict('ancient', 'LIVE')],
     statsAggregate: () => ({
+      categories: {},
       indexed: {
         totalAgents: 100,
         bscAgents: 100,
