@@ -6,7 +6,7 @@ import { PageCard } from '@/components/shell/PageCard'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import { StatusPill } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
-import { AGENT_BG, AGENT_BY_KEY } from '@/lib/agents'
+import { AGENT_BG, AGENT_BY_KEY, agentRow } from '@/lib/agents'
 import { route } from '@/lib/routes'
 import { useMock } from '@/mock/store'
 import { usd } from '@/mock/types'
@@ -79,7 +79,7 @@ export function ReceiptView({ receiptId }: { receiptId: string }) {
     )
   }
 
-  const agent = AGENT_BY_KEY[r.key]
+  const agent = agentRow(r.key)
   const total = r.providerCents + r.platformCents + r.networkCents
   // This origin, because that is where the verifier runs. It used to name a host
   // that serves no API, so the link went nowhere and verification was a toast.

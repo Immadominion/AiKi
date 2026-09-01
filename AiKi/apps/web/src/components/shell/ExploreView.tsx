@@ -82,7 +82,10 @@ export function ExploreView() {
   // relabelled default sort.
   const suggested = useMemo(() => AGENTS.filter((a) => /venus|pancake/i.test(a.works)), [])
   const testedMost = useMemo(
-    () => [...AGENTS].sort((a, b) => DETAILS[b.key].checks[1] - DETAILS[a.key].checks[1]),
+    () =>
+      [...AGENTS].sort(
+        (a, b) => (DETAILS[b.key]?.checks[1] ?? 0) - (DETAILS[a.key]?.checks[1] ?? 0),
+      ),
     [],
   )
 
@@ -111,7 +114,7 @@ export function ExploreView() {
             initial={a.initial}
             name={a.name}
             sub={a.works}
-            bg={AGENT_BG[a.key]}
+            bg={AGENT_BG[a.key] ?? '#171715'}
           />,
           <Cell key="b" color="var(--color-body)">
             {a.does}

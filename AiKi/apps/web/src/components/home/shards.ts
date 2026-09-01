@@ -1,4 +1,4 @@
-import { AGENT_BY_KEY } from '@/lib/agents'
+import { AGENT_BY_KEY, agentRow } from '@/lib/agents'
 import { DETAILS } from '@/lib/detail'
 /**
  * Shard placement maths, ported from the design reference.
@@ -283,11 +283,11 @@ const BY_EVIDENCE = [
   { agent: GRIDLY, key: 'gridly' as const },
   { agent: HARBOR, key: 'harbor' as const },
   { agent: SENTINEL, key: 'sentinel' as const },
-].sort((a, b) => DETAILS[b.key].checks[1] - DETAILS[a.key].checks[1])
+].sort((a, b) => (DETAILS[b.key]?.checks[1] ?? 0) - (DETAILS[a.key]?.checks[1] ?? 0))
 
 export const SHARDS_DISCOVER: ShardSpec[] = seatOccupants(
   BY_EVIDENCE.map(({ agent, key }) => {
-    const row = AGENT_BY_KEY[key]
+    const row = agentRow(key)
     const tone =
       row.evidenceTone === 'strong'
         ? { stateDot: '#00A092', stateColor: '#00857A' }

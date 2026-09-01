@@ -9,7 +9,7 @@
 export type AgentKey = 'guardian' | 'gridly' | 'yieldmax' | 'lpilot' | 'sentinel' | 'harbor'
 
 /** Identity gradients live in globals.css so a colour is defined exactly once. */
-export const AGENT_BG: Record<AgentKey, string> = {
+export const AGENT_BG: Record<string, string> = {
   guardian: 'var(--agent-guardian)',
   gridly: 'var(--agent-gridly)',
   yieldmax: 'var(--agent-yieldmax)',
@@ -122,6 +122,34 @@ export const AGENTS: AgentRow[] = [
 ]
 
 export const AGENT_BY_KEY = Object.fromEntries(AGENTS.map((a) => [a.key, a])) as Record<
-  AgentKey,
+  string,
   AgentRow
 >
+
+/**
+ * A row for anything you have hired, example or real.
+ *
+ * The six example agents live in a table keyed by name. A real listing is an
+ * ERC-8004 token id and has no row there, which is precisely why the only
+ * agents anybody could hire were the six that do not exist. Rather than guard
+ * every screen against a missing row, this returns one either way, and the
+ * synthesised row says plainly that it is a token id rather than inventing a
+ * description for an agent nobody has read.
+ */
+export function agentRow(key: string, known?: { name?: string; initial?: string }): AgentRow {
+  const row = AGENT_BY_KEY[key]
+  if (row) return row
+  const name = known?.name ?? `Agent ${key}`
+  return {
+    key: key as AgentKey,
+    initial: known?.initial ?? (name.charAt(0) || '?').toUpperCase(),
+    name,
+    works: `token ${key}`,
+    does: 'See its passport for what it declares and what we measured.',
+    blurb: 'See its passport for what it declares and what we measured.',
+    bars: 0,
+    evidence: 'Not measured here',
+    evidenceTone: 'thin',
+    price: 'See passport',
+  }
+}

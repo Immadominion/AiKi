@@ -20,7 +20,7 @@ export interface StepResult {
   spendCents?: number
 }
 
-const WHERE: Record<AgentKey, string> = {
+const WHERE: Record<string, string> = {
   guardian: 'Venus',
   sentinel: 'Venus',
   lpilot: 'PancakeSwap v3',
@@ -29,7 +29,7 @@ const WHERE: Record<AgentKey, string> = {
   harbor: 'Venus',
 }
 
-const READ: Record<AgentKey, string> = {
+const READ: Record<string, string> = {
   guardian: 'Read your Venus position. Health factor 1.22, below your 1.25 floor',
   sentinel: 'Read your Venus position. Health factor 1.22, below your 1.25 floor',
   lpilot: 'Read your BNB / USDT position. Price has left your range',
@@ -39,7 +39,7 @@ const READ: Record<AgentKey, string> = {
 }
 
 /** Sentence-case, for a line that starts. */
-const ACT: Record<AgentKey, string> = {
+const ACT: Record<string, string> = {
   guardian: 'Repay borrowed USDT',
   sentinel: 'Alert you',
   lpilot: 'Re-mint the position around the current price',
@@ -49,7 +49,7 @@ const ACT: Record<AgentKey, string> = {
 }
 
 /** Mid-sentence phrasing. Lowercasing ACT would turn USDT into usdt. */
-const PLAN: Record<AgentKey, string> = {
+const PLAN: Record<string, string> = {
   guardian: 'repay part of the debt',
   sentinel: 'alert you',
   lpilot: 're-mint the position',
@@ -70,12 +70,12 @@ const PLAN: Record<AgentKey, string> = {
  */
 
 /** Agents that cannot spend never reach the money steps. */
-const canSpend = (key: AgentKey) =>
-  DETAILS[key].capabilities.some((c) => c.permissions.some((p) => p.startsWith('spend_')))
+const canSpend = (key: string) =>
+  (DETAILS[key]?.capabilities ?? []).some((c) => c.permissions.some((p) => p.startsWith('spend_')))
 
 export function runStep(job: Job, hire: Hire): StepResult | null {
   const key = job.key
-  const where = WHERE[key]
+  const where = WHERE[key] ?? ''
   const perAction = hire.mandate.perActionCents
   const base = { key, where, jobId: job.id }
 
@@ -87,13 +87,13 @@ export function runStep(job: Job, hire: Hire): StepResult | null {
   if (!canSpend(key)) {
     switch (job.step) {
       case 0:
-        return { events: [{ ...base, what: READ[key], costCents: 0, result: 'Checked' }] }
+        return { events: [{ ...base, what: READ[key] ?? '', costCents: 0, result: 'Checked' }] }
       case 1:
         return {
           events: [
             {
               ...base,
-              what: `${ACT[key]}. It has no session key, so it cannot act on this itself`,
+              what: `${ACT[key] ?? ''}. It has no session key, so it cannot act on this itself`,
               costCents: 0,
               result: 'Done',
             },
@@ -107,14 +107,14 @@ export function runStep(job: Job, hire: Hire): StepResult | null {
 
   switch (job.step) {
     case 0:
-      return { events: [{ ...base, what: READ[key], costCents: 0, result: 'Checked' }] }
+      return { events: [{ ...base, what: READ[key] ?? '', costCents: 0, result: 'Checked' }] }
 
     case 1:
       return {
         events: [
           {
             ...base,
-            what: `Worked out the action: ${PLAN[key]}, ${(half / 100).toFixed(2)} USDT`,
+            what: `Worked out the action: ${PLAN[key] ?? ''}, ${(half / 100).toFixed(2)} USDT`,
             costCents: 0,
             result: 'Checked',
           },
@@ -126,7 +126,7 @@ export function runStep(job: Job, hire: Hire): StepResult | null {
         events: [
           {
             ...base,
-            what: `${ACT[key]}, ${(half / 100).toFixed(2)} USDT`,
+            what: `${ACT[key] ?? ''}, ${(half / 100).toFixed(2)} USDT`,
             costCents: 6,
             result: 'Done',
             rule: 'per_action_cap',
@@ -173,7 +173,7 @@ export function runStep(job: Job, hire: Hire): StepResult | null {
         events: [
           {
             ...base,
-            what: `${ACT[key]}, ${(half / 100).toFixed(2)} USDT`,
+            what: `${ACT[key] ?? ''}, ${(half / 100).toFixed(2)} USDT`,
             costCents: 6,
             result: 'Done',
           },
@@ -187,7 +187,7 @@ export function runStep(job: Job, hire: Hire): StepResult | null {
   }
 }
 
-const OUTCOME: Record<AgentKey, string> = {
+const OUTCOME: Record<string, string> = {
   guardian: 'Health factor moved from 1.19 to 1.51 and stayed above your floor.',
   sentinel: 'You were told. Sentinel cannot act, and did not.',
   lpilot: 'The position is back in range and earning fees again.',
@@ -214,7 +214,7 @@ export function buildReceipt(job: Job, _hire: Hire, events: ActivityEvent[]): Re
     providerCents: 200,
     platformCents: 10,
     networkCents: spent,
-    summary: OUTCOME[job.key],
+    summary: OUTCOME[job.key] ?? '',
     startedAt: job.createdAt,
     completedAt: job.updatedAt,
   }

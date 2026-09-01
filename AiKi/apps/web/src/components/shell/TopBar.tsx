@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { useHoverIcon } from '@/components/ui/AnimatedIcon'
 import { useToast } from '@/components/ui/Toast'
-import { AGENT_BG, AGENT_BY_KEY } from '@/lib/agents'
+import { AGENT_BG, AGENT_BY_KEY, agentRow } from '@/lib/agents'
 import { hiredRows } from '@/lib/present'
 import { route } from '@/lib/routes'
 import { CONNECT_TOAST, shortAddress } from '@/lib/wallet'
@@ -79,7 +79,7 @@ function notesFrom(state: MockState): Note[] {
     .map((j) => ({
       id: `n-${j.id}`,
       tone: 'work' as const,
-      title: `${AGENT_BY_KEY[j.key].name} is waiting on you`,
+      title: `${agentRow(j.key).name} is waiting on you`,
       body: j.approval?.prompt ?? '',
       when: clock(j.updatedAt),
       href: `/jobs/${j.id}`,
@@ -104,7 +104,7 @@ function notesFrom(state: MockState): Note[] {
     .map((r) => ({
       id: `n-${r.id}`,
       tone: 'good' as const,
-      title: `${AGENT_BY_KEY[r.key].name} finished a job`,
+      title: `${agentRow(r.key).name} finished a job`,
       body: `${r.summary} The receipt is signed and ready.`,
       when: clock(r.completedAt),
       href: `/receipts/${r.id}`,

@@ -1,7 +1,7 @@
 import type { Tone } from '@/components/ui/StatusPill'
 import type { AgentKey } from '@/lib/agents'
 import { AGENT_BY_KEY } from '@/lib/agents'
-import type { ActivityEvent, Hire, Job } from '@/mock/types'
+import type { ActivityEvent, Hire, Job, ListingKey } from '@/mock/types'
 import { usd } from '@/mock/types'
 
 /**
@@ -11,7 +11,7 @@ import { usd } from '@/mock/types'
  * day apps/api replaces the store, this file is what changes.
  */
 export interface HiredRow {
-  key: AgentKey
+  key: ListingKey
   initial: string
   name: string
   sub: string
@@ -40,7 +40,7 @@ const ago = (iso: string) => {
   return `${Math.round(hrs / 24)}d ago`
 }
 
-const SUB: Record<AgentKey, string> = {
+const SUB: Record<string, string> = {
   guardian: 'Protecting your Venus loan',
   sentinel: 'Alerts only, no spending',
   lpilot: 'Keeping your position in range',
@@ -55,7 +55,14 @@ export function hiredRows(hires: Hire[], jobs: Job[]): HiredRow[] {
     const paused = h.status === 'paused'
     const waiting = job?.status === 'WAITING'
     const pct = h.mandate.capCents ? (h.spentCents / h.mandate.capCents) * 100 : 0
+    /*
+     * What was hired is recorded on the hire, so this reads the thing itself
+     * rather than looking it up in the example table. That lookup is why only
+     * six agents could ever appear on these screens.
+     */
     const agent = AGENT_BY_KEY[h.key]
+    const name = h.name ?? agent?.name ?? `Agent ${h.key}`
+    const initial = h.initial ?? agent?.initial ?? h.key.charAt(0).toUpperCase()
 
     const status = paused
       ? 'Paused by you'
@@ -77,9 +84,9 @@ export function hiredRows(hires: Hire[], jobs: Job[]): HiredRow[] {
 
     return {
       key: h.key,
-      initial: agent.initial,
-      name: agent.name,
-      sub: SUB[h.key],
+      initial,
+      name,
+      sub: SUB[h.key] ?? `token ${h.key}`,
       status,
       tone,
       spent: usd(h.spentCents),
@@ -98,7 +105,7 @@ export function hiredRows(hires: Hire[], jobs: Job[]): HiredRow[] {
 export interface EventRow {
   id: string
   at: string
-  key: AgentKey
+  key: ListingKey
   initial: string
   name: string
   where: string
@@ -122,8 +129,8 @@ export function eventRows(events: ActivityEvent[]): EventRow[] {
       id: e.id,
       at: new Date(e.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
       key: e.key,
-      initial: AGENT_BY_KEY[e.key].initial,
-      name: AGENT_BY_KEY[e.key].name,
+      initial: AGENT_BY_KEY[e.key]?.initial ?? e.key.charAt(0).toUpperCase(),
+      name: AGENT_BY_KEY[e.key]?.name ?? `Agent ${e.key}`,
       where: e.where,
       what: e.what,
       cost: usd(e.costCents),

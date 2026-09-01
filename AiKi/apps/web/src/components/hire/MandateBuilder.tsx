@@ -5,11 +5,10 @@ import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { PageCard } from '@/components/shell/PageCard'
 import { useToast } from '@/components/ui/Toast'
-import { AGENT_BG, AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
-import { DETAILS } from '@/lib/detail'
 import { jobHref } from '@/lib/routes'
 import { useMock } from '@/mock/store'
 import { mandateConstraints } from './mandate'
+import { type HireSubject, isAgentId } from './subject'
 import { enforcementNote, limitFor, tierWording, useMandatePreview } from './useMandatePreview'
 
 const PER_ACTION = [40, 80, 150] as const
@@ -131,9 +130,9 @@ function Choice<T extends string | number>({
   )
 }
 
-export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
-  const row = AGENT_BY_KEY[agentKey]
-  const d = DETAILS[agentKey]
+export function MandateBuilder({ subject }: { subject: HireSubject }) {
+  const row = subject
+  const d = subject
   const say = useToast()
   const router = useRouter()
   const { hire } = useMock()
@@ -206,7 +205,7 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
     <div className="flex flex-wrap items-start gap-[14px]">
       <span
         className="flex size-[52px] flex-none items-center justify-center rounded-[16px] text-[20px] font-extrabold text-white"
-        style={{ background: AGENT_BG[agentKey] }}
+        style={{ background: subject.bg }}
       >
         {row.initial}
       </span>
@@ -230,7 +229,10 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
     <PageCard
       title={`Hire ${row.name}`}
       count=""
-      back={{ href: `/agent/${agentKey}`, label: row.name }}
+      back={{
+        href: isAgentId(subject.key) ? `/registry/${subject.key}` : `/agent/${subject.key}`,
+        label: row.name,
+      }}
       headerSlot={header}
       tabs={[]}
       tabHint=""
@@ -451,7 +453,12 @@ export function MandateBuilder({ agentKey }: { agentKey: AgentKey }) {
                 // The limits you just set are the ones the job runs under, so
                 // the refusal you are about to see happens at YOUR number.
                 void hire({
-                  key: agentKey,
+                  key: subject.key,
+                  title: `Working with ${subject.name}`,
+                  name: subject.name,
+                  initial: subject.initial,
+                  bg: subject.bg,
+                  spends: subject.spends,
                   perActionCents: spends ? perAction * 100 : 0,
                   capCents: budget * 100,
                   period,

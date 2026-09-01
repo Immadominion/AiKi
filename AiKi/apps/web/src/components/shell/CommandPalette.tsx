@@ -166,7 +166,7 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
           label: a.name,
           sub: a.does,
           glyph: a.initial,
-          bg: AGENT_BG[a.key],
+          bg: AGENT_BG[a.key] ?? '#171715',
           run: () => router.push(agentHref(a.key)),
         })
       }

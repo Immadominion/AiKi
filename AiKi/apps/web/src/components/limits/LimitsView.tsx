@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { PageSkeleton } from '@/components/ui/Skeleton'
 import { SpendMeter } from '@/components/ui/SpendMeter'
 import { useToast } from '@/components/ui/Toast'
-import { AGENT_BG, AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
+import { AGENT_BG, AGENT_BY_KEY, type AgentKey, agentRow } from '@/lib/agents'
 import { DETAILS } from '@/lib/detail'
 import { hiredRows } from '@/lib/present'
 import { agentHref, route } from '@/lib/routes'
@@ -30,10 +30,12 @@ export function LimitsView() {
   const [confirming, setConfirming] = useState<AgentKey | null>(null)
 
   const rows = hiredRows(state.hires, state.jobs)
-  const allTiers = state.hires.flatMap((h) => DETAILS[h.key].enforcement.map((e) => e.tier))
+  const allTiers = state.hires.flatMap((h) =>
+    (DETAILS[h.key]?.enforcement ?? []).map((e) => e.tier),
+  )
   const overall = weakest(allTiers)
   const softCount = state.hires.flatMap((h) =>
-    DETAILS[h.key].enforcement.filter((e) => e.tier !== 'T0' || !e.verified),
+    DETAILS[h.key]?.enforcement.filter((e) => e.tier !== 'T0' || !e.verified),
   ).length
 
   const header = (
@@ -117,7 +119,7 @@ export function LimitsView() {
 
             {state.hires.map((h) => {
               const d = DETAILS[h.key]
-              const agent = AGENT_BY_KEY[h.key]
+              const agent = agentRow(h.key)
               const row = rows.find((r) => r.key === h.key)
               if (!row) return null
 
@@ -153,7 +155,7 @@ export function LimitsView() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setConfirming(h.key)}
+                        onClick={() => setConfirming(h.key as AgentKey)}
                         className="text-ink-app h-[34px] flex-1 rounded-[11px] border-0 bg-[rgb(26_26_25_/_0.055)] px-3 text-[12.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)] sm:flex-none"
                       >
                         Revoke
@@ -173,7 +175,7 @@ export function LimitsView() {
                     </span>
                   </div>
 
-                  {d.enforcement.map((e) => {
+                  {d?.enforcement.map((e) => {
                     const soft = e.tier !== 'T0' || !e.verified
                     return (
                       <div
@@ -221,20 +223,20 @@ export function LimitsView() {
 
       {confirming ? (
         <ConfirmDialog
-          title={`Revoke ${AGENT_BY_KEY[confirming].name}?`}
-          body={`This withdraws the authority at AiKi. It cannot be undone and ${AGENT_BY_KEY[confirming].name} stops for good. It does not yet send a transaction, so it does not survive AiKi disappearing; pausing and revoking differ today in permanence, not in where they are enforced.`}
+          title={`Revoke ${agentRow(confirming).name}?`}
+          body={`This withdraws the authority at AiKi. It cannot be undone and ${agentRow(confirming).name} stops for good. It does not yet send a transaction, so it does not survive AiKi disappearing; pausing and revoking differ today in permanence, not in where they are enforced.`}
           alternative="If you only want it to stop for now, pause instead. That is instant, free, and reversible."
           alternativeLabel="Pause instead"
           confirmLabel="Withdraw authority"
           onCancel={() => setConfirming(null)}
           onAlternative={() => {
-            const name = AGENT_BY_KEY[confirming].name
+            const name = agentRow(confirming).name
             pause(confirming)
             setConfirming(null)
             say(`${name} paused. Nothing was sent, nothing was spent.`)
           }}
           onConfirm={() => {
-            const name = AGENT_BY_KEY[confirming].name
+            const name = agentRow(confirming).name
             void revoke(confirming)
               .then(() => say(`${name} withdrawn. AiKi will not relay for it again.`))
               .catch(() => say(`Could not withdraw ${name}. Nothing changed; try again.`))

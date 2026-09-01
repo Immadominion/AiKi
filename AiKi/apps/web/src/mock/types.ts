@@ -1,3 +1,13 @@
+/**
+ * What identifies something you have hired.
+ *
+ * This was `AgentKey`, the union of the six example agents, which meant the
+ * only agents on the marketplace a person could actually hire were six that do
+ * not exist. A real listing is an ERC-8004 token id, so the identity has to be
+ * the id. The example keys are strings too, so they keep working.
+ */
+export type ListingKey = string
+
 import type { ApprovalMode, CapPeriod } from '@aiki/contracts'
 import type { AgentKey } from '@/lib/agents'
 
@@ -26,7 +36,18 @@ export interface Mandate {
 }
 
 export interface Hire {
-  key: AgentKey
+  key: ListingKey
+  /**
+   * What was hired, recorded at the time.
+   *
+   * Every surface downstream used to look this up in the example table, which
+   * is why nothing outside those six could be hired: there was no row to read
+   * the name from. A hire record that does not say what was hired is not a
+   * record of anything.
+   */
+  name: string
+  initial: string
+  bg: string
   hiredAt: string
   status: 'working' | 'paused' | 'revoked'
   mandate: Mandate
@@ -48,7 +69,7 @@ export interface PendingApproval {
 
 export interface Job {
   id: string
-  key: AgentKey
+  key: ListingKey
   title: string
   status: JobStatus
   /** How far through the script this job has run. */
@@ -66,7 +87,7 @@ export type EventResult = 'Done' | 'Blocked' | 'Checked' | 'Waiting'
 export interface ActivityEvent {
   id: string
   at: string
-  key: AgentKey
+  key: ListingKey
   where: string
   what: string
   costCents: number
@@ -88,7 +109,7 @@ export interface ReceiptAction {
 export interface Receipt {
   id: string
   jobId: string
-  key: AgentKey
+  key: ListingKey
   actions: ReceiptAction[]
   providerCents: number
   platformCents: number

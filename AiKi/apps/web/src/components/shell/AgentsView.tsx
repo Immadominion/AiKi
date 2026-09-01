@@ -37,7 +37,13 @@ export function AgentsView() {
       rows={data.map((h) => ({
         id: h.key,
         cells: [
-          <AgentCell key="a" initial={h.initial} name={h.name} sub={h.sub} bg={AGENT_BG[h.key]} />,
+          <AgentCell
+            key="a"
+            initial={h.initial}
+            name={h.name}
+            sub={h.sub}
+            bg={AGENT_BG[h.key] ?? '#171715'}
+          />,
           <StatusPill key="b" label={h.status} tone={h.tone} />,
           <SpendMeter key="c" value={h.spent} cap={h.cap} pct={h.pct} hot={h.hot} />,
           <Cell

@@ -63,7 +63,7 @@ export function ActivityView() {
             initial={e.initial}
             name={e.name}
             sub={e.where}
-            bg={AGENT_BG[e.key]}
+            bg={AGENT_BG[e.key] ?? '#171715'}
           />,
           <Cell key="c" color="var(--color-body)">
             {e.what}

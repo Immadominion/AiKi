@@ -91,7 +91,7 @@ const WBNB = { asset: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', symbol: 'WBN
 
 const OBSERVED = '2026-08-22T04:10:00Z'
 
-export const DETAILS: Record<AgentKey, AgentDetail> = {
+export const DETAILS: Record<string, AgentDetail> = {
   guardian: {
     key: 'guardian',
     spends: [USDT],

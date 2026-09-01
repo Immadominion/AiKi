@@ -12,7 +12,7 @@ export async function generateMetadata({
   const { key } = await params
   const d = key in DETAILS ? DETAILS[key as AgentKey] : null
   if (!d) return { title: 'Agent not found' }
-  return { title: AGENT_BY_KEY[d.key].name, description: d.tagline }
+  return { title: AGENT_BY_KEY[d.key]?.name ?? key, description: d.tagline }
 }
 
 export function generateStaticParams() {

@@ -262,6 +262,18 @@ export const api = {
    * the evidence can separate them. `indistinguishable` is the answer the
    * product exists to be able to give.
    */
+  /** What one run of this agent costs, priced from what the agent publishes. */
+  quote: (agentId: string) =>
+    req<{
+      quoteId: string
+      agentId: string
+      price: { amount: string; asset: string; decimals: number; assetAddress?: string }
+      platformFee: { amount: string; asset: string; decimals: number }
+      total: { amount: string; asset: string; decimals: number }
+      settlementAsset: { symbol: string; address: string; decimals: number }
+      feeBasisPoints: number
+      expiresAt: string
+    }>('/v1/quotes', { method: 'POST', body: JSON.stringify({ agentId }) }),
   compare: (agentIds: string[]) =>
     req<{ agents: ProjectedPassport[]; indistinguishable: boolean; reason: string }>(
       '/v1/compare',

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { MandateBuilder } from '@/components/hire/MandateBuilder'
+import { hireSubjectFromFixture } from '@/components/hire/subject'
 import { AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
 import { DETAILS } from '@/lib/detail'
 
@@ -12,7 +13,7 @@ export async function generateMetadata({
   const { key } = await params
   if (!(key in DETAILS)) return { title: 'Agent not found' }
   return {
-    title: `Hire ${AGENT_BY_KEY[key as AgentKey].name}`,
+    title: `Hire ${AGENT_BY_KEY[key]?.name ?? key}`,
     description: 'Set the limits before anything is signed. Each one says who holds it.',
   }
 }
@@ -24,5 +25,5 @@ export function generateStaticParams() {
 export default async function Page({ params }: { params: Promise<{ key: string }> }) {
   const { key } = await params
   if (!(key in DETAILS)) notFound()
-  return <MandateBuilder agentKey={key as AgentKey} />
+  return <MandateBuilder subject={hireSubjectFromFixture(key as AgentKey)} />
 }

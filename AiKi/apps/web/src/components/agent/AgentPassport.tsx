@@ -41,6 +41,14 @@ function Metric({
 export function AgentPassport({ agentKey }: { agentKey: AgentKey }) {
   const row = AGENT_BY_KEY[agentKey]
   const detail = DETAILS[agentKey]
+  /*
+   * These tables are keyed by string now, because a real listing is an
+   * ERC-8004 token id and the six example keys were never going to be the only
+   * things anybody could hire. This page is only reached through the example
+   * route, which already refuses an unknown key, so the guard states a
+   * guarantee that used to live in the key's type.
+   */
+  if (!row || !detail) return null
   const router = useRouter()
   const say = useToast()
   const [saved, setSaved] = useState(false)

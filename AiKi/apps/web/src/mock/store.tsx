@@ -16,6 +16,7 @@ import {
 } from '@/lib/wallet'
 import { buildReceipt, runStep } from './script'
 import { demoState, freshState } from './seed'
+import type { ListingKey } from './types'
 import { EMPTY, type Hire, type Job, MOCK_VERSION, type MockState } from './types'
 
 const KEY = 'aiki.mock.v1'
@@ -35,12 +36,25 @@ interface MockApi {
   connect: () => Promise<ConnectOutcome>
   disconnect: () => void
   hire: (input: {
-    key: AgentKey
+    key: ListingKey
     perActionCents: number
     capCents: number
     period: CapPeriod
     days: number
     approval: ApprovalMode
+    /** What this job is called in your list. */
+    title: string
+    /** What was hired, so every later screen reads it instead of a fixture. */
+    name: string
+    initial: string
+    bg: string
+    /**
+     * What the agent may move, supplied by the caller.
+     *
+     * This was read out of the example table, so hiring anything not in that
+     * table was impossible: there was no row to read the permission from.
+     */
+    spends: { asset: `0x${string}`; symbol: string }[]
     /**
      * The job id, and who ends up holding the limits. `signed` means the chain
      * refuses anything past them; `counted` means AiKi does. A hire is real
@@ -51,9 +65,9 @@ interface MockApi {
   advance: (jobId: string) => void
   approve: (jobId: string) => void
   decline: (jobId: string) => void
-  pause: (key: AgentKey) => void
-  resume: (key: AgentKey) => void
-  revoke: (key: AgentKey) => Promise<void>
+  pause: (key: ListingKey) => void
+  resume: (key: ListingKey) => void
+  revoke: (key: ListingKey) => Promise<void>
   seed: (mode: 'demo' | 'fresh' | 'empty') => void
 }
 
@@ -121,7 +135,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
   }, [commit])
 
   const api = useMemo<MockApi>(() => {
-    const setHire = (s: MockState, key: AgentKey, fn: (h: Hire) => Hire): MockState => ({
+    const setHire = (s: MockState, key: ListingKey, fn: (h: Hire) => Hire): MockState => ({
       ...s,
       hires: s.hires.map((h) => (h.key === key ? fn(h) : h)),
     })
@@ -184,7 +198,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
             capCents: input.capCents,
             perActionCents: input.perActionCents,
             days: input.days,
-            spends: DETAILS[input.key].spends,
+            spends: input.spends,
           })
           // No silent fallback to a local mandate: a limit the server never
           // heard of is not a limit, and pretending otherwise is the one thing
@@ -228,6 +242,9 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
           const job = await backend.createJob(authorization.id, `hire:${authorization.id}`)
           const hire: Hire = {
             key: input.key,
+            name: input.name,
+            initial: input.initial,
+            bg: input.bg,
             hiredAt: now,
             status: 'working',
             mandate: {
@@ -244,7 +261,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
           const remoteJob: Job = {
             id: job.id,
             key: input.key,
-            title: TITLES[input.key],
+            title: TITLES[input.key] ?? input.title,
             status: 'RUNNING',
             step: 0,
             createdAt: now,
@@ -263,6 +280,9 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
         const jobId = nextId('job')
         const hire: Hire = {
           key: input.key,
+          name: input.name,
+          initial: input.initial,
+          bg: input.bg,
           hiredAt: now,
           status: 'working',
           mandate: {
@@ -278,7 +298,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
         const job: Job = {
           id: jobId,
           key: input.key,
-          title: TITLES[input.key],
+          title: TITLES[input.key] ?? input.title,
           status: 'RUNNING',
           step: 0,
           createdAt: now,
@@ -445,7 +465,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>
 }
 
-const TITLES: Record<AgentKey, string> = {
+const TITLES: Record<string, string> = {
   guardian: 'Protecting your Venus loan',
   sentinel: 'Watching your Venus position',
   lpilot: 'Keeping your BNB / USDT position in range',

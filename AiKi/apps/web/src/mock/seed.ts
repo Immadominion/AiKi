@@ -1,4 +1,4 @@
-import type { AgentKey } from '@/lib/agents'
+import { AGENT_BG, AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
 
 import {
   type ActivityEvent,
@@ -36,6 +36,9 @@ export function demoState(): MockState {
   const hires: Hire[] = [
     {
       key: 'guardian',
+      name: AGENT_BY_KEY['guardian']?.name ?? 'guardian',
+      initial: AGENT_BY_KEY['guardian']?.initial ?? '?',
+      bg: AGENT_BG['guardian'] ?? '#171715',
       hiredAt: iso(60 * 24 * 12),
       status: 'working',
       mandate: {
@@ -50,6 +53,9 @@ export function demoState(): MockState {
     },
     {
       key: 'gridly',
+      name: AGENT_BY_KEY['gridly']?.name ?? 'gridly',
+      initial: AGENT_BY_KEY['gridly']?.initial ?? '?',
+      bg: AGENT_BG['gridly'] ?? '#171715',
       hiredAt: iso(60 * 24 * 5),
       status: 'working',
       mandate: {
@@ -64,6 +70,9 @@ export function demoState(): MockState {
     },
     {
       key: 'sentinel',
+      name: AGENT_BY_KEY['sentinel']?.name ?? 'sentinel',
+      initial: AGENT_BY_KEY['sentinel']?.initial ?? '?',
+      bg: AGENT_BG['sentinel'] ?? '#171715',
       hiredAt: iso(60 * 24 * 9),
       status: 'paused',
       mandate: {

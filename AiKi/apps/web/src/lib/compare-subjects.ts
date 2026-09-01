@@ -66,11 +66,13 @@ export function subjectFromPassport(passport: ProjectedPassport): CompareSubject
 export function subjectFromFixture(key: AgentKey): CompareSubject {
   const detail = DETAILS[key]
   const meta = AGENT_BY_KEY[key]
+  // Only ever called with one of the six example keys.
+  if (!detail || !meta) throw new Error(`No example agent called ${key}.`)
   return {
     key,
     name: meta.name,
     initial: meta.initial,
-    bg: AGENT_BG[key],
+    bg: AGENT_BG[key] ?? '#171715',
     checks: detail.checks,
     components: detail.components,
     registeredAt: detail.registeredAt,

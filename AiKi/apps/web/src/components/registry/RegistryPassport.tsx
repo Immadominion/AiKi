@@ -1,10 +1,12 @@
 'use client'
 
 import type { ProjectedPassport } from '@aiki/contracts'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { PageCard } from '@/components/shell/PageCard'
 import { LIVENESS_DETAIL, LivenessBadge } from '@/components/ui/LivenessBadge'
 import { api } from '@/lib/api'
+import { route } from '@/lib/routes'
 
 type State =
   | { kind: 'loading' }
@@ -44,6 +46,7 @@ function Fact({ label, value }: { label: string; value: string | null }) {
  * render a value here.
  */
 export function RegistryPassport({ agentId }: { agentId: string }) {
+  const router = useRouter()
   const [state, setState] = useState<State>({ kind: 'loading' })
 
   useEffect(() => {
@@ -96,6 +99,18 @@ export function RegistryPassport({ agentId }: { agentId: string }) {
       count={`token ${p.identity.tokenId}${p.chainId === 56 ? ' · BNB Chain' : ''}`}
       tabs={[]}
       tabHint=""
+      /*
+       * Hiring is offered only where the evidence supports it. Everything is
+       * listed, because a catalogue that hides what it has not checked is a
+       * tenth of the registry, but the sale is still gated: you can read the
+       * page of a suspended seller and you cannot buy from them.
+       */
+      {...(p.liveness === 'LIVE'
+        ? {
+            primary: 'Hire this agent',
+            onPrimary: () => router.push(route(`/registry/${p.agentId}/hire`)),
+          }
+        : {})}
       back={{ href: '/registry', label: 'Registry' }}
     >
       <div className="grid gap-[14px] md:grid-cols-2">
