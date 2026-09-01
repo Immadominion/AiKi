@@ -57,6 +57,14 @@ export async function act(input: {
   callData: Hex
   authorization: AuthorizationRecord
   config?: ActConfig
+  /**
+   * Why the agent wants to act, in its own words.
+   *
+   * Shown to whoever has to approve it when the mandate says to ask first. A
+   * request that cannot say why is a dare rather than a question, so there is a
+   * default and it is honest about knowing nothing.
+   */
+  why?: string
 }): Promise<ActOutcome> {
   const { jobs, jobId, action, callData, authorization, config } = input
 
@@ -66,7 +74,7 @@ export async function act(input: {
    * locked step. Two concurrent actions must not both fit under a limit only one
    * of them fits under.
    */
-  const policy = await jobs.attempt(jobId, action)
+  const policy = await jobs.attempt(jobId, action, input.why)
   if (!policy.allow) return { policy, heldBy: authorization.delegation ? 'chain' : 'aiki' }
 
   const delegation = authorization.delegation as SignedDelegation | undefined

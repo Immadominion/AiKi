@@ -141,6 +141,56 @@ describe.skipIf(!url)('PostgresJobStore', () => {
     // And the loser counted nothing, so the mandate is not quietly overdrawn.
     expect((await jobs.getAuthorization(auth.id)).spent).toBe(tenth)
   })
+
+  it('asks once and answers once, against a real database', async () => {
+    /*
+     * The unique index is what makes repeated ticks one question rather than
+     * sixty, and the conditional update is what makes two clicks one answer.
+     * Neither is the code's guarantee, so neither can be shown in memory.
+     */
+    const store_ = store()
+    const jobs = new JobService(store_)
+    const auth = await jobs.authorize(
+      [
+        {
+          kind: 'approval',
+          value: { mode: 'approve_every', threshold: '0' },
+          tier: 'T2',
+          label: 'Ask me every time',
+        },
+      ],
+      `0x${'ef'.repeat(20)}`,
+    )
+    const job = await jobs.createJob(auth.id, `approval-${auth.id}`)
+    const action = {
+      jobId: job.id,
+      authorizationId: auth.id,
+      target: '0xfd36e2c2a6789db23113685031d7f16329158384',
+      selector: '0x0e752702',
+      asset: '0x55d398326f99059ff775485246999027b3197955',
+      amount: 100_000_000_000_000_000n,
+      reason: 'Health factor fell below 1.2.',
+    }
+
+    // Two ticks at once, one question.
+    const [a, b] = await Promise.all([
+      store_.requestApproval(action),
+      store_.requestApproval(action),
+    ])
+    expect(a.id).toBe(b.id)
+    expect(await store_.approvals(job.id)).toHaveLength(1)
+
+    // Two answers at once, one winner.
+    const [first, second] = await Promise.all([
+      store_.decideApproval(a.id, ['pending'], 'approved'),
+      store_.decideApproval(a.id, ['pending'], 'declined'),
+    ])
+    expect([first, second].filter(Boolean)).toHaveLength(1)
+
+    // The amount survives the round trip as a uint256, not as a float.
+    const [stored] = await store_.approvals(job.id)
+    expect(stored?.amount).toBe(100_000_000_000_000_000n)
+  })
 })
 
 it.skipIf(!databaseUrl)(

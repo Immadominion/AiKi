@@ -10,6 +10,7 @@ export interface Constraint {
     | 'session_total_cap'
     | 'expiry'
     | 'condition'
+    | 'approval'
   value: unknown
   tier: EnforcementTier
   label: string
@@ -118,6 +119,58 @@ export function evaluatePolicy(
  * too big for one action, or past the total this mandate was ever allowed to
  * spend. Those are refusals about the money, and money is what this is.
  */
+/**
+ * Whether somebody has to say yes before this action happens.
+ *
+ * Separate from `evaluatePolicy` because it is not a verdict on the action. A
+ * denial means the mandate forbids this; an approval requirement means the
+ * mandate permits it once a person agrees, which needs a record and a second
+ * visit rather than an answer here.
+ *
+ * `automatic` and `notify` both act immediately. The difference between them is
+ * what gets written down, not whether the action happens, and pretending
+ * otherwise would make "tell me each time" a gate it was never described as.
+ */
+export type ApprovalMode = 'automatic' | 'notify' | 'approve_above_threshold' | 'approve_every'
+
+export interface ApprovalRule {
+  mode: ApprovalMode
+  /** Base units, for `approve_above_threshold`. Anything at or under goes through. */
+  threshold: bigint
+}
+
+/** The approval rule a mandate carries, or none, in which case it acts. */
+export function approvalRule(policy: CompiledPolicy): ApprovalRule | null {
+  for (const c of policy.constraints) {
+    if (c.kind !== 'approval') continue
+    const value = c.value as { mode?: string; threshold?: string } | string
+    const mode = (typeof value === 'string' ? value : value?.mode) as ApprovalMode | undefined
+    if (!mode) continue
+    let threshold = 0n
+    try {
+      threshold = typeof value === 'string' ? 0n : BigInt(value?.threshold ?? '0')
+    } catch {
+      /*
+       * A threshold nobody can read is treated as zero, which asks about
+       * everything. Failing open here would mean an unreadable number silently
+       * turned "ask me over an amount" into "never ask me".
+       */
+      threshold = 0n
+    }
+    return { mode, threshold }
+  }
+  return null
+}
+
+/** True when this action may not happen until somebody has agreed to it. */
+export function needsApproval(policy: CompiledPolicy, amount: bigint): boolean {
+  const rule = approvalRule(policy)
+  if (!rule) return false
+  if (rule.mode === 'approve_every') return true
+  if (rule.mode === 'approve_above_threshold') return amount > rule.threshold
+  return false
+}
+
 export function evaluatePurchase(
   policy: CompiledPolicy,
   purchase: { amount: bigint; at: string },

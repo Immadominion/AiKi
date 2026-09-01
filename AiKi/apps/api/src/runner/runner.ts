@@ -58,12 +58,23 @@ export async function tick(input: TickInput): Promise<TickResult> {
   }
 
   // The mandate rules before anything is sent. This is the stage that makes an
-  // agent's bug a refused action rather than a loss.
-  const verdict = await input.jobs.attempt(input.jobId, action)
+  // agent's bug a refused action rather than a loss. The agent's own reason for
+  // acting goes with it, because a mandate that asks a person first has to be
+  // able to tell them what they are being asked about.
+  const verdict = await input.jobs.attempt(input.jobId, action, decision.reason)
   if (!verdict.allow)
     return {
       acted: false,
-      reason: `The mandate refused it: ${verdict.reason}`,
+      /*
+       * Waiting is not refusing, and saying "the mandate refused it" about an
+       * action sitting in somebody's approval queue would be the wrong sentence
+       * on a screen they are meant to act on. The next tick picks it up once
+       * they answer.
+       */
+      reason:
+        verdict.rule === 'approval_required'
+          ? `Waiting for you: ${decision.reason}`
+          : `The mandate refused it: ${verdict.reason}`,
       deniedBy: verdict.rule,
     }
 

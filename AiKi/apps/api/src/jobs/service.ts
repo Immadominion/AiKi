@@ -6,6 +6,7 @@ import {
   compilePolicy,
   evaluatePolicy,
   evaluatePurchase,
+  needsApproval,
 } from '../authority/policy.js'
 import { ClientError } from '../http/errors.js'
 import {
@@ -109,9 +110,63 @@ export class JobService {
     }
   }
 
-  async attempt(jobId: string, action: Action) {
+  async attempt(jobId: string, action: Action, why = 'The agent asked to.') {
     const job = await this.getJob(jobId)
     const at = new Date().toISOString()
+
+    /*
+     * Does a person have to say yes first.
+     *
+     * Asked BEFORE the cap is charged, because `attemptSpend` increments the
+     * spend counter in the same locked step it decides, and an action that is
+     * waiting for an answer has not spent anything. Charging and then releasing
+     * would work but would leave a watch's counter flickering every tick.
+     *
+     * The runner ticks on a schedule, so refusing here is a pause rather than a
+     * denial: the same action comes back next tick, finds the answer, and goes
+     * through. Nothing is held in memory between the two.
+     */
+    const auth = await this.getAuthorization(job.authorizationId)
+    if (auth.status === 'active' && needsApproval(auth.policy, action.amount)) {
+      const standing = await this.store.approvalFor(jobId, {
+        target: action.target,
+        selector: action.selector,
+        asset: action.asset,
+        amount: action.amount,
+      })
+      if (standing) {
+        /*
+         * Spent, so it cannot be spent again. One yes authorises one action:
+         * an approval that stayed usable would turn a single answer into
+         * standing permission, which is the opposite of what somebody choosing
+         * "ask me every time" asked for.
+         */
+        await this.store.decideApproval(standing.id, ['approved'], 'used')
+      } else {
+        const request = await this.store.requestApproval({
+          jobId,
+          authorizationId: job.authorizationId,
+          target: action.target,
+          selector: action.selector,
+          asset: action.asset,
+          amount: action.amount,
+          reason: why,
+        })
+        await this.store.appendEvents(jobId, [
+          {
+            type: 'policy',
+            at,
+            detail: `waiting for you: ${why} (${request.id})`,
+          },
+        ])
+        return {
+          allow: false,
+          rule: 'approval_required',
+          reason: 'This mandate says to ask you first, and nobody has answered yet.',
+          approvalId: request.id,
+        }
+      }
+    }
 
     const verdict = await this.store.attemptSpend(job.authorizationId, (auth) => {
       if (auth.status !== 'active')
@@ -144,6 +199,23 @@ export class JobService {
     await this.store.appendEvents(jobId, events, status)
 
     return { allow: verdict.allow, rule: verdict.rule, reason: verdict.reason }
+  }
+
+  /** What is waiting for an answer on this job. */
+  async approvals(jobId: string) {
+    return this.store.approvals(jobId)
+  }
+
+  /**
+   * Answer a request.
+   *
+   * Only a pending one can be answered, enforced by the store's conditional
+   * update, so two clicks or an approve racing a decline have exactly one
+   * winner. Returns null when this caller lost or the request is already
+   * spent.
+   */
+  async decideApproval(id: string, decision: 'approved' | 'declined') {
+    return this.store.decideApproval(id, ['pending'], decision)
   }
 
   /**

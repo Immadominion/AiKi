@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
 import postgres from 'postgres'
 import type { CompiledPolicy } from '../authority/policy.js'
 import { ClientError } from '../http/errors.js'
 import type {
+  ApprovalRequest,
   AuthorizationRecord,
   AuthorizationStatus,
   JobEvent,
@@ -27,6 +29,38 @@ interface AuthorizationRow {
   delegation_chain_id: number | string | null
   delegation_signed_at: string | Date | null
 }
+
+interface ApprovalRow {
+  id: string
+  job_id: string
+  authorization_id: string
+  target: string
+  selector: string
+  asset: string
+  amount: string
+  reason: string
+  status: ApprovalRequest['status']
+  requested_at: Date | string
+  decided_at: Date | string | null
+}
+
+const asIso = (at: Date | string) => (at instanceof Date ? at.toISOString() : at)
+
+const toApproval = (row: ApprovalRow): ApprovalRequest => ({
+  id: row.id,
+  jobId: row.job_id,
+  authorizationId: row.authorization_id,
+  target: row.target,
+  selector: row.selector,
+  asset: row.asset,
+  // Read as a string and parsed. A uint256 amount loses precision through
+  // Number, and this one is shown to a person who is about to agree to it.
+  amount: BigInt(row.amount),
+  reason: row.reason,
+  status: row.status,
+  requestedAt: asIso(row.requested_at),
+  ...(row.decided_at ? { decidedAt: asIso(row.decided_at) } : {}),
+})
 
 interface JobRow {
   id: string
@@ -190,6 +224,81 @@ export class PostgresJobStore implements JobStore {
       SET spent = GREATEST(spent - ${amount.toString()}, 0)
       WHERE id = ${authorizationId}
     `
+  }
+
+  async requestApproval(
+    request: Omit<ApprovalRequest, 'id' | 'status' | 'requestedAt' | 'decidedAt'>,
+  ): Promise<ApprovalRequest> {
+    /*
+     * The partial unique index decides, not a read followed by a write. The
+     * runner raises the same action every tick until somebody answers, and two
+     * ticks overlapping would otherwise both find nothing pending and both
+     * insert. ON CONFLICT DO NOTHING then returns no row, so the existing one
+     * is read back and returned: asking again gets the same question.
+     */
+    const inserted = await this.sql<ApprovalRow[]>`
+      INSERT INTO job_approvals
+        (id, job_id, authorization_id, target, selector, asset, amount, reason, status)
+      VALUES (${randomUUID()}, ${request.jobId}, ${request.authorizationId},
+              ${request.target}, ${request.selector}, ${request.asset},
+              ${request.amount.toString()}, ${request.reason}, 'pending')
+      ON CONFLICT DO NOTHING
+      RETURNING *
+    `
+    const made = inserted[0]
+    if (made) return toApproval(made)
+    const waiting = await this.sql<ApprovalRow[]>`
+      SELECT * FROM job_approvals
+       WHERE job_id = ${request.jobId} AND status = 'pending'
+         AND lower(target) = lower(${request.target})
+         AND lower(selector) = lower(${request.selector})
+         AND lower(asset) = lower(${request.asset})
+         AND amount = ${request.amount.toString()}
+       LIMIT 1
+    `
+    const row = waiting[0]
+    if (!row) throw new Error('The approval request could not be recorded or found.')
+    return toApproval(row)
+  }
+
+  async approvalFor(
+    jobId: string,
+    action: { target: string; selector: string; asset: string; amount: bigint },
+  ): Promise<ApprovalRequest | null> {
+    const rows = await this.sql<ApprovalRow[]>`
+      SELECT * FROM job_approvals
+       WHERE job_id = ${jobId} AND status = 'approved'
+         AND lower(target) = lower(${action.target})
+         AND lower(selector) = lower(${action.selector})
+         AND lower(asset) = lower(${action.asset})
+         AND amount = ${action.amount.toString()}
+       ORDER BY requested_at DESC LIMIT 1
+    `
+    const row = rows[0]
+    return row ? toApproval(row) : null
+  }
+
+  async approvals(jobId: string): Promise<ApprovalRequest[]> {
+    const rows = await this.sql<ApprovalRow[]>`
+      SELECT * FROM job_approvals WHERE job_id = ${jobId} ORDER BY requested_at DESC
+    `
+    return rows.map(toApproval)
+  }
+
+  async decideApproval(
+    id: string,
+    from: ApprovalRequest['status'][],
+    to: ApprovalRequest['status'],
+  ): Promise<ApprovalRequest | null> {
+    // One conditional UPDATE, so two clicks cannot both land and a decline
+    // racing an approve has exactly one winner.
+    const rows = await this.sql<ApprovalRow[]>`
+      UPDATE job_approvals SET status = ${to}, decided_at = now()
+       WHERE id = ${id} AND status = ANY(${from})
+      RETURNING *
+    `
+    const row = rows[0]
+    return row ? toApproval(row) : null
   }
 
   async attemptSpend(

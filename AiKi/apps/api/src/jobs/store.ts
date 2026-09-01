@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
 import type { CompiledPolicy } from '../authority/policy.js'
 import { ClientError } from '../http/errors.js'
@@ -77,6 +78,28 @@ export interface SpendVerdict {
  * that atomicity because only the store knows how to hold a lock; the caller
  * still owns the policy, which it passes in as the evaluator.
  */
+/**
+ * An action the agent wants to take and a person has not answered yet.
+ *
+ * Everything a person needs to decide is on the record rather than in memory,
+ * because the decision arrives on a different request from the one that raised
+ * it, usually much later and possibly after a restart.
+ */
+export interface ApprovalRequest {
+  id: string
+  jobId: string
+  authorizationId: string
+  target: string
+  selector: string
+  asset: string
+  amount: bigint
+  /** Why the agent wants to, in its own words. */
+  reason: string
+  status: 'pending' | 'approved' | 'declined' | 'used'
+  requestedAt: string
+  decidedAt?: string
+}
+
 export interface JobStore {
   /**
    * Move a job from one of `from` to `to`, and say whether this caller did it.
@@ -104,6 +127,44 @@ export interface JobStore {
     jobId: string,
     sale: { agentId: string; pricePoints: number; totalPoints: number; outlay: bigint },
   ): Promise<void>
+  /**
+   * Record that an action is waiting, or return the request already waiting for
+   * it.
+   *
+   * Idempotent on the action, not on the call. The runner ticks on a schedule
+   * and will raise the same action every tick until it is answered, so asking
+   * again must return the same question rather than adding another: a watch
+   * checking every minute would otherwise put sixty identical requests in front
+   * of somebody in an hour, and they would stop reading all of them.
+   */
+  requestApproval(
+    request: Omit<ApprovalRequest, 'id' | 'status' | 'requestedAt' | 'decidedAt'>,
+  ): Promise<ApprovalRequest>
+  /**
+   * The approval standing for this exact action, if somebody has given one.
+   *
+   * Matched on the action rather than the job, because approving one repayment
+   * is not approving the next one. An agent that could reuse a yes would turn a
+   * single answer into standing permission, which is the opposite of what the
+   * person asked for.
+   */
+  approvalFor(
+    jobId: string,
+    action: { target: string; selector: string; asset: string; amount: bigint },
+  ): Promise<ApprovalRequest | null>
+  /** What is waiting on this job. Newest first. */
+  approvals(jobId: string): Promise<ApprovalRequest[]>
+  /**
+   * Answer a request, once.
+   *
+   * Conditional on its current status, so two clicks, or a click racing a
+   * decline, cannot both land. Returns null when this caller lost.
+   */
+  decideApproval(
+    id: string,
+    from: ApprovalRequest['status'][],
+    to: ApprovalRequest['status'],
+  ): Promise<ApprovalRequest | null>
   createAuthorization(record: AuthorizationRecord): Promise<AuthorizationRecord>
   getAuthorization(id: string): Promise<AuthorizationRecord | null>
   revokeAuthorization(id: string, at: string): Promise<AuthorizationRecord | null>
@@ -154,6 +215,72 @@ export class InMemoryJobStore implements JobStore {
   private readonly authorizations = new Map<string, AuthorizationRecord>()
   private readonly jobs = new Map<string, JobRecord>()
   private readonly byKey = new Map<string, string>()
+  private readonly pendingApprovals: ApprovalRequest[] = []
+
+  /** The action, as a key. Two requests match when the action matches. */
+  private static actionKey(a: {
+    jobId: string
+    target: string
+    selector: string
+    asset: string
+    amount: bigint
+  }) {
+    return [
+      a.jobId,
+      a.target.toLowerCase(),
+      a.selector.toLowerCase(),
+      a.asset.toLowerCase(),
+      a.amount.toString(),
+    ].join('|')
+  }
+
+  async requestApproval(
+    request: Omit<ApprovalRequest, 'id' | 'status' | 'requestedAt' | 'decidedAt'>,
+  ) {
+    const key = InMemoryJobStore.actionKey(request)
+    const waiting = this.pendingApprovals.find(
+      (a) => a.status === 'pending' && InMemoryJobStore.actionKey(a) === key,
+    )
+    if (waiting) return { ...waiting }
+    const made: ApprovalRequest = {
+      ...request,
+      id: randomUUID(),
+      status: 'pending',
+      requestedAt: new Date().toISOString(),
+    }
+    this.pendingApprovals.push(made)
+    return { ...made }
+  }
+
+  async approvalFor(
+    jobId: string,
+    action: { target: string; selector: string; asset: string; amount: bigint },
+  ) {
+    const key = InMemoryJobStore.actionKey({ jobId, ...action })
+    const found = this.pendingApprovals.find(
+      (a) => a.status === 'approved' && InMemoryJobStore.actionKey(a) === key,
+    )
+    return found ? { ...found } : null
+  }
+
+  async approvals(jobId: string) {
+    return this.pendingApprovals
+      .filter((a) => a.jobId === jobId)
+      .map((a) => ({ ...a }))
+      .reverse()
+  }
+
+  async decideApproval(
+    id: string,
+    from: ApprovalRequest['status'][],
+    to: ApprovalRequest['status'],
+  ) {
+    const held = this.pendingApprovals.find((a) => a.id === id)
+    if (!held || !from.includes(held.status)) return null
+    held.status = to
+    held.decidedAt = new Date().toISOString()
+    return { ...held }
+  }
 
   async createAuthorization(record: AuthorizationRecord) {
     this.authorizations.set(record.id, { ...record })

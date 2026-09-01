@@ -952,6 +952,89 @@ export function createApiServer(input: {
     return reply
   })
   /**
+   * What the agent is waiting to be allowed to do.
+   *
+   * The hire screen has offered "ask me over an amount" and "ask me every time"
+   * since the beginning, and until these routes existed the API had no concept
+   * of approval at all: the choice was never sent, nothing read it, and the
+   * agent acted regardless. Settings said of approval requests "This is the one
+   * thing we will not let you silence" about a setting that reached no server.
+   */
+  app.get<{ Params: { id: string } }>('/v1/jobs/:id/approvals', async (request, reply) => {
+    const session = requireSession(request, reply)
+    if (!session) return reply
+    const job = await ownedJob(request, reply, session.address, request.params.id)
+    if (!job) return reply
+    const waiting = await jobs.approvals(job.id)
+    return {
+      jobId: job.id,
+      approvals: waiting.map((a) => ({
+        ...a,
+        // Base units are a uint256 and JSON has no such number. Sent as a
+        // string, because the alternative is a figure that silently loses its
+        // last digits on the screen where somebody agrees to it.
+        amount: a.amount.toString(),
+      })),
+    }
+  })
+
+  app.post<{ Params: { id: string; approvalId: string }; Body: { decision?: string } }>(
+    '/v1/jobs/:id/approvals/:approvalId',
+    async (request, reply) => {
+      const session = requireSession(request, reply)
+      if (!session) return reply
+      const job = await ownedJob(request, reply, session.address, request.params.id)
+      if (!job) return reply
+
+      const decision = request.body?.decision
+      if (decision !== 'approved' && decision !== 'declined')
+        return reply.code(400).send({
+          error: {
+            code: 'DECISION_REQUIRED',
+            message: 'Answer with "approved" or "declined".',
+            retryable: false,
+          },
+        })
+
+      /*
+       * Checked against this job, not just by id. The request id alone would
+       * let somebody answer an approval on a job they do not own by knowing its
+       * id, and what they would be approving is somebody else's money moving.
+       */
+      const waiting = (await jobs.approvals(job.id)).find((a) => a.id === request.params.approvalId)
+      if (!waiting)
+        return reply.code(404).send({
+          error: {
+            code: 'APPROVAL_NOT_FOUND',
+            message: 'No such approval request on this job.',
+            retryable: false,
+          },
+        })
+
+      const decided = await jobs.decideApproval(waiting.id, decision)
+      if (!decided)
+        return reply.code(409).send({
+          error: {
+            code: 'APPROVAL_ALREADY_ANSWERED',
+            message: `This was already ${waiting.status === 'used' ? 'used' : waiting.status}.`,
+            retryable: false,
+          },
+        })
+
+      await jobs.record(job.id, {
+        type: 'policy',
+        detail: `you ${decision === 'approved' ? 'approved' : 'declined'} it`,
+      })
+      /*
+       * Approving does not act. The agent's next tick finds the answer and
+       * proceeds, which is why this says "next time it checks" rather than
+       * claiming the thing has happened.
+       */
+      return { ...decided, amount: decided.amount.toString() }
+    },
+  )
+
+  /**
    * The buyer pays, and the job becomes fundable work rather than a quote.
    *
    * Of the twelve job states the contract defines, FUNDED and SETTLED were
@@ -1419,7 +1502,14 @@ export function createApiServer(input: {
    */
   app.post<{
     Params: { id: string }
-    Body: { target?: string; selector?: string; asset?: string; amount?: string; callData?: string }
+    Body: {
+      target?: string
+      selector?: string
+      asset?: string
+      amount?: string
+      callData?: string
+      why?: string
+    }
   }>('/v1/jobs/:id/actions', async (request, reply) => {
     const session = requireSession(request, reply)
     if (!session) return reply
@@ -1433,6 +1523,9 @@ export function createApiServer(input: {
       action,
       callData,
       authorization,
+      // Trimmed, because it is shown to a person and stored: an agent should
+      // not be able to fill an approval screen with a novel.
+      ...(request.body?.why ? { why: request.body.why.slice(0, 300) } : {}),
       ...(input.enforcers && input.agentKey
         ? {
             config: {

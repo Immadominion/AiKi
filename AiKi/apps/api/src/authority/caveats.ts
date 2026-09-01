@@ -310,6 +310,24 @@ export function compileCaveats(
       continue
     }
 
+    if (constraint.kind === 'approval') {
+      /*
+       * T2, and it could not honestly be anything else. No contract can wait
+       * for a person: the chain either accepts a transaction or does not, and
+       * "hold this until somebody agrees" is AiKi declining to relay. Rendering
+       * an approval gate as on-chain would be the worst version of the mistake
+       * this whole tier system exists to prevent, because it is the control a
+       * person reaches for when they trust the agent least.
+       */
+      outcomes.push(
+        soft(
+          constraint,
+          'AiKi holds the action until you answer. No contract can wait for a person.',
+        ),
+      )
+      continue
+    }
+
     // `condition` and anything added later: no enforcer exists, so it is counted
     // by AiKi before relaying and must never render as T0.
     outcomes.push(
