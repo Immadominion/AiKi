@@ -570,7 +570,17 @@ export function createApiServer(input: {
         'This agent publishes no price in its registration, so there is nothing to quote.',
       )
 
-    return buildQuote({ quoteId: randomUUID(), agentId: request.body.agentId, price })
+    return {
+      ...buildQuote({ quoteId: randomUUID(), agentId: request.body.agentId, price }),
+      /*
+       * Where the number came from. A price in the registration file is public:
+       * everybody reading the agent sees it. A price the owner listed with AiKi
+       * is something they told us. Both are the owner's own declaration and
+       * they are not the same claim, so a buyer is told which one they are
+       * being quoted rather than left to assume.
+       */
+      priceSource: quoted?.source ?? 'registration',
+    }
   })
   /*
    * What a mandate would be worth, without creating one.

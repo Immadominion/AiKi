@@ -3,6 +3,7 @@
 import type { ProjectedPassport } from '@aiki/contracts'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { OwnerListing } from '@/components/registry/OwnerListing'
 import { PageCard } from '@/components/shell/PageCard'
 import { LIVENESS_DETAIL, LivenessBadge } from '@/components/ui/LivenessBadge'
 import { api } from '@/lib/api'
@@ -113,6 +114,8 @@ export function RegistryPassport({ agentId }: { agentId: string }) {
         : {})}
       back={{ href: '/registry', label: 'Registry' }}
     >
+      <OwnerListing agentId={p.agentId} owner={p.identity?.owner ?? null} />
+
       <div className="grid gap-[14px] md:grid-cols-2">
         <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-[15px]">
           <div className="flex items-center justify-between gap-3">

@@ -273,6 +273,7 @@ export const api = {
       settlementAsset: { symbol: string; address: string; decimals: number }
       feeBasisPoints: number
       expiresAt: string
+      priceSource: 'registration' | 'owner-listing'
     }>('/v1/quotes', { method: 'POST', body: JSON.stringify({ agentId }) }),
   /** Take the quoted total from the buyer. Nothing reaches the agent yet. */
   fundJob: (jobId: string, agentId: string) =>
@@ -290,6 +291,12 @@ export const api = {
       alreadySettled: boolean
       status: string
     }>(`/v1/jobs/${jobId}/settle`, { method: 'POST', body: JSON.stringify({ agentId }) }),
+  /** The supply side: the owner sets what AiKi quotes for their agent. */
+  listAgent: (agentId: string, priceAmount: string) =>
+    req<{ agentId: string; listedBy: string; price: { amount: string; asset: string } }>(
+      `/v1/agents/${agentId}/listing`,
+      { method: 'POST', body: JSON.stringify({ priceAmount }) },
+    ),
   compare: (agentIds: string[]) =>
     req<{ agents: ProjectedPassport[]; indistinguishable: boolean; reason: string }>(
       '/v1/compare',
