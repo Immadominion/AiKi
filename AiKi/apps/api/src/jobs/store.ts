@@ -4,9 +4,13 @@ import type { CompiledPolicy } from '../authority/policy.js'
 export type AuthorizationStatus = 'pending' | 'active' | 'revoked' | 'expired'
 export type JobStatus =
   | 'AUTHORIZED'
+  /** The buyer has paid and the money is held. Nothing reaches the agent yet. */
+  | 'FUNDED'
   | 'DISPATCHED'
   | 'RUNNING'
   | 'COMPLETED'
+  /** The work was accepted and the agent's owner has been paid. */
+  | 'SETTLED'
   | 'REJECTED'
   | 'CANCELLED'
 

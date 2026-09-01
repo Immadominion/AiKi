@@ -150,6 +150,22 @@ export class JobService {
     await this.store.appendEvents(jobId, [{ ...event, at: new Date().toISOString() }])
   }
 
+  /**
+   * Move a job to a new state and log the move in the same write.
+   *
+   * `record` deliberately cannot change status, which left the money states
+   * unreachable: nothing in the codebase could put a job into FUNDED or SETTLED,
+   * so of the twelve states the contract defines, those two existed only as
+   * type members.
+   */
+  async advance(jobId: string, status: JobStatus, detail: string): Promise<void> {
+    await this.store.appendEvents(
+      jobId,
+      [{ type: 'status', detail, at: new Date().toISOString() }],
+      status,
+    )
+  }
+
   async getAuthorization(id: string): Promise<AuthorizationRecord> {
     const record = await this.store.getAuthorization(id)
     if (!record)

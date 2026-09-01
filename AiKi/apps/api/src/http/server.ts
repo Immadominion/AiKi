@@ -26,7 +26,8 @@ import { ReceiptService } from '../receipts/service.js'
 import { registerWatchRoutes } from '../runner/routes.js'
 import type { WatchStore } from '../runner/store.js'
 import { buildSearchQuery } from '../search/query.js'
-import { buildQuote, SETTLEMENT } from '../settlement/pricing.js'
+import { fundJob, InsufficientPoints, settleJob } from '../settlement/ledger.js'
+import { buildQuote, priceJob, SETTLEMENT } from '../settlement/pricing.js'
 import { publishedAsset, publishedPrice } from '../settlement/published-price.js'
 import { asClientError, asProtocolError, asSchemaError, ClientError } from './errors.js'
 
@@ -124,6 +125,12 @@ export function createApiServer(input: {
    * serves Manual mode only, and says so rather than failing oddly.
    */
   assistant?: AssistantConfig
+  /**
+   * Where AiKi's own fee lands. Absent means this deployment quotes a fee it has
+   * nowhere to put, so it refuses to settle rather than keeping the money in a
+   * place nobody named.
+   */
+  settlementTreasury?: string
   receipts?: ReceiptService
   benchmarks?: BenchmarkService
   /** Omitted only in tests of the public surface; every mandate route needs it. */
@@ -878,6 +885,155 @@ export function createApiServer(input: {
     reply.raw.end()
     return reply
   })
+  /**
+   * The buyer pays, and the job becomes fundable work rather than a quote.
+   *
+   * Of the twelve job states the contract defines, FUNDED and SETTLED were
+   * reached by no code path at all, and `settle()` was imported by no file. A
+   * venue that shows a price and hands over the goods but cannot take payment
+   * is a catalogue. These two routes are the difference.
+   */
+  app.post<{ Params: { id: string }; Body: { agentId?: string } }>(
+    '/v1/jobs/:id/fund',
+    async (request, reply) => {
+      const session = requireSession(request, reply)
+      if (!session) return reply
+      const job = await ownedJob(request, reply, session.address, request.params.id)
+      if (!job) return reply
+      if (!input.assistant?.credits)
+        return reply.code(503).send({
+          error: {
+            code: 'SETTLEMENT_UNAVAILABLE',
+            message: 'This deployment has no points ledger, so it cannot take payment.',
+            retryable: false,
+          },
+        })
+
+      const agentId = request.body?.agentId
+      if (!agentId)
+        return reply
+          .code(400)
+          .send({
+            error: {
+              code: 'AGENT_REQUIRED',
+              message: 'agentId is required to price the job.',
+              retryable: false,
+            },
+          })
+
+      // Priced from the agent's own published price, through the same reader
+      // the quote uses, so funding and quoting cannot disagree.
+      const observations = await agentObservations([agentId])
+      const passport = projectPassport(agentId, observations)
+      const fail = (code: string, message: string) =>
+        reply.code(422).send({ error: { code, message, retryable: false } })
+      if (passport.liveness !== 'LIVE')
+        return fail('AGENT_NOT_QUOTABLE', 'Only LIVE agents may be hired.')
+      const price = publishedPrice(agentId, observations)
+      if (price === null)
+        return fail('AGENT_HAS_NO_PUBLISHED_PRICE', 'This agent publishes no price.')
+
+      const total = Number(priceJob(price).total)
+      try {
+        const held = await fundJob({
+          credits: input.assistant.credits,
+          jobId: job.id,
+          buyer: session.address,
+          totalPoints: total,
+        })
+        await jobs.advance(job.id, 'FUNDED', `Buyer funded ${total} points.`)
+        return { jobId: job.id, agentId, ...held, status: 'FUNDED' }
+      } catch (error) {
+        if (error instanceof InsufficientPoints)
+          return reply
+            .code(402)
+            .send({
+              error: { code: 'INSUFFICIENT_POINTS', message: error.message, retryable: false },
+            })
+        throw error
+      }
+    },
+  )
+
+  /**
+   * The work was accepted, so the money moves on: the agent's owner is paid and
+   * AiKi keeps the fee it quoted. Both legs are keyed on the job, so a retry
+   * settles nothing twice.
+   */
+  app.post<{ Params: { id: string }; Body: { agentId?: string } }>(
+    '/v1/jobs/:id/settle',
+    async (request, reply) => {
+      const session = requireSession(request, reply)
+      if (!session) return reply
+      const job = await ownedJob(request, reply, session.address, request.params.id)
+      if (!job) return reply
+      const credits = input.assistant?.credits
+      const treasury = input.settlementTreasury
+      if (!credits || !treasury)
+        return reply.code(503).send({
+          error: {
+            code: 'SETTLEMENT_UNAVAILABLE',
+            message: 'This deployment has no points ledger or no treasury, so it cannot settle.',
+            retryable: false,
+          },
+        })
+      if (job.status !== 'FUNDED' && job.status !== 'COMPLETED')
+        return reply.code(409).send({
+          error: {
+            code: 'JOB_NOT_SETTLEABLE',
+            message: `A job settles once it is funded and the work is in. This one is ${job.status}.`,
+            retryable: false,
+          },
+        })
+
+      const agentId = request.body?.agentId
+      if (!agentId)
+        return reply
+          .code(400)
+          .send({
+            error: {
+              code: 'AGENT_REQUIRED',
+              message: 'agentId is required to pay the agent.',
+              retryable: false,
+            },
+          })
+      const observations = await agentObservations([agentId])
+      const passport = projectPassport(agentId, observations)
+      const owner = passport.identity?.owner
+      if (!owner)
+        return reply.code(422).send({
+          error: {
+            code: 'AGENT_HAS_NO_OWNER',
+            message: 'The registry records no owner for this agent, so there is nobody to pay.',
+            retryable: false,
+          },
+        })
+      const price = publishedPrice(agentId, observations)
+      if (price === null)
+        return reply.code(422).send({
+          error: {
+            code: 'AGENT_HAS_NO_PUBLISHED_PRICE',
+            message: 'No price to settle.',
+            retryable: false,
+          },
+        })
+
+      const legs = await settleJob({
+        credits,
+        jobId: job.id,
+        agentOwner: owner,
+        treasury,
+        totalPoints: Number(priceJob(price).total),
+      })
+      await jobs.advance(
+        job.id,
+        'SETTLED',
+        `Paid ${legs.paidToAgent} points to ${owner}, kept ${legs.fee} as the quoted fee.`,
+      )
+      return { jobId: job.id, agentId, paidTo: owner, ...legs, status: 'SETTLED' }
+    },
+  )
+
   app.post<{ Params: { id: string } }>('/v1/jobs/:id/receipt', async (request, reply) => {
     const session = requireSession(request, reply)
     if (!session) return reply
