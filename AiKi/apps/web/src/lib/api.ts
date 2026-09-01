@@ -122,7 +122,14 @@ export interface AssistantTurn {
   reply: string
   steps: AssistantStep[]
   truncated: boolean
-  cost: { points: number; balance: number; explanation: string; shortfall?: number }
+  /** Why it stopped early, when it did. Absent when the model finished. */
+  stoppedBy?: 'rounds' | 'budget'
+  /**
+   * `held` is what was taken before the turn ran; `points` is what it actually
+   * cost. The difference went straight back, which is why the balance below is
+   * read after the return rather than after the charge.
+   */
+  cost: { points: number; balance: number; held: number; explanation: string }
 }
 
 export interface CreditBalance {

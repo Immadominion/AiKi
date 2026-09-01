@@ -21,6 +21,34 @@ import { MUTATING, runTool, TOOLS, type ToolContext } from './tools.js'
 
 const MAX_ROUNDS = 8
 
+/**
+ * The system prompt and the tool schemas, which are sent on every round and are
+ * not in the message list. Rounded generously upward: this number is only ever
+ * used to decide whether there is enough money left for one more round, and
+ * under-counting there is how a turn costs more than was held for it.
+ */
+const OVERHEAD_TOKENS = 3_000
+
+/**
+ * The most one more round could possibly cost, from the conversation as it
+ * stands.
+ *
+ * Deliberately an over-estimate, on both terms. Three characters per token is
+ * pessimistic for JSON, which usually runs nearer four, and the output is
+ * counted at the full ceiling the request allows even though almost every round
+ * writes a fraction of it. A turn stops when this says the next round might not
+ * fit, so the money held for a turn is a ceiling it cannot pass rather than a
+ * figure it is compared against afterwards.
+ */
+function roundCeiling(
+  model: string,
+  messages: Anthropic.MessageParam[],
+  maxTokens: number,
+): number {
+  const inputTokens = Math.ceil(JSON.stringify(messages).length / 3) + OVERHEAD_TOKENS
+  return pointsFor(model, { inputTokens, outputTokens: maxTokens })
+}
+
 export interface AssistantStep {
   tool: string
   input: Record<string, unknown>
@@ -36,6 +64,8 @@ export interface AssistantTurn {
   model: string
   /** True when the model was still working and hit the ceiling. */
   truncated: boolean
+  /** Which ceiling, when it hit one. Absent when the model finished. */
+  stoppedBy?: 'rounds' | 'budget'
 }
 
 export const SYSTEM = `You are AiKi's Fast mode. AiKi is an agent marketplace on BNB Smart Chain
@@ -71,6 +101,14 @@ export interface RunInput {
   ctx: ToolContext
   messages: Anthropic.MessageParam[]
   maxTokens?: number
+  /**
+   * The most this turn may cost, in points, already taken from the buyer.
+   *
+   * Enforced here rather than checked afterwards. The route used to gate on a
+   * balance and settle later with whatever was left, which meant a turn could
+   * cost more than the person had and the difference was quietly written off.
+   */
+  budgetPoints?: number
 }
 
 export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
@@ -80,10 +118,31 @@ export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
   const usage: Usage = { inputTokens: 0, outputTokens: 0 }
   let truncated = true
 
+  const maxTokens = input.maxTokens ?? 1500
   for (let round = 0; round < MAX_ROUNDS; round++) {
+    /*
+     * Asked before the request, not after. Checking afterwards would mean the
+     * round that broke the budget had already been paid for at the provider.
+     */
+    if (
+      input.budgetPoints !== undefined &&
+      pointsFor(input.model, usage) + roundCeiling(input.model, messages, maxTokens) >
+        input.budgetPoints
+    )
+      return {
+        reply:
+          'I stopped here because this answer was about to cost more than the points held for it. Here is what I found before stopping. Ask me to continue and I will pick it up with a fresh budget.',
+        steps,
+        usage,
+        points: pointsFor(input.model, usage),
+        model: input.model,
+        truncated: true,
+        stoppedBy: 'budget',
+      }
+
     const response = await client.messages.create({
       model: input.model,
-      max_tokens: input.maxTokens ?? 1500,
+      max_tokens: maxTokens,
       system: SYSTEM,
       tools: TOOLS,
       messages,
@@ -134,9 +193,10 @@ export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
 
   return {
     reply:
-      'That turned into more steps than one answer should take, so I stopped. Here is what I did before stopping — ask me to continue and I will pick it up.',
+      'That turned into more steps than one answer should take, so I stopped. Here is what I did before stopping. Ask me to continue and I will pick it up.',
     steps,
     usage,
+    stoppedBy: 'rounds',
     points: pointsFor(input.model, usage),
     model: input.model,
     truncated,

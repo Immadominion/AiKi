@@ -176,8 +176,8 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
                       title={m.cost.explanation}
                     >
                       {m.cost.points} points · {m.cost.balance.toLocaleString()} left
-                      {m.cost.shortfall
-                        ? ` · ${m.cost.shortfall} more than you had, so nothing was left owing`
+                      {m.cost.held > m.cost.points
+                        ? ` · ${(m.cost.held - m.cost.points).toLocaleString()} of the ${m.cost.held.toLocaleString()} held went back`
                         : ''}
                     </p>
                   ) : null}

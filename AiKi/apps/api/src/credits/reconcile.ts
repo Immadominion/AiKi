@@ -1,5 +1,5 @@
 import type postgres from 'postgres'
-import { ESCROW_ACCOUNT, ISSUANCE_ACCOUNT } from './store.js'
+import { ESCROW_ACCOUNT, ISSUANCE_ACCOUNT, RESERVE_ACCOUNT } from './store.js'
 
 /**
  * Does the money add up.
@@ -140,6 +140,29 @@ export async function checkLedger(sql: postgres.Sql): Promise<LedgerFinding[]> {
           .map((j) => j.id)
           .join(', ')}`
       : 'no funded job is missing its terms',
+  })
+
+  /*
+   * A hold is taken when a Fast mode turn starts and resolved when it ends,
+   * both inside one request. Anything still held an hour later is money taken
+   * from somebody for work that is long over: the process died between taking
+   * it and accounting for it. It is recoverable precisely because both legs
+   * carry the turn id, and this is what finds it.
+   */
+  const stuck = await sql<{ turn: string; held: string }[]>`
+    SELECT split_part(reference, ':', 2) AS turn, sum(delta) AS held
+      FROM credit_entries
+     WHERE owner = ${RESERVE_ACCOUNT}
+       AND reference LIKE 'turn:%'
+       AND created_at < now() - interval '1 hour'
+     GROUP BY 1 HAVING sum(delta) <> 0
+  `
+  findings.push({
+    check: 'no turn is still holding money it never used',
+    ok: stuck.length === 0,
+    detail: stuck.length
+      ? stuck.map((h) => `turn ${h.turn} still holds ${n(h.held)}`).join(', ')
+      : 'every hold taken for a turn has been resolved',
   })
 
   return findings

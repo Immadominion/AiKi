@@ -104,6 +104,6 @@ it.skipIf(!databaseUrl)('reports on the ledger it is pointed at', async () => {
   const findings = await checkLedger(sql as postgres.Sql)
   // Every check reports its numbers whether it passed or not, because a check
   // that only speaks up on failure cannot be used to show that things are fine.
-  expect(findings.length).toBeGreaterThanOrEqual(6)
+  expect(findings.length).toBeGreaterThanOrEqual(7)
   for (const finding of findings) expect(finding.detail).not.toBe('')
 })

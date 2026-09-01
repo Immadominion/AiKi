@@ -3,8 +3,8 @@ import { bsc } from 'viem/chains'
 import { afterEach, expect, it, vi } from 'vitest'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
-import { WELCOME_GRANT_POINTS } from '../credits/pricing.js'
-import { InMemoryCreditStore } from '../credits/store.js'
+import { TURN_HOLD_POINTS, WELCOME_GRANT_POINTS } from '../credits/pricing.js'
+import { InMemoryCreditStore, RESERVE_ACCOUNT } from '../credits/store.js'
 import { createApiServer } from '../http/server.js'
 
 vi.mock('./run.js', () => ({ runAssistant: vi.fn(), SYSTEM: '' }))
@@ -154,7 +154,18 @@ it('still charges when the turn ran badly', async () => {
   expect(await credits.balance(OWNER)).toBe(3_050 + WELCOME_GRANT_POINTS)
 })
 
-it('takes what is left and reports the shortfall when a turn overruns', async () => {
+it('never charges a turn more than was held for it', async () => {
+  /*
+   * A turn used to be gated on a 200 point balance and then charged whatever it
+   * came to, clamped to whatever was left, with the difference written off in
+   * silence. On production that admitted turns of 402, 263 and 711 points and
+   * nothing anywhere recorded the overrun.
+   *
+   * The loop now stops before it can exceed the hold, so this case should not
+   * arise at all. It is tested anyway, with the loop mocked out and told to
+   * report a wildly expensive turn, because the guarantee people rely on is
+   * that the number cannot exceed the hold, not that we expect it not to.
+   */
   runMock.mockReset()
   runMock.mockResolvedValue({
     reply: 'ok',
@@ -168,13 +179,49 @@ it('takes what is left and reports the shortfall when a turn overruns', async ()
   await credits.deposit({ owner: OWNER, points: 300, reason: 'deposit', reference: '0x4' })
   const { app } = harness({ credits })
 
-  // The grant lands when the turn is asked for, so the account holds it too and
-  // an overrun has to exceed both before there is any shortfall to report.
-  const funded = 300 + WELCOME_GRANT_POINTS
   const body = (await ask(app)).json()
-  expect(body.cost.points).toBe(funded)
-  expect(body.cost.shortfall).toBe(8_000 - funded)
-  expect(await credits.balance(OWNER)).toBe(0)
+  expect(body.cost.points).toBe(TURN_HOLD_POINTS)
+  expect(body.cost.held).toBe(TURN_HOLD_POINTS)
+  // The rest of the money is untouched, where before the account was emptied.
+  expect(await credits.balance(OWNER)).toBe(300 + WELCOME_GRANT_POINTS - TURN_HOLD_POINTS)
+  // And nothing is left sitting in the reserve.
+  expect(await credits.balance(RESERVE_ACCOUNT)).toBe(0)
+})
+
+it('gives back what a turn did not use', async () => {
+  runMock.mockReset()
+  runMock.mockResolvedValue({
+    reply: 'ok',
+    steps: [],
+    usage: { inputTokens: 1_000, outputTokens: 200 },
+    points: 43,
+    model: 'claude-sonnet-5',
+    truncated: false,
+  })
+  const credits = new InMemoryCreditStore()
+  await credits.deposit({ owner: OWNER, points: 10_000, reason: 'deposit', reference: '0x9' })
+  const { app } = harness({ credits })
+
+  const body = (await ask(app)).json()
+  expect(body.cost.points).toBe(43)
+  // Held and returned inside the one request, so a cheap answer does not leave
+  // somebody's money locked up waiting for anything.
+  expect(await credits.balance(OWNER)).toBe(10_000 + WELCOME_GRANT_POINTS - 43)
+  expect(await credits.balance(RESERVE_ACCOUNT)).toBe(0)
+})
+
+it('returns the hold even when the turn throws', async () => {
+  // The failure that would hurt most: money taken, model call blows up, and the
+  // points sit in a house account owed to somebody with nothing to release them.
+  runMock.mockReset()
+  runMock.mockRejectedValue(new Error('the provider fell over'))
+  const credits = new InMemoryCreditStore()
+  await credits.deposit({ owner: OWNER, points: 10_000, reason: 'deposit', reference: '0xa' })
+  const { app } = harness({ credits })
+
+  await ask(app)
+  expect(await credits.balance(RESERVE_ACCOUNT)).toBe(0)
+  expect(await credits.balance(OWNER)).toBe(10_000 + WELCOME_GRANT_POINTS)
 })
 
 it('says plainly when Fast mode is not configured', async () => {

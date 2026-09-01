@@ -76,14 +76,29 @@ export function explainCost(model: string, usage: Usage): string {
 }
 
 /**
- * What to hold before a turn runs.
+ * The least a turn may be allowed to start with.
  *
- * A turn cannot be priced until it is over, and a turn that runs to completion
- * and then cannot be paid for is a turn someone else paid for. So a floor is
- * required up front — enough for a substantial answer — and the real cost is
- * settled afterwards.
+ * Below this there is not enough held to reach an answer worth reading, so the
+ * turn is refused rather than begun and cut off two rounds in.
  */
 export const MINIMUM_BALANCE_POINTS = 200
+
+/**
+ * What is held before a turn runs, and the hard ceiling on what it may cost.
+ *
+ * A turn cannot be priced until it is over. The old arrangement checked a
+ * balance of 200 points, ran, and then charged whatever the turn came to,
+ * clamped to whatever was left: on production that admitted turns costing 402,
+ * 263 and 711 points, each shortfall forgiven silently, and two tabs could both
+ * pass the check on the same 200 points.
+ *
+ * Now the money is taken up front and the loop is told what it has. 2,000
+ * points is twenty cents, comfortably above every turn this has ever run, and
+ * a turn that would exceed it stops and says so instead of running up a bill
+ * against money that was never there. Whatever is not spent goes back the
+ * moment the turn ends.
+ */
+export const TURN_HOLD_POINTS = 2_000
 
 /**
  * What a new account is given, once, so that trying Fast mode costs nothing.

@@ -838,3 +838,42 @@ it('reports an agent the same way on its passport as in search', async () => {
   ).json()
   expect(compared.agents[0].liveness).toBe('LIVE')
 })
+
+it('says whether the books balance, without saying by how much', async () => {
+  /*
+   * Public and unauthenticated on purpose, so a monitor can watch it and a
+   * stranger can check it. The amounts are not published: what is owed and what
+   * is held are AiKi's business, and the answer to "is this venue solvent" is
+   * everybody's. Amounts live in `pnpm credits:check`, which needs the database.
+   */
+  const app = createApiServer({
+    observations: () => [],
+    ledgerHealth: async () => [
+      { check: 'the whole ledger nets to zero', ok: true },
+      { check: 'escrow holds exactly what funded jobs are owed', ok: false },
+    ],
+  })
+  const failing = await app.inject({ method: 'GET', url: '/v1/ledger/health' })
+  // 503, because a venue whose books do not balance is not healthy, and a
+  // monitor that has to parse a 200 body to find that out will not.
+  expect(failing.statusCode).toBe(503)
+  expect(failing.json().status).toBe('unbalanced')
+  expect(JSON.stringify(failing.json())).not.toMatch(/\d{3,}/)
+
+  const balanced = createApiServer({
+    observations: () => [],
+    ledgerHealth: async () => [{ check: 'the whole ledger nets to zero', ok: true }],
+  })
+  const ok = await balanced.inject({ method: 'GET', url: '/v1/ledger/health' })
+  expect(ok.statusCode).toBe(200)
+  expect(ok.json().status).toBe('balanced')
+})
+
+it('does not pretend the books are fine when it cannot read them', async () => {
+  // Silence is the failure mode that let this go unnoticed for a fortnight. A
+  // deployment with no ledger to check says so rather than answering "balanced".
+  const app = createApiServer({ observations: () => [] })
+  const reply = await app.inject({ method: 'GET', url: '/v1/ledger/health' })
+  expect(reply.statusCode).toBe(503)
+  expect(reply.json().status).toBe('unknown')
+})

@@ -1,4 +1,6 @@
 /** One production process: marketplace API plus all first-party reference-agent routes. */
+
+import postgres from 'postgres'
 import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
 import { viemAccountDeployer } from './accounts/deploy.js'
@@ -7,6 +9,7 @@ import { PostgresNonceStore } from './auth/nonce-store.js'
 import { describeCookieMismatch, SessionSigner } from './auth/session.js'
 import { viemChainReader } from './authority/chain-reader.js'
 import { AIKI_ENFORCERS_BSC_TESTNET } from './config/enforcers.js'
+import { checkLedger } from './credits/reconcile.js'
 import { PostgresCreditStore } from './credits/store.js'
 import { PostgresEvidenceStore } from './evidence/postgres-store.js'
 import { createApiServer } from './http/server.js'
@@ -75,6 +78,14 @@ const accountFunderKey = process.env.ACCOUNT_FUNDER_PRIVATE_KEY as `0x${string}`
 const accountStore = new PostgresAccountStore(databaseUrl)
 const watchStore = new PostgresWatchStore(databaseUrl)
 const creditStore = new PostgresCreditStore(databaseUrl)
+/*
+ * A separate, single connection for reading the books.
+ *
+ * The credit store's pool is for moving money and a reconciliation scan should
+ * never be the reason a payment waits for a connection. One is enough: this
+ * runs when somebody asks, not on a loop.
+ */
+const ledgerSql = postgres(databaseUrl, { max: 1 })
 
 /*
  * Fast mode. Absent key means this deployment serves Manual mode only and says
@@ -106,6 +117,8 @@ const app = createApiServer({
   observationsForAgents: (agentIds) => store.observationsForAgents(agentIds),
   searchAgents: (query) => store.searchAgents(query),
   ...(treasury ? { settlementTreasury: treasury } : {}),
+  // Names and verdicts only. The route is public and the amounts are not.
+  ledgerHealth: async () => (await checkLedger(ledgerSql)).map(({ check, ok }) => ({ check, ok })),
   appendObservation: (observation) => store.append(observation),
   enforcers: AIKI_ENFORCERS_BSC_TESTNET,
   ...(agentSessionKey ? { agentSessionKey } : {}),

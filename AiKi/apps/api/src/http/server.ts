@@ -145,6 +145,14 @@ export function createApiServer(input: {
   settlementTreasury?: string
   receipts?: ReceiptService
   benchmarks?: BenchmarkService
+  /**
+   * Whether the money adds up, asked of the live database.
+   *
+   * Injected rather than reached for, because this file has no database of its
+   * own and should not grow one. Absent means the deployment cannot answer, and
+   * the route says exactly that instead of implying everything is fine.
+   */
+  ledgerHealth?: () => Promise<{ check: string; ok: boolean }[]>
   /** Omitted only in tests of the public surface; every mandate route needs it. */
   auth?: AuthConfig
 }) {
@@ -280,6 +288,41 @@ export function createApiServer(input: {
       return reply.code(503).send({ status: 'degraded', detail: 'Evidence store unreachable.' })
     }
   })
+  /**
+   * Do the books balance.
+   *
+   * Public, and answers in check names and yes or no, never in amounts. The
+   * amounts are AiKi's business and the answer is everybody's: this is a
+   * marketplace holding other people's money between the two halves of a sale,
+   * and "you can verify that for yourself" is the whole posture of the product.
+   *
+   * A monitor can watch this. Nothing else could: the failure it detects is
+   * silent by nature, the balances all look plausible while it is happening,
+   * and it went unnoticed on this deployment until somebody added up a column
+   * by hand. Amounts and stuck job ids are in `pnpm credits:check`, which needs
+   * the database and therefore an operator.
+   */
+  app.get('/v1/ledger/health', async (request, reply) => {
+    if (!input.ledgerHealth)
+      return reply.code(503).send({
+        status: 'unknown',
+        detail: 'This deployment cannot check its own ledger.',
+      })
+    try {
+      const checks = await input.ledgerHealth()
+      const failed = checks.filter((c) => !c.ok)
+      return reply.code(failed.length ? 503 : 200).send({
+        status: failed.length ? 'unbalanced' : 'balanced',
+        checks,
+      })
+    } catch (error) {
+      request.log.error({ err: error }, 'ledger health: could not read the ledger')
+      return reply
+        .code(503)
+        .send({ status: 'unknown', detail: 'The ledger could not be read just now.' })
+    }
+  })
+
   app.get('/v1/stats', async () => {
     const coverageStart = input.coverageStart ? await input.coverageStart() : null
     const opts = typeof coverageStart === 'number' ? { coverageStart } : {}

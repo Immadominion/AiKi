@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type Anthropic from '@anthropic-ai/sdk'
 import type { FastifyInstance } from 'fastify'
 import { requireSession } from '../auth/guard.js'
@@ -8,10 +9,17 @@ import {
   MINIMUM_BALANCE_POINTS,
   MODELS,
   POINTS_PER_USD,
+  TURN_HOLD_POINTS,
   WELCOME_GRANT_POINTS,
   WELCOME_GRANTS_PER_DAY,
 } from '../credits/pricing.js'
-import { type CreditStore, DuplicateDeposit } from '../credits/store.js'
+import {
+  type CreditStore,
+  DuplicateDeposit,
+  InsufficientBalance,
+  RESERVE_ACCOUNT,
+  REVENUE_ACCOUNT,
+} from '../credits/store.js'
 import { ClientError } from '../http/errors.js'
 import { runAssistant } from './run.js'
 
@@ -19,12 +27,13 @@ import { runAssistant } from './run.js'
  * Fast mode over HTTP, and the points that pay for it.
  *
  * The order in `POST /v1/assistant/messages` is the part worth reading. The
- * balance is checked BEFORE the model runs and settled AFTER, because a turn
- * cannot be priced until it is over and a turn that runs and then cannot be paid
- * for was paid for by somebody else. So a floor is required up front — enough
- * for a real answer — and the true cost is taken at the end.
+ * money is taken BEFORE the model runs, the loop is given that number as a
+ * ceiling it must stop under, and whatever is left over goes back in the same
+ * request. A turn cannot be priced until it is over, so the only way to keep it
+ * inside what somebody has is to hold the money first and let the work stop
+ * when the money would run out.
  *
- * The settle is deliberately not conditional on the turn succeeding. The tokens
+ * The spend is deliberately not conditional on the turn succeeding. The tokens
  * were spent whether or not the answer was good, and quietly eating the cost of
  * failed turns is how a metered product becomes a loss-making one.
  */
@@ -158,11 +167,6 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
           { code: 'ASSISTANT_TOO_LONG' },
         )
 
-      /*
-       * Checked before the model runs. The alternative — run first, discover
-       * afterwards that nobody can pay — means the turn was free for them and
-       * not for AiKi.
-       */
       await withWelcomeGrant(session.address)
       const balance = await config.credits.balance(session.address)
       if (balance < MINIMUM_BALANCE_POINTS)
@@ -177,38 +181,110 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
       if (!cookie)
         throw new ClientError('No session cookie to act with.', { code: 'ASSISTANT_NO_SESSION' })
 
-      const turn = await runAssistant({
-        apiKey: config.apiKey,
-        model,
-        ctx: { baseUrl: config.selfUrl, cookie },
-        messages,
-      })
+      /*
+       * The money is taken before the model runs, and the turn is told what it
+       * has to spend.
+       *
+       * This used to be a balance check followed by a charge at the end for
+       * whatever the turn came to, clamped to whatever was left. Three things
+       * were wrong with that and all three were visible on production. Turns
+       * costing 402, 263 and 711 points passed a gate of 200. Any shortfall was
+       * written off in silence, so the overrun did not even appear as a number
+       * anybody could add up. And two turns in two tabs both read the same
+       * balance and both judged it sufficient, which no check outside a
+       * transaction can prevent.
+       *
+       * A hold fixes all three at once: it is taken under a row lock so a second
+       * turn sees the money already gone, it is a ceiling the loop enforces
+       * rather than a figure compared against afterwards, and what is not spent
+       * is returned within the same request.
+       */
+      const hold = Math.min(TURN_HOLD_POINTS, balance)
+      const turnId = randomUUID()
+      try {
+        await config.credits.transfer({
+          from: session.address,
+          to: RESERVE_ACCOUNT,
+          points: hold,
+          reason: 'fast_mode_hold',
+          reference: `turn:${turnId}:hold`,
+          detail: { turnId },
+        })
+      } catch (error) {
+        if (error instanceof InsufficientBalance)
+          throw new ClientError(
+            `Fast mode holds ${hold} points while it answers and gives back what it does not use. ` +
+              'There are not that many in the account right now.',
+            { code: 'ASSISTANT_NO_CREDIT', statusCode: 402 },
+          )
+        throw error
+      }
 
-      // Settled whether or not the answer was good: the tokens were spent either
-      // way, and eating the cost of failed turns is how this stops paying for
-      // itself.
-      const charge = await config.credits.charge({
-        owner: session.address,
-        points: turn.points,
-        reason: 'fast_mode',
-        detail: {
-          model: turn.model,
-          inputTokens: turn.usage.inputTokens,
-          outputTokens: turn.usage.outputTokens,
-          tools: turn.steps.map((s) => s.tool),
-        },
-      })
+      /*
+       * From here the hold MUST be resolved, whatever happens. A turn that
+       * throws after the money was taken and before it was accounted for leaves
+       * that money sitting in a house account owed to somebody, which is the
+       * exact condition this whole area of the codebase exists to prevent.
+       */
+      let turn: Awaited<ReturnType<typeof runAssistant>> | null = null
+      let spent = 0
+      try {
+        turn = await runAssistant({
+          apiKey: config.apiKey,
+          model,
+          ctx: { baseUrl: config.selfUrl, cookie },
+          messages,
+          budgetPoints: hold,
+        })
+        // Charged whether or not the answer was good: the tokens were spent
+        // either way, and eating the cost of failed turns is how a metered
+        // product becomes a loss-making one. Never more than the hold, because
+        // the loop stopped before it could be.
+        spent = Math.min(turn.points, hold)
+      } finally {
+        /*
+         * Spend first, return second. A crash between the two leaves the unspent
+         * remainder in the reserve, which is recoverable and visible. The other
+         * order would hand back the whole hold and then fail to charge, which is
+         * a free turn nobody can detect afterwards.
+         */
+        if (spent > 0)
+          await config.credits.transfer({
+            from: RESERVE_ACCOUNT,
+            to: REVENUE_ACCOUNT,
+            points: spent,
+            reason: 'fast_mode',
+            reference: `turn:${turnId}:spend`,
+            detail: {
+              turnId,
+              model: turn?.model ?? model,
+              inputTokens: turn?.usage.inputTokens ?? 0,
+              outputTokens: turn?.usage.outputTokens ?? 0,
+              tools: turn?.steps.map((s) => s.tool) ?? [],
+            },
+          })
+        if (hold - spent > 0)
+          await config.credits.transfer({
+            from: RESERVE_ACCOUNT,
+            to: session.address,
+            points: hold - spent,
+            reason: 'fast_mode_hold',
+            reference: `turn:${turnId}:release`,
+            detail: { turnId },
+          })
+      }
 
       return {
         reply: turn.reply,
         steps: turn.steps,
         truncated: turn.truncated,
+        ...(turn.stoppedBy ? { stoppedBy: turn.stoppedBy } : {}),
         cost: {
-          points: charge.charged,
-          balance: charge.balance,
+          points: spent,
+          balance: await config.credits.balance(session.address),
+          held: hold,
           // The same sum in words, so a person can check it rather than trust it.
           explanation: explainCost(turn.model, turn.usage),
-          ...(charge.shortfall > 0 ? { shortfall: charge.shortfall } : {}),
         },
       }
     },

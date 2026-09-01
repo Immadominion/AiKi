@@ -180,6 +180,21 @@ export const ISSUANCE_ACCOUNT = 'aiki:issuance'
  */
 export const REVENUE_ACCOUNT = 'aiki:revenue'
 
+/**
+ * What is held for a turn that is currently running.
+ *
+ * Fast mode cannot price a turn until it is over, and it used to gate on a
+ * balance and settle afterwards with whatever was left: on production the gate
+ * was 200 points and real turns cost 402, 263 and 711, each shortfall quietly
+ * forgiven. Two turns in two tabs made it worse, because both read the same
+ * balance and both judged it enough.
+ *
+ * So the turn is paid for before it runs, out of an account that holds the
+ * money while the model works, and the ceiling is enforced by the loop rather
+ * than discovered afterwards. What is not used comes straight back.
+ */
+export const RESERVE_ACCOUNT = 'aiki:reserved'
+
 const lower = (owner: string) => owner.toLowerCase()
 
 export class InMemoryCreditStore implements CreditStore {
