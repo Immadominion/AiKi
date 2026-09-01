@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { OnChainRecord } from '@/components/job/OnChainRecord'
+import { Settlement } from '@/components/job/Settlement'
 import { WatchPanel } from '@/components/job/WatchPanel'
 import { PageCard } from '@/components/shell/PageCard'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
@@ -257,6 +258,8 @@ export function MissionControl({ jobId }: { jobId: string }) {
               .
             </div>
           </div>
+
+          <Settlement jobId={job.id} agentId={job.key} />
 
           {job.receiptId ? (
             <button

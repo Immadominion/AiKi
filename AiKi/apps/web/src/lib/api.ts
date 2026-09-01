@@ -274,6 +274,22 @@ export const api = {
       feeBasisPoints: number
       expiresAt: string
     }>('/v1/quotes', { method: 'POST', body: JSON.stringify({ agentId }) }),
+  /** Take the quoted total from the buyer. Nothing reaches the agent yet. */
+  fundJob: (jobId: string, agentId: string) =>
+    req<{ jobId: string; held: number; buyerBalance: number; status: string }>(
+      `/v1/jobs/${jobId}/fund`,
+      { method: 'POST', body: JSON.stringify({ agentId }) },
+    ),
+  /** Pay the agent's owner and keep the fee that was quoted. */
+  settleJob: (jobId: string, agentId: string) =>
+    req<{
+      jobId: string
+      paidTo: string
+      paidToAgent: number
+      fee: number
+      alreadySettled: boolean
+      status: string
+    }>(`/v1/jobs/${jobId}/settle`, { method: 'POST', body: JSON.stringify({ agentId }) }),
   compare: (agentIds: string[]) =>
     req<{ agents: ProjectedPassport[]; indistinguishable: boolean; reason: string }>(
       '/v1/compare',
