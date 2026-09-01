@@ -5,7 +5,7 @@ import { useSaved } from '@/components/shell/prefs'
 import { EvidenceBars } from '@/components/ui/EvidenceBars'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, type AgentRow } from '@/lib/agents'
-import { agentHref } from '@/lib/routes'
+import { agentHref, registryHref } from '@/lib/routes'
 
 export function MarketGrid({ agents, footnote }: { agents: AgentRow[]; footnote: string }) {
   const { toggle, isSaved } = useSaved()
@@ -60,7 +60,11 @@ export function MarketGrid({ agents, footnote }: { agents: AgentRow[]; footnote:
 
             <button
               type="button"
-              onClick={() => router.push(agentHref(m.key))}
+              /* A token id is a real agent and goes to its evidence page; the
+                 example keys are words and keep the fixture route. */
+              onClick={() =>
+                router.push(/^\d+$/.test(m.key) ? registryHref(m.key) : agentHref(m.key))
+              }
               className="bg-ink-app hover:bg-orange-app mt-3 h-[38px] rounded-xl border-0 text-[13.5px] font-bold text-white transition-colors"
             >
               View agent
