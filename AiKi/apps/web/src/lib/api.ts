@@ -133,6 +133,11 @@ export interface TaskSummary {
   status: 'OPEN' | 'CLAIMED' | 'SUBMITTED' | 'SETTLED' | 'CANCELLED' | 'DISPUTED'
   claimedBy?: string
   claimedAt?: string
+  /** Set when this was hired from one named agent rather than posted openly. */
+  assignedAgentId?: string
+  /** When AiKi called that agent, and what happened if the call did not work. */
+  dispatchedAt?: string
+  dispatchNote?: string
   workHours: number
   /** When the claim lapses and the work goes back on the board. */
   claimExpiresAt?: string
@@ -327,6 +332,8 @@ export const api = {
     pricePoints: number
     workHours?: number
     authorizationId?: string
+    /** Hire this one agent instead of opening the work to whoever claims it. */
+    assignAgentId?: string
   }) =>
     req<TaskSummary & { heldPoints: number }>('/v1/tasks', {
       method: 'POST',

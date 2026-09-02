@@ -131,6 +131,16 @@ export function WorkBoard() {
                     {t.brief}
                   </p>
 
+                  {/* A hire, not open work. What AiKi asked and what came back,
+                      because "nothing happened" and "we called and it answered
+                      with a web page" are different facts about an agent and
+                      only one of them is worth knowing. */}
+                  {t.assignedAgentId ? (
+                    <p className="text-faint mt-[6px] mb-0 text-[11.5px] leading-[1.5]">
+                      Hired from agent {t.assignedAgentId}. {t.dispatchNote ?? 'Not called yet.'}
+                    </p>
+                  ) : null}
+
                   {t.submission ? (
                     <div className="mt-[10px] rounded-[12px] bg-[rgb(26_26_25_/_0.04)] px-[12px] py-[10px]">
                       <div className="text-muted text-[11.5px] font-bold">What was handed in</div>
