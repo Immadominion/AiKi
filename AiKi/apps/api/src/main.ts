@@ -220,7 +220,7 @@ type Injectable = {
 }
 async function delegate(
   child: Injectable,
-  request: { method: string; url: string; headers: Record<string, unknown> },
+  request: { method: string; url: string; headers: Record<string, unknown>; body?: unknown },
   reply: {
     code(code: number): { send(value: string): unknown }
     header(key: string, value: string): unknown
@@ -230,6 +230,14 @@ async function delegate(
     method: request.method,
     url: request.url,
     headers: request.headers as Record<string, string>,
+    /*
+     * The body travels too. It did not, and nothing noticed while only GET was
+     * delegated: a reference agent could be read and not asked for anything.
+     * Hiring one arrives as a POST carrying the brief, and a delegation that
+     * drops it would hand the agent an empty request and record the answer as
+     * evidence about the agent.
+     */
+    ...(request.body === undefined ? {} : { payload: request.body as never }),
   })
   for (const [key, value] of Object.entries(response.headers))
     if (value && !['content-length', 'connection'].includes(key.toLowerCase()))
@@ -237,6 +245,17 @@ async function delegate(
   return reply.code(response.statusCode).send(response.body)
 }
 app.get('/v1/reference/venus/*', (request, reply) =>
+  delegate(venus as unknown as Injectable, request, reply),
+)
+/*
+ * Hiring a reference agent, which arrives as a POST carrying the brief.
+ *
+ * Delegated for the same reason reads are: these agents are separate servers
+ * with their own identities, and the outer API is the address the world knows.
+ * Without this the endpoint an agent's own ERC-8004 registration declares
+ * answers 404 to the marketplace that registered it, which is what it did.
+ */
+app.post('/v1/reference/venus/*', (request, reply) =>
   delegate(venus as unknown as Injectable, request, reply),
 )
 app.get('/v1/reference/pancake/rebalancer/*', (request, reply) =>

@@ -150,6 +150,18 @@ export interface TaskSummary {
   updatedAt: string
 }
 
+export interface Seller {
+  address: string
+  name: string
+  blurb: string
+  kinds: string[]
+  ratePoints: number
+  available: boolean
+  updatedAt: string
+  /** Counted from settled work, never entered by them. */
+  record: { delivered: number; disputed: number; earnedPoints: number }
+}
+
 export interface AssistantTurn {
   reply: string
   steps: AssistantStep[]
@@ -334,6 +346,8 @@ export const api = {
     authorizationId?: string
     /** Hire this one agent instead of opening the work to whoever claims it. */
     assignAgentId?: string
+    /** Or hire this one person, by address. */
+    hirePerson?: string
   }) =>
     req<TaskSummary & { heldPoints: number }>('/v1/tasks', {
       method: 'POST',
@@ -355,6 +369,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ because }),
     }),
+  /** People listed as available for work, with what each has actually delivered. */
+  sellers: () => req<{ kinds: Record<string, string>; sellers: Seller[] }>('/v1/sellers'),
+  seller: (address: string) => req<Seller>(`/v1/sellers/${address}`),
+  /** Create or change your own listing. Keyed on your session, never anybody else's. */
+  putSeller: (listing: {
+    name: string
+    blurb: string
+    kinds: string[]
+    ratePoints: number
+    available: boolean
+  }) => req<Seller>('/v1/sellers/me', { method: 'PUT', body: JSON.stringify(listing) }),
   /** Take payment for work the poster never answered. Only after the review window. */
   releaseTask: (id: string) =>
     req<TaskSummary & { paidTo: string; paidPoints: number }>(`/v1/tasks/${id}/release`, {
