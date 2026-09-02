@@ -32,6 +32,7 @@ import { fundJob, InsufficientPoints, refundJob, settleJob } from '../settlement
 import { buildQuote, priceJob, SETTLEMENT } from '../settlement/pricing.js'
 import { priceForQuote, publishedAsset } from '../settlement/published-price.js'
 import { registerTaskRoutes } from '../tasks/routes.js'
+import type { PostgresSellerStore } from '../tasks/sellers.js'
 import type { TaskStore } from '../tasks/store.js'
 import { asClientError, asProtocolError, asSchemaError, ClientError } from './errors.js'
 
@@ -165,6 +166,8 @@ export function createApiServer(input: {
   publicUrl?: string
   /** Signs per-task delivery tokens. Nothing is stored; the token is derived. */
   deliverySecret?: string
+  /** People who can be found and hired, as opposed to agents. */
+  sellers?: PostgresSellerStore
   /** Omitted only in tests of the public surface; every mandate route needs it. */
   auth?: AuthConfig
 }) {
@@ -242,6 +245,7 @@ export function createApiServer(input: {
       },
       ...(input.publicUrl ? { publicUrl: input.publicUrl } : {}),
       ...(input.deliverySecret ? { deliverySecret: input.deliverySecret } : {}),
+      ...(input.sellers ? { sellers: input.sellers } : {}),
     })
   /**
    * Only messages written for a caller reach a caller.

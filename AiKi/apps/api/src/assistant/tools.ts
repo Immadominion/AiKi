@@ -335,6 +335,35 @@ export const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'find_people',
+    description:
+      'People listed as available for work, with what each has actually delivered here. The ' +
+      'record is counted from settled work, never entered by them, so a listing with nothing ' +
+      'beside it is somebody new rather than somebody bad. Use this when the job needs judgement ' +
+      'or local knowledge that no measured agent does.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'hire_person',
+    description:
+      'Pay one listed person to do a discrete piece of work. The money is held immediately and ' +
+      'comes back if they do not hand anything in before the deadline. Nothing is sent anywhere: ' +
+      'they see it in their own list. Ask the person you act for before spending their money.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        address: { type: 'string', description: 'The seller, by address.' },
+        title: { type: 'string' },
+        brief: { type: 'string', description: 'What is wanted and how it will be judged.' },
+        kind: { type: 'string' },
+        price_points: { type: 'number' },
+        work_hours: { type: 'number' },
+        mandate_id: { type: 'string', description: 'A spending mandate.' },
+      },
+      required: ['address', 'title', 'brief', 'kind', 'price_points', 'mandate_id'],
+    },
+  },
+  {
     name: 'my_tasks',
     description: 'Work you posted and work you claimed, with what state each is in.',
     input_schema: { type: 'object', properties: {} },
@@ -409,6 +438,7 @@ export const MUTATING = new Set([
   // it is the moment a person is paid and there is no route back from it.
   'post_task',
   'hire_agent',
+  'hire_person',
   'claim_task',
   'submit_task',
   'accept_task',
@@ -531,6 +561,18 @@ export async function runTool(
         ...(args.work_hours ? { workHours: Math.trunc(Number(args.work_hours)) } : {}),
         authorizationId: args.mandate_id,
         assignAgentId: args.agent_id,
+      })
+    case 'find_people':
+      return call('/v1/sellers')
+    case 'hire_person':
+      return post('/v1/tasks', {
+        title: args.title,
+        brief: args.brief,
+        kind: args.kind,
+        pricePoints: Math.trunc(Number(args.price_points)),
+        ...(args.work_hours ? { workHours: Math.trunc(Number(args.work_hours)) } : {}),
+        authorizationId: args.mandate_id,
+        hirePerson: args.address,
       })
     case 'claim_task':
       return post(`/v1/tasks/${args.task_id}/claim`)

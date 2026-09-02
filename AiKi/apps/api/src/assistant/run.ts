@@ -98,9 +98,10 @@ How to be useful here:
   for it to avoid trying, and do not use it for anything requiring somebody's credentials or
   pretending to be somebody: the allowed kinds are a fixed list and there is deliberately no kind
   for that work.
-- There are two ways to buy. hire_agent pays one named agent from the registry and sends it the
-  brief, which suits work a measured agent does. post_task opens it to whoever claims, which suits
-  work needing a person. Either way the money is held first and comes back if nobody delivers in
+- There are three ways to buy. hire_agent pays one named agent from the registry and sends it the
+  brief, which suits work a measured agent does. hire_person pays one listed person directly, which
+  suits work needing judgement or local knowledge; find_people shows who is listed and what each has
+  actually delivered. post_task opens it to whoever claims, for when nobody listed fits. Either way the money is held first and comes back if nobody delivers in
   time, so an agent that does not answer costs the buyer a wait rather than the money.
 - Money on the board moves in one direction and stops. Posting takes the money immediately and
   holds it; accepting pays the person and cannot be undone; declining pays nobody and refunds

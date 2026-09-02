@@ -42,6 +42,8 @@ export interface TaskRecord {
   status: TaskStatus
   /** Set when this was hired from one named agent rather than posted openly. */
   assignedAgentId?: string
+  /** True when this was commissioned from one party rather than opened to anybody. */
+  directHire: boolean
   /** When AiKi called that agent's endpoint, and what happened if it did not work. */
   dispatchedAt?: string
   dispatchNote?: string
@@ -80,6 +82,14 @@ export interface NewTask {
    * names is the only party that can be paid.
    */
   assigned?: { agentId: string; owner: string }
+  /**
+   * Hire one person, named by address.
+   *
+   * The same thing as hiring an agent from the seller's point of view and a
+   * different thing from AiKi's: a person cannot be dispatched to, so nothing
+   * is sent anywhere. They see it in their own list and hand it in there.
+   */
+  hiredPerson?: string
 }
 
 export interface TaskStore {
@@ -161,6 +171,7 @@ interface TaskRow {
   outlay: string
   status: TaskStatus
   assigned_agent_id: string | null
+  direct_hire: boolean
   dispatched_at: Date | string | null
   dispatch_note: string | null
   claimed_by: string | null
@@ -193,6 +204,7 @@ const toTask = (row: TaskRow): TaskRecord => ({
   outlay: BigInt(row.outlay),
   status: row.status,
   ...(row.assigned_agent_id ? { assignedAgentId: row.assigned_agent_id } : {}),
+  directHire: row.direct_hire,
   ...(row.dispatched_at ? { dispatchedAt: iso(row.dispatched_at) } : {}),
   ...(row.dispatch_note ? { dispatchNote: row.dispatch_note } : {}),
   ...(row.claimed_by ? { claimedBy: row.claimed_by } : {}),
@@ -219,7 +231,7 @@ export class PostgresTaskStore implements TaskStore {
       INSERT INTO tasks
         (id, poster, authorization_id, title, brief, kind,
          price_points, fee_points, total_points, outlay, work_hours, status,
-         assigned_agent_id, claimed_by, claimed_at, claim_expires_at)
+         assigned_agent_id, claimed_by, claimed_at, claim_expires_at, direct_hire)
       VALUES (${randomUUID()}, ${lower(task.poster)}, ${task.authorizationId ?? null},
               ${task.title}, ${task.brief}, ${task.kind},
               ${task.pricePoints}, ${task.feePoints}, ${task.totalPoints},
@@ -228,11 +240,22 @@ export class PostgresTaskStore implements TaskStore {
               -- before the money was committed. The same clock starts with it,
               -- so an agent that never answers frees the poster's money on the
               -- same terms a person who goes quiet does.
-              ${task.assigned ? 'CLAIMED' : 'OPEN'},
+              ${task.assigned || task.hiredPerson ? 'CLAIMED' : 'OPEN'},
               ${task.assigned?.agentId ?? null},
-              ${task.assigned ? lower(task.assigned.owner) : null},
-              ${task.assigned ? this.sql`now()` : null},
-              ${task.assigned ? this.sql`now() + (${task.workHours} || ' hours')::interval` : null})
+              ${
+                task.assigned
+                  ? lower(task.assigned.owner)
+                  : task.hiredPerson
+                    ? lower(task.hiredPerson)
+                    : null
+              },
+              ${task.assigned || task.hiredPerson ? this.sql`now()` : null},
+              ${
+                task.assigned || task.hiredPerson
+                  ? this.sql`now() + (${task.workHours} || ' hours')::interval`
+                  : null
+              },
+              ${Boolean(task.assigned || task.hiredPerson)})
       RETURNING *
     `
     const row = rows[0]
@@ -254,7 +277,10 @@ export class PostgresTaskStore implements TaskStore {
      */
     const rows = await this.sql<TaskRow[]>`
       SELECT * FROM tasks
-       WHERE assigned_agent_id IS NULL
+       -- Commissioned work never returns to the board. They hired one party,
+       -- so if that party goes quiet the money goes back to the buyer rather
+       -- than to whoever happened to be watching.
+       WHERE NOT direct_hire
          AND (
            status = 'OPEN'
            OR (status = 'CLAIMED' AND claim_expires_at IS NOT NULL AND claim_expires_at < now())
@@ -292,7 +318,7 @@ export class PostgresTaskStore implements TaskStore {
          -- Work hired from one agent is not up for grabs, whatever the clock
          -- says. If that agent does not answer, the money goes back to the
          -- buyer rather than to whoever was watching the board.
-         AND assigned_agent_id IS NULL
+         AND NOT direct_hire
          AND (
            status = 'OPEN'
            -- Or the last claimant ran out of time, in which case this is a

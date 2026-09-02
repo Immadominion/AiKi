@@ -29,6 +29,7 @@ import { createVenusReferenceServer } from './reference/venus/server.js'
 import { VenusYieldClient } from './reference/yield/client.js'
 import { createYieldServer } from './reference/yield/server.js'
 import { PostgresWatchStore } from './runner/store.js'
+import { PostgresSellerStore } from './tasks/sellers.js'
 import { PostgresTaskStore } from './tasks/store.js'
 
 const rpcUrl = process.env.BSC_RPC_URL
@@ -89,6 +90,7 @@ const creditStore = new PostgresCreditStore(databaseUrl)
  */
 const ledgerSql = postgres(databaseUrl, { max: 1 })
 const taskStore = new PostgresTaskStore(databaseUrl)
+const sellerStore = new PostgresSellerStore(databaseUrl)
 
 /*
  * Fast mode. Absent key means this deployment serves Manual mode only and says
@@ -137,6 +139,7 @@ const app = createApiServer({
   searchAgents: (query) => store.searchAgents(query),
   ...(treasury ? { settlementTreasury: treasury } : {}),
   tasks: taskStore,
+  sellers: sellerStore,
   // Where a hired agent sends work back to, and the key that proves the callback
   // belongs to a task AiKi actually dispatched.
   ...(publicApiUrl ? { publicUrl: publicApiUrl } : {}),

@@ -10,7 +10,8 @@ import {
 import type { JobService } from '../jobs/service.js'
 import { priceJob, SETTLEMENT } from '../settlement/pricing.js'
 import { DISPATCH_PROTOCOL, deliveryToken, dispatchToAgent, tokenMatches } from './dispatch.js'
-import { isTaskKind, TASK_KINDS } from './kinds.js'
+import { isTaskKind, TASK_KINDS, type TaskKind } from './kinds.js'
+import type { PostgresSellerStore } from './sellers.js'
 import type { TaskStore } from './store.js'
 
 /**
@@ -71,6 +72,8 @@ export function registerTaskRoutes(
     publicUrl?: string
     /** Signs the delivery tokens. Derived per task, never stored. */
     deliverySecret?: string
+    /** People who can be found and hired. Absent means listings are not offered. */
+    sellers?: PostgresSellerStore
   },
 ) {
   const text = (value: unknown, max: number) =>
@@ -124,6 +127,8 @@ export function registerTaskRoutes(
       authorizationId?: string
       /** Hire this one agent instead of opening the work to whoever claims it. */
       assignAgentId?: string
+      /** Or hire this one person, by address. Nothing is dispatched: they see it. */
+      hirePerson?: string
     }
   }>('/v1/tasks', async (request, reply) => {
     const session = requireSession(request, reply)
@@ -219,6 +224,40 @@ export function registerTaskRoutes(
       }
     }
 
+    /*
+     * Hiring one person rather than opening the work.
+     *
+     * Nothing is sent anywhere: a person is not an endpoint. The work appears in
+     * their own list with the same clock on it a claimed task has, so somebody
+     * who is commissioned and then goes quiet frees the buyer's money on exactly
+     * the terms everybody else does.
+     */
+    const hirePerson = request.body?.hirePerson
+    if (hirePerson && !/^0x[0-9a-fA-F]{40}$/.test(hirePerson))
+      return reply.code(400).send({
+        error: {
+          code: 'NOT_AN_ADDRESS',
+          message: 'Hire somebody by their address.',
+          retryable: false,
+        },
+      })
+    if (hirePerson && hirePerson.toLowerCase() === session.address.toLowerCase())
+      return reply.code(400).send({
+        error: {
+          code: 'CANNOT_HIRE_YOURSELF',
+          message: 'Paying yourself through escrow is not a trade, it is a fee.',
+          retryable: false,
+        },
+      })
+    if (hirePerson && request.body?.assignAgentId)
+      return reply.code(400).send({
+        error: {
+          code: 'ONE_SELLER',
+          message: 'Hire an agent or a person, not both.',
+          retryable: false,
+        },
+      })
+
     const priced = priceJob(BigInt(pricePoints))
     const total = Number(priced.total)
     const outlay = settlementForPoints(total, SETTLEMENT.decimals)
@@ -268,6 +307,7 @@ export function registerTaskRoutes(
       outlay,
       workHours,
       ...(assigned ? { assigned: { agentId: assigned.agentId, owner: assigned.owner } } : {}),
+      ...(hirePerson ? { hiredPerson: hirePerson } : {}),
     })
 
     try {
@@ -357,6 +397,92 @@ export function registerTaskRoutes(
       ...settled,
       outlay: settled.outlay.toString(),
       heldPoints: total,
+    })
+  })
+
+  /**
+   * People who can be found and hired.
+   *
+   * Public, like the board and the registry. Somebody deciding whether this is
+   * worth signing in for should be able to see who is here.
+   */
+  app.get('/v1/sellers', async (_request, reply) => {
+    if (!input.sellers)
+      return reply.code(503).send({
+        error: {
+          code: 'SELLERS_UNAVAILABLE',
+          message: 'This deployment has no seller listings.',
+          retryable: false,
+        },
+      })
+    return { kinds: TASK_KINDS, sellers: await input.sellers.list(50) }
+  })
+
+  app.get<{ Params: { address: string } }>('/v1/sellers/:address', async (request, reply) => {
+    const seller = await input.sellers?.get(request.params.address)
+    if (!seller)
+      return reply.code(404).send({
+        error: { code: 'SELLER_NOT_FOUND', message: 'Nobody is listed there.', retryable: false },
+      })
+    return seller
+  })
+
+  /**
+   * List yourself, or change what you already listed.
+   *
+   * Keyed on the session address, so nobody can write anybody else's listing and
+   * there is no ownership check to get wrong: the only listing you can touch is
+   * the one at the address you signed in with.
+   */
+  app.put<{
+    Body: {
+      name?: string
+      blurb?: string
+      kinds?: string[]
+      ratePoints?: number
+      available?: boolean
+    }
+  }>('/v1/sellers/me', async (request, reply) => {
+    const session = requireSession(request, reply)
+    if (!session) return reply
+    if (!input.sellers)
+      return reply.code(503).send({
+        error: {
+          code: 'SELLERS_UNAVAILABLE',
+          message: 'This deployment has no seller listings.',
+          retryable: false,
+        },
+      })
+
+    const name = text(request.body?.name, 60)
+    const blurb = text(request.body?.blurb, 400)
+    const kinds = (request.body?.kinds ?? []).filter(isTaskKind) as TaskKind[]
+    if (!name || !blurb)
+      return reply.code(400).send({
+        error: {
+          code: 'LISTING_INCOMPLETE',
+          message: 'A listing needs a name and a sentence about what you do.',
+          retryable: false,
+        },
+      })
+    if (!kinds.length)
+      return reply.code(400).send({
+        error: {
+          code: 'NO_KINDS',
+          // The same allowlist tasks are posted under, so there is no kind
+          // somebody can offer that nobody is able to ask for.
+          message: `Say what you take, from: ${Object.keys(TASK_KINDS).join(', ')}.`,
+          retryable: false,
+        },
+      })
+
+    return input.sellers.put({
+      address: session.address,
+      name,
+      blurb,
+      kinds,
+      ratePoints: Math.max(0, Math.trunc(Number(request.body?.ratePoints ?? 0))),
+      available: request.body?.available !== false,
     })
   })
 
