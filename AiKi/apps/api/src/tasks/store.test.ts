@@ -269,3 +269,88 @@ describe.skipIf(!process.env.DATABASE_URL)('deadlines', () => {
     await store.close()
   })
 })
+
+/*
+ * Hiring one named agent, which is the same board with the claimant decided in
+ * advance rather than a second delivery machine beside it.
+ *
+ * Before this, hiring took money and paid it out and never asked the agent for
+ * anything: of the states a job can be in, DISPATCHED and COMPLETED were
+ * written by no code at all. The marketplace could sell something it had never
+ * asked anybody to make.
+ */
+describe.skipIf(!process.env.DATABASE_URL)('hiring one agent', () => {
+  const tasks = () => new PostgresTaskStore(process.env.DATABASE_URL as string)
+  const BUYER = `0x${'11'.repeat(20)}`
+  const AGENT_OWNER = `0x${'22'.repeat(20)}`
+  const WATCHER = `0x${'33'.repeat(20)}`
+
+  const hire = (store: PostgresTaskStore) =>
+    store.create({
+      poster: BUYER,
+      title: 'Price a position',
+      brief: 'Say what this is worth and how you got there.',
+      kind: 'research',
+      pricePoints: 900,
+      feePoints: 22,
+      totalPoints: 922,
+      outlay: 92_200_000_000_000_000n,
+      workHours: 6,
+      assigned: { agentId: '315943', owner: AGENT_OWNER },
+    })
+
+  it('starts claimed by the agent, off the public board, on the clock', async () => {
+    const store = tasks()
+    const task = await hire(store)
+
+    expect(task.status).toBe('CLAIMED')
+    expect(task.assignedAgentId).toBe('315943')
+    // Paid to the address the registry names, because an agent has no account
+    // here: it is a URL in a document.
+    expect(task.claimedBy).toBe(AGENT_OWNER.toLowerCase())
+    expect(new Date(task.claimExpiresAt as string).getTime()).toBeGreaterThan(Date.now())
+    expect((await store.open(500)).some((t) => t.id === task.id)).toBe(false)
+    await store.close()
+  })
+
+  it('is not up for grabs, even after the agent runs out of time', async () => {
+    // If a hired agent goes quiet the money goes back to the buyer, never to
+    // whoever happened to be watching the board. They hired one thing.
+    const store = tasks()
+    const task = await hire(store)
+    const raw = (store as unknown as { sql: postgres.Sql }).sql
+    await raw`UPDATE tasks SET claim_expires_at = now() - interval '1 minute' WHERE id = ${task.id}`
+
+    expect(await store.claim(task.id, WATCHER)).toBeNull()
+    expect((await store.open(500)).some((t) => t.id === task.id)).toBe(false)
+    // The buyer's route out, and the only one assigned work has.
+    expect(await store.cancelLapsedClaim(task.id, WATCHER)).toBeNull()
+    const back = await store.cancelLapsedClaim(task.id, BUYER)
+    expect(back?.status).toBe('CANCELLED')
+    await store.close()
+  })
+
+  it('takes work only from the agent it was given to, and only in time', async () => {
+    const store = tasks()
+    const task = await hire(store)
+
+    expect(await store.recordDelivery(task.id, '999999', 'not me')).toBeNull()
+    const delivered = await store.recordDelivery(task.id, '315943', 'It is worth 12 USDT because…')
+    expect(delivered?.status).toBe('SUBMITTED')
+    // And the review clock starts, so the buyer cannot sit on a delivered answer.
+    expect(new Date(delivered?.reviewExpiresAt as string).getTime()).toBeGreaterThan(Date.now())
+    await store.close()
+  })
+
+  it('refuses work that arrives after the deadline', async () => {
+    // By then the buyer may already have taken the money back, and paying for
+    // an answer nobody is waiting for any more is paying twice.
+    const store = tasks()
+    const task = await hire(store)
+    const raw = (store as unknown as { sql: postgres.Sql }).sql
+    await raw`UPDATE tasks SET claim_expires_at = now() - interval '1 minute' WHERE id = ${task.id}`
+
+    expect(await store.recordDelivery(task.id, '315943', 'late')).toBeNull()
+    await store.close()
+  })
+})

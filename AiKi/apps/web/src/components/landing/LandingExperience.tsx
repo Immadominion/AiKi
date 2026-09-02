@@ -386,17 +386,6 @@ export function LandingExperience() {
               ))}
             </motion.ol>
 
-            <Image
-              className={styles.heroScout}
-              src="/landing/stickers/agent-scout.webp"
-              alt=""
-              width={768}
-              height={816}
-              sizes="140px"
-              priority
-              aria-hidden="true"
-            />
-
             <div className={styles.heroBlock}>
               <motion.p
                 className={styles.heroEyebrow}
@@ -411,13 +400,24 @@ export function LandingExperience() {
                 className={styles.heroTitle}
                 aria-label="Put agents to work."
               >
-                <span aria-hidden="true">
+                <span className={`${styles.heroLine} ${styles.heroLineBack}`} aria-hidden="true">
                   <SplitWords
                     words={['Put', 'agents']}
                     reducedMotion={reducedMotion}
                     delay={TIMING.title}
                   />
-                  <br />
+                </span>
+                <Image
+                  className={styles.heroScout}
+                  src="/landing/stickers/agent-scout.webp"
+                  alt=""
+                  width={768}
+                  height={816}
+                  sizes="(max-width: 430px) 23vw, (max-width: 720px) 22vw, (max-width: 980px) 18vw, 250px"
+                  priority
+                  aria-hidden="true"
+                />
+                <span className={`${styles.heroLine} ${styles.heroLineFront}`} aria-hidden="true">
                   <SplitWords
                     words={['to', 'work']}
                     accent="."

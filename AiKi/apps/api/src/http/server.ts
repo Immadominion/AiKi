@@ -161,6 +161,10 @@ export function createApiServer(input: {
    * and answering that they cannot help.
    */
   tasks?: TaskStore
+  /** Where this API is reachable from outside, for agents to send work back to. */
+  publicUrl?: string
+  /** Signs per-task delivery tokens. Nothing is stored; the token is derived. */
+  deliverySecret?: string
   /** Omitted only in tests of the public surface; every mandate route needs it. */
   auth?: AuthConfig
 }) {
@@ -214,6 +218,30 @@ export function createApiServer(input: {
       ...(input.assistant?.credits ? { credits: input.assistant.credits } : {}),
       jobs,
       ...(input.settlementTreasury ? { settlementTreasury: input.settlementTreasury } : {}),
+      /*
+       * Who owns an agent and where it says it can be reached, read from what it
+       * registered on chain rather than from anything it told us at hire time.
+       * The owner is the address that gets paid, so it comes from the registry
+       * or the hire is refused.
+       */
+      agentContact: async (agentId: string) => {
+        const observations = await agentObservations([agentId])
+        const passport = projectPassport(agentId, observations)
+        const owner = passport.identity?.owner
+        if (!owner) return null
+        const registration = observations
+          .filter((o) => o.predicate === 'erc8004.registration_resolution')
+          .at(-1)
+        const services = (
+          registration?.value as { manifest?: { services?: { endpoint?: unknown }[] } } | undefined
+        )?.manifest?.services
+        const endpoint = Array.isArray(services)
+          ? services.map((svc) => svc?.endpoint).find((e): e is string => typeof e === 'string')
+          : undefined
+        return { owner, endpoint: endpoint ?? '', live: passport.liveness === 'LIVE' }
+      },
+      ...(input.publicUrl ? { publicUrl: input.publicUrl } : {}),
+      ...(input.deliverySecret ? { deliverySecret: input.deliverySecret } : {}),
     })
   /**
    * Only messages written for a caller reach a caller.

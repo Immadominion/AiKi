@@ -40,6 +40,11 @@ export interface TaskRecord {
   /** Base units of the settlement asset, for cap accounting. */
   outlay: bigint
   status: TaskStatus
+  /** Set when this was hired from one named agent rather than posted openly. */
+  assignedAgentId?: string
+  /** When AiKi called that agent's endpoint, and what happened if it did not work. */
+  dispatchedAt?: string
+  dispatchNote?: string
   claimedBy?: string
   claimedAt?: string
   /** How long the claimant has, chosen by the poster when posting. */
@@ -67,6 +72,14 @@ export interface NewTask {
   totalPoints: number
   outlay: bigint
   workHours: number
+  /**
+   * Hire one named agent instead of opening this to whoever claims it.
+   *
+   * The owner is who the money reaches, because an agent has no AiKi account:
+   * it is a URL in a registration document, and the address its registry entry
+   * names is the only party that can be paid.
+   */
+  assigned?: { agentId: string; owner: string }
 }
 
 export interface TaskStore {
@@ -102,6 +115,20 @@ export interface TaskStore {
   claimLapsedReview(id: string, claimant: string): Promise<TaskRecord | null>
   /** Hand work in. Only the claimant, and only once. */
   submit(id: string, claimant: string, submission: string): Promise<TaskRecord | null>
+  /** Record what a hired agent handed back. AiKi calls it; it has no session. */
+  recordDelivery(id: string, agentId: string, submission: string): Promise<TaskRecord | null>
+  /** Note that we called an agent, and what came of it. */
+  noteDispatch(id: string, note: string | null): Promise<void>
+  /**
+   * Take back work whose claimant ran out of time.
+   *
+   * The only route out for a hire the agent never answered, and the reason a
+   * buyer is not left holding a claim on somebody who has gone quiet. Open work
+   * has the board as its other route; assigned work has nothing else, so
+   * without this a hired agent that never replied would freeze the money
+   * permanently.
+   */
+  cancelLapsedClaim(id: string, poster: string): Promise<TaskRecord | null>
   /** Move a task on, from one of `from` to `to`, and say whether this caller did it. */
   advance(
     id: string,
@@ -133,6 +160,9 @@ interface TaskRow {
   total_points: string | number
   outlay: string
   status: TaskStatus
+  assigned_agent_id: string | null
+  dispatched_at: Date | string | null
+  dispatch_note: string | null
   claimed_by: string | null
   claimed_at: Date | string | null
   work_hours: number
@@ -162,6 +192,9 @@ const toTask = (row: TaskRow): TaskRecord => ({
   // and this one is compared against a spend cap.
   outlay: BigInt(row.outlay),
   status: row.status,
+  ...(row.assigned_agent_id ? { assignedAgentId: row.assigned_agent_id } : {}),
+  ...(row.dispatched_at ? { dispatchedAt: iso(row.dispatched_at) } : {}),
+  ...(row.dispatch_note ? { dispatchNote: row.dispatch_note } : {}),
   ...(row.claimed_by ? { claimedBy: row.claimed_by } : {}),
   ...(row.claimed_at ? { claimedAt: iso(row.claimed_at) } : {}),
   workHours: Number(row.work_hours),
@@ -185,11 +218,21 @@ export class PostgresTaskStore implements TaskStore {
     const rows = await this.sql<TaskRow[]>`
       INSERT INTO tasks
         (id, poster, authorization_id, title, brief, kind,
-         price_points, fee_points, total_points, outlay, work_hours, status)
+         price_points, fee_points, total_points, outlay, work_hours, status,
+         assigned_agent_id, claimed_by, claimed_at, claim_expires_at)
       VALUES (${randomUUID()}, ${lower(task.poster)}, ${task.authorizationId ?? null},
               ${task.title}, ${task.brief}, ${task.kind},
               ${task.pricePoints}, ${task.feePoints}, ${task.totalPoints},
-              ${task.outlay.toString()}, ${task.workHours}, 'OPEN')
+              ${task.outlay.toString()}, ${task.workHours},
+              -- Assigned work starts claimed, because the claimant was decided
+              -- before the money was committed. The same clock starts with it,
+              -- so an agent that never answers frees the poster's money on the
+              -- same terms a person who goes quiet does.
+              ${task.assigned ? 'CLAIMED' : 'OPEN'},
+              ${task.assigned?.agentId ?? null},
+              ${task.assigned ? lower(task.assigned.owner) : null},
+              ${task.assigned ? this.sql`now()` : null},
+              ${task.assigned ? this.sql`now() + (${task.workHours} || ' hours')::interval` : null})
       RETURNING *
     `
     const row = rows[0]
@@ -211,8 +254,11 @@ export class PostgresTaskStore implements TaskStore {
      */
     const rows = await this.sql<TaskRow[]>`
       SELECT * FROM tasks
-       WHERE status = 'OPEN'
-          OR (status = 'CLAIMED' AND claim_expires_at IS NOT NULL AND claim_expires_at < now())
+       WHERE assigned_agent_id IS NULL
+         AND (
+           status = 'OPEN'
+           OR (status = 'CLAIMED' AND claim_expires_at IS NOT NULL AND claim_expires_at < now())
+         )
        ORDER BY created_at DESC LIMIT ${limit}
     `
     return rows.map(toTask)
@@ -243,6 +289,10 @@ export class PostgresTaskStore implements TaskStore {
              updated_at = now()
        WHERE id = ${id}
          AND poster <> ${lower(claimant)}
+         -- Work hired from one agent is not up for grabs, whatever the clock
+         -- says. If that agent does not answer, the money goes back to the
+         -- buyer rather than to whoever was watching the board.
+         AND assigned_agent_id IS NULL
          AND (
            status = 'OPEN'
            -- Or the last claimant ran out of time, in which case this is a
@@ -266,6 +316,51 @@ export class PostgresTaskStore implements TaskStore {
          -- Handing in after the deadline is still handing in, but not once
          -- somebody else has taken the work over.
          AND (claim_expires_at IS NULL OR claim_expires_at > now())
+      RETURNING *
+    `
+    const row = rows[0]
+    return row ? toTask(row) : null
+  }
+
+  /**
+   * Record what a hired agent handed back, on its behalf.
+   *
+   * Separate from `submit` because the agent is not the caller and has no
+   * session: AiKi called its endpoint and this is the answer. The guard is the
+   * same in substance though, and the deadline still applies, so a reply that
+   * arrives after the buyer's money has already gone back changes nothing.
+   */
+  async recordDelivery(id: string, agentId: string, submission: string) {
+    const rows = await this.sql<TaskRow[]>`
+      UPDATE tasks
+         SET status = 'SUBMITTED', submission = ${submission},
+             submitted_at = now(),
+             review_expires_at = now() + ${REVIEW_HOURS} * interval '1 hour',
+             updated_at = now()
+       WHERE id = ${id} AND status = 'CLAIMED' AND assigned_agent_id = ${agentId}
+         AND (claim_expires_at IS NULL OR claim_expires_at > now())
+      RETURNING *
+    `
+    const row = rows[0]
+    return row ? toTask(row) : null
+  }
+
+  /** Note that we called an agent, and what came of it. */
+  async noteDispatch(id: string, note: string | null) {
+    await this.sql`
+      UPDATE tasks SET dispatched_at = now(), dispatch_note = ${note}, updated_at = now()
+       WHERE id = ${id}
+    `
+  }
+
+  async cancelLapsedClaim(id: string, poster: string) {
+    const rows = await this.sql<TaskRow[]>`
+      UPDATE tasks
+         SET status = 'CANCELLED',
+             resolution = 'Nobody handed it in before the deadline, so the poster took it back.',
+             decided_at = now(), updated_at = now()
+       WHERE id = ${id} AND poster = ${lower(poster)} AND status = 'CLAIMED'
+         AND claim_expires_at IS NOT NULL AND claim_expires_at < now()
       RETURNING *
     `
     const row = rows[0]

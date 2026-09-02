@@ -91,7 +91,18 @@ it('changes the digest when anything that IS signed changes', () => {
  * was slow", and that is the worst possible false alarm to have on this check.
  */
 it('agrees with the deployed manager about what is being signed', async () => {
-  const client = createPublicClient({ transport: http(RPC) })
+  /*
+   * The transport gets its own deadline, shorter than the test's.
+   *
+   * The catch below exists to skip when the chain is unreachable, and it never
+   * ran: viem waited longer than vitest did, so an unreachable node failed the
+   * test instead of skipping it, and the message said the manager disagreed
+   * about a signing hash when it meant a public RPC was slow. That is the worst
+   * false alarm available on this particular check.
+   */
+  const client = createPublicClient({
+    transport: http(RPC, { timeout: 8_000, retryCount: 1 }),
+  })
   const d = sample()
   let onchain: `0x${string}`
   try {

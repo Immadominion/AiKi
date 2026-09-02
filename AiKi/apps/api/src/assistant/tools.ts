@@ -313,6 +313,28 @@ export const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'hire_agent',
+    description:
+      'Pay one named agent from the registry to do a discrete piece of work, and send it the ' +
+      'brief. Different from watching a position: this asks for an answer, once. The agent is ' +
+      'called at the endpoint its registration declares, and most agents on this registry do not ' +
+      'answer, which is normal and is why the money comes back if it does not. Check the ' +
+      'passport first and say what was measured about it before spending.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string' },
+        title: { type: 'string' },
+        brief: { type: 'string', description: 'What is wanted and how it will be judged.' },
+        kind: { type: 'string', description: 'One of the kinds open_tasks lists.' },
+        price_points: { type: 'number' },
+        work_hours: { type: 'number', description: 'How long it has to answer. Default 48.' },
+        mandate_id: { type: 'string', description: 'A spending mandate.' },
+      },
+      required: ['agent_id', 'title', 'brief', 'kind', 'price_points', 'mandate_id'],
+    },
+  },
+  {
     name: 'my_tasks',
     description: 'Work you posted and work you claimed, with what state each is in.',
     input_schema: { type: 'object', properties: {} },
@@ -386,6 +408,7 @@ export const MUTATING = new Set([
   // Everything that moves money on the task board. `accept_task` most of all:
   // it is the moment a person is paid and there is no route back from it.
   'post_task',
+  'hire_agent',
   'claim_task',
   'submit_task',
   'accept_task',
@@ -498,6 +521,16 @@ export async function runTool(
         pricePoints: Math.trunc(Number(args.price_points)),
         ...(args.work_hours ? { workHours: Math.trunc(Number(args.work_hours)) } : {}),
         authorizationId: args.mandate_id,
+      })
+    case 'hire_agent':
+      return post('/v1/tasks', {
+        title: args.title,
+        brief: args.brief,
+        kind: args.kind,
+        pricePoints: Math.trunc(Number(args.price_points)),
+        ...(args.work_hours ? { workHours: Math.trunc(Number(args.work_hours)) } : {}),
+        authorizationId: args.mandate_id,
+        assignAgentId: args.agent_id,
       })
     case 'claim_task':
       return post(`/v1/tasks/${args.task_id}/claim`)

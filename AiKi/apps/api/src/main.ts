@@ -129,6 +129,10 @@ const app = createApiServer({
   searchAgents: (query) => store.searchAgents(query),
   ...(treasury ? { settlementTreasury: treasury } : {}),
   tasks: taskStore,
+  // Where a hired agent sends work back to, and the key that proves the callback
+  // belongs to a task AiKi actually dispatched.
+  ...(process.env.PUBLIC_API_URL ? { publicUrl: process.env.PUBLIC_API_URL } : {}),
+  deliverySecret: receiptSeed,
   // Names and verdicts only. The route is public and the amounts are not.
   ledgerHealth: async () =>
     (await checkLedger(ledgerSql, await treasuryBackingPoints(deposits))).map(({ check, ok }) => ({

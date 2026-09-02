@@ -9,6 +9,7 @@ import {
 } from '../credits/store.js'
 import type { JobService } from '../jobs/service.js'
 import { priceJob, SETTLEMENT } from '../settlement/pricing.js'
+import { DISPATCH_PROTOCOL, deliveryToken, dispatchToAgent, tokenMatches } from './dispatch.js'
 import { isTaskKind, TASK_KINDS } from './kinds.js'
 import type { TaskStore } from './store.js'
 
@@ -56,6 +57,20 @@ export function registerTaskRoutes(
     credits?: CreditStore
     jobs: JobService
     settlementTreasury?: string
+    /**
+     * Who owns an agent and where it can be reached, out of what it registered.
+     *
+     * Injected because this file has no evidence store and should not grow one.
+     * Absent means hiring a named agent is not offered, rather than offered and
+     * then failing at the moment somebody's money is involved.
+     */
+    agentContact?: (
+      agentId: string,
+    ) => Promise<{ owner: string; endpoint: string; live: boolean } | null>
+    /** Where an agent sends work back to. This API, from outside. */
+    publicUrl?: string
+    /** Signs the delivery tokens. Derived per task, never stored. */
+    deliverySecret?: string
   },
 ) {
   const text = (value: unknown, max: number) =>
@@ -107,6 +122,8 @@ export function registerTaskRoutes(
       pricePoints?: number
       workHours?: number
       authorizationId?: string
+      /** Hire this one agent instead of opening the work to whoever claims it. */
+      assignAgentId?: string
     }
   }>('/v1/tasks', async (request, reply) => {
     const session = requireSession(request, reply)
@@ -161,6 +178,47 @@ export function registerTaskRoutes(
      */
     const workHours = Math.min(720, Math.max(1, Math.trunc(Number(request.body?.workHours ?? 48))))
 
+    /*
+     * Hiring a named agent rather than posting openly.
+     *
+     * Resolved before any money moves, because everything here can refuse and a
+     * refusal after the charge is a refusal that costs somebody.
+     */
+    let assigned: { agentId: string; owner: string; endpoint: string } | undefined
+    if (request.body?.assignAgentId) {
+      if (!input.agentContact)
+        return reply.code(503).send({
+          error: {
+            code: 'HIRING_UNAVAILABLE',
+            message: 'This deployment cannot look up agents, so it cannot hire one.',
+            retryable: false,
+          },
+        })
+      const contact = await input.agentContact(request.body.assignAgentId)
+      if (!contact?.owner)
+        return reply.code(422).send({
+          error: {
+            code: 'AGENT_NOT_HIREABLE',
+            message: 'The registry records no owner for this agent, so there is nobody to pay.',
+            retryable: false,
+          },
+        })
+      if (!contact.endpoint)
+        return reply.code(422).send({
+          error: {
+            code: 'AGENT_HAS_NO_ENDPOINT',
+            message:
+              'This agent declares no endpoint, so there is nowhere to send the work. Post it openly instead.',
+            retryable: false,
+          },
+        })
+      assigned = {
+        agentId: request.body.assignAgentId,
+        owner: contact.owner,
+        endpoint: contact.endpoint,
+      }
+    }
+
     const priced = priceJob(BigInt(pricePoints))
     const total = Number(priced.total)
     const outlay = settlementForPoints(total, SETTLEMENT.decimals)
@@ -209,6 +267,7 @@ export function registerTaskRoutes(
       totalPoints: total,
       outlay,
       workHours,
+      ...(assigned ? { assigned: { agentId: assigned.agentId, owner: assigned.owner } } : {}),
     })
 
     try {
@@ -247,8 +306,95 @@ export function registerTaskRoutes(
       throw error
     }
 
-    return reply.code(201).send({ ...task, outlay: task.outlay.toString(), heldPoints: total })
+    /*
+     * Ask the agent, now that the money behind the request is real.
+     *
+     * After funding on purpose. An agent asked to work before the money is
+     * committed is being asked on a promise, which is the thing this whole board
+     * exists not to do.
+     *
+     * Failure here is not failure of the request. The task exists, the money is
+     * held, and what happened when we called is written down: if the agent never
+     * answers, its claim runs out on the same clock a person's would and the
+     * buyer takes their money back. Most of this registry will not answer, and
+     * that being visible is the point rather than the problem.
+     */
+    if (assigned && input.publicUrl && input.deliverySecret) {
+      const outcome = await dispatchToAgent({
+        endpoint: assigned.endpoint,
+        envelope: {
+          protocol: DISPATCH_PROTOCOL,
+          taskId: task.id,
+          agentId: assigned.agentId,
+          title,
+          brief,
+          pricePoints,
+          deadline: new Date(Date.now() + workHours * 3_600_000).toISOString(),
+          callback: {
+            url: `${input.publicUrl}/v1/tasks/${task.id}/deliver`,
+            token: deliveryToken(input.deliverySecret, task.id),
+          },
+        },
+      })
+      await input.tasks.noteDispatch(task.id, outcome.note)
+      if (outcome.delivered)
+        await input.tasks.recordDelivery(task.id, assigned.agentId, outcome.delivered)
+    }
+
+    const settled = (await input.tasks.get(task.id)) ?? task
+    return reply.code(201).send({
+      ...settled,
+      outlay: settled.outlay.toString(),
+      heldPoints: total,
+    })
   })
+
+  /**
+   * Where a hired agent sends work back to.
+   *
+   * Unauthenticated by session and authenticated by token, because the caller is
+   * a third-party server with no account here. The token is an HMAC of the task
+   * id, so it is not stored anywhere, cannot be guessed, and only exists for a
+   * task that was actually dispatched.
+   */
+  app.post<{ Params: { id: string }; Body: { token?: string; result?: string } }>(
+    '/v1/tasks/:id/deliver',
+    async (request, reply) => {
+      const secret = input.deliverySecret
+      const token = request.body?.token ?? request.headers['x-aiki-delivery-token']?.toString()
+      if (!secret || !token || !tokenMatches(secret, request.params.id, token))
+        return reply.code(401).send({
+          error: {
+            code: 'DELIVERY_TOKEN_INVALID',
+            message: 'That is not the delivery token for this task.',
+            retryable: false,
+          },
+        })
+
+      const result = text(request.body?.result, MAX_SUBMISSION)
+      if (!result)
+        return reply.code(400).send({
+          error: { code: 'DELIVERY_EMPTY', message: 'Send a result.', retryable: false },
+        })
+
+      const task = await input.tasks.get(request.params.id)
+      if (!task?.assignedAgentId)
+        return reply.code(404).send({
+          error: { code: 'TASK_NOT_FOUND', message: 'No such dispatched task.', retryable: false },
+        })
+
+      const delivered = await input.tasks.recordDelivery(task.id, task.assignedAgentId, result)
+      if (!delivered)
+        return reply.code(409).send({
+          error: {
+            code: 'TOO_LATE',
+            message: `This is ${task.status}. Work sent after the deadline is not taken, because the money may already have gone back.`,
+            retryable: false,
+          },
+        })
+      return { taskId: delivered.id, status: delivered.status }
+    },
+  )
 
   /** Take a task. One claimant wins, decided by the database. */
   app.post<{ Params: { id: string } }>('/v1/tasks/:id/claim', async (request, reply) => {
@@ -534,19 +680,24 @@ export function registerTaskRoutes(
      * recoverable by hand. That is the right way round: money briefly stuck and
      * countable beats a cap that quietly resets.
      */
-    const cancelled = await input.tasks.advance(
-      task.id,
-      ['OPEN'],
-      'CANCELLED',
-      'The poster took it back.',
-    )
+    const cancelled =
+      (await input.tasks.advance(task.id, ['OPEN'], 'CANCELLED', 'The poster took it back.')) ??
+      /*
+       * Or take it back from somebody who ran out of time.
+       *
+       * For a hire this is the only route out. Assigned work is never returned
+       * to the board, so an agent that was called and never answered would hold
+       * the buyer's money for good without this, and most of this registry does
+       * not answer.
+       */
+      (await input.tasks.cancelLapsedClaim(task.id, session.address))
     if (!cancelled)
       return reply.code(409).send({
         error: {
           code: 'TASK_NOT_CANCELLABLE',
           message:
             task.status === 'CLAIMED' || task.status === 'SUBMITTED'
-              ? 'Somebody is working on this. The money stays where it is until they hand it in.'
+              ? 'Somebody is working on this. The money stays where it is until they hand it in, or until their time runs out.'
               : task.status === 'CANCELLED'
                 ? 'This one is already cancelled and the money is already back.'
                 : `Only open work can be taken back. This one is ${task.status}.`,
