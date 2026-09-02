@@ -319,6 +319,17 @@ export function registerTaskRoutes(
      * buyer takes their money back. Most of this registry will not answer, and
      * that being visible is the point rather than the problem.
      */
+    if (assigned && !(input.publicUrl && input.deliverySecret))
+      /*
+       * Not silently skipped. A hire that never called the agent, with the money
+       * held and nothing on the record saying why, is exactly the failure this
+       * area exists to remove. The task still cancels on its deadline so the
+       * buyer is not stuck, but the reason is written down.
+       */
+      await input.tasks.noteDispatch(
+        task.id,
+        'AiKi is not configured with a public address, so it could not send the work or receive an answer.',
+      )
     if (assigned && input.publicUrl && input.deliverySecret) {
       const outcome = await dispatchToAgent({
         endpoint: assigned.endpoint,

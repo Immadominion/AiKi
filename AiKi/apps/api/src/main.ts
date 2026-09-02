@@ -111,6 +111,14 @@ const enforcerRpcUrl =
  * that asks whether the payments are still there. Two copies of this would be
  * two opinions about which treasury is AiKi's.
  */
+/*
+ * Where a hired agent sends work back to: this API, as the outside world sees
+ * it. Railway names the deployment's own domain, so a deployment that forgot to
+ * set anything still dispatches rather than quietly not calling anybody.
+ */
+const publicApiUrl =
+  process.env.PUBLIC_API_URL ??
+  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined)
 const deposits = treasury
   ? { rpcUrl: enforcerRpcUrl, chainId: 97, token: creditsToken, treasury }
   : undefined
@@ -131,7 +139,7 @@ const app = createApiServer({
   tasks: taskStore,
   // Where a hired agent sends work back to, and the key that proves the callback
   // belongs to a task AiKi actually dispatched.
-  ...(process.env.PUBLIC_API_URL ? { publicUrl: process.env.PUBLIC_API_URL } : {}),
+  ...(publicApiUrl ? { publicUrl: publicApiUrl } : {}),
   deliverySecret: receiptSeed,
   // Names and verdicts only. The route is public and the amounts are not.
   ledgerHealth: async () =>
