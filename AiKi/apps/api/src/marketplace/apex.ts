@@ -12,6 +12,8 @@ export const APEX_COMMERCE_ABI = parseAbi([
   'function paymentToken() view returns (address)',
   'event JobCreated(uint256 indexed jobId, address indexed client, address indexed provider, address evaluator, uint256 expiredAt, address hook)',
   'event JobFunded(uint256 indexed jobId, address indexed client, uint256 amount)',
+  'event JobCompleted(uint256 indexed jobId, address indexed evaluator, bytes32 reason)',
+  'event PaymentReleased(uint256 indexed jobId, address indexed provider, uint256 amount)',
 ])
 
 export type PreparedApexCreateEscrowTransaction = Readonly<{
@@ -83,6 +85,20 @@ export type ApexJobCreated = Readonly<{
 export type ApexJobFunded = Readonly<{
   externalJobId: string
   client: `0x${string}`
+  amount: string
+  log: ApexReceiptLog
+}>
+
+export type ApexJobCompleted = Readonly<{
+  externalJobId: string
+  evaluator: `0x${string}`
+  reason: Hex
+  log: ApexReceiptLog
+}>
+
+export type ApexPaymentReleased = Readonly<{
+  externalJobId: string
+  provider: `0x${string}`
   amount: string
   log: ApexReceiptLog
 }>
@@ -266,4 +282,82 @@ export function parseApexJobFunded(input: {
     }
   }
   throw new Error('No APEX JobFunded event found in the finalized transaction receipt.')
+}
+
+export function parseApexJobCompleted(input: {
+  contract: `0x${string}`
+  transactionHash: Hex
+  logs: readonly ApexReceiptLog[]
+}): ApexJobCompleted {
+  const contract = lowerAddress(input.contract)
+  for (const log of input.logs) {
+    if (lowerAddress(log.address) !== contract) continue
+    let decoded: ReturnType<typeof decodeEventLog>
+    try {
+      const topics = log.topics as [`0x${string}`, ...`0x${string}`[]]
+      decoded = decodeEventLog({
+        abi: APEX_COMMERCE_ABI,
+        data: log.data,
+        topics,
+      })
+    } catch {
+      continue
+    }
+    if (decoded.eventName !== 'JobCompleted') continue
+    const args = decoded.args as {
+      jobId: bigint
+      evaluator: `0x${string}`
+      reason: Hex
+    }
+    if (lowerAddress(log.transactionHash) !== lowerAddress(input.transactionHash)) {
+      throw new Error('JobCompleted log transaction hash does not match the settlement operation.')
+    }
+    return {
+      externalJobId: args.jobId.toString(),
+      evaluator: lowerAddress(args.evaluator),
+      reason: args.reason.toLowerCase() as Hex,
+      log,
+    }
+  }
+  throw new Error('No APEX JobCompleted event found in the finalized transaction receipt.')
+}
+
+export function parseApexPaymentReleased(input: {
+  contract: `0x${string}`
+  transactionHash: Hex
+  logs: readonly ApexReceiptLog[]
+}): ApexPaymentReleased {
+  const contract = lowerAddress(input.contract)
+  for (const log of input.logs) {
+    if (lowerAddress(log.address) !== contract) continue
+    let decoded: ReturnType<typeof decodeEventLog>
+    try {
+      const topics = log.topics as [`0x${string}`, ...`0x${string}`[]]
+      decoded = decodeEventLog({
+        abi: APEX_COMMERCE_ABI,
+        data: log.data,
+        topics,
+      })
+    } catch {
+      continue
+    }
+    if (decoded.eventName !== 'PaymentReleased') continue
+    const args = decoded.args as {
+      jobId: bigint
+      provider: `0x${string}`
+      amount: bigint
+    }
+    if (lowerAddress(log.transactionHash) !== lowerAddress(input.transactionHash)) {
+      throw new Error(
+        'PaymentReleased log transaction hash does not match the settlement operation.',
+      )
+    }
+    return {
+      externalJobId: args.jobId.toString(),
+      provider: lowerAddress(args.provider),
+      amount: args.amount.toString(),
+      log,
+    }
+  }
+  throw new Error('No APEX PaymentReleased event found in the finalized transaction receipt.')
 }

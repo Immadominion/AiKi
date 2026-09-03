@@ -291,3 +291,13 @@ Submitting the prepared release transaction moves the job to `settlementState:
 RELEASE_SUBMITTED` and records `SETTLEMENT_RELEASE_SUBMITTED`. The job is not
 `RELEASED`, and payout is not `PAID`, until finalized chain evidence proves the
 release transaction succeeded.
+
+Finalization requires both deployed APEX events from the same receipt:
+
+- `JobCompleted`, with the expected external job id and accepted review hash
+- `PaymentReleased`, with the expected external job id, provider address, and
+  provider amount
+
+Only after those events are verified does AiKi store finalized chain evidence,
+record `SETTLEMENT_RELEASED`, and mark the job `settlementState: RELEASED` with
+`payoutState: PAID`.

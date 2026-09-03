@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { BSC_MAINNET } from '../config/chains.js'
 import {
   APEX_COMMERCE_ABI,
+  parseApexJobCompleted,
   parseApexJobCreated,
   parseApexJobFunded,
+  parseApexPaymentReleased,
   prepareApexComplete,
   prepareApexCreateEscrow,
   prepareApexFund,
@@ -156,5 +158,72 @@ describe('APEX settlement adapter', () => {
     expect(parsed.client).toBe(client)
     expect(parsed.amount).toBe('1000000000000000001')
     expect(parsed.log.logIndex).toBe(8)
+  })
+
+  it('parses finalized release logs from the deployed event shapes', () => {
+    const transactionHash = `0x${'aa'.repeat(32)}` as const
+    const provider = `0x${'ab'.repeat(20)}` as const
+    const evaluator = BSC_MAINNET.contracts.erc8183EvaluatorRouter.toLowerCase() as `0x${string}`
+    const reason = `0x${'55'.repeat(32)}` as const
+    const completedTopics = encodeEventTopics({
+      abi: APEX_COMMERCE_ABI,
+      eventName: 'JobCompleted',
+      args: {
+        jobId: 123n,
+        evaluator,
+      },
+    }) as `0x${string}`[]
+    const releasedTopics = encodeEventTopics({
+      abi: APEX_COMMERCE_ABI,
+      eventName: 'PaymentReleased',
+      args: {
+        jobId: 123n,
+        provider,
+      },
+    }) as `0x${string}`[]
+    const blockHash = `0x${'bb'.repeat(32)}` as const
+    const logs = [
+      {
+        address: BSC_MAINNET.contracts.erc8183Commerce.toLowerCase() as `0x${string}`,
+        topics: completedTopics,
+        data: encodeAbiParameters([{ type: 'bytes32' }], [reason]),
+        transactionHash,
+        logIndex: 9,
+        blockNumber: 101n,
+        blockHash,
+      },
+      {
+        address: BSC_MAINNET.contracts.erc8183Commerce.toLowerCase() as `0x${string}`,
+        topics: releasedTopics,
+        data: encodeAbiParameters([{ type: 'uint256' }], [975_000_000_000_000_001n]),
+        transactionHash,
+        logIndex: 10,
+        blockNumber: 101n,
+        blockHash,
+      },
+    ]
+
+    const completed = parseApexJobCompleted({
+      contract: BSC_MAINNET.contracts.erc8183Commerce.toLowerCase() as `0x${string}`,
+      transactionHash,
+      logs,
+    })
+    const released = parseApexPaymentReleased({
+      contract: BSC_MAINNET.contracts.erc8183Commerce.toLowerCase() as `0x${string}`,
+      transactionHash,
+      logs,
+    })
+    expect(completed).toMatchObject({
+      externalJobId: '123',
+      evaluator,
+      reason,
+    })
+    expect(released).toMatchObject({
+      externalJobId: '123',
+      provider,
+      amount: '975000000000000001',
+    })
+    expect(completed.log.logIndex).toBe(9)
+    expect(released.log.logIndex).toBe(10)
   })
 })

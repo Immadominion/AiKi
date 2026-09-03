@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
 import {
   type PreparedApexTransaction,
+  parseApexJobCompleted,
   parseApexJobCreated,
   parseApexJobFunded,
+  parseApexPaymentReleased,
   prepareApexComplete,
   prepareApexCreateEscrow,
   prepareApexFund,
@@ -79,6 +81,11 @@ type SubmittedRow = {
   status: 'SUBMITTED' | 'MINED'
 }
 
+type SubmittedReleaseRow = SubmittedRow & {
+  payee_address: `0x${string}`
+  review_hash: string
+}
+
 export type PreparedSettlementOperation = Readonly<{
   outboxId: string
   operationId: string
@@ -107,6 +114,15 @@ export type FinalizedCreateEscrowOperation = Readonly<{
 
 export type FinalizedFundOperation = Readonly<{
   kind: 'FUND'
+  operationId: string
+  jobId: string
+  agreementId: string
+  externalJobId: string
+  amount: string
+}>
+
+export type FinalizedReleaseOperation = Readonly<{
+  kind: 'RELEASE'
   operationId: string
   jobId: string
   agreementId: string
@@ -879,6 +895,8 @@ export class PostgresMarketplaceSettlementWorker {
         RETURNING aggregate_version
       `
       const aggregateVersion = jobRows[0]?.aggregate_version
+      if (!aggregateVersion)
+        throw new Error(`Release operation ${row.operation_id} could not mark the job as released.`)
       if (aggregateVersion) {
         await tx`
           INSERT INTO marketplace_events (
@@ -906,6 +924,191 @@ export class PostgresMarketplaceSettlementWorker {
       }
     })
   }
+
+  async finalizeReleaseNext(
+    reader: SettlementFinalityReader,
+  ): Promise<FinalizedReleaseOperation | null> {
+    const rows = await this.sql<SubmittedReleaseRow[]>`
+      SELECT
+        so.id AS operation_id,
+        so.job_id,
+        so.agreement_id,
+        ja.external_job_id,
+        ja.payee_address,
+        jr.review_hash,
+        so.transaction_hash,
+        so.chain_id,
+        so.contract_address,
+        so.token_address,
+        so.amount,
+        so.status
+      FROM settlement_operations so
+      JOIN job_agreements ja ON ja.id = so.agreement_id
+      JOIN job_reviews jr ON jr.job_id = so.job_id AND jr.decision = 'ACCEPT'
+      WHERE so.operation_type = 'RELEASE'
+        AND so.status IN ('SUBMITTED', 'MINED')
+        AND so.transaction_hash IS NOT NULL
+      ORDER BY so.updated_at ASC, so.created_at ASC, so.id ASC
+      LIMIT 1
+    `
+    const row = rows[0]
+    if (!row) return null
+
+    const receipt = await reader.finalizedReceipt(row.transaction_hash)
+    if (!receipt) {
+      if (row.status !== 'MINED')
+        await this.sql`
+          UPDATE settlement_operations
+          SET status = 'MINED',
+              updated_at = now()
+          WHERE id = ${row.operation_id}
+            AND status = 'SUBMITTED'
+        `
+      return null
+    }
+
+    if (receipt.status !== 'success') {
+      await this.sql.begin(async (tx) => {
+        await tx`
+          UPDATE settlement_operations
+          SET status = 'REVERTED',
+              failure_code = 'RELEASE_REVERTED',
+              failure_detail = 'Finalized transaction receipt has reverted status.',
+              updated_at = now()
+          WHERE id = ${row.operation_id}
+            AND status IN ('SUBMITTED', 'MINED')
+        `
+        const jobRows = await tx<{ aggregate_version: string }[]>`
+          UPDATE marketplace_jobs
+          SET settlement_state = 'FUNDED',
+              aggregate_version = aggregate_version + 1,
+              updated_at = now()
+          WHERE id = ${row.job_id}
+            AND settlement_state = 'RELEASE_SUBMITTED'
+            AND payout_state = 'HOLD'
+          RETURNING aggregate_version
+        `
+        const aggregateVersion = jobRows[0]?.aggregate_version
+        if (aggregateVersion) {
+          await tx`
+            INSERT INTO marketplace_events (
+              id, job_id, aggregate_version, event_type, payload, correlation_id
+            ) VALUES (
+              ${randomUUID()}, ${row.job_id}, ${aggregateVersion}, 'SETTLEMENT_RELEASE_REVERTED',
+              ${tx.json({
+                operationId: row.operation_id,
+                transactionHash: row.transaction_hash,
+              })},
+              ${row.operation_id}
+            )
+          `
+        }
+      })
+      return null
+    }
+
+    const completed = parseApexJobCompleted({
+      contract: row.contract_address,
+      transactionHash: row.transaction_hash,
+      logs: receipt.logs,
+    })
+    const released = parseApexPaymentReleased({
+      contract: row.contract_address,
+      transactionHash: row.transaction_hash,
+      logs: receipt.logs,
+    })
+    if (!row.external_job_id)
+      throw new Error(`Release operation ${row.operation_id} has no finalized APEX job id.`)
+    if (completed.externalJobId !== row.external_job_id)
+      throw new Error(`JobCompleted external job id mismatch for operation ${row.operation_id}.`)
+    if (released.externalJobId !== row.external_job_id)
+      throw new Error(`PaymentReleased external job id mismatch for operation ${row.operation_id}.`)
+    if (completed.reason !== `0x${row.review_hash}`)
+      throw new Error(`JobCompleted reason mismatch for operation ${row.operation_id}.`)
+    if (released.provider !== row.payee_address)
+      throw new Error(`PaymentReleased provider mismatch for operation ${row.operation_id}.`)
+    if (released.amount !== row.amount)
+      throw new Error(`PaymentReleased amount mismatch for operation ${row.operation_id}.`)
+
+    return this.sql.begin(async (tx) => {
+      const updated = await tx<{ id: string }[]>`
+        UPDATE settlement_operations
+        SET status = 'FINALIZED',
+            finalized_at = now(),
+            failure_code = NULL,
+            failure_detail = NULL,
+            updated_at = now()
+        WHERE id = ${row.operation_id}
+          AND status IN ('SUBMITTED', 'MINED')
+        RETURNING id
+      `
+      if (!updated.length) return null
+
+      await insertFinalizedChainEvent(tx, {
+        chainId: row.chain_id,
+        contractAddress: row.contract_address,
+        transactionHash: row.transaction_hash,
+        log: completed.log,
+        eventName: 'JobCompleted',
+        payload: {
+          externalJobId: completed.externalJobId,
+          evaluator: completed.evaluator,
+          reason: completed.reason,
+        },
+      })
+      await insertFinalizedChainEvent(tx, {
+        chainId: row.chain_id,
+        contractAddress: row.contract_address,
+        transactionHash: row.transaction_hash,
+        log: released.log,
+        eventName: 'PaymentReleased',
+        payload: {
+          externalJobId: released.externalJobId,
+          provider: released.provider,
+          amount: released.amount,
+        },
+      })
+
+      const jobRows = await tx<{ aggregate_version: string }[]>`
+        UPDATE marketplace_jobs
+        SET settlement_state = 'RELEASED',
+            payout_state = 'PAID',
+            aggregate_version = aggregate_version + 1,
+            updated_at = now()
+        WHERE id = ${row.job_id}
+          AND work_state = 'ACCEPTED'
+          AND settlement_state = 'RELEASE_SUBMITTED'
+          AND payout_state = 'HOLD'
+        RETURNING aggregate_version
+      `
+      const aggregateVersion = jobRows[0]?.aggregate_version
+      if (!aggregateVersion)
+        throw new Error(`Release operation ${row.operation_id} could not mark the job as released.`)
+      await tx`
+        INSERT INTO marketplace_events (
+          id, job_id, aggregate_version, event_type, payload, correlation_id
+        ) VALUES (
+          ${randomUUID()}, ${row.job_id}, ${aggregateVersion}, 'SETTLEMENT_RELEASED',
+          ${tx.json({
+            operationId: row.operation_id,
+            externalJobId: released.externalJobId,
+            transactionHash: row.transaction_hash,
+            amount: released.amount,
+          })},
+          ${row.operation_id}
+        )
+      `
+
+      return {
+        kind: 'RELEASE',
+        operationId: row.operation_id,
+        jobId: row.job_id,
+        agreementId: row.agreement_id,
+        externalJobId: released.externalJobId,
+        amount: released.amount,
+      }
+    })
+  }
 }
 
 async function markDelivered(tx: postgres.TransactionSql, outboxId: string): Promise<void> {
@@ -917,5 +1120,29 @@ async function markDelivered(tx: postgres.TransactionSql, outboxId: string): Pro
         delivered_at = now(),
         updated_at = now()
     WHERE id = ${outboxId}
+  `
+}
+
+async function insertFinalizedChainEvent(
+  tx: postgres.TransactionSql,
+  input: {
+    chainId: string | number
+    contractAddress: `0x${string}`
+    transactionHash: `0x${string}`
+    log: { logIndex: number; blockNumber: bigint; blockHash: `0x${string}` }
+    eventName: string
+    payload: Record<string, string>
+  },
+): Promise<void> {
+  await tx`
+    INSERT INTO chain_events (
+      id, chain_id, contract_address, transaction_hash, log_index,
+      block_number, block_hash, event_name, decoded_payload, finality, finalized_at
+    ) VALUES (
+      ${randomUUID()}, ${input.chainId}, ${input.contractAddress}, ${input.transactionHash},
+      ${input.log.logIndex}, ${input.log.blockNumber.toString()}, ${input.log.blockHash},
+      ${input.eventName}, ${tx.json(input.payload)}, 'FINALIZED', now()
+    )
+    ON CONFLICT (chain_id, contract_address, transaction_hash, log_index) DO NOTHING
   `
 }

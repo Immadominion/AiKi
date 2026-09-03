@@ -714,5 +714,98 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
       payout_state: 'HOLD',
       events: '1',
     })
+
+    const submittedReleaseHash = submittedRelease?.transactionHash
+    if (!submittedReleaseHash)
+      throw new Error('Release submission did not return a transaction hash.')
+    const finalizedRelease = await worker.finalizeReleaseNext({
+      finalizedReceipt: async (hash) => ({
+        status: 'success',
+        transactionHash: hash,
+        blockNumber: 102n,
+        blockHash: `0x${'aa'.repeat(32)}`,
+        logs: [
+          {
+            address: created.body.settlement.contract,
+            topics: encodeEventTopics({
+              abi: APEX_COMMERCE_ABI,
+              eventName: 'JobCompleted',
+              args: {
+                jobId: 123n,
+                evaluator:
+                  BSC_MAINNET.contracts.erc8183EvaluatorRouter.toLowerCase() as `0x${string}`,
+              },
+            }) as `0x${string}`[],
+            data: encodeAbiParameters(
+              [{ type: 'bytes32' }],
+              [`0x${accepted.body.reviewHash}` as `0x${string}`],
+            ),
+            transactionHash: hash,
+            logIndex: 5,
+            blockNumber: 102n,
+            blockHash: `0x${'aa'.repeat(32)}`,
+          },
+          {
+            address: created.body.settlement.contract,
+            topics: encodeEventTopics({
+              abi: APEX_COMMERCE_ABI,
+              eventName: 'PaymentReleased',
+              args: { jobId: 123n, provider: actor.address },
+            }) as `0x${string}`[],
+            data: encodeAbiParameters(
+              [{ type: 'uint256' }],
+              [BigInt(created.body.settlement.providerAmount)],
+            ),
+            transactionHash: hash,
+            logIndex: 6,
+            blockNumber: 102n,
+            blockHash: `0x${'aa'.repeat(32)}`,
+          },
+        ],
+      }),
+    })
+    expect(finalizedRelease).toMatchObject({
+      kind: 'RELEASE',
+      operationId: preparedRelease.operationId,
+      jobId: created.body.id,
+      agreementId: created.body.agreementId,
+      externalJobId: '123',
+      amount: created.body.settlement.providerAmount,
+    })
+
+    const releasedRows = await sql<
+      {
+        operation_status: string
+        settlement_state: string
+        payout_state: string
+        completed_events: string
+        released_events: string
+        marketplace_events: string
+      }[]
+    >`
+      SELECT
+        (SELECT status FROM settlement_operations WHERE id = ${preparedRelease.operationId})
+          AS operation_status,
+        (SELECT settlement_state FROM marketplace_jobs WHERE id = ${created.body.id})
+          AS settlement_state,
+        (SELECT payout_state FROM marketplace_jobs WHERE id = ${created.body.id}) AS payout_state,
+        (SELECT count(*) FROM chain_events
+          WHERE transaction_hash = ${submittedReleaseHash}
+            AND event_name = 'JobCompleted') AS completed_events,
+        (SELECT count(*) FROM chain_events
+          WHERE transaction_hash = ${submittedReleaseHash}
+            AND event_name = 'PaymentReleased') AS released_events,
+        (SELECT count(*) FROM marketplace_events
+          WHERE job_id = ${created.body.id}
+            AND event_type = 'SETTLEMENT_RELEASED') AS marketplace_events
+    `
+    expect(releasedRows[0]).toEqual({
+      operation_status: 'FINALIZED',
+      settlement_state: 'RELEASED',
+      payout_state: 'PAID',
+      completed_events: '1',
+      released_events: '1',
+      marketplace_events: '1',
+    })
   })
 })
