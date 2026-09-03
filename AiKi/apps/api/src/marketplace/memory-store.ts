@@ -8,12 +8,14 @@ import type {
   CreateOffer,
   Idempotency,
   JobStartView,
+  JobSubmissionView,
   JobView,
   JsonValue,
   OfferView,
   Page,
   ProviderView,
   PutProvider,
+  SubmitJob,
 } from './model.js'
 import { encodeCursor, type PageCursor } from './pagination.js'
 import { buildJobPreview } from './preview.js'
@@ -363,6 +365,69 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
           providerActorId: providerId,
           nextAction: 'SUBMIT_WORK',
           startedAt: now,
+        }
+      },
+    })
+  }
+
+  async submitJob(
+    actor: ActorIdentity,
+    jobId: string,
+    input: SubmitJob,
+    idempotency: Idempotency,
+  ): Promise<CommandResult<JobSubmissionView>> {
+    return this.run({
+      actor,
+      operation: 'job.submit',
+      idempotency,
+      statusCode: 200,
+      execute: (providerId) => {
+        const job = this.jobs.get(jobId)
+        if (!job || job.providerActorId !== providerId)
+          throw new MarketplaceError('JOB_NOT_FOUND', 'No such job.', { statusCode: 404 })
+        if (job.settlementState !== 'FUNDED')
+          throw new MarketplaceError(
+            'JOB_NOT_FUNDED',
+            'This job cannot be submitted until funding is finalized.',
+            { statusCode: 409 },
+          )
+        if (job.workState !== 'IN_PROGRESS')
+          throw new MarketplaceError(
+            'JOB_NOT_SUBMITTABLE',
+            'This job is not ready for submission.',
+            {
+              statusCode: 409,
+            },
+          )
+        const submissionId = randomUUID()
+        const submittedAt = new Date().toISOString()
+        const submissionHash = hashCanonicalJson({
+          jobId,
+          providerActorId: providerId,
+          output: input.output,
+          evidence: input.evidence,
+          artifactUri: input.artifactUri,
+          note: input.note,
+        } as unknown as JsonValue)
+        this.jobs.set(jobId, {
+          ...job,
+          workState: 'SUBMITTED',
+          nextAction: 'WAIT_FOR_REVIEW',
+        })
+        return {
+          id: submissionId,
+          jobId,
+          revisionNumber: 1,
+          workState: 'SUBMITTED',
+          settlementState: 'FUNDED',
+          providerActorId: providerId,
+          output: input.output,
+          evidence: input.evidence,
+          artifactUri: input.artifactUri,
+          note: input.note,
+          submissionHash,
+          nextAction: 'WAIT_FOR_REVIEW',
+          submittedAt,
         }
       },
     })

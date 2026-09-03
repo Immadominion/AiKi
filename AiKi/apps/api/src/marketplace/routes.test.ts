@@ -259,6 +259,30 @@ describe('canonical marketplace routes', () => {
     })
     expect(unfundedStart.statusCode).toBe(409)
     expect(unfundedStart.json().error.code).toBe('JOB_NOT_FUNDED')
+
+    const unfundedSubmission = await app.inject({
+      method: 'POST',
+      url: `/v2/jobs/${created.json().id}/submissions`,
+      headers: { ...cookie(), 'idempotency-key': 'unfunded-submission' },
+      payload: {
+        output: { verdict: 'done' },
+        evidence: { source: 'manual' },
+      },
+    })
+    expect(unfundedSubmission.statusCode).toBe(409)
+    expect(unfundedSubmission.json().error.code).toBe('JOB_NOT_FUNDED')
+
+    const badSubmission = await app.inject({
+      method: 'POST',
+      url: `/v2/jobs/${created.json().id}/submissions`,
+      headers: { ...cookie(), 'idempotency-key': 'bad-submission' },
+      payload: {
+        output: [],
+        evidence: { source: 'manual' },
+      },
+    })
+    expect(badSubmission.statusCode).toBe(400)
+    expect(badSubmission.json().error.code).toBe('INVALID_MARKETPLACE_INPUT')
   })
 
   it('does not create a job from stale, self-hired, or unsupported funding terms', async () => {

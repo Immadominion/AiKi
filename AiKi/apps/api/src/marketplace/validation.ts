@@ -8,6 +8,7 @@ import type {
   PricingModel,
   ProviderAvailability,
   PutProvider,
+  SubmitJob,
 } from './model.js'
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/
@@ -53,6 +54,7 @@ const JOB_FIELDS = new Set([
   'definitionOfDone',
   'evidenceRequirements',
 ])
+const SUBMISSION_FIELDS = new Set(['output', 'evidence', 'artifactUri', 'note'])
 const HASH = /^[0-9a-f]{64}$/
 
 const invalid = (field: string, message: string): never => {
@@ -65,6 +67,15 @@ const boundedText = (value: unknown, field: string, maximum: number): string => 
   if (typeof value !== 'string') return invalid(field, 'must be text')
   const normalized = value.trim()
   if (!normalized) return invalid(field, 'is required')
+  if (normalized.length > maximum) return invalid(field, `must be at most ${maximum} characters`)
+  return normalized
+}
+
+const optionalText = (value: unknown, field: string, maximum: number): string | null => {
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'string') return invalid(field, 'must be text')
+  const normalized = value.trim()
+  if (!normalized) return null
   if (normalized.length > maximum) return invalid(field, `must be at most ${maximum} characters`)
   return normalized
 }
@@ -218,5 +229,32 @@ export function normalizeCreateJob(value: unknown): CreateJob {
     requirements: object(input.requirements ?? {}, 'requirements'),
     definitionOfDone: boundedText(input.definitionOfDone, 'definitionOfDone', 10_000),
     evidenceRequirements: object(input.evidenceRequirements ?? {}, 'evidenceRequirements'),
+  }
+}
+
+export function normalizeSubmitJob(value: unknown): SubmitJob {
+  const input = object(value, 'body') as Record<string, unknown>
+  onlyFields(input, SUBMISSION_FIELDS)
+
+  let artifactUri: string | null = null
+  if (input.artifactUri !== undefined && input.artifactUri !== null) {
+    if (typeof input.artifactUri !== 'string') return invalid('artifactUri', 'must be a URI')
+    let uri: URL
+    try {
+      uri = new URL(input.artifactUri)
+    } catch {
+      return invalid('artifactUri', 'must be a valid URI')
+    }
+    if (!['https:', 'ipfs:'].includes(uri.protocol) || uri.username || uri.password)
+      return invalid('artifactUri', 'must be an HTTPS or IPFS URI without credentials')
+    uri.hash = ''
+    artifactUri = uri.toString()
+  }
+
+  return {
+    output: object(input.output ?? {}, 'output'),
+    evidence: object(input.evidence ?? {}, 'evidence'),
+    artifactUri,
+    note: optionalText(input.note, 'note', 5000),
   }
 }

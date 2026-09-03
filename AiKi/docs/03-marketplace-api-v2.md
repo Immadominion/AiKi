@@ -116,10 +116,9 @@ The job response is deliberately `settlementState: UNFUNDED` and
 or provider earnings. Escrow creation is accepted only for the enabled BNB APEX
 settlement rail and configured settlement asset.
 
-Finalized funding, release, refund, delivery, disputes, and receipts are still
-future slices. They require chain event projection, reconciliation, and the
-hard-expiry refund path before the API can safely move jobs to funded or
-terminal states.
+Release, refund, delivery finalization, disputes, and receipts are still future
+slices. They require chain event projection, reconciliation, and the hard-expiry
+refund path before the API can safely move jobs to terminal states.
 
 ## Settlement preparation
 
@@ -220,3 +219,26 @@ On success, the job moves to `workState: IN_PROGRESS` and AiKi records a
 `JOB_STARTED` marketplace event. Replaying the same idempotency key returns the
 same response. Calling as the payer or another actor returns `JOB_NOT_FOUND` so
 provider assignment is not leaked.
+
+## Submitting work
+
+```sh
+POST /v2/jobs/:id/submissions
+Idempotency-Key: <caller-owned-key>
+Content-Type: application/json
+
+{
+  "output": { "verdict": "done" },
+  "evidence": { "sources": [] },
+  "artifactUri": "ipfs://...",
+  "note": "Optional reviewer note"
+}
+```
+
+Only the assigned provider can submit work, and only after the job is
+`workState: IN_PROGRESS` with `settlementState: FUNDED`.
+
+AiKi stores each submission in the append-only `job_submissions` table with a
+canonical `submissionHash`, moves the job to `workState: SUBMITTED`, and records
+`JOB_SUBMITTED`. The first supported submission is revision `1`; revision
+requests will add later entries instead of mutating this one.

@@ -79,6 +79,13 @@ export type CreateJob = Readonly<{
   evidenceRequirements: JsonObject
 }>
 
+export type SubmitJob = Readonly<{
+  output: JsonObject
+  evidence: JsonObject
+  artifactUri: string | null
+  note: string | null
+}>
+
 export type OfferView = Readonly<{
   id: string
   providerId: string
@@ -124,7 +131,7 @@ export type JobView = Readonly<{
   agreementId: string
   previewHash: string
   title: string
-  workState: 'ASSIGNED' | 'IN_PROGRESS'
+  workState: 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED'
   settlementState: 'UNFUNDED' | 'FUNDING_SUBMITTED' | 'FUNDED'
   disputeState: 'NONE'
   payoutState: 'NONE'
@@ -166,7 +173,12 @@ export type JobView = Readonly<{
     logicalKey: string
     amount: string
   }
-  nextAction: 'CREATE_ESCROW' | 'WAIT_FOR_FUNDING' | 'START_WORK' | 'SUBMIT_WORK'
+  nextAction:
+    | 'CREATE_ESCROW'
+    | 'WAIT_FOR_FUNDING'
+    | 'START_WORK'
+    | 'SUBMIT_WORK'
+    | 'WAIT_FOR_REVIEW'
   createdAt: string
 }>
 
@@ -177,4 +189,20 @@ export type JobStartView = Readonly<{
   providerActorId: string
   nextAction: 'SUBMIT_WORK'
   startedAt: string
+}>
+
+export type JobSubmissionView = Readonly<{
+  id: string
+  jobId: string
+  revisionNumber: number
+  workState: 'SUBMITTED'
+  settlementState: 'FUNDED'
+  providerActorId: string
+  output: JsonObject
+  evidence: JsonObject
+  artifactUri: string | null
+  note: string | null
+  submissionHash: string
+  nextAction: 'WAIT_FOR_REVIEW'
+  submittedAt: string
 }>

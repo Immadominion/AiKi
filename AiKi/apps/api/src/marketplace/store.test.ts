@@ -474,5 +474,70 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
     })
     expect(replayStart.replayed).toBe(true)
     expect(replayStart.body).toEqual(started.body)
+
+    const submissionInput = {
+      output: {
+        verdict: 'owner controls upgrade path',
+        findings: [{ severity: 'medium', title: 'Proxy owner can upgrade implementation' }],
+      },
+      evidence: {
+        sources: [
+          {
+            kind: 'contract-read',
+            target: `0x${'12'.repeat(20)}`,
+            selector: 'owner()',
+          },
+        ],
+      },
+      artifactUri: 'ipfs://bafybeigdyrzt5example',
+      note: 'Submitted with cited owner evidence.',
+    }
+    const submittedWork = await store.submitJob(actor, created.body.id, submissionInput, {
+      key: 'postgres-job-submit',
+      requestHash: hash({ jobId: created.body.id, ...submissionInput }),
+    })
+    expect(submittedWork.statusCode).toBe(200)
+    expect(submittedWork.body).toMatchObject({
+      jobId: created.body.id,
+      revisionNumber: 1,
+      workState: 'SUBMITTED',
+      settlementState: 'FUNDED',
+      providerActorId: actorProfileId,
+      output: submissionInput.output,
+      evidence: submissionInput.evidence,
+      artifactUri: submissionInput.artifactUri,
+      note: submissionInput.note,
+      nextAction: 'WAIT_FOR_REVIEW',
+    })
+    expect(submittedWork.body.submissionHash).toMatch(/^[0-9a-f]{64}$/)
+
+    const submissionRows = await sql<
+      {
+        work_state: string
+        submissions: string
+        events: string
+      }[]
+    >`
+      SELECT
+        (SELECT work_state FROM marketplace_jobs WHERE id = ${created.body.id}) AS work_state,
+        (SELECT count(*) FROM job_submissions
+          WHERE job_id = ${created.body.id}
+            AND submission_hash = ${submittedWork.body.submissionHash}) AS submissions,
+        (SELECT count(*) FROM marketplace_events
+          WHERE job_id = ${created.body.id}
+            AND event_type = 'JOB_SUBMITTED') AS events
+    `
+    expect(submissionRows[0]).toEqual({
+      work_state: 'SUBMITTED',
+      submissions: '1',
+      events: '1',
+    })
+
+    const replaySubmission = await store.submitJob(actor, created.body.id, submissionInput, {
+      key: 'postgres-job-submit',
+      requestHash: hash({ jobId: created.body.id, ...submissionInput }),
+    })
+    expect(replaySubmission.replayed).toBe(true)
+    expect(replaySubmission.body).toEqual(submittedWork.body)
   })
 })

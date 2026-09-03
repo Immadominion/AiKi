@@ -12,6 +12,7 @@ import {
   normalizeCreateJob,
   normalizeOffer,
   normalizeProvider,
+  normalizeSubmitJob,
   requireIdempotencyKey,
 } from './validation.js'
 
@@ -160,4 +161,23 @@ export function registerMarketplaceRoutes(app: FastifyInstance, store: Marketpla
       await store.startJob(actor, jobId, idempotency(request, { jobId } as unknown as JsonValue)),
     )
   })
+
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    '/v2/jobs/:id/submissions',
+    async (request, reply) => {
+      const actor = identity(request, reply)
+      if (!actor) return reply
+      const jobId = routeId(request.params.id, 'job')
+      const normalized = normalizeSubmitJob(request.body)
+      return sendCommand(
+        reply,
+        await store.submitJob(
+          actor,
+          jobId,
+          normalized,
+          idempotency(request, { jobId, ...normalized } as unknown as JsonValue),
+        ),
+      )
+    },
+  )
 }

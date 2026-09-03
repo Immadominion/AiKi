@@ -9,6 +9,7 @@ import type {
   CreateOffer,
   Idempotency,
   JobStartView,
+  JobSubmissionView,
   JobView,
   JsonObject,
   JsonValue,
@@ -17,6 +18,7 @@ import type {
   ProviderAvailability,
   ProviderView,
   PutProvider,
+  SubmitJob,
 } from './model.js'
 import { encodeCursor, type PageCursor } from './pagination.js'
 import { buildJobPreview } from './preview.js'
@@ -287,6 +289,12 @@ export interface MarketplaceStore {
     jobId: string,
     idempotency: Idempotency,
   ): Promise<CommandResult<JobStartView>>
+  submitJob(
+    actor: ActorIdentity,
+    jobId: string,
+    input: SubmitJob,
+    idempotency: Idempotency,
+  ): Promise<CommandResult<JobSubmissionView>>
   pauseOffer(
     actor: ActorIdentity,
     offerId: string,
@@ -821,6 +829,124 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           providerActorId: row.provider_actor_id,
           nextAction: 'SUBMIT_WORK',
           startedAt: iso(changed.updated_at),
+        }
+      },
+    })
+  }
+
+  async submitJob(
+    actor: ActorIdentity,
+    jobId: string,
+    input: SubmitJob,
+    idempotency: Idempotency,
+  ): Promise<CommandResult<JobSubmissionView>> {
+    return this.command({
+      actor,
+      operation: 'job.submit',
+      idempotency,
+      statusCode: 200,
+      run: async (tx, marketplaceActor) => {
+        const rows = await tx<
+          {
+            id: string
+            provider_actor_id: string
+            work_state: string
+            settlement_state: string
+          }[]
+        >`
+          SELECT id, provider_actor_id, work_state, settlement_state
+          FROM marketplace_jobs
+          WHERE id = ${jobId}
+          FOR UPDATE
+        `
+        const row = rows[0]
+        if (!row || row.provider_actor_id !== marketplaceActor.id)
+          throw new MarketplaceError('JOB_NOT_FOUND', 'No such job.', { statusCode: 404 })
+        if (row.settlement_state !== 'FUNDED')
+          throw new MarketplaceError(
+            'JOB_NOT_FUNDED',
+            'This job cannot be submitted until funding is finalized.',
+            { statusCode: 409 },
+          )
+        if (row.work_state !== 'IN_PROGRESS')
+          throw new MarketplaceError(
+            'JOB_NOT_SUBMITTABLE',
+            'This job is not ready for submission.',
+            {
+              statusCode: 409,
+            },
+          )
+
+        const submissionId = randomUUID()
+        const submissionHash = hashCanonicalJson({
+          jobId,
+          providerActorId: marketplaceActor.id,
+          output: input.output,
+          evidence: input.evidence,
+          artifactUri: input.artifactUri,
+          note: input.note,
+        } as unknown as JsonValue)
+
+        const versionRows = await tx<
+          { aggregate_version: string | number; updated_at: Date | string }[]
+        >`
+          UPDATE marketplace_jobs
+          SET work_state = 'SUBMITTED',
+              aggregate_version = aggregate_version + 1,
+              updated_at = now()
+          WHERE id = ${jobId}
+            AND provider_actor_id = ${marketplaceActor.id}
+            AND work_state = 'IN_PROGRESS'
+            AND settlement_state = 'FUNDED'
+          RETURNING aggregate_version, updated_at
+        `
+        const changed = versionRows[0]
+        if (!changed) throw new Error(`Job ${jobId} changed while submitting work.`)
+
+        const submissionRows = await tx<{ revision_number: number; created_at: Date | string }[]>`
+          INSERT INTO job_submissions (
+            id, job_id, provider_actor_id, revision_number, output, evidence,
+            artifact_uri, note, submission_hash
+          ) VALUES (
+            ${submissionId}, ${jobId}, ${marketplaceActor.id}, 1,
+            ${tx.json(input.output)}, ${tx.json(input.evidence)},
+            ${input.artifactUri}, ${input.note}, ${submissionHash}
+          )
+          RETURNING revision_number, created_at
+        `
+        const submission = submissionRows[0]
+        if (!submission) throw new Error(`Submission ${submissionId} was not stored.`)
+
+        await tx`
+          INSERT INTO marketplace_events (
+            id, job_id, aggregate_version, actor_id, event_type, payload, correlation_id
+          ) VALUES (
+            ${randomUUID()}, ${jobId}, ${changed.aggregate_version}, ${marketplaceActor.id},
+            'JOB_SUBMITTED',
+            ${tx.json({
+              submissionId,
+              revisionNumber: submission.revision_number,
+              submissionHash,
+              artifactUri: input.artifactUri,
+            })},
+            ${idempotency.key}
+          )
+        `
+
+        return {
+          id: submissionId,
+          jobId,
+          revisionNumber: submission.revision_number,
+          workState: 'SUBMITTED',
+          settlementState: 'FUNDED',
+          providerActorId: marketplaceActor.id,
+          output: input.output,
+          evidence: input.evidence,
+          artifactUri: input.artifactUri,
+          note: input.note,
+          submissionHash,
+          nextAction: 'WAIT_FOR_REVIEW',
+          submittedAt: iso(submission.created_at),
         }
       },
     })
