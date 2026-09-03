@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
-import { type PreparedApexTransaction, prepareApexCreateEscrow } from './apex.js'
+import {
+  type PreparedApexTransaction,
+  parseApexJobCreated,
+  prepareApexCreateEscrow,
+} from './apex.js'
+import type { SettlementFinalityReader } from './settlement-finality.js'
 import { settlementRailFor } from './settlement-rails.js'
 import type { SettlementSubmitter } from './settlement-submitter.js'
 
@@ -27,6 +32,18 @@ type PreparedRow = {
   prepared_transaction: PreparedApexTransaction
 }
 
+type SubmittedRow = {
+  operation_id: string
+  job_id: string
+  agreement_id: string
+  transaction_hash: `0x${string}`
+  chain_id: string | number
+  contract_address: `0x${string}`
+  token_address: `0x${string}`
+  amount: string
+  status: 'SUBMITTED' | 'MINED'
+}
+
 export type PreparedSettlementOperation = Readonly<{
   outboxId: string
   operationId: string
@@ -42,6 +59,14 @@ export type SubmittedSettlementOperation = Readonly<{
   agreementId: string
   transactionHash: `0x${string}`
   transactionNonce: string | null
+}>
+
+export type FinalizedCreateEscrowOperation = Readonly<{
+  operationId: string
+  jobId: string
+  agreementId: string
+  externalJobId: string
+  queuedFundOperationId: string
 }>
 
 const TX_HASH = /^0x[0-9a-fA-F]{64}$/
@@ -250,6 +275,141 @@ export class PostgresMarketplaceSettlementWorker {
         WHERE id = ${row.operation_id}
       `
       return row
+    })
+  }
+
+  async finalizeNext(
+    reader: SettlementFinalityReader,
+  ): Promise<FinalizedCreateEscrowOperation | null> {
+    const rows = await this.sql<SubmittedRow[]>`
+      SELECT
+        id AS operation_id,
+        job_id,
+        agreement_id,
+        transaction_hash,
+        chain_id,
+        contract_address,
+        token_address,
+        amount,
+        status
+      FROM settlement_operations
+      WHERE operation_type = 'CREATE_ESCROW'
+        AND status IN ('SUBMITTED', 'MINED')
+        AND transaction_hash IS NOT NULL
+      ORDER BY updated_at ASC, created_at ASC, id ASC
+      LIMIT 1
+    `
+    const row = rows[0]
+    if (!row) return null
+
+    const receipt = await reader.finalizedReceipt(row.transaction_hash)
+    if (!receipt) {
+      if (row.status !== 'MINED')
+        await this.sql`
+          UPDATE settlement_operations
+          SET status = 'MINED',
+              updated_at = now()
+          WHERE id = ${row.operation_id}
+            AND status = 'SUBMITTED'
+        `
+      return null
+    }
+
+    if (receipt.status !== 'success') {
+      await this.sql`
+        UPDATE settlement_operations
+        SET status = 'REVERTED',
+            failure_code = 'CREATE_ESCROW_REVERTED',
+            failure_detail = 'Finalized transaction receipt has reverted status.',
+            updated_at = now()
+        WHERE id = ${row.operation_id}
+          AND status IN ('SUBMITTED', 'MINED')
+      `
+      return null
+    }
+
+    const event = parseApexJobCreated({
+      contract: row.contract_address,
+      transactionHash: row.transaction_hash,
+      logs: receipt.logs,
+    })
+    const fundOperationId = randomUUID()
+    const fundLogicalKey = `job:${row.job_id}:fund:v1`
+
+    return this.sql.begin(async (tx) => {
+      const updated = await tx<{ id: string }[]>`
+        UPDATE settlement_operations
+        SET status = 'FINALIZED',
+            finalized_at = now(),
+            failure_code = NULL,
+            failure_detail = NULL,
+            updated_at = now()
+        WHERE id = ${row.operation_id}
+          AND status IN ('SUBMITTED', 'MINED')
+        RETURNING id
+      `
+      if (!updated.length) return null
+
+      await tx`
+        INSERT INTO chain_events (
+          id, chain_id, contract_address, transaction_hash, log_index,
+          block_number, block_hash, event_name, decoded_payload, finality, finalized_at
+        ) VALUES (
+          ${randomUUID()}, ${row.chain_id}, ${row.contract_address}, ${row.transaction_hash},
+          ${event.log.logIndex}, ${event.log.blockNumber.toString()}, ${event.log.blockHash},
+          'JobCreated',
+          ${tx.json({
+            externalJobId: event.externalJobId,
+            client: event.client,
+            provider: event.provider,
+            evaluator: event.evaluator,
+            expiredAt: event.expiredAt,
+            hook: event.hook,
+          })},
+          'FINALIZED',
+          now()
+        )
+        ON CONFLICT (chain_id, contract_address, transaction_hash, log_index) DO NOTHING
+      `
+      await tx`
+        UPDATE job_agreements
+        SET external_job_id = ${event.externalJobId}
+        WHERE id = ${row.agreement_id}
+          AND external_job_id IS NULL
+      `
+      await tx`
+        INSERT INTO settlement_operations (
+          id, job_id, agreement_id, operation_type, logical_key, status,
+          chain_id, contract_address, token_address, amount
+        ) VALUES (
+          ${fundOperationId}, ${row.job_id}, ${row.agreement_id}, 'FUND',
+          ${fundLogicalKey}, 'REQUESTED', ${row.chain_id}, ${row.contract_address},
+          ${row.token_address}, ${row.amount}
+        )
+        ON CONFLICT (logical_key) DO NOTHING
+      `
+      await tx`
+        INSERT INTO outbox_events (
+          id, aggregate_type, aggregate_id, aggregate_version, topic, dedupe_key, payload
+        ) VALUES (
+          ${randomUUID()}, 'marketplace_job', ${row.job_id}, 2,
+          'marketplace.settlement.fund.requested', ${fundLogicalKey},
+          ${tx.json({
+            jobId: row.job_id,
+            agreementId: row.agreement_id,
+            externalJobId: event.externalJobId,
+          })}
+        )
+        ON CONFLICT (dedupe_key) DO NOTHING
+      `
+
+      return {
+        operationId: row.operation_id,
+        jobId: row.job_id,
+        agreementId: row.agreement_id,
+        externalJobId: event.externalJobId,
+        queuedFundOperationId: fundOperationId,
+      }
     })
   }
 }

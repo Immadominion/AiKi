@@ -1,4 +1,4 @@
-import { encodeFunctionData, type Hex, parseAbi } from 'viem'
+import { decodeEventLog, encodeFunctionData, type Hex, parseAbi } from 'viem'
 import { BSC_MAINNET } from '../config/chains.js'
 import type { SettlementRail } from './settlement-rails.js'
 
@@ -10,6 +10,7 @@ export const APEX_COMMERCE_ABI = parseAbi([
   'function reject(uint256 jobId, bytes32 reason, bytes optParams)',
   'function claimRefund(uint256 jobId)',
   'function paymentToken() view returns (address)',
+  'event JobCreated(uint256 indexed jobId, address indexed client, address indexed provider, address evaluator, uint256 expiredAt, address hook)',
 ])
 
 export type PreparedApexTransaction = Readonly<{
@@ -25,6 +26,26 @@ export type PreparedApexTransaction = Readonly<{
     metadata: string
     hook: `0x${string}`
   }
+}>
+
+export type ApexReceiptLog = Readonly<{
+  address: `0x${string}`
+  topics: readonly Hex[]
+  data: Hex
+  transactionHash: Hex
+  logIndex: number
+  blockNumber: bigint
+  blockHash: Hex
+}>
+
+export type ApexJobCreated = Readonly<{
+  externalJobId: string
+  client: `0x${string}`
+  provider: `0x${string}`
+  evaluator: `0x${string}`
+  expiredAt: string
+  hook: `0x${string}`
+  log: ApexReceiptLog
 }>
 
 const lowerAddress = (value: `0x${string}`): `0x${string}` => value.toLowerCase() as `0x${string}`
@@ -71,4 +92,48 @@ export function prepareApexCreateEscrow(input: {
       hook,
     },
   }
+}
+
+export function parseApexJobCreated(input: {
+  contract: `0x${string}`
+  transactionHash: Hex
+  logs: readonly ApexReceiptLog[]
+}): ApexJobCreated {
+  const contract = lowerAddress(input.contract)
+  for (const log of input.logs) {
+    if (lowerAddress(log.address) !== contract) continue
+    let decoded: ReturnType<typeof decodeEventLog>
+    try {
+      const topics = log.topics as [`0x${string}`, ...`0x${string}`[]]
+      decoded = decodeEventLog({
+        abi: APEX_COMMERCE_ABI,
+        data: log.data,
+        topics,
+      })
+    } catch {
+      continue
+    }
+    if (decoded.eventName !== 'JobCreated') continue
+    const args = decoded.args as {
+      jobId: bigint
+      client: `0x${string}`
+      provider: `0x${string}`
+      evaluator: `0x${string}`
+      expiredAt: bigint
+      hook: `0x${string}`
+    }
+    if (lowerAddress(log.transactionHash) !== lowerAddress(input.transactionHash)) {
+      throw new Error('JobCreated log transaction hash does not match the settlement operation.')
+    }
+    return {
+      externalJobId: args.jobId.toString(),
+      client: lowerAddress(args.client),
+      provider: lowerAddress(args.provider),
+      evaluator: lowerAddress(args.evaluator),
+      expiredAt: args.expiredAt.toString(),
+      hook: lowerAddress(args.hook),
+      log,
+    }
+  }
+  throw new Error('No APEX JobCreated event found in the finalized transaction receipt.')
 }

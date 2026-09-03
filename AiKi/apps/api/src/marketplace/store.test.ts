@@ -1,6 +1,8 @@
 import postgres from 'postgres'
+import { encodeAbiParameters, encodeEventTopics } from 'viem'
 import { afterAll, describe, expect, it } from 'vitest'
 import { BSC_MAINNET } from '../config/chains.js'
+import { APEX_COMMERCE_ABI } from './apex.js'
 import { hashCanonicalJson } from './canonical-json.js'
 import type { ActorIdentity, CreateOffer, JsonValue, PutProvider } from './model.js'
 import { buildJobPreview } from './preview.js'
@@ -220,6 +222,76 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
       status: 'SUBMITTED',
       transaction_hash: `0x${'55'.repeat(32)}`,
       transaction_nonce: '7',
+    })
+
+    const finalized = await worker.finalizeNext({
+      finalizedReceipt: async (hash) => ({
+        status: 'success',
+        transactionHash: hash,
+        blockNumber: 100n,
+        blockHash: `0x${'66'.repeat(32)}`,
+        logs: [
+          {
+            address: created.body.settlement.contract,
+            topics: encodeEventTopics({
+              abi: APEX_COMMERCE_ABI,
+              eventName: 'JobCreated',
+              args: {
+                jobId: 123n,
+                client: stranger.address,
+                provider: actor.address,
+              },
+            }) as `0x${string}`[],
+            data: encodeAbiParameters(
+              [{ type: 'address' }, { type: 'uint256' }, { type: 'address' }],
+              [
+                BSC_MAINNET.contracts.erc8183EvaluatorRouter.toLowerCase() as `0x${string}`,
+                BigInt(Math.floor(new Date(created.body.deadlines.hardExpiry).getTime() / 1000)),
+                BSC_MAINNET.contracts.erc8183EvaluatorRouter.toLowerCase() as `0x${string}`,
+              ],
+            ),
+            transactionHash: hash,
+            logIndex: 3,
+            blockNumber: 100n,
+            blockHash: `0x${'66'.repeat(32)}`,
+          },
+        ],
+      }),
+    })
+    expect(finalized?.externalJobId).toBe('123')
+    const submittedHash = submitted?.transactionHash
+    if (!submittedHash) throw new Error('Submission did not return a transaction hash.')
+
+    const finalizedRows = await sql<
+      {
+        create_status: string
+        external_job_id: string
+        chain_events: string
+        fund_operations: string
+        fund_outbox: string
+      }[]
+    >`
+      SELECT
+        (SELECT status FROM settlement_operations
+          WHERE id = ${created.body.fundingOperation.id}) AS create_status,
+        (SELECT external_job_id FROM job_agreements
+          WHERE id = ${created.body.agreementId}) AS external_job_id,
+        (SELECT count(*) FROM chain_events
+          WHERE transaction_hash = ${submittedHash}) AS chain_events,
+        (SELECT count(*) FROM settlement_operations
+          WHERE job_id = ${created.body.id}
+            AND operation_type = 'FUND'
+            AND status = 'REQUESTED') AS fund_operations,
+        (SELECT count(*) FROM outbox_events
+          WHERE aggregate_id = ${created.body.id}
+            AND topic = 'marketplace.settlement.fund.requested') AS fund_outbox
+    `
+    expect(finalizedRows[0]).toEqual({
+      create_status: 'FINALIZED',
+      external_job_id: '123',
+      chain_events: '1',
+      fund_operations: '1',
+      fund_outbox: '1',
     })
   })
 })

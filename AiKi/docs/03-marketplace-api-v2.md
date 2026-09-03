@@ -160,3 +160,25 @@ If the RPC refuses the transaction before a hash exists, the operation returns t
 `PREPARED` with `failure_code: SUBMIT_REFUSED` so it can be inspected and retried.
 The worker does not mark the marketplace job funded or create provider earnings.
 Only finalized APEX chain events may do that.
+
+## Settlement finalization
+
+```sh
+pnpm --filter @aiki/api marketplace:settlement:finalize
+```
+
+The finalization worker reads `SUBMITTED` or `MINED` `CREATE_ESCROW` operations.
+For each operation it:
+
+- reads the transaction receipt
+- requires the receipt block to be at or below BSC's finalized block
+- marks a non-final receipt as `MINED`
+- marks a reverted finalized receipt as `REVERTED`
+- decodes the finalized APEX `JobCreated` event
+- stores one finalized `chain_events` row
+- writes `job_agreements.external_job_id`
+- marks the create operation `FINALIZED`
+- queues the real `FUND` settlement operation and outbox event
+
+The marketplace job still remains `UNFUNDED` here. That changes only after the
+fund transaction itself is submitted and finalized.
