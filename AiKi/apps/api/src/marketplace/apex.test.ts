@@ -5,6 +5,7 @@ import {
   APEX_COMMERCE_ABI,
   parseApexJobCreated,
   parseApexJobFunded,
+  prepareApexComplete,
   prepareApexCreateEscrow,
   prepareApexFund,
 } from './apex.js'
@@ -59,6 +60,31 @@ describe('APEX settlement adapter', () => {
     expect(prepared.args).toEqual({
       externalJobId: '123',
       amount: '1000000000000000001',
+      optParams: '0x',
+    })
+  })
+
+  it('prepares deployed complete calldata from the accepted review hash', () => {
+    const rail = settlementRailFor({
+      chainId: 56,
+      token: BSC_MAINNET.contracts.settlementToken.toLowerCase() as `0x${string}`,
+      decimals: 18,
+    })
+    const reason = '5'.repeat(64)
+    const prepared = prepareApexComplete({
+      rail,
+      externalJobId: '123',
+      reason,
+    })
+
+    expect(prepared.to).toBe(BSC_MAINNET.contracts.erc8183Commerce.toLowerCase())
+    expect(prepared.data.startsWith('0xd75bbdf3')).toBe(true)
+    const decoded = decodeFunctionData({ abi: APEX_COMMERCE_ABI, data: prepared.data })
+    expect(decoded.functionName).toBe('complete')
+    expect(decoded.args).toEqual([123n, `0x${reason}`, '0x'])
+    expect(prepared.args).toEqual({
+      externalJobId: '123',
+      reason: `0x${reason}`,
       optParams: '0x',
     })
   })

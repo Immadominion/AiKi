@@ -42,9 +42,23 @@ export type PreparedApexFundTransaction = Readonly<{
   }
 }>
 
+export type PreparedApexCompleteTransaction = Readonly<{
+  chainId: number
+  to: `0x${string}`
+  data: Hex
+  value: '0'
+  functionName: 'complete'
+  args: {
+    externalJobId: string
+    reason: Hex
+    optParams: Hex
+  }
+}>
+
 export type PreparedApexTransaction =
   | PreparedApexCreateEscrowTransaction
   | PreparedApexFundTransaction
+  | PreparedApexCompleteTransaction
 
 export type ApexReceiptLog = Readonly<{
   address: `0x${string}`
@@ -140,6 +154,33 @@ export function prepareApexFund(input: {
     args: {
       externalJobId: externalJobId.toString(),
       amount: amount.toString(),
+      optParams,
+    },
+  }
+}
+
+export function prepareApexComplete(input: {
+  rail: SettlementRail
+  externalJobId: string
+  reason: string
+}): PreparedApexCompleteTransaction {
+  const externalJobId = BigInt(input.externalJobId)
+  const reason = `0x${input.reason}` as Hex
+  if (!/^0x[0-9a-f]{64}$/.test(reason)) throw new Error('APEX complete reason must be bytes32.')
+  const optParams = '0x'
+  return {
+    chainId: input.rail.chainId,
+    to: input.rail.contract,
+    data: encodeFunctionData({
+      abi: APEX_COMMERCE_ABI,
+      functionName: 'complete',
+      args: [externalJobId, reason, optParams],
+    }),
+    value: '0',
+    functionName: 'complete',
+    args: {
+      externalJobId: externalJobId.toString(),
+      reason,
       optParams,
     },
   }

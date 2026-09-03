@@ -1011,6 +1011,8 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           })
 
         const reviewId = randomUUID()
+        const releaseOperationId = randomUUID()
+        const releaseLogicalKey = `job:${jobId}:release:v1`
         const reviewHash = hashCanonicalJson({
           jobId,
           submissionId: row.submission_id,
@@ -1070,6 +1072,36 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
             ${idempotency.key}
           )
         `
+
+        if (input.decision === 'ACCEPT') {
+          await tx`
+            INSERT INTO settlement_operations (
+              id, job_id, agreement_id, operation_type, logical_key, status,
+              chain_id, contract_address, token_address, amount
+            )
+            SELECT
+              ${releaseOperationId}, ja.job_id, ja.id, 'RELEASE', ${releaseLogicalKey}, 'REQUESTED',
+              ja.settlement_chain_id, ja.settlement_contract, ja.settlement_token,
+              ja.provider_amount
+            FROM job_agreements ja
+            WHERE ja.job_id = ${jobId}
+            ON CONFLICT (logical_key) DO NOTHING
+          `
+          await tx`
+            INSERT INTO outbox_events (
+              id, aggregate_type, aggregate_id, aggregate_version, topic, dedupe_key, payload
+            ) VALUES (
+              ${randomUUID()}, 'marketplace_job', ${jobId}, ${changed.aggregate_version},
+              'marketplace.settlement.release.requested', ${releaseLogicalKey},
+              ${tx.json({
+                jobId,
+                reviewId,
+                reviewHash,
+              })}
+            )
+            ON CONFLICT (dedupe_key) DO NOTHING
+          `
+        }
 
         return {
           id: reviewId,

@@ -11,7 +11,10 @@ const worker = new PostgresMarketplaceSettlementWorker(databaseUrl)
 let prepared = 0
 try {
   for (let index = 0; index < limit; index += 1) {
-    const result = (await worker.prepareNext()) ?? (await worker.prepareFundNext())
+    const result =
+      (await worker.prepareNext()) ??
+      (await worker.prepareFundNext()) ??
+      (await worker.prepareReleaseNext())
     if (!result) break
     prepared += 1
     console.log(

@@ -4,6 +4,7 @@ import {
   type PreparedApexTransaction,
   parseApexJobCreated,
   parseApexJobFunded,
+  prepareApexComplete,
   prepareApexCreateEscrow,
   prepareApexFund,
 } from './apex.js'
@@ -42,11 +43,26 @@ type FundQueueRow = {
   prepared_transaction: PreparedApexTransaction | null
 }
 
+type ReleaseQueueRow = {
+  outbox_id: string
+  operation_id: string
+  job_id: string
+  agreement_id: string
+  operation_status: 'REQUESTED' | 'PREPARED'
+  chain_id: string | number
+  contract_address: `0x${string}`
+  token_address: `0x${string}`
+  settlement_decimals: number
+  external_job_id: string | null
+  review_hash: string
+  prepared_transaction: PreparedApexTransaction | null
+}
+
 type PreparedRow = {
   operation_id: string
   job_id: string
   agreement_id: string
-  operation_type: 'CREATE_ESCROW' | 'FUND'
+  operation_type: 'CREATE_ESCROW' | 'FUND' | 'RELEASE'
   prepared_transaction: PreparedApexTransaction
 }
 
@@ -295,6 +311,34 @@ export class PostgresMarketplaceSettlementWorker {
           `
         }
       }
+      if (operationRows.length && row.operation_type === 'RELEASE') {
+        const jobRows = await tx<{ aggregate_version: string }[]>`
+          UPDATE marketplace_jobs
+          SET settlement_state = 'RELEASE_SUBMITTED',
+              aggregate_version = aggregate_version + 1,
+              updated_at = now()
+          WHERE id = ${row.job_id}
+            AND work_state = 'ACCEPTED'
+            AND settlement_state = 'FUNDED'
+            AND payout_state = 'HOLD'
+          RETURNING aggregate_version
+        `
+        const aggregateVersion = jobRows[0]?.aggregate_version
+        if (aggregateVersion) {
+          await tx`
+            INSERT INTO marketplace_events (
+              id, job_id, aggregate_version, event_type, payload, correlation_id
+            ) VALUES (
+              ${randomUUID()}, ${row.job_id}, ${aggregateVersion}, 'SETTLEMENT_RELEASE_SUBMITTED',
+              ${tx.json({
+                operationId: row.operation_id,
+                transactionHash: hash,
+              })},
+              ${row.operation_id}
+            )
+          `
+        }
+      }
       return operationRows
     })
     if (!updated.length)
@@ -422,6 +466,122 @@ export class PostgresMarketplaceSettlementWorker {
     })
   }
 
+  async prepareReleaseNext(
+    workerId = `marketplace-settlement-${randomUUID()}`,
+  ): Promise<PreparedSettlementOperation | null> {
+    return this.sql.begin(async (tx) => {
+      const locked = await tx<{ id: string }[]>`
+        SELECT id
+        FROM outbox_events
+        WHERE topic = 'marketplace.settlement.release.requested'
+          AND status = 'PENDING'
+          AND available_at <= now()
+        ORDER BY available_at ASC, created_at ASC, id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      `
+      const outboxId = locked[0]?.id
+      if (!outboxId) return null
+
+      await tx`
+        UPDATE outbox_events
+        SET status = 'PROCESSING',
+            attempts = attempts + 1,
+            locked_at = now(),
+            locked_by = ${workerId},
+            updated_at = now()
+        WHERE id = ${outboxId}
+      `
+
+      try {
+        const rows = await tx<ReleaseQueueRow[]>`
+          SELECT
+            o.id AS outbox_id,
+            so.id AS operation_id,
+            so.job_id,
+            so.agreement_id,
+            so.status AS operation_status,
+            so.chain_id,
+            so.contract_address,
+            so.token_address,
+            so.prepared_transaction,
+            ja.settlement_decimals,
+            ja.external_job_id,
+            jr.review_hash
+          FROM outbox_events o
+          JOIN settlement_operations so ON so.logical_key = o.dedupe_key
+          JOIN job_agreements ja ON ja.id = so.agreement_id
+          JOIN job_reviews jr ON jr.id = (o.payload ->> 'reviewId')::uuid
+          WHERE o.id = ${outboxId}
+            AND so.operation_type = 'RELEASE'
+            AND jr.decision = 'ACCEPT'
+          FOR UPDATE OF so, ja, jr
+        `
+        const row = rows[0]
+        if (!row) throw new Error('Settlement outbox event does not point at a release operation.')
+
+        if (row.operation_status === 'PREPARED' && row.prepared_transaction) {
+          await markDelivered(tx, outboxId)
+          return {
+            outboxId,
+            operationId: row.operation_id,
+            jobId: row.job_id,
+            agreementId: row.agreement_id,
+            transaction: row.prepared_transaction,
+            replayed: true,
+          }
+        }
+
+        if (!row.external_job_id)
+          throw new Error(`Release operation ${row.operation_id} has no finalized APEX job id.`)
+
+        const rail = settlementRailFor({
+          chainId: Number(row.chain_id),
+          token: row.token_address,
+          decimals: row.settlement_decimals,
+        })
+        if (rail.contract !== row.contract_address)
+          throw new Error(`Settlement contract mismatch for operation ${row.operation_id}.`)
+
+        const transaction = prepareApexComplete({
+          rail,
+          externalJobId: row.external_job_id,
+          reason: row.review_hash,
+        })
+
+        await tx`
+          UPDATE settlement_operations
+          SET status = 'PREPARED',
+              prepared_transaction = ${tx.json(transaction)},
+              prepared_at = now(),
+              updated_at = now()
+          WHERE id = ${row.operation_id}
+            AND status = 'REQUESTED'
+        `
+        await markDelivered(tx, outboxId)
+        return {
+          outboxId,
+          operationId: row.operation_id,
+          jobId: row.job_id,
+          agreementId: row.agreement_id,
+          transaction,
+          replayed: false,
+        }
+      } catch (error) {
+        await tx`
+          UPDATE outbox_events
+          SET status = 'DEAD_LETTER',
+              last_error = ${isoError(error)},
+              locked_at = NULL,
+              locked_by = NULL,
+              updated_at = now()
+          WHERE id = ${outboxId}
+        `
+        throw error
+      }
+    })
+  }
+
   private async claimPreparedSubmission(): Promise<PreparedRow | null> {
     return this.sql.begin(async (tx) => {
       const rows = await tx<PreparedRow[]>`
@@ -432,7 +592,7 @@ export class PostgresMarketplaceSettlementWorker {
           operation_type,
           prepared_transaction
         FROM settlement_operations
-        WHERE operation_type IN ('CREATE_ESCROW', 'FUND')
+        WHERE operation_type IN ('CREATE_ESCROW', 'FUND', 'RELEASE')
           AND status = 'PREPARED'
           AND transaction_hash IS NULL
         ORDER BY prepared_at ASC, created_at ASC, id ASC

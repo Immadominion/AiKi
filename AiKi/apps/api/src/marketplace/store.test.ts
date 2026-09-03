@@ -593,6 +593,8 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
         payout_state: string
         reviews: string
         events: string
+        release_operations: string
+        release_outbox: string
       }[]
     >`
       SELECT
@@ -603,13 +605,22 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
             AND review_hash = ${accepted.body.reviewHash}) AS reviews,
         (SELECT count(*) FROM marketplace_events
           WHERE job_id = ${created.body.id}
-            AND event_type = 'JOB_ACCEPTED') AS events
+            AND event_type = 'JOB_ACCEPTED') AS events,
+        (SELECT count(*) FROM settlement_operations
+          WHERE job_id = ${created.body.id}
+            AND operation_type = 'RELEASE'
+            AND status = 'REQUESTED') AS release_operations,
+        (SELECT count(*) FROM outbox_events
+          WHERE aggregate_id = ${created.body.id}
+            AND topic = 'marketplace.settlement.release.requested') AS release_outbox
     `
     expect(reviewRows[0]).toEqual({
       work_state: 'ACCEPTED',
       payout_state: 'HOLD',
       reviews: '1',
       events: '1',
+      release_operations: '1',
+      release_outbox: '1',
     })
 
     const replayAccepted = await store.reviewJob(
@@ -632,5 +643,76 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
     )
     expect(replayAccepted.replayed).toBe(true)
     expect(replayAccepted.body).toEqual(accepted.body)
+
+    const preparedRelease = await worker.prepareReleaseNext('store-test')
+    expect(preparedRelease?.jobId).toBe(created.body.id)
+    expect(preparedRelease?.transaction.functionName).toBe('complete')
+    expect(preparedRelease?.transaction.data.startsWith('0xd75bbdf3')).toBe(true)
+    expect(preparedRelease?.transaction.to).toBe(created.body.settlement.contract)
+    if (preparedRelease?.transaction.functionName !== 'complete')
+      throw new Error('Release operation did not prepare APEX complete calldata.')
+    expect(preparedRelease.transaction.args).toEqual({
+      externalJobId: '123',
+      reason: `0x${accepted.body.reviewHash}`,
+      optParams: '0x',
+    })
+
+    const preparedReleaseRows = await sql<
+      {
+        status: string
+        amount: string
+        outbox_status: string
+      }[]
+    >`
+      SELECT
+        so.status,
+        so.amount,
+        o.status AS outbox_status
+      FROM settlement_operations so
+      JOIN outbox_events o ON o.dedupe_key = so.logical_key
+      WHERE so.id = ${preparedRelease.operationId}
+    `
+    expect(preparedReleaseRows[0]).toEqual({
+      status: 'PREPARED',
+      amount: created.body.settlement.providerAmount,
+      outbox_status: 'DELIVERED',
+    })
+
+    const submittedRelease = await worker.submitNext({
+      submit: async (transaction) => {
+        expect(transaction).toEqual(preparedRelease.transaction)
+        return {
+          transactionHash: `0x${'99'.repeat(32)}`,
+          transactionNonce: '9',
+        }
+      },
+    })
+    expect(submittedRelease?.operationId).toBe(preparedRelease.operationId)
+    expect(submittedRelease?.transactionHash).toBe(`0x${'99'.repeat(32)}`)
+
+    const releaseSubmittedRows = await sql<
+      {
+        operation_status: string
+        settlement_state: string
+        payout_state: string
+        events: string
+      }[]
+    >`
+      SELECT
+        (SELECT status FROM settlement_operations WHERE id = ${preparedRelease.operationId})
+          AS operation_status,
+        (SELECT settlement_state FROM marketplace_jobs WHERE id = ${created.body.id})
+          AS settlement_state,
+        (SELECT payout_state FROM marketplace_jobs WHERE id = ${created.body.id}) AS payout_state,
+        (SELECT count(*) FROM marketplace_events
+          WHERE job_id = ${created.body.id}
+            AND event_type = 'SETTLEMENT_RELEASE_SUBMITTED') AS events
+    `
+    expect(releaseSubmittedRows[0]).toEqual({
+      operation_status: 'SUBMITTED',
+      settlement_state: 'RELEASE_SUBMITTED',
+      payout_state: 'HOLD',
+      events: '1',
+    })
   })
 })

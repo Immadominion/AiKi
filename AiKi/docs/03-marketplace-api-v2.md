@@ -268,9 +268,26 @@ or:
 
 Only the requester can review the latest submitted revision. `ACCEPT` moves the
 job to `workState: ACCEPTED`, puts payout in `HOLD`, stores an append-only
-`job_reviews` row, and records `JOB_ACCEPTED`. The actual payment release still
-requires the settlement release slice.
+`job_reviews` row, records `JOB_ACCEPTED`, and queues a `RELEASE` settlement
+operation. The release operation pays the provider amount from the immutable
+agreement and uses the accepted review hash as the APEX completion reason.
 
 `REQUEST_CHANGES` stores the review, moves the job to `CHANGES_REQUESTED`, and
 records `JOB_CHANGES_REQUESTED`. A change request must include
 `requiredChanges`; an acceptance must not.
+
+## Release preparation
+
+After acceptance, the same settlement preparation command consumes
+`marketplace.settlement.release.requested` events. For each accepted review it:
+
+- validates the agreement against the enabled BNB APEX rail
+- requires the finalized external APEX job id
+- prepares deployed `complete(uint256,bytes32,bytes)` calldata
+- stores the prepared transaction on the `RELEASE` operation
+- marks the release outbox row `DELIVERED`
+
+Submitting the prepared release transaction moves the job to `settlementState:
+RELEASE_SUBMITTED` and records `SETTLEMENT_RELEASE_SUBMITTED`. The job is not
+`RELEASED`, and payout is not `PAID`, until finalized chain evidence proves the
+release transaction succeeded.
