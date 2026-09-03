@@ -339,22 +339,92 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
     })
     expect(submittedFund?.operationId).toBe(preparedFund.operationId)
     expect(submittedFund?.transactionHash).toBe(`0x${'77'.repeat(32)}`)
+    const submittedFundHash = submittedFund?.transactionHash
+    if (!submittedFundHash) throw new Error('Fund submission did not return a transaction hash.')
 
     const submittedFundRows = await sql<
       {
         status: string
         transaction_hash: string
         transaction_nonce: string
+        settlement_state: string
       }[]
     >`
-      SELECT status, transaction_hash, transaction_nonce
-      FROM settlement_operations
-      WHERE id = ${preparedFund.operationId}
+      SELECT so.status, so.transaction_hash, so.transaction_nonce, mj.settlement_state
+      FROM settlement_operations so
+      JOIN marketplace_jobs mj ON mj.id = so.job_id
+      WHERE so.id = ${preparedFund.operationId}
     `
     expect(submittedFundRows[0]).toEqual({
       status: 'SUBMITTED',
       transaction_hash: `0x${'77'.repeat(32)}`,
       transaction_nonce: '8',
+      settlement_state: 'FUNDING_SUBMITTED',
+    })
+
+    const finalizedFund = await worker.finalizeFundNext({
+      finalizedReceipt: async (hash) => ({
+        status: 'success',
+        transactionHash: hash,
+        blockNumber: 101n,
+        blockHash: `0x${'88'.repeat(32)}`,
+        logs: [
+          {
+            address: created.body.settlement.contract,
+            topics: encodeEventTopics({
+              abi: APEX_COMMERCE_ABI,
+              eventName: 'JobFunded',
+              args: {
+                jobId: 123n,
+                client: stranger.address,
+              },
+            }) as `0x${string}`[],
+            data: encodeAbiParameters(
+              [{ type: 'uint256' }],
+              [BigInt(created.body.settlement.totalAmount)],
+            ),
+            transactionHash: hash,
+            logIndex: 4,
+            blockNumber: 101n,
+            blockHash: `0x${'88'.repeat(32)}`,
+          },
+        ],
+      }),
+    })
+    expect(finalizedFund).toMatchObject({
+      kind: 'FUND',
+      operationId: preparedFund.operationId,
+      jobId: created.body.id,
+      agreementId: created.body.agreementId,
+      externalJobId: '123',
+      amount: created.body.settlement.totalAmount,
+    })
+
+    const fundedRows = await sql<
+      {
+        fund_status: string
+        settlement_state: string
+        chain_events: string
+        marketplace_events: string
+      }[]
+    >`
+      SELECT
+        (SELECT status FROM settlement_operations WHERE id = ${preparedFund.operationId})
+          AS fund_status,
+        (SELECT settlement_state FROM marketplace_jobs WHERE id = ${created.body.id})
+          AS settlement_state,
+        (SELECT count(*) FROM chain_events
+          WHERE transaction_hash = ${submittedFundHash}
+            AND event_name = 'JobFunded') AS chain_events,
+        (SELECT count(*) FROM marketplace_events
+          WHERE job_id = ${created.body.id}
+            AND event_type = 'SETTLEMENT_FUNDED') AS marketplace_events
+    `
+    expect(fundedRows[0]).toEqual({
+      fund_status: 'FINALIZED',
+      settlement_state: 'FUNDED',
+      chain_events: '1',
+      marketplace_events: '1',
     })
   })
 })

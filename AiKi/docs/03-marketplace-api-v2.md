@@ -161,10 +161,14 @@ by moving it to `SUBMITTING`, sends the exact prepared calldata, then records:
 - transaction hash
 - transaction nonce when the RPC can return it
 
+For `FUND`, the marketplace job moves only to `settlementState:
+FUNDING_SUBMITTED` at this point. That state means AiKi has a submitted funding
+transaction hash, not finalized escrow.
+
 If the RPC refuses the transaction before a hash exists, the operation returns to
 `PREPARED` with `failure_code: SUBMIT_REFUSED` so it can be inspected and retried.
-The worker does not mark the marketplace job funded or create provider earnings.
-Only finalized APEX chain events may do that.
+The worker does not create provider earnings. Only finalized APEX chain events
+may do that.
 
 ## Settlement finalization
 
@@ -172,8 +176,8 @@ Only finalized APEX chain events may do that.
 pnpm --filter @aiki/api marketplace:settlement:finalize
 ```
 
-The finalization worker reads `SUBMITTED` or `MINED` `CREATE_ESCROW` operations.
-For each operation it:
+The finalization worker reads `SUBMITTED` or `MINED` settlement operations. For
+`CREATE_ESCROW`, it:
 
 - reads the transaction receipt
 - requires the receipt block to be at or below BSC's finalized block
@@ -185,5 +189,18 @@ For each operation it:
 - marks the create operation `FINALIZED`
 - queues the real `FUND` settlement operation and outbox event
 
-The marketplace job still remains `UNFUNDED` here. That changes only after the
-fund transaction itself is submitted and finalized.
+The marketplace job still remains `UNFUNDED` here.
+
+For `FUND`, finalization:
+
+- decodes the finalized APEX `JobFunded` event
+- verifies the event's external job id against `job_agreements.external_job_id`
+- verifies the funded amount against the immutable agreement amount
+- stores one finalized `chain_events` row
+- marks the fund operation `FINALIZED`
+- moves the marketplace job to `settlementState: FUNDED`
+- records a `SETTLEMENT_FUNDED` marketplace event
+
+If a finalized fund receipt reverted, AiKi marks the fund operation `REVERTED`
+and moves a `FUNDING_SUBMITTED` job back to `UNFUNDED`. Work still must not begin
+until `JobFunded` has finalized.

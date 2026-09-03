@@ -3,6 +3,7 @@ import postgres from 'postgres'
 import {
   type PreparedApexTransaction,
   parseApexJobCreated,
+  parseApexJobFunded,
   prepareApexCreateEscrow,
   prepareApexFund,
 } from './apex.js'
@@ -45,6 +46,7 @@ type PreparedRow = {
   operation_id: string
   job_id: string
   agreement_id: string
+  operation_type: 'CREATE_ESCROW' | 'FUND'
   prepared_transaction: PreparedApexTransaction
 }
 
@@ -52,6 +54,7 @@ type SubmittedRow = {
   operation_id: string
   job_id: string
   agreement_id: string
+  external_job_id: string | null
   transaction_hash: `0x${string}`
   chain_id: string | number
   contract_address: `0x${string}`
@@ -78,11 +81,21 @@ export type SubmittedSettlementOperation = Readonly<{
 }>
 
 export type FinalizedCreateEscrowOperation = Readonly<{
+  kind: 'CREATE_ESCROW'
   operationId: string
   jobId: string
   agreementId: string
   externalJobId: string
   queuedFundOperationId: string
+}>
+
+export type FinalizedFundOperation = Readonly<{
+  kind: 'FUND'
+  operationId: string
+  jobId: string
+  agreementId: string
+  externalJobId: string
+  amount: string
 }>
 
 const TX_HASH = /^0x[0-9a-fA-F]{64}$/
@@ -242,19 +255,48 @@ export class PostgresMarketplaceSettlementWorker {
 
     const hash = submission.transactionHash.toLowerCase() as `0x${string}`
     if (!TX_HASH.test(hash)) throw new Error(`Submitter returned an invalid transaction hash.`)
-    const updated = await this.sql<{ id: string }[]>`
-      UPDATE settlement_operations
-      SET status = 'SUBMITTED',
-          transaction_hash = ${hash},
-          transaction_nonce = ${submission.transactionNonce},
-          failure_code = NULL,
-          failure_detail = NULL,
-          updated_at = now()
-      WHERE id = ${row.operation_id}
-        AND status = 'SUBMITTING'
-        AND transaction_hash IS NULL
-      RETURNING id
-    `
+    const updated = await this.sql.begin(async (tx) => {
+      const operationRows = await tx<{ id: string }[]>`
+        UPDATE settlement_operations
+        SET status = 'SUBMITTED',
+            transaction_hash = ${hash},
+            transaction_nonce = ${submission.transactionNonce},
+            failure_code = NULL,
+            failure_detail = NULL,
+            updated_at = now()
+        WHERE id = ${row.operation_id}
+          AND status = 'SUBMITTING'
+          AND transaction_hash IS NULL
+        RETURNING id
+      `
+      if (operationRows.length && row.operation_type === 'FUND') {
+        const jobRows = await tx<{ aggregate_version: string }[]>`
+          UPDATE marketplace_jobs
+          SET settlement_state = 'FUNDING_SUBMITTED',
+              aggregate_version = aggregate_version + 1,
+              updated_at = now()
+          WHERE id = ${row.job_id}
+            AND settlement_state = 'UNFUNDED'
+          RETURNING aggregate_version
+        `
+        const aggregateVersion = jobRows[0]?.aggregate_version
+        if (aggregateVersion) {
+          await tx`
+            INSERT INTO marketplace_events (
+              id, job_id, aggregate_version, event_type, payload, correlation_id
+            ) VALUES (
+              ${randomUUID()}, ${row.job_id}, ${aggregateVersion}, 'SETTLEMENT_FUNDING_SUBMITTED',
+              ${tx.json({
+                operationId: row.operation_id,
+                transactionHash: hash,
+              })},
+              ${row.operation_id}
+            )
+          `
+        }
+      }
+      return operationRows
+    })
     if (!updated.length)
       throw new Error(`Settlement operation ${row.operation_id} changed during submission.`)
     return {
@@ -387,6 +429,7 @@ export class PostgresMarketplaceSettlementWorker {
           id AS operation_id,
           job_id,
           agreement_id,
+          operation_type,
           prepared_transaction
         FROM settlement_operations
         WHERE operation_type IN ('CREATE_ESCROW', 'FUND')
@@ -416,6 +459,7 @@ export class PostgresMarketplaceSettlementWorker {
         id AS operation_id,
         job_id,
         agreement_id,
+        NULL AS external_job_id,
         transaction_hash,
         chain_id,
         contract_address,
@@ -534,11 +578,171 @@ export class PostgresMarketplaceSettlementWorker {
       `
 
       return {
+        kind: 'CREATE_ESCROW',
         operationId: row.operation_id,
         jobId: row.job_id,
         agreementId: row.agreement_id,
         externalJobId: event.externalJobId,
         queuedFundOperationId: fundOperationId,
+      }
+    })
+  }
+
+  async finalizeFundNext(reader: SettlementFinalityReader): Promise<FinalizedFundOperation | null> {
+    const rows = await this.sql<SubmittedRow[]>`
+      SELECT
+        so.id AS operation_id,
+        so.job_id,
+        so.agreement_id,
+        ja.external_job_id,
+        so.transaction_hash,
+        so.chain_id,
+        so.contract_address,
+        so.token_address,
+        so.amount,
+        so.status
+      FROM settlement_operations so
+      JOIN job_agreements ja ON ja.id = so.agreement_id
+      WHERE so.operation_type = 'FUND'
+        AND so.status IN ('SUBMITTED', 'MINED')
+        AND so.transaction_hash IS NOT NULL
+      ORDER BY so.updated_at ASC, so.created_at ASC, so.id ASC
+      LIMIT 1
+    `
+    const row = rows[0]
+    if (!row) return null
+
+    const receipt = await reader.finalizedReceipt(row.transaction_hash)
+    if (!receipt) {
+      if (row.status !== 'MINED')
+        await this.sql`
+          UPDATE settlement_operations
+          SET status = 'MINED',
+              updated_at = now()
+          WHERE id = ${row.operation_id}
+            AND status = 'SUBMITTED'
+        `
+      return null
+    }
+
+    if (receipt.status !== 'success') {
+      await this.sql.begin(async (tx) => {
+        await tx`
+          UPDATE settlement_operations
+          SET status = 'REVERTED',
+              failure_code = 'FUND_REVERTED',
+              failure_detail = 'Finalized transaction receipt has reverted status.',
+              updated_at = now()
+          WHERE id = ${row.operation_id}
+            AND status IN ('SUBMITTED', 'MINED')
+        `
+        const jobRows = await tx<{ aggregate_version: string }[]>`
+          UPDATE marketplace_jobs
+          SET settlement_state = 'UNFUNDED',
+              aggregate_version = aggregate_version + 1,
+              updated_at = now()
+          WHERE id = ${row.job_id}
+            AND settlement_state = 'FUNDING_SUBMITTED'
+          RETURNING aggregate_version
+        `
+        const aggregateVersion = jobRows[0]?.aggregate_version
+        if (aggregateVersion) {
+          await tx`
+            INSERT INTO marketplace_events (
+              id, job_id, aggregate_version, event_type, payload, correlation_id
+            ) VALUES (
+              ${randomUUID()}, ${row.job_id}, ${aggregateVersion}, 'SETTLEMENT_FUNDING_REVERTED',
+              ${tx.json({
+                operationId: row.operation_id,
+                transactionHash: row.transaction_hash,
+              })},
+              ${row.operation_id}
+            )
+          `
+        }
+      })
+      return null
+    }
+
+    const event = parseApexJobFunded({
+      contract: row.contract_address,
+      transactionHash: row.transaction_hash,
+      logs: receipt.logs,
+    })
+    if (!row.external_job_id)
+      throw new Error(`Fund operation ${row.operation_id} has no finalized APEX job id.`)
+    if (event.externalJobId !== row.external_job_id)
+      throw new Error(`JobFunded external job id mismatch for operation ${row.operation_id}.`)
+    if (event.amount !== row.amount)
+      throw new Error(`JobFunded amount mismatch for operation ${row.operation_id}.`)
+
+    return this.sql.begin(async (tx) => {
+      const updated = await tx<{ id: string }[]>`
+        UPDATE settlement_operations
+        SET status = 'FINALIZED',
+            finalized_at = now(),
+            failure_code = NULL,
+            failure_detail = NULL,
+            updated_at = now()
+        WHERE id = ${row.operation_id}
+          AND status IN ('SUBMITTED', 'MINED')
+        RETURNING id
+      `
+      if (!updated.length) return null
+
+      await tx`
+        INSERT INTO chain_events (
+          id, chain_id, contract_address, transaction_hash, log_index,
+          block_number, block_hash, event_name, decoded_payload, finality, finalized_at
+        ) VALUES (
+          ${randomUUID()}, ${row.chain_id}, ${row.contract_address}, ${row.transaction_hash},
+          ${event.log.logIndex}, ${event.log.blockNumber.toString()}, ${event.log.blockHash},
+          'JobFunded',
+          ${tx.json({
+            externalJobId: event.externalJobId,
+            client: event.client,
+            amount: event.amount,
+          })},
+          'FINALIZED',
+          now()
+        )
+        ON CONFLICT (chain_id, contract_address, transaction_hash, log_index) DO NOTHING
+      `
+
+      const jobRows = await tx<{ aggregate_version: string }[]>`
+        UPDATE marketplace_jobs
+        SET settlement_state = 'FUNDED',
+            aggregate_version = aggregate_version + 1,
+            updated_at = now()
+        WHERE id = ${row.job_id}
+          AND settlement_state = 'FUNDING_SUBMITTED'
+        RETURNING aggregate_version
+      `
+      const aggregateVersion = jobRows[0]?.aggregate_version
+      if (aggregateVersion) {
+        await tx`
+          INSERT INTO marketplace_events (
+            id, job_id, aggregate_version, event_type, payload, correlation_id
+          ) VALUES (
+            ${randomUUID()}, ${row.job_id}, ${aggregateVersion}, 'SETTLEMENT_FUNDED',
+            ${tx.json({
+              operationId: row.operation_id,
+              externalJobId: event.externalJobId,
+              transactionHash: row.transaction_hash,
+              amount: event.amount,
+            })},
+            ${row.operation_id}
+          )
+        `
+      }
+
+      return {
+        kind: 'FUND',
+        operationId: row.operation_id,
+        jobId: row.job_id,
+        agreementId: row.agreement_id,
+        externalJobId: event.externalJobId,
+        amount: event.amount,
       }
     })
   }

@@ -4,6 +4,7 @@ import { BSC_MAINNET } from '../config/chains.js'
 import {
   APEX_COMMERCE_ABI,
   parseApexJobCreated,
+  parseApexJobFunded,
   prepareApexCreateEscrow,
   prepareApexFund,
 } from './apex.js'
@@ -97,5 +98,37 @@ describe('APEX settlement adapter', () => {
     expect(parsed.provider).toBe(provider)
     expect(parsed.expiredAt).toBe('456')
     expect(parsed.log.logIndex).toBe(7)
+  })
+
+  it('parses a finalized JobFunded log from the deployed event shape', () => {
+    const transactionHash = `0x${'33'.repeat(32)}` as const
+    const client = `0x${'cd'.repeat(20)}` as const
+    const topics = encodeEventTopics({
+      abi: APEX_COMMERCE_ABI,
+      eventName: 'JobFunded',
+      args: {
+        jobId: 123n,
+        client,
+      },
+    }) as `0x${string}`[]
+    const parsed = parseApexJobFunded({
+      contract: BSC_MAINNET.contracts.erc8183Commerce.toLowerCase() as `0x${string}`,
+      transactionHash,
+      logs: [
+        {
+          address: BSC_MAINNET.contracts.erc8183Commerce.toLowerCase() as `0x${string}`,
+          topics,
+          data: encodeAbiParameters([{ type: 'uint256' }], [1_000_000_000_000_000_001n]),
+          transactionHash,
+          logIndex: 8,
+          blockNumber: 100n,
+          blockHash: `0x${'44'.repeat(32)}`,
+        },
+      ],
+    })
+    expect(parsed.externalJobId).toBe('123')
+    expect(parsed.client).toBe(client)
+    expect(parsed.amount).toBe('1000000000000000001')
+    expect(parsed.log.logIndex).toBe(8)
   })
 })

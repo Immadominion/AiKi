@@ -11,6 +11,7 @@ export const APEX_COMMERCE_ABI = parseAbi([
   'function claimRefund(uint256 jobId)',
   'function paymentToken() view returns (address)',
   'event JobCreated(uint256 indexed jobId, address indexed client, address indexed provider, address evaluator, uint256 expiredAt, address hook)',
+  'event JobFunded(uint256 indexed jobId, address indexed client, uint256 amount)',
 ])
 
 export type PreparedApexCreateEscrowTransaction = Readonly<{
@@ -62,6 +63,13 @@ export type ApexJobCreated = Readonly<{
   evaluator: `0x${string}`
   expiredAt: string
   hook: `0x${string}`
+  log: ApexReceiptLog
+}>
+
+export type ApexJobFunded = Readonly<{
+  externalJobId: string
+  client: `0x${string}`
+  amount: string
   log: ApexReceiptLog
 }>
 
@@ -179,4 +187,42 @@ export function parseApexJobCreated(input: {
     }
   }
   throw new Error('No APEX JobCreated event found in the finalized transaction receipt.')
+}
+
+export function parseApexJobFunded(input: {
+  contract: `0x${string}`
+  transactionHash: Hex
+  logs: readonly ApexReceiptLog[]
+}): ApexJobFunded {
+  const contract = lowerAddress(input.contract)
+  for (const log of input.logs) {
+    if (lowerAddress(log.address) !== contract) continue
+    let decoded: ReturnType<typeof decodeEventLog>
+    try {
+      const topics = log.topics as [`0x${string}`, ...`0x${string}`[]]
+      decoded = decodeEventLog({
+        abi: APEX_COMMERCE_ABI,
+        data: log.data,
+        topics,
+      })
+    } catch {
+      continue
+    }
+    if (decoded.eventName !== 'JobFunded') continue
+    const args = decoded.args as {
+      jobId: bigint
+      client: `0x${string}`
+      amount: bigint
+    }
+    if (lowerAddress(log.transactionHash) !== lowerAddress(input.transactionHash)) {
+      throw new Error('JobFunded log transaction hash does not match the settlement operation.')
+    }
+    return {
+      externalJobId: args.jobId.toString(),
+      client: lowerAddress(args.client),
+      amount: args.amount.toString(),
+      log,
+    }
+  }
+  throw new Error('No APEX JobFunded event found in the finalized transaction receipt.')
 }

@@ -16,10 +16,10 @@ const reader = new ViemSettlementFinalityReader(rpcUrl)
 let finalized = 0
 try {
   for (let index = 0; index < limit; index += 1) {
-    const result = await worker.finalizeNext(reader)
+    const result = (await worker.finalizeNext(reader)) ?? (await worker.finalizeFundNext(reader))
     if (!result) break
     finalized += 1
-    console.log(`${result.operationId} external job ${result.externalJobId}`)
+    console.log(`${result.operationId} ${result.kind} external job ${result.externalJobId}`)
   }
 } finally {
   await worker.close()
