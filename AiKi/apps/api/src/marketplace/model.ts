@@ -69,6 +69,16 @@ export type CreateOffer = Readonly<{
   failoverSafe: boolean
 }>
 
+export type CreateJob = Readonly<{
+  offerId: string
+  offerVersion: number
+  previewHash: string
+  brief: string
+  requirements: JsonObject
+  definitionOfDone: string
+  evidenceRequirements: JsonObject
+}>
+
 export type OfferView = Readonly<{
   id: string
   providerId: string
@@ -107,4 +117,55 @@ export type OfferView = Readonly<{
 export type Page<T> = Readonly<{
   items: T[]
   nextCursor: string | null
+}>
+
+export type JobView = Readonly<{
+  id: string
+  agreementId: string
+  previewHash: string
+  title: string
+  workState: 'ASSIGNED'
+  settlementState: 'UNFUNDED'
+  disputeState: 'NONE'
+  payoutState: 'NONE'
+  payerActorId: string
+  requesterActorId: string
+  providerActorId: string
+  offer: {
+    id: string
+    version: number
+    termsHash: string
+  }
+  scope: {
+    brief: string
+    requirements: JsonObject
+    definitionOfDone: string
+    evidenceRequirements: JsonObject
+  }
+  settlement: {
+    rail: 'BNB_APEX_ERC8183'
+    railVersion: string
+    chainId: number
+    contract: `0x${string}`
+    token: `0x${string}`
+    decimals: number
+    providerAmount: string
+    platformFeeAmount: string
+    totalAmount: string
+  }
+  deadlines: {
+    delivery: string
+    review: string
+    dispute: string
+    hardExpiry: string
+  }
+  fundingOperation: {
+    id: string
+    status: 'REQUESTED'
+    operationType: 'FUND'
+    logicalKey: string
+    amount: string
+  }
+  nextAction: 'FUND_ESCROW'
+  createdAt: string
 }>

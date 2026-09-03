@@ -1,6 +1,7 @@
 import { parseBaseUnits } from './domain/money.js'
 import { MarketplaceError } from './errors.js'
 import type {
+  CreateJob,
   CreateOffer,
   DispatchMethod,
   JsonObject,
@@ -43,6 +44,16 @@ const OFFER_FIELDS = new Set([
   'dispatchEndpoint',
   'failoverSafe',
 ])
+const JOB_FIELDS = new Set([
+  'offerId',
+  'offerVersion',
+  'previewHash',
+  'brief',
+  'requirements',
+  'definitionOfDone',
+  'evidenceRequirements',
+])
+const HASH = /^[0-9a-f]{64}$/
 
 const invalid = (field: string, message: string): never => {
   throw new MarketplaceError('INVALID_MARKETPLACE_INPUT', `${field} ${message}.`, {
@@ -190,5 +201,22 @@ export function normalizeOffer(value: unknown, platformFeeBps: number): CreateOf
     dispatchMethod: dispatchMethod as DispatchMethod,
     dispatchEndpoint,
     failoverSafe: input.failoverSafe === true,
+  }
+}
+
+export function normalizeCreateJob(value: unknown): CreateJob {
+  const input = object(value, 'body') as Record<string, unknown>
+  onlyFields(input, JOB_FIELDS)
+  if (typeof input.offerId !== 'string') return invalid('offerId', 'is required')
+  if (typeof input.previewHash !== 'string' || !HASH.test(input.previewHash))
+    return invalid('previewHash', 'must be the hash returned by preview')
+  return {
+    offerId: input.offerId,
+    offerVersion: integer(input.offerVersion, 'offerVersion', 1, 2_147_483_647),
+    previewHash: input.previewHash,
+    brief: boundedText(input.brief, 'brief', 10_000),
+    requirements: object(input.requirements ?? {}, 'requirements'),
+    definitionOfDone: boundedText(input.definitionOfDone, 'definitionOfDone', 10_000),
+    evidenceRequirements: object(input.evidenceRequirements ?? {}, 'evidenceRequirements'),
   }
 }

@@ -4,8 +4,10 @@ import { IdempotencyConflictError, MarketplaceError } from './errors.js'
 import type {
   ActorIdentity,
   CommandResult,
+  CreateJob,
   CreateOffer,
   Idempotency,
+  JobView,
   JsonValue,
   OfferView,
   Page,
@@ -13,6 +15,8 @@ import type {
   PutProvider,
 } from './model.js'
 import { encodeCursor, type PageCursor } from './pagination.js'
+import { buildJobPreview } from './preview.js'
+import { settlementRailFor } from './settlement-rails.js'
 import type { MarketplaceStore } from './store.js'
 
 type SavedCommand = { requestHash: string; statusCode: number; body: unknown }
@@ -38,6 +42,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   private readonly actorIds = new Map<string, string>()
   private readonly providers = new Map<string, ProviderView>()
   private readonly offers = new Map<string, OfferView>()
+  private readonly jobs = new Map<string, JobView>()
   private readonly commands = new Map<string, SavedCommand>()
 
   private actor(actor: ActorIdentity): string {
@@ -215,6 +220,106 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
         }
         this.offers.set(offerId, paused)
         return paused
+      },
+    })
+  }
+
+  async createJob(
+    actor: ActorIdentity,
+    input: CreateJob,
+    idempotency: Idempotency,
+  ): Promise<CommandResult<JobView>> {
+    return this.run({
+      actor,
+      operation: 'job.create',
+      idempotency,
+      statusCode: 201,
+      execute: (payerId) => {
+        const offer = this.offers.get(input.offerId)
+        const provider = offer ? this.providers.get(offer.providerId) : null
+        if (
+          !offer ||
+          !provider ||
+          offer.status !== 'ACTIVE' ||
+          offer.version !== input.offerVersion
+        )
+          throw new MarketplaceError('OFFER_NOT_FOUND', 'No such offer.', { statusCode: 404 })
+        if (payerId === offer.providerId)
+          throw new MarketplaceError('SELF_HIRE_FORBIDDEN', 'A provider cannot hire itself.', {
+            statusCode: 409,
+          })
+        const preview = buildJobPreview(offer, input)
+        if (!preview.canCreateJob || !preview.settlement.quote)
+          throw new MarketplaceError(
+            'QUOTE_REQUIRED',
+            'Request a quote before creating this job.',
+            {
+              statusCode: 409,
+            },
+          )
+        if (preview.previewHash !== input.previewHash)
+          throw new MarketplaceError(
+            'PREVIEW_HASH_MISMATCH',
+            'Preview this exact scope before creating the job.',
+            { statusCode: 409, details: { currentPreviewHash: preview.previewHash } },
+          )
+        const rail = settlementRailFor({
+          chainId: preview.settlement.chainId,
+          token: preview.settlement.token,
+          decimals: preview.settlement.decimals,
+        })
+        const now = new Date()
+        const deliveryDeadline = new Date(now.getTime() + offer.deliverySlaSeconds * 1000)
+        const reviewDeadline = new Date(deliveryDeadline.getTime() + offer.reviewSlaSeconds * 1000)
+        const disputeDeadline = new Date(reviewDeadline.getTime() + 3 * 24 * 60 * 60 * 1000)
+        const hardExpiry = new Date(disputeDeadline.getTime() + 7 * 24 * 60 * 60 * 1000)
+        const id = randomUUID()
+        const agreementId = randomUUID()
+        const operationId = randomUUID()
+        const logicalKey = `job:${id}:fund:v1`
+        const job: JobView = {
+          id,
+          agreementId,
+          previewHash: preview.previewHash,
+          title: offer.title,
+          workState: 'ASSIGNED',
+          settlementState: 'UNFUNDED',
+          disputeState: 'NONE',
+          payoutState: 'NONE',
+          payerActorId: payerId,
+          requesterActorId: payerId,
+          providerActorId: offer.providerId,
+          offer: { id: offer.id, version: offer.version, termsHash: offer.termsHash },
+          scope: preview.scope,
+          settlement: {
+            rail: rail.rail,
+            railVersion: rail.version,
+            chainId: rail.chainId,
+            contract: rail.contract,
+            token: rail.token,
+            decimals: rail.decimals,
+            providerAmount: preview.settlement.quote.providerAmount,
+            platformFeeAmount: preview.settlement.quote.platformFeeAmount,
+            totalAmount: preview.settlement.quote.totalAmount,
+          },
+          deadlines: {
+            delivery: deliveryDeadline.toISOString(),
+            review: reviewDeadline.toISOString(),
+            dispute: disputeDeadline.toISOString(),
+            hardExpiry: hardExpiry.toISOString(),
+          },
+          fundingOperation: {
+            id: operationId,
+            status: 'REQUESTED',
+            operationType: 'FUND',
+            logicalKey,
+            amount: preview.settlement.quote.totalAmount,
+          },
+          nextAction: 'FUND_ESCROW',
+          createdAt: now.toISOString(),
+        }
+        this.jobs.set(id, job)
+        return job
       },
     })
   }

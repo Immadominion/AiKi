@@ -3,6 +3,7 @@ import { bsc } from 'viem/chains'
 import { afterEach, describe, expect, it } from 'vitest'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
+import { BSC_MAINNET } from '../config/chains.js'
 import { createApiServer } from '../http/server.js'
 import { InMemoryMarketplaceStore } from './memory-store.js'
 
@@ -41,6 +42,10 @@ const offer = {
   reviewSlaSeconds: 3600,
   includedRevisions: 1,
   dispatchMethod: 'MANUAL',
+}
+const supportedOffer = {
+  ...offer,
+  settlementToken: BSC_MAINNET.contracts.settlementToken.toLowerCase(),
 }
 
 const apps: ReturnType<typeof createApiServer>[] = []
@@ -180,5 +185,130 @@ describe('canonical marketplace routes', () => {
     const cursor = await app.inject('/v2/offers?cursor=not-a-cursor')
     expect(cursor.statusCode).toBe(400)
     expect(cursor.json().error.code).toBe('INVALID_CURSOR')
+  })
+
+  it('creates an unfunded job from the exact preview terms', async () => {
+    const app = server()
+    await app.inject({
+      method: 'PUT',
+      url: '/v2/providers/me',
+      headers: { ...cookie(), 'idempotency-key': 'provider-for-job' },
+      payload: profile,
+    })
+    const published = await app.inject({
+      method: 'POST',
+      url: '/v2/offers',
+      headers: { ...cookie(), 'idempotency-key': 'offer-for-job' },
+      payload: supportedOffer,
+    })
+    expect(published.statusCode).toBe(201)
+    const offerId = published.json().id as string
+    const jobInput = {
+      offerId,
+      offerVersion: 1,
+      brief: 'Check the ownership and upgrade controls.',
+      requirements: { contract: `0x${'12'.repeat(20)}` },
+      definitionOfDone: 'Return every finding with a source reference.',
+      evidenceRequirements: { sourceLines: true },
+    }
+    const preview = await app.inject({
+      method: 'POST',
+      url: '/v2/jobs/preview',
+      payload: jobInput,
+    })
+    expect(preview.statusCode).toBe(200)
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v2/jobs',
+      headers: { ...cookie(OTHER), 'idempotency-key': 'create-job-1' },
+      payload: { ...jobInput, previewHash: preview.json().previewHash },
+    })
+    expect(created.statusCode).toBe(201)
+    expect(created.json().workState).toBe('ASSIGNED')
+    expect(created.json().settlementState).toBe('UNFUNDED')
+    expect(created.json().fundingOperation.status).toBe('REQUESTED')
+    expect(created.json().nextAction).toBe('FUND_ESCROW')
+    expect(created.json().settlement.contract).toBe(
+      BSC_MAINNET.contracts.erc8183Commerce.toLowerCase(),
+    )
+
+    const replay = await app.inject({
+      method: 'POST',
+      url: '/v2/jobs',
+      headers: { ...cookie(OTHER), 'idempotency-key': 'create-job-1' },
+      payload: { ...jobInput, previewHash: preview.json().previewHash },
+    })
+    expect(replay.statusCode).toBe(201)
+    expect(replay.headers['idempotency-replayed']).toBe('true')
+    expect(replay.json()).toEqual(created.json())
+  })
+
+  it('does not create a job from stale, self-hired, or unsupported funding terms', async () => {
+    const app = server()
+    await app.inject({
+      method: 'PUT',
+      url: '/v2/providers/me',
+      headers: { ...cookie(), 'idempotency-key': 'provider-for-rejection' },
+      payload: profile,
+    })
+    const published = await app.inject({
+      method: 'POST',
+      url: '/v2/offers',
+      headers: { ...cookie(), 'idempotency-key': 'offer-for-rejection' },
+      payload: supportedOffer,
+    })
+    const offerId = published.json().id as string
+    const jobInput = {
+      offerId,
+      offerVersion: 1,
+      brief: 'Check the ownership and upgrade controls.',
+      requirements: { contract: `0x${'12'.repeat(20)}` },
+      definitionOfDone: 'Return every finding with a source reference.',
+      evidenceRequirements: { sourceLines: true },
+    }
+    const preview = await app.inject({
+      method: 'POST',
+      url: '/v2/jobs/preview',
+      payload: jobInput,
+    })
+    const mismatch = await app.inject({
+      method: 'POST',
+      url: '/v2/jobs',
+      headers: { ...cookie(OTHER), 'idempotency-key': 'bad-preview-hash' },
+      payload: { ...jobInput, previewHash: '0'.repeat(64) },
+    })
+    expect(mismatch.statusCode).toBe(409)
+    expect(mismatch.json().error.code).toBe('PREVIEW_HASH_MISMATCH')
+
+    const selfHire = await app.inject({
+      method: 'POST',
+      url: '/v2/jobs',
+      headers: { ...cookie(), 'idempotency-key': 'self-hire' },
+      payload: { ...jobInput, previewHash: preview.json().previewHash },
+    })
+    expect(selfHire.statusCode).toBe(409)
+    expect(selfHire.json().error.code).toBe('SELF_HIRE_FORBIDDEN')
+
+    const unsupported = await app.inject({
+      method: 'POST',
+      url: '/v2/offers',
+      headers: { ...cookie(), 'idempotency-key': 'unsupported-offer' },
+      payload: { ...offer, title: 'Unsupported token offer' },
+    })
+    const unsupportedInput = { ...jobInput, offerId: unsupported.json().id as string }
+    const unsupportedPreview = await app.inject({
+      method: 'POST',
+      url: '/v2/jobs/preview',
+      payload: unsupportedInput,
+    })
+    const unsupportedCreate = await app.inject({
+      method: 'POST',
+      url: '/v2/jobs',
+      headers: { ...cookie(OTHER), 'idempotency-key': 'unsupported-create' },
+      payload: { ...unsupportedInput, previewHash: unsupportedPreview.json().previewHash },
+    })
+    expect(unsupportedCreate.statusCode).toBe(409)
+    expect(unsupportedCreate.json().error.code).toBe('SETTLEMENT_RAIL_UNSUPPORTED')
   })
 })

@@ -5,8 +5,10 @@ import { CommandInProgressError, IdempotencyConflictError, MarketplaceError } fr
 import type {
   ActorIdentity,
   CommandResult,
+  CreateJob,
   CreateOffer,
   Idempotency,
+  JobView,
   JsonObject,
   JsonValue,
   OfferView,
@@ -16,6 +18,8 @@ import type {
   PutProvider,
 } from './model.js'
 import { encodeCursor, type PageCursor } from './pagination.js'
+import { buildJobPreview } from './preview.js'
+import { settlementRailFor } from './settlement-rails.js'
 
 type QuerySql = postgres.Sql | postgres.TransactionSql
 
@@ -41,6 +45,7 @@ type ProviderRow = Omit<ActorRow, 'status'> & {
 type OfferRow = {
   id: string
   provider_actor_id: string
+  provider_controller_address: `0x${string}`
   provider_name: string
   status: 'ACTIVE' | 'PAUSED'
   visibility: 'PUBLIC'
@@ -68,6 +73,8 @@ type OfferRow = {
   created_at: Date | string
   updated_at: Date | string
 }
+
+type OfferForJob = OfferView & { providerControllerAddress: `0x${string}` }
 
 type IdempotencyRow = {
   request_hash: string
@@ -132,6 +139,11 @@ const offerView = (row: OfferRow): OfferView => ({
   updatedAt: iso(row.updated_at),
 })
 
+const offerForJob = (row: OfferRow): OfferForJob => ({
+  ...offerView(row),
+  providerControllerAddress: row.provider_controller_address,
+})
+
 async function readProvider(sql: QuerySql, actorId: string): Promise<ProviderView> {
   const rows = await sql<ProviderRow[]>`
     SELECT
@@ -161,6 +173,7 @@ async function readOffer(sql: QuerySql, offerId: string): Promise<OfferView> {
     SELECT
       o.id,
       o.provider_actor_id,
+      a.controller_address AS provider_controller_address,
       p.display_name AS provider_name,
       o.status,
       o.visibility,
@@ -190,11 +203,64 @@ async function readOffer(sql: QuerySql, offerId: string): Promise<OfferView> {
     FROM offers o
     JOIN offer_versions v ON v.offer_id = o.id AND v.version = o.current_version
     JOIN provider_profiles p ON p.actor_id = o.provider_actor_id
+    JOIN actors a ON a.id = o.provider_actor_id
     WHERE o.id = ${offerId}
   `
   const row = rows[0]
   if (!row) throw new Error(`Offer ${offerId} disappeared inside its transaction.`)
   return offerView(row)
+}
+
+async function readActiveOfferVersion(
+  sql: QuerySql,
+  offerId: string,
+  version: number,
+): Promise<OfferForJob> {
+  const rows = await sql<OfferRow[]>`
+    SELECT
+      o.id,
+      o.provider_actor_id,
+      a.controller_address AS provider_controller_address,
+      p.display_name AS provider_name,
+      o.status,
+      o.visibility,
+      v.version,
+      v.title,
+      v.summary,
+      v.capability_tags,
+      v.input_schema,
+      v.output_schema,
+      v.evidence_schema,
+      v.pricing_model,
+      v.settlement_chain_id,
+      v.settlement_token,
+      v.settlement_decimals,
+      v.amount,
+      v.platform_fee_bps,
+      v.delivery_sla_seconds,
+      v.review_sla_seconds,
+      v.included_revisions,
+      v.concurrent_capacity,
+      v.dispatch_method,
+      v.dispatch_endpoint,
+      v.failover_safe,
+      v.terms_hash,
+      o.created_at,
+      o.updated_at
+    FROM offers o
+    JOIN offer_versions v ON v.offer_id = o.id AND v.version = ${version}
+    JOIN provider_profiles p ON p.actor_id = o.provider_actor_id
+    JOIN actors a ON a.id = o.provider_actor_id
+    WHERE o.id = ${offerId}
+      AND o.status = 'ACTIVE'
+      AND o.visibility = 'PUBLIC'
+      AND o.current_version = ${version}
+      AND a.status = 'ACTIVE'
+    FOR SHARE OF o, v, p, a
+  `
+  const row = rows[0]
+  if (!row) throw new MarketplaceError('OFFER_NOT_FOUND', 'No such offer.', { statusCode: 404 })
+  return offerForJob(row)
 }
 
 export interface MarketplaceStore {
@@ -210,6 +276,11 @@ export interface MarketplaceStore {
     input: CreateOffer,
     idempotency: Idempotency,
   ): Promise<CommandResult<OfferView>>
+  createJob(
+    actor: ActorIdentity,
+    input: CreateJob,
+    idempotency: Idempotency,
+  ): Promise<CommandResult<JobView>>
   pauseOffer(
     actor: ActorIdentity,
     offerId: string,
@@ -483,6 +554,184 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     })
   }
 
+  async createJob(
+    actor: ActorIdentity,
+    input: CreateJob,
+    idempotency: Idempotency,
+  ): Promise<CommandResult<JobView>> {
+    return this.command({
+      actor,
+      operation: 'job.create',
+      idempotency,
+      statusCode: 201,
+      run: async (tx, marketplaceActor) => {
+        const offer = await readActiveOfferVersion(tx, input.offerId, input.offerVersion)
+        const preview = buildJobPreview(offer, input)
+        if (!preview.canCreateJob || !preview.settlement.quote)
+          throw new MarketplaceError(
+            'QUOTE_REQUIRED',
+            'Request a quote before creating this job.',
+            {
+              statusCode: 409,
+            },
+          )
+        if (preview.previewHash !== input.previewHash)
+          throw new MarketplaceError(
+            'PREVIEW_HASH_MISMATCH',
+            'Preview this exact scope before creating the job.',
+            { statusCode: 409, details: { currentPreviewHash: preview.previewHash } },
+          )
+
+        const rail = settlementRailFor({
+          chainId: preview.settlement.chainId,
+          token: preview.settlement.token,
+          decimals: preview.settlement.decimals,
+        })
+        if (marketplaceActor.id === offer.providerId)
+          throw new MarketplaceError('SELF_HIRE_FORBIDDEN', 'A provider cannot hire itself.', {
+            statusCode: 409,
+          })
+
+        const now = new Date()
+        const deliveryDeadline = new Date(now.getTime() + offer.deliverySlaSeconds * 1000)
+        const reviewDeadline = new Date(deliveryDeadline.getTime() + offer.reviewSlaSeconds * 1000)
+        const disputeDeadline = new Date(reviewDeadline.getTime() + 3 * 24 * 60 * 60 * 1000)
+        const hardExpiry = new Date(disputeDeadline.getTime() + 7 * 24 * 60 * 60 * 1000)
+        const jobId = randomUUID()
+        const agreementId = randomUUID()
+        const operationId = randomUUID()
+        const eventId = randomUUID()
+        const outboxId = randomUUID()
+        const logicalKey = `job:${jobId}:fund:v1`
+        const termsHash = hashCanonicalJson({
+          previewHash: preview.previewHash,
+          payerActorId: marketplaceActor.id,
+          requesterActorId: marketplaceActor.id,
+          providerActorId: offer.providerId,
+          offer: preview.offer,
+          scope: preview.scope,
+          quote: preview.settlement.quote,
+          rail,
+          deadlines: {
+            delivery: deliveryDeadline.toISOString(),
+            review: reviewDeadline.toISOString(),
+            dispute: disputeDeadline.toISOString(),
+            hardExpiry: hardExpiry.toISOString(),
+          },
+        } as unknown as JsonValue)
+
+        await tx`
+          INSERT INTO marketplace_jobs (
+            id, payer_actor_id, requester_actor_id, provider_actor_id,
+            procurement_mode, engagement_type, offer_id, offer_version,
+            title, brief, requirements, definition_of_done, evidence_requirements,
+            work_state, settlement_state, dispute_state, payout_state
+          ) VALUES (
+            ${jobId}, ${marketplaceActor.id}, ${marketplaceActor.id}, ${offer.providerId},
+            'DIRECT', 'ONE_OFF', ${offer.id}, ${offer.version},
+            ${offer.title}, ${input.brief}, ${tx.json(input.requirements)},
+            ${input.definitionOfDone}, ${tx.json(input.evidenceRequirements)},
+            'ASSIGNED', 'UNFUNDED', 'NONE', 'NONE'
+          )
+        `
+        await tx`
+          INSERT INTO job_agreements (
+            id, job_id, payer_actor_id, requester_actor_id, provider_actor_id,
+            payee_address, offer_id, offer_version, requirements, evidence_requirements,
+            gross_amount, provider_amount, platform_fee_amount, settlement_chain_id,
+            settlement_token, settlement_decimals, delivery_deadline, review_deadline,
+            dispute_deadline, hard_expiry, revision_allowance, settlement_rail,
+            settlement_rail_version, settlement_contract, external_job_id, policy,
+            terms_hash, snapshot
+          ) VALUES (
+            ${agreementId}, ${jobId}, ${marketplaceActor.id}, ${marketplaceActor.id},
+            ${offer.providerId}, ${offer.providerControllerAddress}, ${offer.id}, ${offer.version},
+            ${tx.json(input.requirements)}, ${tx.json(input.evidenceRequirements)},
+            ${preview.settlement.quote.totalAmount}, ${preview.settlement.quote.providerAmount},
+            ${preview.settlement.quote.platformFeeAmount}, ${rail.chainId}, ${rail.token},
+            ${rail.decimals}, ${deliveryDeadline}, ${reviewDeadline}, ${disputeDeadline},
+            ${hardExpiry}, ${offer.includedRevisions}, ${rail.rail}, ${rail.version},
+            ${rail.contract}, NULL, ${tx.json({ finality: rail.finality })}, ${termsHash},
+            ${tx.json({ preview, offer })}
+          )
+        `
+        await tx`
+          INSERT INTO marketplace_events (
+            id, job_id, aggregate_version, actor_id, event_type, payload, correlation_id
+          ) VALUES (
+            ${eventId}, ${jobId}, 1, ${marketplaceActor.id}, 'JOB_CREATED',
+            ${tx.json({
+              agreementId,
+              previewHash: preview.previewHash,
+              settlementState: 'UNFUNDED',
+            })},
+            ${idempotency.key}
+          )
+        `
+        await tx`
+          INSERT INTO settlement_operations (
+            id, job_id, agreement_id, operation_type, logical_key, status,
+            chain_id, contract_address, token_address, amount
+          ) VALUES (
+            ${operationId}, ${jobId}, ${agreementId}, 'FUND', ${logicalKey}, 'REQUESTED',
+            ${rail.chainId}, ${rail.contract}, ${rail.token}, ${preview.settlement.quote.totalAmount}
+          )
+        `
+        await tx`
+          INSERT INTO outbox_events (
+            id, aggregate_type, aggregate_id, aggregate_version, topic, dedupe_key, payload
+          ) VALUES (
+            ${outboxId}, 'marketplace_job', ${jobId}, 1,
+            'marketplace.settlement.fund.requested', ${logicalKey},
+            ${tx.json({ jobId, agreementId, operationId, rail, previewHash: preview.previewHash })}
+          )
+        `
+
+        return {
+          id: jobId,
+          agreementId,
+          previewHash: preview.previewHash,
+          title: offer.title,
+          workState: 'ASSIGNED',
+          settlementState: 'UNFUNDED',
+          disputeState: 'NONE',
+          payoutState: 'NONE',
+          payerActorId: marketplaceActor.id,
+          requesterActorId: marketplaceActor.id,
+          providerActorId: offer.providerId,
+          offer: { id: offer.id, version: offer.version, termsHash: offer.termsHash },
+          scope: preview.scope,
+          settlement: {
+            rail: rail.rail,
+            railVersion: rail.version,
+            chainId: rail.chainId,
+            contract: rail.contract,
+            token: rail.token,
+            decimals: rail.decimals,
+            providerAmount: preview.settlement.quote.providerAmount,
+            platformFeeAmount: preview.settlement.quote.platformFeeAmount,
+            totalAmount: preview.settlement.quote.totalAmount,
+          },
+          deadlines: {
+            delivery: deliveryDeadline.toISOString(),
+            review: reviewDeadline.toISOString(),
+            dispute: disputeDeadline.toISOString(),
+            hardExpiry: hardExpiry.toISOString(),
+          },
+          fundingOperation: {
+            id: operationId,
+            status: 'REQUESTED',
+            operationType: 'FUND',
+            logicalKey,
+            amount: preview.settlement.quote.totalAmount,
+          },
+          nextAction: 'FUND_ESCROW',
+          createdAt: now.toISOString(),
+        }
+      },
+    })
+  }
+
   async getOffer(id: string): Promise<OfferView | null> {
     const rows = await this.offerRows(false, id, 1, null)
     return rows[0] ? offerView(rows[0]) : null
@@ -511,6 +760,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
       return this.sql<OfferRow[]>`
         SELECT
           o.id, o.provider_actor_id, p.display_name AS provider_name,
+          a.controller_address AS provider_controller_address,
           o.status, o.visibility, v.version, v.title, v.summary,
           v.capability_tags, v.input_schema, v.output_schema, v.evidence_schema,
           v.pricing_model, v.settlement_chain_id, v.settlement_token,
@@ -531,6 +781,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
     return this.sql<OfferRow[]>`
       SELECT
         o.id, o.provider_actor_id, p.display_name AS provider_name,
+        a.controller_address AS provider_controller_address,
         o.status, o.visibility, v.version, v.title, v.summary,
         v.capability_tags, v.input_schema, v.output_schema, v.evidence_schema,
         v.pricing_model, v.settlement_chain_id, v.settlement_token,

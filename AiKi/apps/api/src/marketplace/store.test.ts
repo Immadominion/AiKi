@@ -1,12 +1,16 @@
+import postgres from 'postgres'
 import { afterAll, describe, expect, it } from 'vitest'
+import { BSC_MAINNET } from '../config/chains.js'
 import { hashCanonicalJson } from './canonical-json.js'
 import type { ActorIdentity, CreateOffer, JsonValue, PutProvider } from './model.js'
+import { buildJobPreview } from './preview.js'
 import { PostgresMarketplaceStore } from './store.js'
 
 const databaseUrl = process.env.DATABASE_URL
 
 describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
   const store = new PostgresMarketplaceStore(databaseUrl as string)
+  const sql = postgres(databaseUrl as string, { max: 1 })
   const actor: ActorIdentity = { chainId: 56, address: `0x${'61'.repeat(20)}` }
   const stranger: ActorIdentity = { chainId: 56, address: `0x${'72'.repeat(20)}` }
   const provider: PutProvider = {
@@ -26,7 +30,7 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
     evidenceSchema: { type: 'object' },
     pricingModel: 'FIXED',
     settlementChainId: 56,
-    settlementToken: `0x${'83'.repeat(20)}`,
+    settlementToken: BSC_MAINNET.contracts.settlementToken.toLowerCase() as `0x${string}`,
     settlementDecimals: 18,
     amount: '1000000000000000001',
     platformFeeBps: 250,
@@ -41,7 +45,9 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
 
   const hash = (value: unknown) => hashCanonicalJson(value as JsonValue)
 
-  afterAll(async () => store.close())
+  afterAll(async () => {
+    await Promise.all([store.close(), sql.end()])
+  })
 
   it('atomically publishes a provider and immutable offer version', async () => {
     const profile = await store.putProvider(actor, provider, {
@@ -104,5 +110,59 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
         requestHash: hash({ offerId: published.body.id }),
       }),
     ).rejects.toMatchObject({ code: 'OFFER_NOT_FOUND' })
+  })
+
+  it('creates an unfunded agreement and funding operation transactionally', async () => {
+    await store.putProvider(actor, provider, {
+      key: 'postgres-provider-job',
+      requestHash: hash(provider),
+    })
+    const published = await store.createOffer(
+      actor,
+      { ...offer, title: 'Fundable agreement' },
+      {
+        key: 'postgres-offer-job',
+        requestHash: hash({ ...offer, title: 'Fundable agreement' }),
+      },
+    )
+    const currentOffer = await store.getOffer(published.body.id)
+    if (!currentOffer) throw new Error('Offer disappeared before job creation.')
+    const input = {
+      offerId: currentOffer.id,
+      offerVersion: currentOffer.version,
+      brief: 'Check the ownership and upgrade controls.',
+      requirements: { contract: `0x${'12'.repeat(20)}` },
+      definitionOfDone: 'Return every finding with a source reference.',
+      evidenceRequirements: { sourceLines: true },
+    }
+    const preview = buildJobPreview(currentOffer, input)
+    const created = await store.createJob(
+      stranger,
+      { ...input, previewHash: preview.previewHash },
+      {
+        key: 'postgres-job-create',
+        requestHash: hash({ ...input, previewHash: preview.previewHash }),
+      },
+    )
+    expect(created.statusCode).toBe(201)
+    expect(created.body.settlementState).toBe('UNFUNDED')
+    expect(created.body.fundingOperation.status).toBe('REQUESTED')
+    expect(created.body.settlement.totalAmount).toBe(preview.settlement.quote?.totalAmount)
+
+    const rows = await sql<
+      {
+        agreements: string
+        operations: string
+        outbox: string
+      }[]
+    >`
+      SELECT
+        (SELECT count(*) FROM job_agreements WHERE job_id = ${created.body.id}) AS agreements,
+        (SELECT count(*) FROM settlement_operations WHERE job_id = ${created.body.id}
+          AND status = 'REQUESTED' AND operation_type = 'FUND') AS operations,
+        (SELECT count(*) FROM outbox_events WHERE aggregate_id = ${created.body.id}
+          AND topic = 'marketplace.settlement.fund.requested') AS outbox
+    `
+    expect(rows[0]).toEqual({ agreements: '1', operations: '1', outbox: '1' })
   })
 })

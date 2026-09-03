@@ -9,6 +9,7 @@ import { buildJobPreview, normalizePreviewJob } from './preview.js'
 import type { MarketplaceStore } from './store.js'
 import {
   normalizeAddress,
+  normalizeCreateJob,
   normalizeOffer,
   normalizeProvider,
   requireIdempotencyKey,
@@ -133,5 +134,20 @@ export function registerMarketplaceRoutes(app: FastifyInstance, store: Marketpla
         error: { code: 'OFFER_NOT_FOUND', message: 'No such offer.', retryable: false },
       })
     return buildJobPreview(offer, normalized)
+  })
+
+  app.post<{ Body: unknown }>('/v2/jobs', async (request, reply) => {
+    const actor = identity(request, reply)
+    if (!actor) return reply
+    const normalized = normalizeCreateJob(request.body)
+    routeId(normalized.offerId, 'offer')
+    return sendCommand(
+      reply,
+      await store.createJob(
+        actor,
+        normalized,
+        idempotency(request, normalized as unknown as JsonValue),
+      ),
+    )
   })
 }

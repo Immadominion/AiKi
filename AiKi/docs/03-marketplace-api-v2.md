@@ -15,6 +15,9 @@ jobs and tasks continue to work while Fast and Manual move onto the same kernel.
 - Public collections use opaque cursor pagination with a limit from 1 to 100.
 - Offer versions are immutable. A hire must name the version it reviewed.
 - Preview is side-effect free. It never reserves funds or creates work.
+- Creating a job from preview creates an unfunded agreement and a funding
+  operation. Work must not begin until finalized settlement evidence marks it
+  funded.
 
 ## Providers
 
@@ -89,7 +92,31 @@ provider payment, rounded platform fee, and total into `previewHash`. A stale
 version returns `409 OFFER_VERSION_CHANGED`. Quote-priced work returns
 `canCreateJob: false` and `nextAction: REQUEST_QUOTE`.
 
-Creation and funding are deliberately not exposed in this slice. They ship only
-with the versioned settlement adapter, finalized chain projection, reconciliation,
-and hard-expiry refund path. The API must not accept work or imply escrow before
-those guarantees exist.
+## Job creation
+
+```http
+POST /v2/jobs
+Idempotency-Key: caller-owned-key
+```
+
+The body is the reviewed preview body plus `previewHash`. AiKi rebuilds the
+preview from the active immutable offer version and rejects the request if the
+hash does not match.
+
+The response creates:
+
+- an `ASSIGNED` marketplace job
+- an immutable agreement snapshot
+- one append-only `JOB_CREATED` marketplace event
+- one outbox event for settlement funding
+- one `FUND` settlement operation with status `REQUESTED`
+
+The job response is deliberately `settlementState: UNFUNDED` and
+`nextAction: FUND_ESCROW`. It does not claim escrow, payment, delivery start, or
+provider earnings. Funding is accepted only for the enabled BNB APEX settlement
+rail and configured settlement asset.
+
+Finalized funding, release, refund, delivery, disputes, and receipts are still
+future slices. They require chain event projection, reconciliation, and the
+hard-expiry refund path before the API can safely move jobs to funded or
+terminal states.
