@@ -27,7 +27,8 @@
     "index": "tsx src/indexer/cli.ts",
     "search:check": "tsx src/http/search-check.ts",
     "credits:check": "tsx src/credits/reconcile-cli.ts",
-    "marketplace:settlement:prepare": "tsx src/marketplace/settlement-prepare-cli.ts"
+    "marketplace:settlement:prepare": "tsx src/marketplace/settlement-prepare-cli.ts",
+    "marketplace:settlement:submit": "tsx src/marketplace/settlement-submit-cli.ts"
   },
   "dependencies": {
     "@aiki/contracts": "workspace:*",

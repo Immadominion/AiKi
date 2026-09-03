@@ -138,6 +138,25 @@ The preparation worker consumes pending
 - marks the outbox row `DELIVERED`
 
 No private key is used in this step and no transaction is submitted. The next
-slice must submit prepared transactions, store transaction hashes, ingest
-finalized APEX logs, fill `external_job_id`, then create the actual `FUND`
+slice submits prepared transactions and stores transaction hashes. Finalized log
+ingestion still fills `external_job_id` before AiKi creates the actual `FUND`
 operation.
+
+## Settlement submission
+
+```sh
+MARKETPLACE_SETTLEMENT_RELAYER_KEY=0x... \
+  pnpm --filter @aiki/api marketplace:settlement:submit
+```
+
+The submission worker claims one `PREPARED` `CREATE_ESCROW` operation by moving
+it to `SUBMITTING`, sends the exact prepared calldata, then records:
+
+- `status: SUBMITTED`
+- transaction hash
+- transaction nonce when the RPC can return it
+
+If the RPC refuses the transaction before a hash exists, the operation returns to
+`PREPARED` with `failure_code: SUBMIT_REFUSED` so it can be inspected and retried.
+The worker does not mark the marketplace job funded or create provider earnings.
+Only finalized APEX chain events may do that.

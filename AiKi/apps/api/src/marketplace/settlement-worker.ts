@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
 import { type PreparedApexTransaction, prepareApexCreateEscrow } from './apex.js'
 import { settlementRailFor } from './settlement-rails.js'
+import type { SettlementSubmitter } from './settlement-submitter.js'
 
 type QueueRow = {
   outbox_id: string
@@ -19,6 +20,13 @@ type QueueRow = {
   prepared_transaction: PreparedApexTransaction | null
 }
 
+type PreparedRow = {
+  operation_id: string
+  job_id: string
+  agreement_id: string
+  prepared_transaction: PreparedApexTransaction
+}
+
 export type PreparedSettlementOperation = Readonly<{
   outboxId: string
   operationId: string
@@ -27,6 +35,16 @@ export type PreparedSettlementOperation = Readonly<{
   transaction: PreparedApexTransaction
   replayed: boolean
 }>
+
+export type SubmittedSettlementOperation = Readonly<{
+  operationId: string
+  jobId: string
+  agreementId: string
+  transactionHash: `0x${string}`
+  transactionNonce: string | null
+}>
+
+const TX_HASH = /^0x[0-9a-fA-F]{64}$/
 
 const isoError = (error: unknown): string =>
   error instanceof Error ? (error.message.split('\n')[0] ?? error.message) : String(error)
@@ -157,6 +175,81 @@ export class PostgresMarketplaceSettlementWorker {
         `
         throw error
       }
+    })
+  }
+
+  async submitNext(submitter: SettlementSubmitter): Promise<SubmittedSettlementOperation | null> {
+    const row = await this.claimPreparedSubmission()
+    if (!row) return null
+
+    let submission: Awaited<ReturnType<SettlementSubmitter['submit']>>
+    try {
+      submission = await submitter.submit(row.prepared_transaction)
+    } catch (error) {
+      await this.sql`
+        UPDATE settlement_operations
+        SET status = 'PREPARED',
+            failure_code = 'SUBMIT_REFUSED',
+            failure_detail = ${isoError(error)},
+            updated_at = now()
+        WHERE id = ${row.operation_id}
+          AND status = 'SUBMITTING'
+          AND transaction_hash IS NULL
+      `
+      throw error
+    }
+
+    const hash = submission.transactionHash.toLowerCase() as `0x${string}`
+    if (!TX_HASH.test(hash)) throw new Error(`Submitter returned an invalid transaction hash.`)
+    const updated = await this.sql<{ id: string }[]>`
+      UPDATE settlement_operations
+      SET status = 'SUBMITTED',
+          transaction_hash = ${hash},
+          transaction_nonce = ${submission.transactionNonce},
+          failure_code = NULL,
+          failure_detail = NULL,
+          updated_at = now()
+      WHERE id = ${row.operation_id}
+        AND status = 'SUBMITTING'
+        AND transaction_hash IS NULL
+      RETURNING id
+    `
+    if (!updated.length)
+      throw new Error(`Settlement operation ${row.operation_id} changed during submission.`)
+    return {
+      operationId: row.operation_id,
+      jobId: row.job_id,
+      agreementId: row.agreement_id,
+      transactionHash: hash,
+      transactionNonce: submission.transactionNonce,
+    }
+  }
+
+  private async claimPreparedSubmission(): Promise<PreparedRow | null> {
+    return this.sql.begin(async (tx) => {
+      const rows = await tx<PreparedRow[]>`
+        SELECT
+          id AS operation_id,
+          job_id,
+          agreement_id,
+          prepared_transaction
+        FROM settlement_operations
+        WHERE operation_type = 'CREATE_ESCROW'
+          AND status = 'PREPARED'
+          AND transaction_hash IS NULL
+        ORDER BY prepared_at ASC, created_at ASC, id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      `
+      const row = rows[0]
+      if (!row) return null
+      await tx`
+        UPDATE settlement_operations
+        SET status = 'SUBMITTING',
+            updated_at = now()
+        WHERE id = ${row.operation_id}
+      `
+      return row
     })
   }
 }

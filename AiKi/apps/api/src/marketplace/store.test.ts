@@ -192,5 +192,34 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
       prepared: true,
       outbox_status: 'DELIVERED',
     })
+
+    const submitted = await worker.submitNext({
+      submit: async (transaction) => {
+        expect(transaction).toEqual(prepared?.transaction)
+        return {
+          transactionHash: `0x${'55'.repeat(32)}`,
+          transactionNonce: '7',
+        }
+      },
+    })
+    expect(submitted?.operationId).toBe(created.body.fundingOperation.id)
+    expect(submitted?.transactionHash).toBe(`0x${'55'.repeat(32)}`)
+
+    const submittedRows = await sql<
+      {
+        status: string
+        transaction_hash: string
+        transaction_nonce: string
+      }[]
+    >`
+      SELECT status, transaction_hash, transaction_nonce
+      FROM settlement_operations
+      WHERE id = ${created.body.fundingOperation.id}
+    `
+    expect(submittedRows[0]).toEqual({
+      status: 'SUBMITTED',
+      transaction_hash: `0x${'55'.repeat(32)}`,
+      transaction_nonce: '7',
+    })
   })
 })
