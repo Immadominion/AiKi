@@ -7,6 +7,7 @@ import type {
   CreateJob,
   CreateOffer,
   Idempotency,
+  JobStartView,
   JobView,
   JsonValue,
   OfferView,
@@ -320,6 +321,49 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
         }
         this.jobs.set(id, job)
         return job
+      },
+    })
+  }
+
+  async startJob(
+    actor: ActorIdentity,
+    jobId: string,
+    idempotency: Idempotency,
+  ): Promise<CommandResult<JobStartView>> {
+    return this.run({
+      actor,
+      operation: 'job.start',
+      idempotency,
+      statusCode: 200,
+      execute: (providerId) => {
+        const job = this.jobs.get(jobId)
+        if (!job || job.providerActorId !== providerId)
+          throw new MarketplaceError('JOB_NOT_FOUND', 'No such job.', { statusCode: 404 })
+        if (job.settlementState !== 'FUNDED')
+          throw new MarketplaceError(
+            'JOB_NOT_FUNDED',
+            'This job cannot start until funding is finalized.',
+            { statusCode: 409 },
+          )
+        if (job.workState !== 'ASSIGNED' && job.workState !== 'IN_PROGRESS')
+          throw new MarketplaceError('JOB_NOT_STARTABLE', 'This job cannot be started.', {
+            statusCode: 409,
+          })
+        const now = new Date().toISOString()
+        const started: JobView = {
+          ...job,
+          workState: 'IN_PROGRESS',
+          nextAction: 'SUBMIT_WORK',
+        }
+        this.jobs.set(jobId, started)
+        return {
+          id: jobId,
+          workState: 'IN_PROGRESS',
+          settlementState: 'FUNDED',
+          providerActorId: providerId,
+          nextAction: 'SUBMIT_WORK',
+          startedAt: now,
+        }
       },
     })
   }

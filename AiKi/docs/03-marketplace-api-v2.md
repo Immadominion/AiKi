@@ -204,3 +204,19 @@ For `FUND`, finalization:
 If a finalized fund receipt reverted, AiKi marks the fund operation `REVERTED`
 and moves a `FUNDING_SUBMITTED` job back to `UNFUNDED`. Work still must not begin
 until `JobFunded` has finalized.
+
+## Starting funded work
+
+```sh
+POST /v2/jobs/:id/start
+Idempotency-Key: <caller-owned-key>
+```
+
+Only the assigned provider can start a job. AiKi refuses the command unless the
+job is still assigned and `settlementState: FUNDED`, which is reached only after
+a finalized APEX `JobFunded` event has been verified.
+
+On success, the job moves to `workState: IN_PROGRESS` and AiKi records a
+`JOB_STARTED` marketplace event. Replaying the same idempotency key returns the
+same response. Calling as the payer or another actor returns `JOB_NOT_FOUND` so
+provider assignment is not leaked.

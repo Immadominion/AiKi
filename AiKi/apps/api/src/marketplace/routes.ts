@@ -150,4 +150,14 @@ export function registerMarketplaceRoutes(app: FastifyInstance, store: Marketpla
       ),
     )
   })
+
+  app.post<{ Params: { id: string } }>('/v2/jobs/:id/start', async (request, reply) => {
+    const actor = identity(request, reply)
+    if (!actor) return reply
+    const jobId = routeId(request.params.id, 'job')
+    return sendCommand(
+      reply,
+      await store.startJob(actor, jobId, idempotency(request, { jobId } as unknown as JsonValue)),
+    )
+  })
 }

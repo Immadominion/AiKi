@@ -8,6 +8,7 @@ import type {
   CreateJob,
   CreateOffer,
   Idempotency,
+  JobStartView,
   JobView,
   JsonObject,
   JsonValue,
@@ -281,6 +282,11 @@ export interface MarketplaceStore {
     input: CreateJob,
     idempotency: Idempotency,
   ): Promise<CommandResult<JobView>>
+  startJob(
+    actor: ActorIdentity,
+    jobId: string,
+    idempotency: Idempotency,
+  ): Promise<CommandResult<JobStartView>>
   pauseOffer(
     actor: ActorIdentity,
     offerId: string,
@@ -727,6 +733,94 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           },
           nextAction: 'CREATE_ESCROW',
           createdAt: now.toISOString(),
+        }
+      },
+    })
+  }
+
+  async startJob(
+    actor: ActorIdentity,
+    jobId: string,
+    idempotency: Idempotency,
+  ): Promise<CommandResult<JobStartView>> {
+    return this.command({
+      actor,
+      operation: 'job.start',
+      idempotency,
+      statusCode: 200,
+      run: async (tx, marketplaceActor) => {
+        const rows = await tx<
+          {
+            id: string
+            provider_actor_id: string
+            work_state: string
+            settlement_state: string
+            aggregate_version: string | number
+            updated_at: Date | string
+          }[]
+        >`
+          SELECT id, provider_actor_id, work_state, settlement_state, aggregate_version, updated_at
+          FROM marketplace_jobs
+          WHERE id = ${jobId}
+          FOR UPDATE
+        `
+        const row = rows[0]
+        if (!row || row.provider_actor_id !== marketplaceActor.id)
+          throw new MarketplaceError('JOB_NOT_FOUND', 'No such job.', { statusCode: 404 })
+        if (row.settlement_state !== 'FUNDED')
+          throw new MarketplaceError(
+            'JOB_NOT_FUNDED',
+            'This job cannot start until funding is finalized.',
+            { statusCode: 409 },
+          )
+        if (row.work_state === 'IN_PROGRESS') {
+          return {
+            id: row.id,
+            workState: 'IN_PROGRESS',
+            settlementState: 'FUNDED',
+            providerActorId: row.provider_actor_id,
+            nextAction: 'SUBMIT_WORK',
+            startedAt: iso(row.updated_at),
+          }
+        }
+        if (row.work_state !== 'ASSIGNED')
+          throw new MarketplaceError('JOB_NOT_STARTABLE', 'This job cannot be started.', {
+            statusCode: 409,
+          })
+
+        const updated = await tx<
+          { aggregate_version: string | number; updated_at: Date | string }[]
+        >`
+          UPDATE marketplace_jobs
+          SET work_state = 'IN_PROGRESS',
+              aggregate_version = aggregate_version + 1,
+              updated_at = now()
+          WHERE id = ${jobId}
+            AND work_state = 'ASSIGNED'
+            AND settlement_state = 'FUNDED'
+          RETURNING aggregate_version, updated_at
+        `
+        const changed = updated[0]
+        if (!changed) throw new Error(`Job ${jobId} changed while starting work.`)
+
+        await tx`
+          INSERT INTO marketplace_events (
+            id, job_id, aggregate_version, actor_id, event_type, payload, correlation_id
+          ) VALUES (
+            ${randomUUID()}, ${jobId}, ${changed.aggregate_version}, ${marketplaceActor.id},
+            'JOB_STARTED',
+            ${tx.json({ settlementState: 'FUNDED' })},
+            ${idempotency.key}
+          )
+        `
+
+        return {
+          id: row.id,
+          workState: 'IN_PROGRESS',
+          settlementState: 'FUNDED',
+          providerActorId: row.provider_actor_id,
+          nextAction: 'SUBMIT_WORK',
+          startedAt: iso(changed.updated_at),
         }
       },
     })

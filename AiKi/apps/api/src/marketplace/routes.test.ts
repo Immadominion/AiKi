@@ -243,6 +243,22 @@ describe('canonical marketplace routes', () => {
     expect(replay.statusCode).toBe(201)
     expect(replay.headers['idempotency-replayed']).toBe('true')
     expect(replay.json()).toEqual(created.json())
+
+    const wrongActorStart = await app.inject({
+      method: 'POST',
+      url: `/v2/jobs/${created.json().id}/start`,
+      headers: { ...cookie(OTHER), 'idempotency-key': 'wrong-provider-start' },
+    })
+    expect(wrongActorStart.statusCode).toBe(404)
+    expect(wrongActorStart.json().error.code).toBe('JOB_NOT_FOUND')
+
+    const unfundedStart = await app.inject({
+      method: 'POST',
+      url: `/v2/jobs/${created.json().id}/start`,
+      headers: { ...cookie(), 'idempotency-key': 'unfunded-start' },
+    })
+    expect(unfundedStart.statusCode).toBe(409)
+    expect(unfundedStart.json().error.code).toBe('JOB_NOT_FUNDED')
   })
 
   it('does not create a job from stale, self-hired, or unsupported funding terms', async () => {

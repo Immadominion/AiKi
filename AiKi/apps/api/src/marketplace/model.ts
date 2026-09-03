@@ -124,8 +124,8 @@ export type JobView = Readonly<{
   agreementId: string
   previewHash: string
   title: string
-  workState: 'ASSIGNED'
-  settlementState: 'UNFUNDED'
+  workState: 'ASSIGNED' | 'IN_PROGRESS'
+  settlementState: 'UNFUNDED' | 'FUNDING_SUBMITTED' | 'FUNDED'
   disputeState: 'NONE'
   payoutState: 'NONE'
   payerActorId: string
@@ -166,6 +166,15 @@ export type JobView = Readonly<{
     logicalKey: string
     amount: string
   }
-  nextAction: 'CREATE_ESCROW'
+  nextAction: 'CREATE_ESCROW' | 'WAIT_FOR_FUNDING' | 'START_WORK' | 'SUBMIT_WORK'
   createdAt: string
+}>
+
+export type JobStartView = Readonly<{
+  id: string
+  workState: 'IN_PROGRESS'
+  settlementState: 'FUNDED'
+  providerActorId: string
+  nextAction: 'SUBMIT_WORK'
+  startedAt: string
 }>

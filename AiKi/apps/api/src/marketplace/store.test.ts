@@ -117,10 +117,11 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
   })
 
   it('creates an unfunded agreement and funding operation transactionally', async () => {
-    await store.putProvider(actor, provider, {
+    const actorProfile = await store.putProvider(actor, provider, {
       key: 'postgres-provider-job',
       requestHash: hash(provider),
     })
+    const actorProfileId = actorProfile.body.id
     const published = await store.createOffer(
       actor,
       { ...offer, title: 'Fundable agreement' },
@@ -426,5 +427,52 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
       chain_events: '1',
       marketplace_events: '1',
     })
+
+    const wrongStarter = store.startJob(stranger, created.body.id, {
+      key: 'postgres-job-start-wrong-actor',
+      requestHash: hash({ jobId: created.body.id }),
+    })
+    await expect(wrongStarter).rejects.toMatchObject({ code: 'JOB_NOT_FOUND' })
+
+    const started = await store.startJob(actor, created.body.id, {
+      key: 'postgres-job-start',
+      requestHash: hash({ jobId: created.body.id }),
+    })
+    expect(started.statusCode).toBe(200)
+    expect(started.body).toMatchObject({
+      id: created.body.id,
+      workState: 'IN_PROGRESS',
+      settlementState: 'FUNDED',
+      providerActorId: actorProfileId,
+      nextAction: 'SUBMIT_WORK',
+    })
+
+    const startRows = await sql<
+      {
+        work_state: string
+        settlement_state: string
+        events: string
+      }[]
+    >`
+      SELECT
+        (SELECT work_state FROM marketplace_jobs WHERE id = ${created.body.id}) AS work_state,
+        (SELECT settlement_state FROM marketplace_jobs WHERE id = ${created.body.id})
+          AS settlement_state,
+        (SELECT count(*) FROM marketplace_events
+          WHERE job_id = ${created.body.id}
+            AND event_type = 'JOB_STARTED') AS events
+    `
+    expect(startRows[0]).toEqual({
+      work_state: 'IN_PROGRESS',
+      settlement_state: 'FUNDED',
+      events: '1',
+    })
+
+    const replayStart = await store.startJob(actor, created.body.id, {
+      key: 'postgres-job-start',
+      requestHash: hash({ jobId: created.body.id }),
+    })
+    expect(replayStart.replayed).toBe(true)
+    expect(replayStart.body).toEqual(started.body)
   })
 })
