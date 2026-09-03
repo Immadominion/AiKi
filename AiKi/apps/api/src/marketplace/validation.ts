@@ -8,6 +8,8 @@ import type {
   PricingModel,
   ProviderAvailability,
   PutProvider,
+  ReviewDecision,
+  ReviewJob,
   SubmitJob,
 } from './model.js'
 
@@ -17,6 +19,7 @@ const IDEMPOTENCY_KEY = /^[\x21-\x7e]{1,200}$/
 const AVAILABILITY = new Set<ProviderAvailability>(['AVAILABLE', 'BUSY', 'OFFLINE', 'PAUSED'])
 const PRICING = new Set<PricingModel>(['FIXED', 'HOURLY', 'MILESTONE', 'QUOTE'])
 const DISPATCH = new Set<DispatchMethod>(['HTTP', 'MCP', 'MANUAL', 'NONE'])
+const REVIEW_DECISIONS = new Set<ReviewDecision>(['ACCEPT', 'REQUEST_CHANGES'])
 const PROVIDER_FIELDS = new Set([
   'displayName',
   'summary',
@@ -55,6 +58,7 @@ const JOB_FIELDS = new Set([
   'evidenceRequirements',
 ])
 const SUBMISSION_FIELDS = new Set(['output', 'evidence', 'artifactUri', 'note'])
+const REVIEW_FIELDS = new Set(['decision', 'note', 'requiredChanges'])
 const HASH = /^[0-9a-f]{64}$/
 
 const invalid = (field: string, message: string): never => {
@@ -256,5 +260,27 @@ export function normalizeSubmitJob(value: unknown): SubmitJob {
     evidence: object(input.evidence ?? {}, 'evidence'),
     artifactUri,
     note: optionalText(input.note, 'note', 5000),
+  }
+}
+
+export function normalizeReviewJob(value: unknown): ReviewJob {
+  const input = object(value, 'body') as Record<string, unknown>
+  onlyFields(input, REVIEW_FIELDS)
+  if (!REVIEW_DECISIONS.has(input.decision as ReviewDecision))
+    return invalid('decision', 'must be ACCEPT or REQUEST_CHANGES')
+  const decision = input.decision as ReviewDecision
+  const requiredChanges =
+    input.requiredChanges === undefined || input.requiredChanges === null
+      ? null
+      : object(input.requiredChanges, 'requiredChanges')
+  if (decision === 'REQUEST_CHANGES' && !requiredChanges)
+    return invalid('requiredChanges', 'is required when requesting changes')
+  if (decision === 'ACCEPT' && requiredChanges)
+    return invalid('requiredChanges', 'must be omitted when accepting work')
+
+  return {
+    decision,
+    note: optionalText(input.note, 'note', 5000),
+    requiredChanges,
   }
 }

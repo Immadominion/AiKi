@@ -242,3 +242,35 @@ AiKi stores each submission in the append-only `job_submissions` table with a
 canonical `submissionHash`, moves the job to `workState: SUBMITTED`, and records
 `JOB_SUBMITTED`. The first supported submission is revision `1`; revision
 requests will add later entries instead of mutating this one.
+
+## Reviewing work
+
+```sh
+POST /v2/jobs/:id/reviews
+Idempotency-Key: <caller-owned-key>
+Content-Type: application/json
+
+{
+  "decision": "ACCEPT",
+  "note": "Evidence matches the scope."
+}
+```
+
+or:
+
+```json
+{
+  "decision": "REQUEST_CHANGES",
+  "requiredChanges": { "missing": ["owner source link"] },
+  "note": "Please attach the cited source."
+}
+```
+
+Only the requester can review the latest submitted revision. `ACCEPT` moves the
+job to `workState: ACCEPTED`, puts payout in `HOLD`, stores an append-only
+`job_reviews` row, and records `JOB_ACCEPTED`. The actual payment release still
+requires the settlement release slice.
+
+`REQUEST_CHANGES` stores the review, moves the job to `CHANGES_REQUESTED`, and
+records `JOB_CHANGES_REQUESTED`. A change request must include
+`requiredChanges`; an acceptance must not.

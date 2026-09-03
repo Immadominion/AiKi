@@ -539,5 +539,98 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
     })
     expect(replaySubmission.replayed).toBe(true)
     expect(replaySubmission.body).toEqual(submittedWork.body)
+
+    const wrongReviewer = store.reviewJob(
+      actor,
+      created.body.id,
+      {
+        decision: 'ACCEPT',
+        note: 'Looks good.',
+        requiredChanges: null,
+      },
+      {
+        key: 'postgres-job-review-wrong-actor',
+        requestHash: hash({ jobId: created.body.id, decision: 'ACCEPT' }),
+      },
+    )
+    await expect(wrongReviewer).rejects.toMatchObject({ code: 'JOB_NOT_FOUND' })
+
+    const accepted = await store.reviewJob(
+      stranger,
+      created.body.id,
+      {
+        decision: 'ACCEPT',
+        note: 'Accepted. Evidence matches the scope.',
+        requiredChanges: null,
+      },
+      {
+        key: 'postgres-job-review-accept',
+        requestHash: hash({
+          jobId: created.body.id,
+          decision: 'ACCEPT',
+          note: 'Accepted. Evidence matches the scope.',
+          requiredChanges: null,
+        }),
+      },
+    )
+    expect(accepted.statusCode).toBe(200)
+    expect(accepted.body).toMatchObject({
+      jobId: created.body.id,
+      submissionId: submittedWork.body.id,
+      revisionNumber: 1,
+      reviewerActorId: created.body.requesterActorId,
+      decision: 'ACCEPT',
+      workState: 'ACCEPTED',
+      settlementState: 'FUNDED',
+      payoutState: 'HOLD',
+      nextAction: 'RELEASE_PAYMENT',
+    })
+    expect(accepted.body.reviewHash).toMatch(/^[0-9a-f]{64}$/)
+
+    const reviewRows = await sql<
+      {
+        work_state: string
+        payout_state: string
+        reviews: string
+        events: string
+      }[]
+    >`
+      SELECT
+        (SELECT work_state FROM marketplace_jobs WHERE id = ${created.body.id}) AS work_state,
+        (SELECT payout_state FROM marketplace_jobs WHERE id = ${created.body.id}) AS payout_state,
+        (SELECT count(*) FROM job_reviews
+          WHERE job_id = ${created.body.id}
+            AND review_hash = ${accepted.body.reviewHash}) AS reviews,
+        (SELECT count(*) FROM marketplace_events
+          WHERE job_id = ${created.body.id}
+            AND event_type = 'JOB_ACCEPTED') AS events
+    `
+    expect(reviewRows[0]).toEqual({
+      work_state: 'ACCEPTED',
+      payout_state: 'HOLD',
+      reviews: '1',
+      events: '1',
+    })
+
+    const replayAccepted = await store.reviewJob(
+      stranger,
+      created.body.id,
+      {
+        decision: 'ACCEPT',
+        note: 'Accepted. Evidence matches the scope.',
+        requiredChanges: null,
+      },
+      {
+        key: 'postgres-job-review-accept',
+        requestHash: hash({
+          jobId: created.body.id,
+          decision: 'ACCEPT',
+          note: 'Accepted. Evidence matches the scope.',
+          requiredChanges: null,
+        }),
+      },
+    )
+    expect(replayAccepted.replayed).toBe(true)
+    expect(replayAccepted.body).toEqual(accepted.body)
   })
 })

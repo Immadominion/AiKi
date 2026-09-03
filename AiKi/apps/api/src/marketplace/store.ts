@@ -8,6 +8,7 @@ import type {
   CreateJob,
   CreateOffer,
   Idempotency,
+  JobReviewView,
   JobStartView,
   JobSubmissionView,
   JobView,
@@ -18,6 +19,7 @@ import type {
   ProviderAvailability,
   ProviderView,
   PutProvider,
+  ReviewJob,
   SubmitJob,
 } from './model.js'
 import { encodeCursor, type PageCursor } from './pagination.js'
@@ -295,6 +297,12 @@ export interface MarketplaceStore {
     input: SubmitJob,
     idempotency: Idempotency,
   ): Promise<CommandResult<JobSubmissionView>>
+  reviewJob(
+    actor: ActorIdentity,
+    jobId: string,
+    input: ReviewJob,
+    idempotency: Idempotency,
+  ): Promise<CommandResult<JobReviewView>>
   pauseOffer(
     actor: ActorIdentity,
     offerId: string,
@@ -947,6 +955,137 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           submissionHash,
           nextAction: 'WAIT_FOR_REVIEW',
           submittedAt: iso(submission.created_at),
+        }
+      },
+    })
+  }
+
+  async reviewJob(
+    actor: ActorIdentity,
+    jobId: string,
+    input: ReviewJob,
+    idempotency: Idempotency,
+  ): Promise<CommandResult<JobReviewView>> {
+    return this.command({
+      actor,
+      operation: 'job.review',
+      idempotency,
+      statusCode: 200,
+      run: async (tx, marketplaceActor) => {
+        const rows = await tx<
+          {
+            job_id: string
+            requester_actor_id: string
+            work_state: string
+            settlement_state: string
+            submission_id: string
+            revision_number: number
+          }[]
+        >`
+          SELECT
+            mj.id AS job_id,
+            mj.requester_actor_id,
+            mj.work_state,
+            mj.settlement_state,
+            js.id AS submission_id,
+            js.revision_number
+          FROM marketplace_jobs mj
+          JOIN job_submissions js ON js.job_id = mj.id
+          WHERE mj.id = ${jobId}
+          ORDER BY js.revision_number DESC
+          LIMIT 1
+          FOR UPDATE OF mj
+        `
+        const row = rows[0]
+        if (!row || row.requester_actor_id !== marketplaceActor.id)
+          throw new MarketplaceError('JOB_NOT_FOUND', 'No such job.', { statusCode: 404 })
+        if (row.settlement_state !== 'FUNDED')
+          throw new MarketplaceError(
+            'JOB_NOT_FUNDED',
+            'This job cannot be reviewed until funding is finalized.',
+            { statusCode: 409 },
+          )
+        if (row.work_state !== 'SUBMITTED')
+          throw new MarketplaceError('JOB_NOT_REVIEWABLE', 'This job is not ready for review.', {
+            statusCode: 409,
+          })
+
+        const reviewId = randomUUID()
+        const reviewHash = hashCanonicalJson({
+          jobId,
+          submissionId: row.submission_id,
+          reviewerActorId: marketplaceActor.id,
+          decision: input.decision,
+          note: input.note,
+          requiredChanges: input.requiredChanges,
+        } as unknown as JsonValue)
+        const nextWorkState = input.decision === 'ACCEPT' ? 'ACCEPTED' : 'CHANGES_REQUESTED'
+        const nextPayoutState = input.decision === 'ACCEPT' ? 'HOLD' : 'NONE'
+        const nextAction = input.decision === 'ACCEPT' ? 'RELEASE_PAYMENT' : 'REVISE_WORK'
+
+        const versionRows = await tx<
+          { aggregate_version: string | number; updated_at: Date | string }[]
+        >`
+          UPDATE marketplace_jobs
+          SET work_state = ${nextWorkState},
+              payout_state = ${nextPayoutState},
+              aggregate_version = aggregate_version + 1,
+              updated_at = now()
+          WHERE id = ${jobId}
+            AND requester_actor_id = ${marketplaceActor.id}
+            AND work_state = 'SUBMITTED'
+            AND settlement_state = 'FUNDED'
+          RETURNING aggregate_version, updated_at
+        `
+        const changed = versionRows[0]
+        if (!changed) throw new Error(`Job ${jobId} changed while reviewing work.`)
+
+        const reviewRows = await tx<{ created_at: Date | string }[]>`
+          INSERT INTO job_reviews (
+            id, job_id, submission_id, reviewer_actor_id, decision,
+            note, required_changes, review_hash
+          ) VALUES (
+            ${reviewId}, ${jobId}, ${row.submission_id}, ${marketplaceActor.id}, ${input.decision},
+            ${input.note},
+            ${input.requiredChanges === null ? null : tx.json(input.requiredChanges)},
+            ${reviewHash}
+          )
+          RETURNING created_at
+        `
+        const review = reviewRows[0]
+        if (!review) throw new Error(`Review ${reviewId} was not stored.`)
+
+        await tx`
+          INSERT INTO marketplace_events (
+            id, job_id, aggregate_version, actor_id, event_type, payload, correlation_id
+          ) VALUES (
+            ${randomUUID()}, ${jobId}, ${changed.aggregate_version}, ${marketplaceActor.id},
+            ${input.decision === 'ACCEPT' ? 'JOB_ACCEPTED' : 'JOB_CHANGES_REQUESTED'},
+            ${tx.json({
+              reviewId,
+              submissionId: row.submission_id,
+              revisionNumber: row.revision_number,
+              reviewHash,
+            })},
+            ${idempotency.key}
+          )
+        `
+
+        return {
+          id: reviewId,
+          jobId,
+          submissionId: row.submission_id,
+          revisionNumber: row.revision_number,
+          reviewerActorId: marketplaceActor.id,
+          decision: input.decision,
+          workState: nextWorkState,
+          settlementState: 'FUNDED',
+          payoutState: nextPayoutState,
+          note: input.note,
+          requiredChanges: input.requiredChanges,
+          reviewHash,
+          nextAction,
+          reviewedAt: iso(review.created_at),
         }
       },
     })

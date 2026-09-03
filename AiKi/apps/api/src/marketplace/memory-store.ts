@@ -7,6 +7,7 @@ import type {
   CreateJob,
   CreateOffer,
   Idempotency,
+  JobReviewView,
   JobStartView,
   JobSubmissionView,
   JobView,
@@ -15,6 +16,7 @@ import type {
   Page,
   ProviderView,
   PutProvider,
+  ReviewJob,
   SubmitJob,
 } from './model.js'
 import { encodeCursor, type PageCursor } from './pagination.js'
@@ -46,6 +48,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   private readonly providers = new Map<string, ProviderView>()
   private readonly offers = new Map<string, OfferView>()
   private readonly jobs = new Map<string, JobView>()
+  private readonly submissions = new Map<string, JobSubmissionView>()
   private readonly commands = new Map<string, SavedCommand>()
 
   private actor(actor: ActorIdentity): string {
@@ -414,7 +417,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
           workState: 'SUBMITTED',
           nextAction: 'WAIT_FOR_REVIEW',
         })
-        return {
+        const submission: JobSubmissionView = {
           id: submissionId,
           jobId,
           revisionNumber: 1,
@@ -428,6 +431,74 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
           submissionHash,
           nextAction: 'WAIT_FOR_REVIEW',
           submittedAt,
+        }
+        this.submissions.set(jobId, submission)
+        return submission
+      },
+    })
+  }
+
+  async reviewJob(
+    actor: ActorIdentity,
+    jobId: string,
+    input: ReviewJob,
+    idempotency: Idempotency,
+  ): Promise<CommandResult<JobReviewView>> {
+    return this.run({
+      actor,
+      operation: 'job.review',
+      idempotency,
+      statusCode: 200,
+      execute: (reviewerId) => {
+        const job = this.jobs.get(jobId)
+        const submission = this.submissions.get(jobId)
+        if (!job || !submission || job.requesterActorId !== reviewerId)
+          throw new MarketplaceError('JOB_NOT_FOUND', 'No such job.', { statusCode: 404 })
+        if (job.settlementState !== 'FUNDED')
+          throw new MarketplaceError(
+            'JOB_NOT_FUNDED',
+            'This job cannot be reviewed until funding is finalized.',
+            { statusCode: 409 },
+          )
+        if (job.workState !== 'SUBMITTED')
+          throw new MarketplaceError('JOB_NOT_REVIEWABLE', 'This job is not ready for review.', {
+            statusCode: 409,
+          })
+
+        const reviewId = randomUUID()
+        const reviewedAt = new Date().toISOString()
+        const reviewHash = hashCanonicalJson({
+          jobId,
+          submissionId: submission.id,
+          reviewerActorId: reviewerId,
+          decision: input.decision,
+          note: input.note,
+          requiredChanges: input.requiredChanges,
+        } as unknown as JsonValue)
+        const workState = input.decision === 'ACCEPT' ? 'ACCEPTED' : 'CHANGES_REQUESTED'
+        const payoutState = input.decision === 'ACCEPT' ? 'HOLD' : 'NONE'
+        const nextAction = input.decision === 'ACCEPT' ? 'RELEASE_PAYMENT' : 'REVISE_WORK'
+        this.jobs.set(jobId, {
+          ...job,
+          workState,
+          payoutState,
+          nextAction,
+        })
+        return {
+          id: reviewId,
+          jobId,
+          submissionId: submission.id,
+          revisionNumber: submission.revisionNumber,
+          reviewerActorId: reviewerId,
+          decision: input.decision,
+          workState,
+          settlementState: 'FUNDED',
+          payoutState,
+          note: input.note,
+          requiredChanges: input.requiredChanges,
+          reviewHash,
+          nextAction,
+          reviewedAt,
         }
       },
     })

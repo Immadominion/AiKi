@@ -86,6 +86,14 @@ export type SubmitJob = Readonly<{
   note: string | null
 }>
 
+export type ReviewDecision = 'ACCEPT' | 'REQUEST_CHANGES'
+
+export type ReviewJob = Readonly<{
+  decision: ReviewDecision
+  note: string | null
+  requiredChanges: JsonObject | null
+}>
+
 export type OfferView = Readonly<{
   id: string
   providerId: string
@@ -131,10 +139,10 @@ export type JobView = Readonly<{
   agreementId: string
   previewHash: string
   title: string
-  workState: 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED'
+  workState: 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED' | 'CHANGES_REQUESTED' | 'ACCEPTED'
   settlementState: 'UNFUNDED' | 'FUNDING_SUBMITTED' | 'FUNDED'
   disputeState: 'NONE'
-  payoutState: 'NONE'
+  payoutState: 'NONE' | 'HOLD'
   payerActorId: string
   requesterActorId: string
   providerActorId: string
@@ -179,6 +187,8 @@ export type JobView = Readonly<{
     | 'START_WORK'
     | 'SUBMIT_WORK'
     | 'WAIT_FOR_REVIEW'
+    | 'REVISE_WORK'
+    | 'RELEASE_PAYMENT'
   createdAt: string
 }>
 
@@ -205,4 +215,21 @@ export type JobSubmissionView = Readonly<{
   submissionHash: string
   nextAction: 'WAIT_FOR_REVIEW'
   submittedAt: string
+}>
+
+export type JobReviewView = Readonly<{
+  id: string
+  jobId: string
+  submissionId: string
+  revisionNumber: number
+  reviewerActorId: string
+  decision: ReviewDecision
+  workState: 'CHANGES_REQUESTED' | 'ACCEPTED'
+  settlementState: 'FUNDED'
+  payoutState: 'NONE' | 'HOLD'
+  note: string | null
+  requiredChanges: JsonObject | null
+  reviewHash: string
+  nextAction: 'REVISE_WORK' | 'RELEASE_PAYMENT'
+  reviewedAt: string
 }>

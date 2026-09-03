@@ -283,6 +283,18 @@ describe('canonical marketplace routes', () => {
     })
     expect(badSubmission.statusCode).toBe(400)
     expect(badSubmission.json().error.code).toBe('INVALID_MARKETPLACE_INPUT')
+
+    const badReview = await app.inject({
+      method: 'POST',
+      url: `/v2/jobs/${created.json().id}/reviews`,
+      headers: { ...cookie(OTHER), 'idempotency-key': 'bad-review' },
+      payload: {
+        decision: 'REQUEST_CHANGES',
+        note: 'Almost there.',
+      },
+    })
+    expect(badReview.statusCode).toBe(400)
+    expect(badReview.json().error.code).toBe('INVALID_MARKETPLACE_INPUT')
   })
 
   it('does not create a job from stale, self-hired, or unsupported funding terms', async () => {
