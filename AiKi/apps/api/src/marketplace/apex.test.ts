@@ -1,7 +1,12 @@
 import { decodeFunctionData, encodeAbiParameters, encodeEventTopics } from 'viem'
 import { describe, expect, it } from 'vitest'
 import { BSC_MAINNET } from '../config/chains.js'
-import { APEX_COMMERCE_ABI, parseApexJobCreated, prepareApexCreateEscrow } from './apex.js'
+import {
+  APEX_COMMERCE_ABI,
+  parseApexJobCreated,
+  prepareApexCreateEscrow,
+  prepareApexFund,
+} from './apex.js'
 import { settlementRailFor } from './settlement-rails.js'
 
 describe('APEX settlement adapter', () => {
@@ -31,6 +36,30 @@ describe('APEX settlement adapter', () => {
     expect(String(hook).toLowerCase()).toBe(
       BSC_MAINNET.contracts.erc8183EvaluatorRouter.toLowerCase(),
     )
+  })
+
+  it('prepares deployed fund calldata after the external APEX job id is known', () => {
+    const rail = settlementRailFor({
+      chainId: 56,
+      token: BSC_MAINNET.contracts.settlementToken.toLowerCase() as `0x${string}`,
+      decimals: 18,
+    })
+    const prepared = prepareApexFund({
+      rail,
+      externalJobId: '123',
+      amount: '1000000000000000001',
+    })
+
+    expect(prepared.to).toBe(BSC_MAINNET.contracts.erc8183Commerce.toLowerCase())
+    expect(prepared.data.startsWith('0xd2e13f50')).toBe(true)
+    const decoded = decodeFunctionData({ abi: APEX_COMMERCE_ABI, data: prepared.data })
+    expect(decoded.functionName).toBe('fund')
+    expect(decoded.args).toEqual([123n, 1_000_000_000_000_000_001n, '0x'])
+    expect(prepared.args).toEqual({
+      externalJobId: '123',
+      amount: '1000000000000000001',
+      optParams: '0x',
+    })
   })
 
   it('parses a finalized JobCreated log from the deployed event shape', () => {

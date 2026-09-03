@@ -127,8 +127,8 @@ terminal states.
 pnpm --filter @aiki/api marketplace:settlement:prepare
 ```
 
-The preparation worker consumes pending
-`marketplace.settlement.create.requested` outbox events. For each event it:
+The preparation worker consumes pending settlement outbox events. For create
+events it:
 
 - locks one outbox row with `FOR UPDATE SKIP LOCKED`
 - validates the agreement against the enabled BNB APEX rail
@@ -137,10 +137,15 @@ The preparation worker consumes pending
 - moves the operation to `PREPARED`
 - marks the outbox row `DELIVERED`
 
+After a finalized `JobCreated` event gives AiKi the external APEX job id, the
+same preparation command also consumes
+`marketplace.settlement.fund.requested` events. Those prepare deployed
+`fund(uint256,uint256,bytes)` calldata with the finalized external job id, the
+exact agreement amount, and empty optional parameters.
+
 No private key is used in this step and no transaction is submitted. The next
-slice submits prepared transactions and stores transaction hashes. Finalized log
-ingestion still fills `external_job_id` before AiKi creates the actual `FUND`
-operation.
+step submits prepared transactions and stores transaction hashes. Finalized log
+ingestion still controls when AiKi creates the actual `FUND` operation.
 
 ## Settlement submission
 
@@ -149,8 +154,8 @@ MARKETPLACE_SETTLEMENT_RELAYER_KEY=0x... \
   pnpm --filter @aiki/api marketplace:settlement:submit
 ```
 
-The submission worker claims one `PREPARED` `CREATE_ESCROW` operation by moving
-it to `SUBMITTING`, sends the exact prepared calldata, then records:
+The submission worker claims one `PREPARED` `CREATE_ESCROW` or `FUND` operation
+by moving it to `SUBMITTING`, sends the exact prepared calldata, then records:
 
 - `status: SUBMITTED`
 - transaction hash

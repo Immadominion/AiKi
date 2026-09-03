@@ -13,7 +13,7 @@ export const APEX_COMMERCE_ABI = parseAbi([
   'event JobCreated(uint256 indexed jobId, address indexed client, address indexed provider, address evaluator, uint256 expiredAt, address hook)',
 ])
 
-export type PreparedApexTransaction = Readonly<{
+export type PreparedApexCreateEscrowTransaction = Readonly<{
   chainId: number
   to: `0x${string}`
   data: Hex
@@ -27,6 +27,23 @@ export type PreparedApexTransaction = Readonly<{
     hook: `0x${string}`
   }
 }>
+
+export type PreparedApexFundTransaction = Readonly<{
+  chainId: number
+  to: `0x${string}`
+  data: Hex
+  value: '0'
+  functionName: 'fund'
+  args: {
+    externalJobId: string
+    amount: string
+    optParams: Hex
+  }
+}>
+
+export type PreparedApexTransaction =
+  | PreparedApexCreateEscrowTransaction
+  | PreparedApexFundTransaction
 
 export type ApexReceiptLog = Readonly<{
   address: `0x${string}`
@@ -65,7 +82,7 @@ export function prepareApexCreateEscrow(input: {
   provider: `0x${string}`
   hardExpiry: string
   termsHash: string
-}): PreparedApexTransaction {
+}): PreparedApexCreateEscrowTransaction {
   const expiredAt = BigInt(Math.floor(new Date(input.hardExpiry).getTime() / 1000))
   const evaluator = lowerAddress(BSC_MAINNET.contracts.erc8183EvaluatorRouter)
   const hook = evaluator
@@ -90,6 +107,32 @@ export function prepareApexCreateEscrow(input: {
       expiredAt: expiredAt.toString(),
       metadata,
       hook,
+    },
+  }
+}
+
+export function prepareApexFund(input: {
+  rail: SettlementRail
+  externalJobId: string
+  amount: string
+}): PreparedApexFundTransaction {
+  const externalJobId = BigInt(input.externalJobId)
+  const amount = BigInt(input.amount)
+  const optParams = '0x'
+  return {
+    chainId: input.rail.chainId,
+    to: input.rail.contract,
+    data: encodeFunctionData({
+      abi: APEX_COMMERCE_ABI,
+      functionName: 'fund',
+      args: [externalJobId, amount, optParams],
+    }),
+    value: '0',
+    functionName: 'fund',
+    args: {
+      externalJobId: externalJobId.toString(),
+      amount: amount.toString(),
+      optParams,
     },
   }
 }

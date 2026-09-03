@@ -293,5 +293,68 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
       fund_operations: '1',
       fund_outbox: '1',
     })
+
+    const preparedFund = await worker.prepareFundNext('store-test')
+    expect(preparedFund?.jobId).toBe(created.body.id)
+    expect(preparedFund?.transaction.functionName).toBe('fund')
+    expect(preparedFund?.transaction.data.startsWith('0xd2e13f50')).toBe(true)
+    expect(preparedFund?.transaction.to).toBe(created.body.settlement.contract)
+    if (preparedFund?.transaction.functionName !== 'fund')
+      throw new Error('Fund operation did not prepare APEX fund calldata.')
+    expect(preparedFund.transaction.args).toEqual({
+      externalJobId: '123',
+      amount: created.body.settlement.totalAmount,
+      optParams: '0x',
+    })
+
+    const preparedFundRows = await sql<
+      {
+        status: string
+        prepared: boolean
+        outbox_status: string
+      }[]
+    >`
+      SELECT
+        so.status,
+        so.prepared_transaction IS NOT NULL AS prepared,
+        o.status AS outbox_status
+      FROM settlement_operations so
+      JOIN outbox_events o ON o.dedupe_key = so.logical_key
+      WHERE so.id = ${preparedFund.operationId}
+    `
+    expect(preparedFundRows[0]).toEqual({
+      status: 'PREPARED',
+      prepared: true,
+      outbox_status: 'DELIVERED',
+    })
+
+    const submittedFund = await worker.submitNext({
+      submit: async (transaction) => {
+        expect(transaction).toEqual(preparedFund.transaction)
+        return {
+          transactionHash: `0x${'77'.repeat(32)}`,
+          transactionNonce: '8',
+        }
+      },
+    })
+    expect(submittedFund?.operationId).toBe(preparedFund.operationId)
+    expect(submittedFund?.transactionHash).toBe(`0x${'77'.repeat(32)}`)
+
+    const submittedFundRows = await sql<
+      {
+        status: string
+        transaction_hash: string
+        transaction_nonce: string
+      }[]
+    >`
+      SELECT status, transaction_hash, transaction_nonce
+      FROM settlement_operations
+      WHERE id = ${preparedFund.operationId}
+    `
+    expect(submittedFundRows[0]).toEqual({
+      status: 'SUBMITTED',
+      transaction_hash: `0x${'77'.repeat(32)}`,
+      transaction_nonce: '8',
+    })
   })
 })
