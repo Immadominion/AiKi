@@ -276,7 +276,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
         const id = randomUUID()
         const agreementId = randomUUID()
         const operationId = randomUUID()
-        const logicalKey = `job:${id}:fund:v1`
+        const logicalKey = `job:${id}:create-escrow:v1`
         const job: JobView = {
           id,
           agreementId,
@@ -311,11 +311,11 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
           fundingOperation: {
             id: operationId,
             status: 'REQUESTED',
-            operationType: 'FUND',
+            operationType: 'CREATE_ESCROW',
             logicalKey,
             amount: preview.settlement.quote.totalAmount,
           },
-          nextAction: 'FUND_ESCROW',
+          nextAction: 'CREATE_ESCROW',
           createdAt: now.toISOString(),
         }
         this.jobs.set(id, job)

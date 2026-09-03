@@ -602,7 +602,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         const operationId = randomUUID()
         const eventId = randomUUID()
         const outboxId = randomUUID()
-        const logicalKey = `job:${jobId}:fund:v1`
+        const logicalKey = `job:${jobId}:create-escrow:v1`
         const termsHash = hashCanonicalJson({
           previewHash: preview.previewHash,
           payerActorId: marketplaceActor.id,
@@ -673,7 +673,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
             id, job_id, agreement_id, operation_type, logical_key, status,
             chain_id, contract_address, token_address, amount
           ) VALUES (
-            ${operationId}, ${jobId}, ${agreementId}, 'FUND', ${logicalKey}, 'REQUESTED',
+            ${operationId}, ${jobId}, ${agreementId}, 'CREATE_ESCROW', ${logicalKey}, 'REQUESTED',
             ${rail.chainId}, ${rail.contract}, ${rail.token}, ${preview.settlement.quote.totalAmount}
           )
         `
@@ -682,7 +682,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
             id, aggregate_type, aggregate_id, aggregate_version, topic, dedupe_key, payload
           ) VALUES (
             ${outboxId}, 'marketplace_job', ${jobId}, 1,
-            'marketplace.settlement.fund.requested', ${logicalKey},
+            'marketplace.settlement.create.requested', ${logicalKey},
             ${tx.json({ jobId, agreementId, operationId, rail, previewHash: preview.previewHash })}
           )
         `
@@ -721,11 +721,11 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           fundingOperation: {
             id: operationId,
             status: 'REQUESTED',
-            operationType: 'FUND',
+            operationType: 'CREATE_ESCROW',
             logicalKey,
             amount: preview.settlement.quote.totalAmount,
           },
-          nextAction: 'FUND_ESCROW',
+          nextAction: 'CREATE_ESCROW',
           createdAt: now.toISOString(),
         }
       },

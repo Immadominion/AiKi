@@ -108,15 +108,36 @@ The response creates:
 - an `ASSIGNED` marketplace job
 - an immutable agreement snapshot
 - one append-only `JOB_CREATED` marketplace event
-- one outbox event for settlement funding
-- one `FUND` settlement operation with status `REQUESTED`
+- one outbox event for settlement escrow creation
+- one `CREATE_ESCROW` settlement operation with status `REQUESTED`
 
 The job response is deliberately `settlementState: UNFUNDED` and
-`nextAction: FUND_ESCROW`. It does not claim escrow, payment, delivery start, or
-provider earnings. Funding is accepted only for the enabled BNB APEX settlement
-rail and configured settlement asset.
+`nextAction: CREATE_ESCROW`. It does not claim escrow, payment, delivery start,
+or provider earnings. Escrow creation is accepted only for the enabled BNB APEX
+settlement rail and configured settlement asset.
 
 Finalized funding, release, refund, delivery, disputes, and receipts are still
 future slices. They require chain event projection, reconciliation, and the
 hard-expiry refund path before the API can safely move jobs to funded or
 terminal states.
+
+## Settlement preparation
+
+```sh
+pnpm --filter @aiki/api marketplace:settlement:prepare
+```
+
+The preparation worker consumes pending
+`marketplace.settlement.create.requested` outbox events. For each event it:
+
+- locks one outbox row with `FOR UPDATE SKIP LOCKED`
+- validates the agreement against the enabled BNB APEX rail
+- prepares deployed `createJob(address,address,uint256,string,address)` calldata
+- records the prepared transaction on the settlement operation
+- moves the operation to `PREPARED`
+- marks the outbox row `DELIVERED`
+
+No private key is used in this step and no transaction is submitted. The next
+slice must submit prepared transactions, store transaction hashes, ingest
+finalized APEX logs, fill `external_job_id`, then create the actual `FUND`
+operation.

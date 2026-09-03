@@ -162,10 +162,10 @@ export type JobView = Readonly<{
   fundingOperation: {
     id: string
     status: 'REQUESTED'
-    operationType: 'FUND'
+    operationType: 'CREATE_ESCROW'
     logicalKey: string
     amount: string
   }
-  nextAction: 'FUND_ESCROW'
+  nextAction: 'CREATE_ESCROW'
   createdAt: string
 }>

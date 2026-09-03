@@ -228,7 +228,8 @@ describe('canonical marketplace routes', () => {
     expect(created.json().workState).toBe('ASSIGNED')
     expect(created.json().settlementState).toBe('UNFUNDED')
     expect(created.json().fundingOperation.status).toBe('REQUESTED')
-    expect(created.json().nextAction).toBe('FUND_ESCROW')
+    expect(created.json().fundingOperation.operationType).toBe('CREATE_ESCROW')
+    expect(created.json().nextAction).toBe('CREATE_ESCROW')
     expect(created.json().settlement.contract).toBe(
       BSC_MAINNET.contracts.erc8183Commerce.toLowerCase(),
     )

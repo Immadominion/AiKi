@@ -4,12 +4,14 @@ import { BSC_MAINNET } from '../config/chains.js'
 import { hashCanonicalJson } from './canonical-json.js'
 import type { ActorIdentity, CreateOffer, JsonValue, PutProvider } from './model.js'
 import { buildJobPreview } from './preview.js'
+import { PostgresMarketplaceSettlementWorker } from './settlement-worker.js'
 import { PostgresMarketplaceStore } from './store.js'
 
 const databaseUrl = process.env.DATABASE_URL
 
 describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
   const store = new PostgresMarketplaceStore(databaseUrl as string)
+  const worker = new PostgresMarketplaceSettlementWorker(databaseUrl as string)
   const sql = postgres(databaseUrl as string, { max: 1 })
   const actor: ActorIdentity = { chainId: 56, address: `0x${'61'.repeat(20)}` }
   const stranger: ActorIdentity = { chainId: 56, address: `0x${'72'.repeat(20)}` }
@@ -46,7 +48,7 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
   const hash = (value: unknown) => hashCanonicalJson(value as JsonValue)
 
   afterAll(async () => {
-    await Promise.all([store.close(), sql.end()])
+    await Promise.all([store.close(), worker.close(), sql.end()])
   })
 
   it('atomically publishes a provider and immutable offer version', async () => {
@@ -159,10 +161,36 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
       SELECT
         (SELECT count(*) FROM job_agreements WHERE job_id = ${created.body.id}) AS agreements,
         (SELECT count(*) FROM settlement_operations WHERE job_id = ${created.body.id}
-          AND status = 'REQUESTED' AND operation_type = 'FUND') AS operations,
+          AND status = 'REQUESTED' AND operation_type = 'CREATE_ESCROW') AS operations,
         (SELECT count(*) FROM outbox_events WHERE aggregate_id = ${created.body.id}
-          AND topic = 'marketplace.settlement.fund.requested') AS outbox
+          AND topic = 'marketplace.settlement.create.requested') AS outbox
     `
     expect(rows[0]).toEqual({ agreements: '1', operations: '1', outbox: '1' })
+
+    const prepared = await worker.prepareNext('store-test')
+    expect(prepared?.jobId).toBe(created.body.id)
+    expect(prepared?.transaction.data.startsWith('0x41528812')).toBe(true)
+    expect(prepared?.transaction.to).toBe(created.body.settlement.contract)
+
+    const preparedRows = await sql<
+      {
+        status: string
+        prepared: boolean
+        outbox_status: string
+      }[]
+    >`
+      SELECT
+        so.status,
+        so.prepared_transaction IS NOT NULL AS prepared,
+        o.status AS outbox_status
+      FROM settlement_operations so
+      JOIN outbox_events o ON o.payload ->> 'operationId' = so.id::text
+      WHERE so.id = ${created.body.fundingOperation.id}
+    `
+    expect(preparedRows[0]).toEqual({
+      status: 'PREPARED',
+      prepared: true,
+      outbox_status: 'DELIVERED',
+    })
   })
 })
