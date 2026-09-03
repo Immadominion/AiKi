@@ -22,6 +22,9 @@ import type { NewObservation, Observation } from '../evidence/types.js'
 import { parseIntent } from '../intent/parser.js'
 import { act, parseAction } from '../jobs/act.js'
 import { JobService } from '../jobs/service.js'
+import { MarketplaceError } from '../marketplace/errors.js'
+import { registerMarketplaceRoutes } from '../marketplace/routes.js'
+import type { MarketplaceStore } from '../marketplace/store.js'
 import { comparePassports, projectPassport } from '../projections/passport.js'
 import { assembleStats, projectStats, type StatsAggregate } from '../projections/stats.js'
 import { ReceiptService } from '../receipts/service.js'
@@ -168,6 +171,8 @@ export function createApiServer(input: {
   deliverySecret?: string
   /** People who can be found and hired, as opposed to agents. */
   sellers?: PostgresSellerStore
+  /** Canonical actors, providers, offers, jobs, and idempotency for `/v2`. */
+  marketplace?: MarketplaceStore
   /** Omitted only in tests of the public surface; every mandate route needs it. */
   auth?: AuthConfig
 }) {
@@ -207,6 +212,7 @@ export function createApiServer(input: {
         input.auth.signer.verify(readCookie(request.headers.cookie, SESSION_COOKIE)) ?? undefined
   })
   if (input.auth) registerAuthRoutes(app, input.auth)
+  if (input.marketplace) registerMarketplaceRoutes(app, input.marketplace)
   if (input.watches) registerWatchRoutes(app, { jobs, watches: input.watches })
   if (input.assistant) registerAssistantRoutes(app, input.assistant)
   /*
@@ -256,6 +262,16 @@ export function createApiServer(input: {
    */
   app.setErrorHandler((error, request, reply) => {
     const requestId = request.headers['x-request-id']
+    if (error instanceof MarketplaceError)
+      return reply.code(error.statusCode).send({
+        error: {
+          code: error.code,
+          message: error.message,
+          retryable: error.retryable,
+          details: error.details,
+          requestId,
+        },
+      })
     const client = asClientError(error)
     if (client)
       return reply.code(client.statusCode).send({

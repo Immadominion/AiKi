@@ -17,6 +17,7 @@ import { createApiServer } from './http/server.js'
 import { COVERAGE_START_STREAM } from './indexer/evidence-sink.js'
 import { PostgresJobStore } from './jobs/postgres-store.js'
 import { JobService } from './jobs/service.js'
+import { PostgresMarketplaceStore } from './marketplace/store.js'
 import { PostgresReceiptStore } from './receipts/postgres-store.js'
 import { ReceiptService } from './receipts/service.js'
 import { PancakeGridClient } from './reference/grid/client.js'
@@ -91,6 +92,7 @@ const creditStore = new PostgresCreditStore(databaseUrl)
 const ledgerSql = postgres(databaseUrl, { max: 1 })
 const taskStore = new PostgresTaskStore(databaseUrl)
 const sellerStore = new PostgresSellerStore(databaseUrl)
+const marketplaceStore = new PostgresMarketplaceStore(databaseUrl)
 
 /*
  * Fast mode. Absent key means this deployment serves Manual mode only and says
@@ -140,6 +142,7 @@ const app = createApiServer({
   ...(treasury ? { settlementTreasury: treasury } : {}),
   tasks: taskStore,
   sellers: sellerStore,
+  marketplace: marketplaceStore,
   // Where a hired agent sends work back to, and the key that proves the callback
   // belongs to a task AiKi actually dispatched.
   ...(publicApiUrl ? { publicUrl: publicApiUrl } : {}),
@@ -291,6 +294,7 @@ app.addHook('onClose', async () => {
     receiptStore.close(),
     nonceStore.close(),
     accountStore.close(),
+    marketplaceStore.close(),
   ])
 })
 const port = Number(process.env.PORT ?? '3000')

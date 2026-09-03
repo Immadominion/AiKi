@@ -1,0 +1,110 @@
+export type JsonPrimitive = string | number | boolean | null
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
+export type JsonObject = { [key: string]: JsonValue }
+
+export type ActorIdentity = Readonly<{
+  chainId: number
+  address: `0x${string}`
+}>
+
+export type Idempotency = Readonly<{
+  key: string
+  requestHash: string
+}>
+
+export type CommandResult<T> = Readonly<{
+  body: T
+  statusCode: number
+  replayed: boolean
+}>
+
+export type ProviderAvailability = 'AVAILABLE' | 'BUSY' | 'OFFLINE' | 'PAUSED'
+
+export type ProviderView = Readonly<{
+  id: string
+  actorType: 'HUMAN' | 'AGENT'
+  chainId: number
+  controllerAddress: `0x${string}`
+  displayName: string
+  summary: string
+  availability: ProviderAvailability
+  capacity: number
+  supportedProtocols: string[]
+  profileVersion: string
+  createdAt: string
+  updatedAt: string
+}>
+
+export type PutProvider = Readonly<{
+  displayName: string
+  summary: string
+  availability: ProviderAvailability
+  capacity: number
+  supportedProtocols: string[]
+  geography: JsonObject
+}>
+
+export type PricingModel = 'FIXED' | 'HOURLY' | 'MILESTONE' | 'QUOTE'
+export type DispatchMethod = 'HTTP' | 'MCP' | 'MANUAL' | 'NONE'
+
+export type CreateOffer = Readonly<{
+  title: string
+  summary: string
+  capabilityTags: string[]
+  inputSchema: JsonObject
+  outputSchema: JsonObject
+  evidenceSchema: JsonObject
+  pricingModel: PricingModel
+  settlementChainId: number
+  settlementToken: `0x${string}`
+  settlementDecimals: number
+  amount: string | null
+  platformFeeBps: number
+  deliverySlaSeconds: number
+  reviewSlaSeconds: number
+  includedRevisions: number
+  concurrentCapacity: number
+  dispatchMethod: DispatchMethod
+  dispatchEndpoint: string | null
+  failoverSafe: boolean
+}>
+
+export type OfferView = Readonly<{
+  id: string
+  providerId: string
+  providerName: string
+  status: 'ACTIVE' | 'PAUSED'
+  visibility: 'PUBLIC'
+  version: number
+  title: string
+  summary: string
+  capabilityTags: string[]
+  inputSchema: JsonObject
+  outputSchema: JsonObject
+  evidenceSchema: JsonObject
+  pricing: {
+    model: PricingModel
+    chainId: number
+    token: `0x${string}`
+    decimals: number
+    amount: string | null
+    platformFeeBps: number
+  }
+  deliverySlaSeconds: number
+  reviewSlaSeconds: number
+  includedRevisions: number
+  concurrentCapacity: number
+  dispatch: {
+    method: DispatchMethod
+    endpoint: string | null
+  }
+  failoverSafe: boolean
+  termsHash: string
+  createdAt: string
+  updatedAt: string
+}>
+
+export type Page<T> = Readonly<{
+  items: T[]
+  nextCursor: string | null
+}>

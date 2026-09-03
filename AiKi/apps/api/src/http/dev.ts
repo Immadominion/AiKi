@@ -23,6 +23,8 @@ import { materializeObservation } from '../evidence/store.js'
 import type { Observation } from '../evidence/types.js'
 import { PostgresJobStore } from '../jobs/postgres-store.js'
 import { JobService } from '../jobs/service.js'
+import { InMemoryMarketplaceStore } from '../marketplace/memory-store.js'
+import { PostgresMarketplaceStore } from '../marketplace/store.js'
 import { sweepObservations } from '../prober/sweep-observations.js'
 import { PostgresReceiptStore } from '../receipts/postgres-store.js'
 import { ReceiptService } from '../receipts/service.js'
@@ -53,6 +55,9 @@ const agents = new Set(observations.map((o) => o.subject.agentId)).size
 // mandate made here is a row you can go and look at. Without one it stays in
 // memory and dies with the process.
 const databaseUrl = process.env.DATABASE_URL
+const marketplace = databaseUrl
+  ? new PostgresMarketplaceStore(databaseUrl)
+  : new InMemoryMarketplaceStore()
 const persistence = databaseUrl
   ? {
       jobs: new JobService(new PostgresJobStore(databaseUrl)),
@@ -113,6 +118,7 @@ const persistence = databaseUrl
 
 const app = createApiServer({
   observations: () => observations,
+  marketplace,
   ...persistence,
   auth: {
     signer: new SessionSigner(process.env.SESSION_SECRET ?? randomBytes(24).toString('hex')),
@@ -126,6 +132,9 @@ const app = createApiServer({
   },
 })
 
+if (marketplace instanceof PostgresMarketplaceStore)
+  app.addHook('onClose', async () => marketplace.close())
+
 // The web app runs on another localhost port; production CORS policy is the
 // deployment's decision, not this harness's.
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:4747'
@@ -136,7 +145,7 @@ app.addHook('onRequest', async (request, reply) => {
   reply.header('access-control-allow-credentials', 'true')
   reply.header('vary', 'origin')
   reply.header('access-control-allow-headers', 'content-type, idempotency-key')
-  reply.header('access-control-allow-methods', 'GET, POST, OPTIONS')
+  reply.header('access-control-allow-methods', 'GET, POST, PUT, OPTIONS')
   if (request.method === 'OPTIONS') return reply.code(204).send()
 })
 
