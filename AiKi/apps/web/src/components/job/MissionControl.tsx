@@ -63,9 +63,12 @@ export function MissionControl({ jobId }: { jobId: string }) {
    */
   useEffect(() => {
     if (job?.status !== 'RUNNING') return
+    // Jobs backed by a server authorization are live jobs. Their activity
+    // comes from the API and chain, never from the local demo timeline.
+    if (hire?.authorizationId) return
     const id = setTimeout(() => advance(job.id), 1400)
     return () => clearTimeout(id)
-  }, [job, advance])
+  }, [job, hire, advance])
 
   if (!marketplaceChecked || !ready) return <PageSkeleton rows={5} />
 
