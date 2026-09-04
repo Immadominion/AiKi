@@ -2,6 +2,7 @@ import type { ProjectedPassport } from '@aiki/contracts'
 import { paletteFor } from '@/components/home/live-shards'
 import { AGENT_BG, AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
 import { DETAILS } from '@/lib/detail'
+import { VENUS_GUARDIAN } from '@/lib/venus'
 
 /**
  * What the mandate builder needs to know about the thing being hired.
@@ -24,6 +25,14 @@ export interface HireSubject {
   capabilities: { name: string; does: string; permissions: string[] }[]
   /** Assets this agent may move. Empty means it only reads. */
   spends: { asset: `0x${string}`; symbol: string; decimals: number }[]
+  /** Contracts and functions the agent may call while doing its work. */
+  callScope?:
+    | {
+        contracts: `0x${string}`[]
+        selectors: string[]
+        label: string
+      }
+    | undefined
 }
 
 export const isAgentId = (key: string) => /^\d+$/.test(key)
@@ -78,7 +87,10 @@ export function hireSubjectFromPassport(
         does: passport.description ?? 'This agent publishes no description of what it does.',
         // Named as a permission the mandate can cap, because that is the point
         // of the screen this feeds.
-        permissions: ['spend_settlement_asset'],
+        permissions:
+          passport.agentId === VENUS_GUARDIAN.agentId
+            ? ['repay_borrow', 'spend_settlement_asset']
+            : ['spend_settlement_asset'],
       },
     ],
     spends: [
@@ -90,5 +102,14 @@ export function hireSubjectFromPassport(
         decimals: settlementAsset.decimals,
       },
     ],
+    ...(passport.agentId === VENUS_GUARDIAN.agentId
+      ? {
+          callScope: {
+            contracts: [VENUS_GUARDIAN.market],
+            selectors: [VENUS_GUARDIAN.repayBorrowSelector],
+            label: 'the Venus USDT market',
+          },
+        }
+      : {}),
   }
 }

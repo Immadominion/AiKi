@@ -188,8 +188,9 @@ export function MandateBuilder({ subject }: { subject: HireSubject }) {
         // From the agent, not from the person hiring: what it may move is a
         // description of the agent, and widening it is not a user's choice.
         spends: d.spends,
+        callScope: d.callScope,
       }),
-    [budget, perAction, days, spends, d.spends, approval, askAbove],
+    [budget, perAction, days, spends, d.spends, d.callScope, approval, askAbove],
   )
   const preview = useMandatePreview(constraints)
 
@@ -504,6 +505,7 @@ export function MandateBuilder({ subject }: { subject: HireSubject }) {
                   initial: subject.initial,
                   bg: subject.bg,
                   spends: subject.spends,
+                  callScope: subject.callScope,
                   perActionCents: spends ? perAction * 100 : 0,
                   capCents: budget * 100,
                   period,

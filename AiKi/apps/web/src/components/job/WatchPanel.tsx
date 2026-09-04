@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { api, type Watch } from '@/lib/api'
+import { VENUS_GUARDIAN } from '@/lib/venus'
 
 /**
  * Putting an agent on duty, and seeing that it stayed there.
@@ -23,13 +24,6 @@ import { api, type Watch } from '@/lib/api'
  * naming it here keeps the person from having to paste addresses to hire an
  * agent for the only thing it currently does.
  */
-const VENUS_TESTNET = {
-  chainId: 97,
-  asset: '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c',
-  market: '0xb7526572FFE56AB9D7489838Bf2E18e3323b441A',
-  label: 'USDT on Venus',
-}
-
 const LINES = [
   { value: '1.15', label: '1.15', hint: 'Acts late, spends least.' },
   { value: '1.25', label: '1.25', hint: 'A common margin.' },
@@ -88,10 +82,10 @@ export function WatchPanel({ jobId }: { jobId: string }) {
       setWatch(
         await api.startWatch(jobId, {
           account: account.address,
-          chainId: VENUS_TESTNET.chainId,
+          chainId: VENUS_GUARDIAN.chainId,
           minimumHealthFactor: line,
-          asset: VENUS_TESTNET.asset,
-          market: VENUS_TESTNET.market,
+          asset: VENUS_GUARDIAN.asset,
+          market: VENUS_GUARDIAN.market,
         }),
       )
       say(`On duty. It will keep your health factor at or above ${line}.`)
@@ -133,8 +127,8 @@ export function WatchPanel({ jobId }: { jobId: string }) {
           </div>
           <p className="text-muted mt-[4px] mb-0 max-w-[560px] text-[12.5px] leading-[1.5] text-pretty">
             {onDuty
-              ? `Checking your ${VENUS_TESTNET.label} position on its own, and repaying under this mandate’s limits if the health factor falls below ${watch?.minimumHealthFactor}.`
-              : `It will check your ${VENUS_TESTNET.label} position on a timer and repay under this mandate’s limits, without waiting for you.`}
+              ? `Checking your ${VENUS_GUARDIAN.label} position on its own, and repaying under this mandate’s limits if the health factor falls below ${watch?.minimumHealthFactor}.`
+              : `It will check your ${VENUS_GUARDIAN.label} position on a timer and repay under this mandate’s limits, without waiting for you.`}
           </p>
         </div>
         {onDuty ? (

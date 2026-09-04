@@ -57,6 +57,13 @@ interface MockApi {
      * table was impossible: there was no row to read the permission from.
      */
     spends: { asset: `0x${string}`; symbol: string; decimals: number }[]
+    callScope?:
+      | {
+          contracts: `0x${string}`[]
+          selectors: string[]
+          label: string
+        }
+      | undefined
     /**
      * The job id, and who ends up holding the limits. `signed` means the chain
      * refuses anything past them; `counted` means AiKi does. A hire is real
@@ -201,6 +208,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
             perActionCents: input.perActionCents,
             days: input.days,
             spends: input.spends,
+            callScope: input.callScope,
             // Sent with the mandate, which it was not before: the choice lived
             // in this browser and the agent acted regardless of it.
             approval: { mode: input.approval, thresholdCents: input.askAboveCents },

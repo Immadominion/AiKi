@@ -42,6 +42,14 @@ export interface MandateInput {
    * this screen thinks in dollars, so something has to do the conversion.
    */
   spends: { asset: `0x${string}`; symbol: string; decimals: number }[]
+  /** Contracts and selectors needed to do the work, separate from assets spent. */
+  callScope?:
+    | {
+        contracts: `0x${string}`[]
+        selectors: string[]
+        label: string
+      }
+    | undefined
 }
 
 /**
@@ -88,9 +96,9 @@ const MOVES_MONEY = [
  * The scope is what lets a cap be held by a chain rather than by us. The
  * enforcers find the amount in a call by matching its contract and function, and
  * refuse the call outright when no match exists, so a cap with nothing in scope
- * is not a cap they can hold. Naming the tokens the agent may move, and the three
- * ERC-20 calls that move them, is what turns the spend limits from something AiKi
- * counts into something the chain refuses to exceed.
+ * is not a cap they can hold. Naming the assets the agent may move, the contracts
+ * it may call and the functions that move the amount is what turns the spend
+ * limits from something AiKi counts into something the chain refuses to exceed.
  *
  * The scope comes from the agent, never from the person hiring: it is a
  * description of what that agent does, so widening it is not a choice a user
@@ -106,28 +114,37 @@ export function mandateConstraints(input: MandateInput): {
   const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`
   const assets = input.spends.map((s) => s.asset)
   const names = input.spends.map((s) => s.symbol).join(' and ')
+  const contracts = input.callScope?.contracts ?? assets
+  const selectors = input.callScope?.selectors ?? MOVES_MONEY
+  const contractLabel = input.callScope?.label ?? names
   // An empty allowlist reads as "no restriction" to the enforcer, so an agent
   // that moves nothing gets no scope constraints rather than empty ones.
-  const scope = assets.length
+  const scope = contracts.length
     ? [
         {
           kind: 'contract_allowlist',
-          label: `Can only call ${names}`,
-          value: assets,
+          label: `Can only call ${contractLabel}`,
+          value: contracts,
           tier: 'T2' as EnforcementTier,
         },
         {
           kind: 'selector_allowlist',
-          label: 'Can only move tokens, not call anything else',
-          value: MOVES_MONEY,
+          label: input.callScope
+            ? 'Can only perform the named agent action'
+            : 'Can only move tokens',
+          value: selectors,
           tier: 'T2' as EnforcementTier,
         },
-        {
-          kind: 'asset_scope',
-          label: `Only ${names}`,
-          value: assets,
-          tier: 'T2' as EnforcementTier,
-        },
+        ...(assets.length
+          ? [
+              {
+                kind: 'asset_scope',
+                label: `Only ${names}`,
+                value: assets,
+                tier: 'T2' as EnforcementTier,
+              },
+            ]
+          : []),
       ]
     : []
   // An agent that cannot move anything needs no spend caps, and sending them
