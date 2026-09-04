@@ -19,6 +19,7 @@ try {
     const result =
       (await worker.finalizeNext(reader)) ??
       (await worker.finalizeFundNext(reader)) ??
+      (await worker.finalizeSubmitNext(reader)) ??
       (await worker.finalizeReleaseNext(reader))
     if (!result) break
     finalized += 1

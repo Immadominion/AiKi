@@ -14,6 +14,7 @@ try {
     const result =
       (await worker.prepareNext()) ??
       (await worker.prepareFundNext()) ??
+      (await worker.prepareSubmitNext()) ??
       (await worker.prepareReleaseNext())
     if (!result) break
     prepared += 1

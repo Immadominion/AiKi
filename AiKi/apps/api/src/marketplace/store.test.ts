@@ -507,30 +507,45 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
       evidence: submissionInput.evidence,
       artifactUri: submissionInput.artifactUri,
       note: submissionInput.note,
-      nextAction: 'WAIT_FOR_REVIEW',
+      nextAction: 'WAIT_FOR_ONCHAIN_SUBMISSION',
     })
     expect(submittedWork.body.submissionHash).toMatch(/^[0-9a-f]{64}$/)
 
     const submissionRows = await sql<
       {
         work_state: string
+        settlement_state: string
         submissions: string
         events: string
+        submit_operations: string
+        submit_outbox: string
       }[]
     >`
       SELECT
         (SELECT work_state FROM marketplace_jobs WHERE id = ${created.body.id}) AS work_state,
+        (SELECT settlement_state FROM marketplace_jobs WHERE id = ${created.body.id})
+          AS settlement_state,
         (SELECT count(*) FROM job_submissions
           WHERE job_id = ${created.body.id}
             AND submission_hash = ${submittedWork.body.submissionHash}) AS submissions,
         (SELECT count(*) FROM marketplace_events
           WHERE job_id = ${created.body.id}
-            AND event_type = 'JOB_SUBMITTED') AS events
+            AND event_type = 'JOB_SUBMITTED') AS events,
+        (SELECT count(*) FROM settlement_operations
+          WHERE job_id = ${created.body.id}
+            AND operation_type = 'SUBMIT_WORK'
+            AND status = 'REQUESTED') AS submit_operations,
+        (SELECT count(*) FROM outbox_events
+          WHERE aggregate_id = ${created.body.id}
+            AND topic = 'marketplace.settlement.submit.requested') AS submit_outbox
     `
     expect(submissionRows[0]).toEqual({
       work_state: 'SUBMITTED',
+      settlement_state: 'FUNDED',
       submissions: '1',
       events: '1',
+      submit_operations: '1',
+      submit_outbox: '1',
     })
 
     const replaySubmission = await store.submitJob(actor, created.body.id, submissionInput, {
@@ -539,6 +554,113 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
     })
     expect(replaySubmission.replayed).toBe(true)
     expect(replaySubmission.body).toEqual(submittedWork.body)
+
+    const prematureReview = store.reviewJob(
+      stranger,
+      created.body.id,
+      {
+        decision: 'ACCEPT',
+        note: 'Looks good.',
+        requiredChanges: null,
+      },
+      {
+        key: 'postgres-job-review-before-onchain-submit',
+        requestHash: hash({ jobId: created.body.id, decision: 'ACCEPT', phase: 'premature' }),
+      },
+    )
+    await expect(prematureReview).rejects.toMatchObject({ code: 'JOB_NOT_SUBMITTED_ONCHAIN' })
+
+    const preparedSubmit = await worker.prepareSubmitNext('store-test')
+    expect(preparedSubmit?.jobId).toBe(created.body.id)
+    expect(preparedSubmit?.transaction.functionName).toBe('submit')
+    expect(preparedSubmit?.transaction.to).toBe(created.body.settlement.contract)
+    if (preparedSubmit?.transaction.functionName !== 'submit')
+      throw new Error('Submit operation did not prepare APEX submit calldata.')
+    expect(preparedSubmit.transaction.args).toEqual({
+      externalJobId: '123',
+      deliverable: `0x${submittedWork.body.submissionHash}`,
+      optParams: '0x',
+    })
+
+    const submittedOnChain = await worker.submitNext({
+      submit: async (transaction) => {
+        expect(transaction).toEqual(preparedSubmit.transaction)
+        return {
+          transactionHash: `0x${'98'.repeat(32)}`,
+          transactionNonce: '10',
+        }
+      },
+    })
+    expect(submittedOnChain?.operationId).toBe(preparedSubmit.operationId)
+    expect(submittedOnChain?.transactionHash).toBe(`0x${'98'.repeat(32)}`)
+    const submittedOnChainHash = submittedOnChain?.transactionHash
+    if (!submittedOnChainHash)
+      throw new Error('APEX submit operation did not return a transaction hash.')
+
+    const finalizedSubmit = await worker.finalizeSubmitNext({
+      finalizedReceipt: async (hash) => ({
+        status: 'success',
+        transactionHash: hash,
+        blockNumber: 101n,
+        blockHash: `0x${'97'.repeat(32)}`,
+        logs: [
+          {
+            address: created.body.settlement.contract,
+            topics: encodeEventTopics({
+              abi: APEX_COMMERCE_ABI,
+              eventName: 'JobSubmitted',
+              args: {
+                jobId: 123n,
+                provider: actor.address,
+              },
+            }) as `0x${string}`[],
+            data: encodeAbiParameters(
+              [{ type: 'bytes32' }],
+              [`0x${submittedWork.body.submissionHash}` as `0x${string}`],
+            ),
+            transactionHash: hash,
+            logIndex: 5,
+            blockNumber: 101n,
+            blockHash: `0x${'97'.repeat(32)}`,
+          },
+        ],
+      }),
+    })
+    expect(finalizedSubmit).toMatchObject({
+      kind: 'SUBMIT_WORK',
+      operationId: preparedSubmit.operationId,
+      jobId: created.body.id,
+      agreementId: created.body.agreementId,
+      externalJobId: '123',
+      deliverable: `0x${submittedWork.body.submissionHash}`,
+    })
+
+    const finalizedSubmitRows = await sql<
+      {
+        submit_status: string
+        settlement_state: string
+        chain_events: string
+        marketplace_events: string
+      }[]
+    >`
+      SELECT
+        (SELECT status FROM settlement_operations WHERE id = ${preparedSubmit.operationId})
+          AS submit_status,
+        (SELECT settlement_state FROM marketplace_jobs WHERE id = ${created.body.id})
+          AS settlement_state,
+        (SELECT count(*) FROM chain_events
+          WHERE transaction_hash = ${submittedOnChainHash}
+            AND event_name = 'JobSubmitted') AS chain_events,
+        (SELECT count(*) FROM marketplace_events
+          WHERE job_id = ${created.body.id}
+            AND event_type = 'SETTLEMENT_WORK_SUBMITTED') AS marketplace_events
+    `
+    expect(finalizedSubmitRows[0]).toEqual({
+      submit_status: 'FINALIZED',
+      settlement_state: 'DELIVERABLE_SUBMITTED',
+      chain_events: '1',
+      marketplace_events: '1',
+    })
 
     const wrongReviewer = store.reviewJob(
       actor,
@@ -581,7 +703,7 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
       reviewerActorId: created.body.requesterActorId,
       decision: 'ACCEPT',
       workState: 'ACCEPTED',
-      settlementState: 'FUNDED',
+      settlementState: 'DELIVERABLE_SUBMITTED',
       payoutState: 'HOLD',
       nextAction: 'RELEASE_PAYMENT',
     })

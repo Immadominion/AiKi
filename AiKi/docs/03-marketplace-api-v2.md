@@ -240,8 +240,18 @@ Only the assigned provider can submit work, and only after the job is
 
 AiKi stores each submission in the append-only `job_submissions` table with a
 canonical `submissionHash`, moves the job to `workState: SUBMITTED`, and records
-`JOB_SUBMITTED`. The first supported submission is revision `1`; revision
-requests will add later entries instead of mutating this one.
+`JOB_SUBMITTED`.
+
+AiKi then queues a `SUBMIT_WORK` settlement operation. The settlement worker
+prepares deployed `submit(uint256,bytes32,bytes)` calldata using the canonical
+submission hash as the APEX deliverable. Requester review is blocked until the
+submitted transaction finalizes with the expected `JobSubmitted` event. Once
+verified, AiKi stores the finalized chain evidence, records
+`SETTLEMENT_WORK_SUBMITTED`, and moves the job to `settlementState:
+DELIVERABLE_SUBMITTED`.
+
+The first supported submission is revision `1`; revision requests will add later
+entries instead of mutating this one.
 
 ## Reviewing work
 
@@ -266,11 +276,12 @@ or:
 }
 ```
 
-Only the requester can review the latest submitted revision. `ACCEPT` moves the
-job to `workState: ACCEPTED`, puts payout in `HOLD`, stores an append-only
-`job_reviews` row, records `JOB_ACCEPTED`, and queues a `RELEASE` settlement
-operation. The release operation pays the provider amount from the immutable
-agreement and uses the accepted review hash as the APEX completion reason.
+Only the requester can review the latest submitted revision, and only after the
+APEX deliverable submission is finalized. `ACCEPT` moves the job to `workState:
+ACCEPTED`, puts payout in `HOLD`, stores an append-only `job_reviews` row,
+records `JOB_ACCEPTED`, and queues a `RELEASE` settlement operation. The release
+operation pays the provider amount from the immutable agreement and uses the
+accepted review hash as the APEX completion reason.
 
 `REQUEST_CHANGES` stores the review, moves the job to `CHANGES_REQUESTED`, and
 records `JOB_CHANGES_REQUESTED`. A change request must include

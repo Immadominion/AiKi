@@ -886,6 +886,8 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           )
 
         const submissionId = randomUUID()
+        const submitOperationId = randomUUID()
+        const submitLogicalKey = `job:${jobId}:submit:v1`
         const submissionHash = hashCanonicalJson({
           jobId,
           providerActorId: marketplaceActor.id,
@@ -926,6 +928,33 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         if (!submission) throw new Error(`Submission ${submissionId} was not stored.`)
 
         await tx`
+          INSERT INTO settlement_operations (
+            id, job_id, agreement_id, operation_type, logical_key, status,
+            chain_id, contract_address, token_address, amount
+          )
+          SELECT
+            ${submitOperationId}, ja.job_id, ja.id, 'SUBMIT_WORK', ${submitLogicalKey}, 'REQUESTED',
+            ja.settlement_chain_id, ja.settlement_contract, ja.settlement_token, 0
+          FROM job_agreements ja
+          WHERE ja.job_id = ${jobId}
+          ON CONFLICT (logical_key) DO NOTHING
+        `
+        await tx`
+          INSERT INTO outbox_events (
+            id, aggregate_type, aggregate_id, aggregate_version, topic, dedupe_key, payload
+          ) VALUES (
+            ${randomUUID()}, 'marketplace_job', ${jobId}, ${changed.aggregate_version},
+            'marketplace.settlement.submit.requested', ${submitLogicalKey},
+            ${tx.json({
+              jobId,
+              submissionId,
+              submissionHash,
+            })}
+          )
+          ON CONFLICT (dedupe_key) DO NOTHING
+        `
+
+        await tx`
           INSERT INTO marketplace_events (
             id, job_id, aggregate_version, actor_id, event_type, payload, correlation_id
           ) VALUES (
@@ -953,7 +982,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           artifactUri: input.artifactUri,
           note: input.note,
           submissionHash,
-          nextAction: 'WAIT_FOR_REVIEW',
+          nextAction: 'WAIT_FOR_ONCHAIN_SUBMISSION',
           submittedAt: iso(submission.created_at),
         }
       },
@@ -999,10 +1028,10 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         const row = rows[0]
         if (!row || row.requester_actor_id !== marketplaceActor.id)
           throw new MarketplaceError('JOB_NOT_FOUND', 'No such job.', { statusCode: 404 })
-        if (row.settlement_state !== 'FUNDED')
+        if (row.settlement_state !== 'DELIVERABLE_SUBMITTED')
           throw new MarketplaceError(
-            'JOB_NOT_FUNDED',
-            'This job cannot be reviewed until funding is finalized.',
+            'JOB_NOT_SUBMITTED_ONCHAIN',
+            'This job cannot be reviewed until the deliverable is finalized on-chain.',
             { statusCode: 409 },
           )
         if (row.work_state !== 'SUBMITTED')
@@ -1036,7 +1065,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           WHERE id = ${jobId}
             AND requester_actor_id = ${marketplaceActor.id}
             AND work_state = 'SUBMITTED'
-            AND settlement_state = 'FUNDED'
+            AND settlement_state = 'DELIVERABLE_SUBMITTED'
           RETURNING aggregate_version, updated_at
         `
         const changed = versionRows[0]
@@ -1111,7 +1140,7 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
           reviewerActorId: marketplaceActor.id,
           decision: input.decision,
           workState: nextWorkState,
-          settlementState: 'FUNDED',
+          settlementState: 'DELIVERABLE_SUBMITTED',
           payoutState: nextPayoutState,
           note: input.note,
           requiredChanges: input.requiredChanges,

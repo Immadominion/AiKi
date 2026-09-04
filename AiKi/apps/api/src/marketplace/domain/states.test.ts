@@ -40,7 +40,10 @@ describe('marketplace state machines', () => {
   })
 
   it('does not mistake a settlement retry for a second logical payment', () => {
-    expect(transitionSettlement('RELEASE_SUBMITTED', 'FUNDED')).toBe('FUNDED')
+    expect(transitionSettlement('DELIVERABLE_SUBMITTED', 'FUNDED')).toBe('FUNDED')
+    expect(transitionSettlement('RELEASE_SUBMITTED', 'DELIVERABLE_SUBMITTED')).toBe(
+      'DELIVERABLE_SUBMITTED',
+    )
     expect(() => transitionSettlement('RELEASED', 'RELEASE_SUBMITTED')).toThrow(
       InvalidTransitionError,
     )

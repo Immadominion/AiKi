@@ -12,6 +12,7 @@ export const APEX_COMMERCE_ABI = parseAbi([
   'function paymentToken() view returns (address)',
   'event JobCreated(uint256 indexed jobId, address indexed client, address indexed provider, address evaluator, uint256 expiredAt, address hook)',
   'event JobFunded(uint256 indexed jobId, address indexed client, uint256 amount)',
+  'event JobSubmitted(uint256 indexed jobId, address indexed provider, bytes32 deliverable)',
   'event JobCompleted(uint256 indexed jobId, address indexed evaluator, bytes32 reason)',
   'event PaymentReleased(uint256 indexed jobId, address indexed provider, uint256 amount)',
 ])
@@ -44,6 +45,19 @@ export type PreparedApexFundTransaction = Readonly<{
   }
 }>
 
+export type PreparedApexSubmitTransaction = Readonly<{
+  chainId: number
+  to: `0x${string}`
+  data: Hex
+  value: '0'
+  functionName: 'submit'
+  args: {
+    externalJobId: string
+    deliverable: Hex
+    optParams: Hex
+  }
+}>
+
 export type PreparedApexCompleteTransaction = Readonly<{
   chainId: number
   to: `0x${string}`
@@ -60,6 +74,7 @@ export type PreparedApexCompleteTransaction = Readonly<{
 export type PreparedApexTransaction =
   | PreparedApexCreateEscrowTransaction
   | PreparedApexFundTransaction
+  | PreparedApexSubmitTransaction
   | PreparedApexCompleteTransaction
 
 export type ApexReceiptLog = Readonly<{
@@ -86,6 +101,13 @@ export type ApexJobFunded = Readonly<{
   externalJobId: string
   client: `0x${string}`
   amount: string
+  log: ApexReceiptLog
+}>
+
+export type ApexJobSubmitted = Readonly<{
+  externalJobId: string
+  provider: `0x${string}`
+  deliverable: Hex
   log: ApexReceiptLog
 }>
 
@@ -170,6 +192,34 @@ export function prepareApexFund(input: {
     args: {
       externalJobId: externalJobId.toString(),
       amount: amount.toString(),
+      optParams,
+    },
+  }
+}
+
+export function prepareApexSubmit(input: {
+  rail: SettlementRail
+  externalJobId: string
+  deliverable: string
+}): PreparedApexSubmitTransaction {
+  const externalJobId = BigInt(input.externalJobId)
+  const deliverable = `0x${input.deliverable}` as Hex
+  if (!/^0x[0-9a-f]{64}$/.test(deliverable))
+    throw new Error('APEX submit deliverable must be bytes32.')
+  const optParams = '0x'
+  return {
+    chainId: input.rail.chainId,
+    to: input.rail.contract,
+    data: encodeFunctionData({
+      abi: APEX_COMMERCE_ABI,
+      functionName: 'submit',
+      args: [externalJobId, deliverable, optParams],
+    }),
+    value: '0',
+    functionName: 'submit',
+    args: {
+      externalJobId: externalJobId.toString(),
+      deliverable,
       optParams,
     },
   }
@@ -282,6 +332,44 @@ export function parseApexJobFunded(input: {
     }
   }
   throw new Error('No APEX JobFunded event found in the finalized transaction receipt.')
+}
+
+export function parseApexJobSubmitted(input: {
+  contract: `0x${string}`
+  transactionHash: Hex
+  logs: readonly ApexReceiptLog[]
+}): ApexJobSubmitted {
+  const contract = lowerAddress(input.contract)
+  for (const log of input.logs) {
+    if (lowerAddress(log.address) !== contract) continue
+    let decoded: ReturnType<typeof decodeEventLog>
+    try {
+      const topics = log.topics as [`0x${string}`, ...`0x${string}`[]]
+      decoded = decodeEventLog({
+        abi: APEX_COMMERCE_ABI,
+        data: log.data,
+        topics,
+      })
+    } catch {
+      continue
+    }
+    if (decoded.eventName !== 'JobSubmitted') continue
+    const args = decoded.args as {
+      jobId: bigint
+      provider: `0x${string}`
+      deliverable: Hex
+    }
+    if (lowerAddress(log.transactionHash) !== lowerAddress(input.transactionHash)) {
+      throw new Error('JobSubmitted log transaction hash does not match the settlement operation.')
+    }
+    return {
+      externalJobId: args.jobId.toString(),
+      provider: lowerAddress(args.provider),
+      deliverable: args.deliverable.toLowerCase() as Hex,
+      log,
+    }
+  }
+  throw new Error('No APEX JobSubmitted event found in the finalized transaction receipt.')
 }
 
 export function parseApexJobCompleted(input: {

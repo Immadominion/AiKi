@@ -5,10 +5,12 @@ import {
   parseApexJobCompleted,
   parseApexJobCreated,
   parseApexJobFunded,
+  parseApexJobSubmitted,
   parseApexPaymentReleased,
   prepareApexComplete,
   prepareApexCreateEscrow,
   prepareApexFund,
+  prepareApexSubmit,
 } from './apex.js'
 import type { SettlementFinalityReader } from './settlement-finality.js'
 import { settlementRailFor } from './settlement-rails.js'
@@ -60,11 +62,27 @@ type ReleaseQueueRow = {
   prepared_transaction: PreparedApexTransaction | null
 }
 
+type SubmitQueueRow = {
+  outbox_id: string
+  operation_id: string
+  job_id: string
+  agreement_id: string
+  operation_status: 'REQUESTED' | 'PREPARED'
+  chain_id: string | number
+  contract_address: `0x${string}`
+  token_address: `0x${string}`
+  settlement_decimals: number
+  external_job_id: string | null
+  payee_address: `0x${string}`
+  submission_hash: string
+  prepared_transaction: PreparedApexTransaction | null
+}
+
 type PreparedRow = {
   operation_id: string
   job_id: string
   agreement_id: string
-  operation_type: 'CREATE_ESCROW' | 'FUND' | 'RELEASE'
+  operation_type: 'CREATE_ESCROW' | 'FUND' | 'SUBMIT_WORK' | 'RELEASE'
   prepared_transaction: PreparedApexTransaction
 }
 
@@ -84,6 +102,11 @@ type SubmittedRow = {
 type SubmittedReleaseRow = SubmittedRow & {
   payee_address: `0x${string}`
   review_hash: string
+}
+
+type SubmittedWorkRow = SubmittedRow & {
+  payee_address: `0x${string}`
+  submission_hash: string
 }
 
 export type PreparedSettlementOperation = Readonly<{
@@ -119,6 +142,15 @@ export type FinalizedFundOperation = Readonly<{
   agreementId: string
   externalJobId: string
   amount: string
+}>
+
+export type FinalizedSubmitWorkOperation = Readonly<{
+  kind: 'SUBMIT_WORK'
+  operationId: string
+  jobId: string
+  agreementId: string
+  externalJobId: string
+  deliverable: string
 }>
 
 export type FinalizedReleaseOperation = Readonly<{
@@ -327,6 +359,32 @@ export class PostgresMarketplaceSettlementWorker {
           `
         }
       }
+      if (operationRows.length && row.operation_type === 'SUBMIT_WORK') {
+        const jobRows = await tx<{ aggregate_version: string }[]>`
+          UPDATE marketplace_jobs
+          SET aggregate_version = aggregate_version + 1,
+              updated_at = now()
+          WHERE id = ${row.job_id}
+            AND work_state = 'SUBMITTED'
+            AND settlement_state = 'FUNDED'
+          RETURNING aggregate_version
+        `
+        const aggregateVersion = jobRows[0]?.aggregate_version
+        if (!aggregateVersion)
+          throw new Error(`Submit operation ${row.operation_id} could not record submission send.`)
+        await tx`
+          INSERT INTO marketplace_events (
+            id, job_id, aggregate_version, event_type, payload, correlation_id
+          ) VALUES (
+            ${randomUUID()}, ${row.job_id}, ${aggregateVersion}, 'SETTLEMENT_WORK_SUBMISSION_SUBMITTED',
+            ${tx.json({
+              operationId: row.operation_id,
+              transactionHash: hash,
+            })},
+            ${row.operation_id}
+          )
+        `
+      }
       if (operationRows.length && row.operation_type === 'RELEASE') {
         const jobRows = await tx<{ aggregate_version: string }[]>`
           UPDATE marketplace_jobs
@@ -335,7 +393,7 @@ export class PostgresMarketplaceSettlementWorker {
               updated_at = now()
           WHERE id = ${row.job_id}
             AND work_state = 'ACCEPTED'
-            AND settlement_state = 'FUNDED'
+            AND settlement_state = 'DELIVERABLE_SUBMITTED'
             AND payout_state = 'HOLD'
           RETURNING aggregate_version
         `
@@ -598,6 +656,122 @@ export class PostgresMarketplaceSettlementWorker {
     })
   }
 
+  async prepareSubmitNext(
+    workerId = `marketplace-settlement-${randomUUID()}`,
+  ): Promise<PreparedSettlementOperation | null> {
+    return this.sql.begin(async (tx) => {
+      const locked = await tx<{ id: string }[]>`
+        SELECT id
+        FROM outbox_events
+        WHERE topic = 'marketplace.settlement.submit.requested'
+          AND status = 'PENDING'
+          AND available_at <= now()
+        ORDER BY available_at ASC, created_at ASC, id ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      `
+      const outboxId = locked[0]?.id
+      if (!outboxId) return null
+
+      await tx`
+        UPDATE outbox_events
+        SET status = 'PROCESSING',
+            attempts = attempts + 1,
+            locked_at = now(),
+            locked_by = ${workerId},
+            updated_at = now()
+        WHERE id = ${outboxId}
+      `
+
+      try {
+        const rows = await tx<SubmitQueueRow[]>`
+          SELECT
+            o.id AS outbox_id,
+            so.id AS operation_id,
+            so.job_id,
+            so.agreement_id,
+            so.status AS operation_status,
+            so.chain_id,
+            so.contract_address,
+            so.token_address,
+            so.prepared_transaction,
+            ja.settlement_decimals,
+            ja.external_job_id,
+            ja.payee_address,
+            js.submission_hash
+          FROM outbox_events o
+          JOIN settlement_operations so ON so.logical_key = o.dedupe_key
+          JOIN job_agreements ja ON ja.id = so.agreement_id
+          JOIN job_submissions js ON js.id = (o.payload ->> 'submissionId')::uuid
+          WHERE o.id = ${outboxId}
+            AND so.operation_type = 'SUBMIT_WORK'
+          FOR UPDATE OF so, ja, js
+        `
+        const row = rows[0]
+        if (!row) throw new Error('Settlement outbox event does not point at a submit operation.')
+
+        if (row.operation_status === 'PREPARED' && row.prepared_transaction) {
+          await markDelivered(tx, outboxId)
+          return {
+            outboxId,
+            operationId: row.operation_id,
+            jobId: row.job_id,
+            agreementId: row.agreement_id,
+            transaction: row.prepared_transaction,
+            replayed: true,
+          }
+        }
+
+        if (!row.external_job_id)
+          throw new Error(`Submit operation ${row.operation_id} has no finalized APEX job id.`)
+
+        const rail = settlementRailFor({
+          chainId: Number(row.chain_id),
+          token: row.token_address,
+          decimals: row.settlement_decimals,
+        })
+        if (rail.contract !== row.contract_address)
+          throw new Error(`Settlement contract mismatch for operation ${row.operation_id}.`)
+
+        const transaction = prepareApexSubmit({
+          rail,
+          externalJobId: row.external_job_id,
+          deliverable: row.submission_hash,
+        })
+
+        await tx`
+          UPDATE settlement_operations
+          SET status = 'PREPARED',
+              prepared_transaction = ${tx.json(transaction)},
+              prepared_at = now(),
+              updated_at = now()
+          WHERE id = ${row.operation_id}
+            AND status = 'REQUESTED'
+        `
+        await markDelivered(tx, outboxId)
+        return {
+          outboxId,
+          operationId: row.operation_id,
+          jobId: row.job_id,
+          agreementId: row.agreement_id,
+          transaction,
+          replayed: false,
+        }
+      } catch (error) {
+        await tx`
+          UPDATE outbox_events
+          SET status = 'DEAD_LETTER',
+              last_error = ${isoError(error)},
+              locked_at = NULL,
+              locked_by = NULL,
+              updated_at = now()
+          WHERE id = ${outboxId}
+        `
+        throw error
+      }
+    })
+  }
+
   private async claimPreparedSubmission(): Promise<PreparedRow | null> {
     return this.sql.begin(async (tx) => {
       const rows = await tx<PreparedRow[]>`
@@ -608,7 +782,7 @@ export class PostgresMarketplaceSettlementWorker {
           operation_type,
           prepared_transaction
         FROM settlement_operations
-        WHERE operation_type IN ('CREATE_ESCROW', 'FUND', 'RELEASE')
+        WHERE operation_type IN ('CREATE_ESCROW', 'FUND', 'SUBMIT_WORK', 'RELEASE')
           AND status = 'PREPARED'
           AND transaction_hash IS NULL
         ORDER BY prepared_at ASC, created_at ASC, id ASC
@@ -896,23 +1070,21 @@ export class PostgresMarketplaceSettlementWorker {
       `
       const aggregateVersion = jobRows[0]?.aggregate_version
       if (!aggregateVersion)
-        throw new Error(`Release operation ${row.operation_id} could not mark the job as released.`)
-      if (aggregateVersion) {
-        await tx`
-          INSERT INTO marketplace_events (
-            id, job_id, aggregate_version, event_type, payload, correlation_id
-          ) VALUES (
-            ${randomUUID()}, ${row.job_id}, ${aggregateVersion}, 'SETTLEMENT_FUNDED',
-            ${tx.json({
-              operationId: row.operation_id,
-              externalJobId: event.externalJobId,
-              transactionHash: row.transaction_hash,
-              amount: event.amount,
-            })},
-            ${row.operation_id}
-          )
-        `
-      }
+        throw new Error(`Fund operation ${row.operation_id} could not mark the job as funded.`)
+      await tx`
+        INSERT INTO marketplace_events (
+          id, job_id, aggregate_version, event_type, payload, correlation_id
+        ) VALUES (
+          ${randomUUID()}, ${row.job_id}, ${aggregateVersion}, 'SETTLEMENT_FUNDED',
+          ${tx.json({
+            operationId: row.operation_id,
+            externalJobId: event.externalJobId,
+            transactionHash: row.transaction_hash,
+            amount: event.amount,
+          })},
+          ${row.operation_id}
+        )
+      `
 
       return {
         kind: 'FUND',
@@ -921,6 +1093,170 @@ export class PostgresMarketplaceSettlementWorker {
         agreementId: row.agreement_id,
         externalJobId: event.externalJobId,
         amount: event.amount,
+      }
+    })
+  }
+
+  async finalizeSubmitNext(
+    reader: SettlementFinalityReader,
+  ): Promise<FinalizedSubmitWorkOperation | null> {
+    const rows = await this.sql<SubmittedWorkRow[]>`
+      SELECT
+        so.id AS operation_id,
+        so.job_id,
+        so.agreement_id,
+        ja.external_job_id,
+        ja.payee_address,
+        js.submission_hash,
+        so.transaction_hash,
+        so.chain_id,
+        so.contract_address,
+        so.token_address,
+        so.amount,
+        so.status
+      FROM settlement_operations so
+      JOIN job_agreements ja ON ja.id = so.agreement_id
+      JOIN job_submissions js ON js.job_id = so.job_id
+      WHERE so.operation_type = 'SUBMIT_WORK'
+        AND so.status IN ('SUBMITTED', 'MINED')
+        AND so.transaction_hash IS NOT NULL
+      ORDER BY so.updated_at ASC, so.created_at ASC, so.id ASC
+      LIMIT 1
+    `
+    const row = rows[0]
+    if (!row) return null
+
+    const receipt = await reader.finalizedReceipt(row.transaction_hash)
+    if (!receipt) {
+      if (row.status !== 'MINED')
+        await this.sql`
+          UPDATE settlement_operations
+          SET status = 'MINED',
+              updated_at = now()
+          WHERE id = ${row.operation_id}
+            AND status = 'SUBMITTED'
+        `
+      return null
+    }
+
+    if (receipt.status !== 'success') {
+      await this.sql.begin(async (tx) => {
+        await tx`
+          UPDATE settlement_operations
+          SET status = 'REVERTED',
+              failure_code = 'SUBMIT_WORK_REVERTED',
+              failure_detail = 'Finalized transaction receipt has reverted status.',
+              updated_at = now()
+          WHERE id = ${row.operation_id}
+            AND status IN ('SUBMITTED', 'MINED')
+        `
+        const jobRows = await tx<{ aggregate_version: string }[]>`
+          UPDATE marketplace_jobs
+          SET work_state = 'IN_PROGRESS',
+              aggregate_version = aggregate_version + 1,
+              updated_at = now()
+          WHERE id = ${row.job_id}
+            AND work_state = 'SUBMITTED'
+            AND settlement_state = 'FUNDED'
+          RETURNING aggregate_version
+        `
+        const aggregateVersion = jobRows[0]?.aggregate_version
+        if (aggregateVersion) {
+          await tx`
+            INSERT INTO marketplace_events (
+              id, job_id, aggregate_version, event_type, payload, correlation_id
+            ) VALUES (
+              ${randomUUID()}, ${row.job_id}, ${aggregateVersion}, 'SETTLEMENT_WORK_SUBMISSION_REVERTED',
+              ${tx.json({
+                operationId: row.operation_id,
+                transactionHash: row.transaction_hash,
+              })},
+              ${row.operation_id}
+            )
+          `
+        }
+      })
+      return null
+    }
+
+    const event = parseApexJobSubmitted({
+      contract: row.contract_address,
+      transactionHash: row.transaction_hash,
+      logs: receipt.logs,
+    })
+    if (!row.external_job_id)
+      throw new Error(`Submit operation ${row.operation_id} has no finalized APEX job id.`)
+    if (event.externalJobId !== row.external_job_id)
+      throw new Error(`JobSubmitted external job id mismatch for operation ${row.operation_id}.`)
+    if (event.provider !== row.payee_address)
+      throw new Error(`JobSubmitted provider mismatch for operation ${row.operation_id}.`)
+    if (event.deliverable !== `0x${row.submission_hash}`)
+      throw new Error(`JobSubmitted deliverable mismatch for operation ${row.operation_id}.`)
+
+    return this.sql.begin(async (tx) => {
+      const updated = await tx<{ id: string }[]>`
+        UPDATE settlement_operations
+        SET status = 'FINALIZED',
+            finalized_at = now(),
+            failure_code = NULL,
+            failure_detail = NULL,
+            updated_at = now()
+        WHERE id = ${row.operation_id}
+          AND status IN ('SUBMITTED', 'MINED')
+        RETURNING id
+      `
+      if (!updated.length) return null
+
+      await insertFinalizedChainEvent(tx, {
+        chainId: row.chain_id,
+        contractAddress: row.contract_address,
+        transactionHash: row.transaction_hash,
+        log: event.log,
+        eventName: 'JobSubmitted',
+        payload: {
+          externalJobId: event.externalJobId,
+          provider: event.provider,
+          deliverable: event.deliverable,
+        },
+      })
+
+      const jobRows = await tx<{ aggregate_version: string }[]>`
+        UPDATE marketplace_jobs
+        SET settlement_state = 'DELIVERABLE_SUBMITTED',
+            aggregate_version = aggregate_version + 1,
+            updated_at = now()
+        WHERE id = ${row.job_id}
+          AND work_state = 'SUBMITTED'
+          AND settlement_state = 'FUNDED'
+        RETURNING aggregate_version
+      `
+      const aggregateVersion = jobRows[0]?.aggregate_version
+      if (!aggregateVersion)
+        throw new Error(
+          `Submit operation ${row.operation_id} could not mark the job as reviewable.`,
+        )
+      await tx`
+        INSERT INTO marketplace_events (
+          id, job_id, aggregate_version, event_type, payload, correlation_id
+        ) VALUES (
+          ${randomUUID()}, ${row.job_id}, ${aggregateVersion}, 'SETTLEMENT_WORK_SUBMITTED',
+          ${tx.json({
+            operationId: row.operation_id,
+            externalJobId: event.externalJobId,
+            transactionHash: row.transaction_hash,
+            deliverable: event.deliverable,
+          })},
+          ${row.operation_id}
+        )
+      `
+
+      return {
+        kind: 'SUBMIT_WORK',
+        operationId: row.operation_id,
+        jobId: row.job_id,
+        agreementId: row.agreement_id,
+        externalJobId: event.externalJobId,
+        deliverable: event.deliverable,
       }
     })
   }
@@ -980,7 +1316,7 @@ export class PostgresMarketplaceSettlementWorker {
         `
         const jobRows = await tx<{ aggregate_version: string }[]>`
           UPDATE marketplace_jobs
-          SET settlement_state = 'FUNDED',
+          SET settlement_state = 'DELIVERABLE_SUBMITTED',
               aggregate_version = aggregate_version + 1,
               updated_at = now()
           WHERE id = ${row.job_id}

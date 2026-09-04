@@ -415,6 +415,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
         this.jobs.set(jobId, {
           ...job,
           workState: 'SUBMITTED',
+          settlementState: 'DELIVERABLE_SUBMITTED',
           nextAction: 'WAIT_FOR_REVIEW',
         })
         const submission: JobSubmissionView = {
@@ -422,7 +423,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
           jobId,
           revisionNumber: 1,
           workState: 'SUBMITTED',
-          settlementState: 'FUNDED',
+          settlementState: 'DELIVERABLE_SUBMITTED',
           providerActorId: providerId,
           output: input.output,
           evidence: input.evidence,
@@ -454,10 +455,10 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
         const submission = this.submissions.get(jobId)
         if (!job || !submission || job.requesterActorId !== reviewerId)
           throw new MarketplaceError('JOB_NOT_FOUND', 'No such job.', { statusCode: 404 })
-        if (job.settlementState !== 'FUNDED')
+        if (job.settlementState !== 'DELIVERABLE_SUBMITTED')
           throw new MarketplaceError(
-            'JOB_NOT_FUNDED',
-            'This job cannot be reviewed until funding is finalized.',
+            'JOB_NOT_SUBMITTED_ONCHAIN',
+            'This job cannot be reviewed until the deliverable is finalized on-chain.',
             { statusCode: 409 },
           )
         if (job.workState !== 'SUBMITTED')
@@ -492,7 +493,7 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
           reviewerActorId: reviewerId,
           decision: input.decision,
           workState,
-          settlementState: 'FUNDED',
+          settlementState: 'DELIVERABLE_SUBMITTED',
           payoutState,
           note: input.note,
           requiredChanges: input.requiredChanges,

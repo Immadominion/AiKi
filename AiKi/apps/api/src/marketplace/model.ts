@@ -140,7 +140,7 @@ export type JobView = Readonly<{
   previewHash: string
   title: string
   workState: 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED' | 'CHANGES_REQUESTED' | 'ACCEPTED'
-  settlementState: 'UNFUNDED' | 'FUNDING_SUBMITTED' | 'FUNDED'
+  settlementState: 'UNFUNDED' | 'FUNDING_SUBMITTED' | 'FUNDED' | 'DELIVERABLE_SUBMITTED'
   disputeState: 'NONE'
   payoutState: 'NONE' | 'HOLD'
   payerActorId: string
@@ -186,6 +186,7 @@ export type JobView = Readonly<{
     | 'WAIT_FOR_FUNDING'
     | 'START_WORK'
     | 'SUBMIT_WORK'
+    | 'WAIT_FOR_ONCHAIN_SUBMISSION'
     | 'WAIT_FOR_REVIEW'
     | 'REVISE_WORK'
     | 'RELEASE_PAYMENT'
@@ -206,14 +207,14 @@ export type JobSubmissionView = Readonly<{
   jobId: string
   revisionNumber: number
   workState: 'SUBMITTED'
-  settlementState: 'FUNDED'
+  settlementState: 'FUNDED' | 'DELIVERABLE_SUBMITTED'
   providerActorId: string
   output: JsonObject
   evidence: JsonObject
   artifactUri: string | null
   note: string | null
   submissionHash: string
-  nextAction: 'WAIT_FOR_REVIEW'
+  nextAction: 'WAIT_FOR_ONCHAIN_SUBMISSION' | 'WAIT_FOR_REVIEW'
   submittedAt: string
 }>
 
@@ -225,7 +226,7 @@ export type JobReviewView = Readonly<{
   reviewerActorId: string
   decision: ReviewDecision
   workState: 'CHANGES_REQUESTED' | 'ACCEPTED'
-  settlementState: 'FUNDED'
+  settlementState: 'DELIVERABLE_SUBMITTED'
   payoutState: 'NONE' | 'HOLD'
   note: string | null
   requiredChanges: JsonObject | null

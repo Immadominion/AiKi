@@ -6,10 +6,12 @@ import {
   parseApexJobCompleted,
   parseApexJobCreated,
   parseApexJobFunded,
+  parseApexJobSubmitted,
   parseApexPaymentReleased,
   prepareApexComplete,
   prepareApexCreateEscrow,
   prepareApexFund,
+  prepareApexSubmit,
 } from './apex.js'
 import { settlementRailFor } from './settlement-rails.js'
 
@@ -91,6 +93,30 @@ describe('APEX settlement adapter', () => {
     })
   })
 
+  it('prepares deployed submit calldata from the work submission hash', () => {
+    const rail = settlementRailFor({
+      chainId: 56,
+      token: BSC_MAINNET.contracts.settlementToken.toLowerCase() as `0x${string}`,
+      decimals: 18,
+    })
+    const deliverable = '6'.repeat(64)
+    const prepared = prepareApexSubmit({
+      rail,
+      externalJobId: '123',
+      deliverable,
+    })
+
+    expect(prepared.to).toBe(BSC_MAINNET.contracts.erc8183Commerce.toLowerCase())
+    const decoded = decodeFunctionData({ abi: APEX_COMMERCE_ABI, data: prepared.data })
+    expect(decoded.functionName).toBe('submit')
+    expect(decoded.args).toEqual([123n, `0x${deliverable}`, '0x'])
+    expect(prepared.args).toEqual({
+      externalJobId: '123',
+      deliverable: `0x${deliverable}`,
+      optParams: '0x',
+    })
+  })
+
   it('parses a finalized JobCreated log from the deployed event shape', () => {
     const transactionHash = `0x${'11'.repeat(32)}` as const
     const provider = `0x${'ab'.repeat(20)}` as const
@@ -158,6 +184,39 @@ describe('APEX settlement adapter', () => {
     expect(parsed.client).toBe(client)
     expect(parsed.amount).toBe('1000000000000000001')
     expect(parsed.log.logIndex).toBe(8)
+  })
+
+  it('parses a finalized JobSubmitted log from the deployed event shape', () => {
+    const transactionHash = `0x${'66'.repeat(32)}` as const
+    const provider = `0x${'ab'.repeat(20)}` as const
+    const deliverable = `0x${'77'.repeat(32)}` as const
+    const topics = encodeEventTopics({
+      abi: APEX_COMMERCE_ABI,
+      eventName: 'JobSubmitted',
+      args: {
+        jobId: 123n,
+        provider,
+      },
+    }) as `0x${string}`[]
+    const parsed = parseApexJobSubmitted({
+      contract: BSC_MAINNET.contracts.erc8183Commerce.toLowerCase() as `0x${string}`,
+      transactionHash,
+      logs: [
+        {
+          address: BSC_MAINNET.contracts.erc8183Commerce.toLowerCase() as `0x${string}`,
+          topics,
+          data: encodeAbiParameters([{ type: 'bytes32' }], [deliverable]),
+          transactionHash,
+          logIndex: 9,
+          blockNumber: 100n,
+          blockHash: `0x${'88'.repeat(32)}`,
+        },
+      ],
+    })
+    expect(parsed.externalJobId).toBe('123')
+    expect(parsed.provider).toBe(provider)
+    expect(parsed.deliverable).toBe(deliverable)
+    expect(parsed.log.logIndex).toBe(9)
   })
 
   it('parses finalized release logs from the deployed event shapes', () => {
