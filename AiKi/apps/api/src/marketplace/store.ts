@@ -81,6 +81,46 @@ type OfferRow = {
 
 type OfferForJob = OfferView & { providerControllerAddress: `0x${string}` }
 
+type JobReadRow = {
+  id: string
+  agreement_id: string
+  preview_hash: string
+  title: string
+  brief: string
+  requirements: JsonObject
+  definition_of_done: string
+  evidence_requirements: JsonObject
+  work_state: JobView['workState']
+  settlement_state: JobView['settlementState']
+  dispute_state: JobView['disputeState']
+  payout_state: JobView['payoutState']
+  payer_actor_id: string
+  requester_actor_id: string
+  provider_actor_id: string
+  offer_id: string
+  offer_version: number
+  terms_hash: string
+  settlement_rail: JobView['settlement']['rail']
+  settlement_rail_version: string
+  settlement_chain_id: string | number
+  settlement_contract: `0x${string}`
+  settlement_token: `0x${string}`
+  settlement_decimals: number
+  provider_amount: string
+  platform_fee_amount: string
+  gross_amount: string
+  delivery_deadline: Date | string
+  review_deadline: Date | string
+  dispute_deadline: Date | string
+  hard_expiry: Date | string
+  funding_operation_id: string
+  funding_operation_status: JobView['fundingOperation']['status']
+  funding_operation_type: 'CREATE_ESCROW'
+  funding_logical_key: string
+  funding_amount: string
+  created_at: Date | string
+}
+
 type IdempotencyRow = {
   request_hash: string
   status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
@@ -147,6 +187,71 @@ const offerView = (row: OfferRow): OfferView => ({
 const offerForJob = (row: OfferRow): OfferForJob => ({
   ...offerView(row),
   providerControllerAddress: row.provider_controller_address,
+})
+
+const nextActionForJob = (
+  workState: JobView['workState'],
+  settlementState: JobView['settlementState'],
+): JobView['nextAction'] => {
+  if (settlementState === 'RELEASED') return 'VIEW_RECEIPT'
+  if (settlementState === 'UNFUNDED') return 'CREATE_ESCROW'
+  if (settlementState === 'FUNDING_SUBMITTED') return 'WAIT_FOR_FUNDING'
+  if (workState === 'ASSIGNED' && settlementState === 'FUNDED') return 'START_WORK'
+  if (workState === 'IN_PROGRESS' && settlementState === 'FUNDED') return 'SUBMIT_WORK'
+  if (workState === 'SUBMITTED' && settlementState === 'FUNDED')
+    return 'WAIT_FOR_ONCHAIN_SUBMISSION'
+  if (workState === 'SUBMITTED' && settlementState === 'DELIVERABLE_SUBMITTED')
+    return 'WAIT_FOR_REVIEW'
+  if (workState === 'CHANGES_REQUESTED') return 'REVISE_WORK'
+  if (workState === 'ACCEPTED') return 'RELEASE_PAYMENT'
+  return 'WAIT_FOR_FUNDING'
+}
+
+const jobView = (row: JobReadRow): JobView => ({
+  id: row.id,
+  agreementId: row.agreement_id,
+  previewHash: row.preview_hash,
+  title: row.title,
+  workState: row.work_state,
+  settlementState: row.settlement_state,
+  disputeState: row.dispute_state,
+  payoutState: row.payout_state,
+  payerActorId: row.payer_actor_id,
+  requesterActorId: row.requester_actor_id,
+  providerActorId: row.provider_actor_id,
+  offer: { id: row.offer_id, version: row.offer_version, termsHash: row.terms_hash },
+  scope: {
+    brief: row.brief,
+    requirements: row.requirements,
+    definitionOfDone: row.definition_of_done,
+    evidenceRequirements: row.evidence_requirements,
+  },
+  settlement: {
+    rail: row.settlement_rail,
+    railVersion: row.settlement_rail_version,
+    chainId: safeInteger(row.settlement_chain_id, 'settlement_chain_id'),
+    contract: row.settlement_contract,
+    token: row.settlement_token,
+    decimals: row.settlement_decimals,
+    providerAmount: row.provider_amount,
+    platformFeeAmount: row.platform_fee_amount,
+    totalAmount: row.gross_amount,
+  },
+  deadlines: {
+    delivery: iso(row.delivery_deadline),
+    review: iso(row.review_deadline),
+    dispute: iso(row.dispute_deadline),
+    hardExpiry: iso(row.hard_expiry),
+  },
+  fundingOperation: {
+    id: row.funding_operation_id,
+    status: row.funding_operation_status,
+    operationType: row.funding_operation_type,
+    logicalKey: row.funding_logical_key,
+    amount: row.funding_amount,
+  },
+  nextAction: nextActionForJob(row.work_state, row.settlement_state),
+  createdAt: iso(row.created_at),
 })
 
 async function readProvider(sql: QuerySql, actorId: string): Promise<ProviderView> {
@@ -286,6 +391,7 @@ export interface MarketplaceStore {
     input: CreateJob,
     idempotency: Idempotency,
   ): Promise<CommandResult<JobView>>
+  getJob(actor: ActorIdentity, jobId: string): Promise<JobView | null>
   startJob(
     actor: ActorIdentity,
     jobId: string,
@@ -338,6 +444,65 @@ export class PostgresMarketplaceStore implements MarketplaceStore {
         statusCode: 403,
       })
     return actor
+  }
+
+  async getJob(actor: ActorIdentity, jobId: string): Promise<JobView | null> {
+    return this.sql.begin(async (tx) => {
+      const marketplaceActor = await this.actor(tx, actor)
+      const rows = await tx<JobReadRow[]>`
+        SELECT
+          mj.id,
+          ja.id AS agreement_id,
+          (ja.snapshot -> 'preview' ->> 'previewHash') AS preview_hash,
+          mj.title,
+          mj.brief,
+          mj.requirements,
+          mj.definition_of_done,
+          mj.evidence_requirements,
+          mj.work_state,
+          mj.settlement_state,
+          mj.dispute_state,
+          mj.payout_state,
+          mj.payer_actor_id,
+          mj.requester_actor_id,
+          mj.provider_actor_id,
+          ja.offer_id,
+          ja.offer_version,
+          ja.terms_hash,
+          ja.settlement_rail,
+          ja.settlement_rail_version,
+          ja.settlement_chain_id,
+          ja.settlement_contract,
+          ja.settlement_token,
+          ja.settlement_decimals,
+          ja.provider_amount,
+          ja.platform_fee_amount,
+          ja.gross_amount,
+          ja.delivery_deadline,
+          ja.review_deadline,
+          ja.dispute_deadline,
+          ja.hard_expiry,
+          so.id AS funding_operation_id,
+          so.status AS funding_operation_status,
+          so.operation_type AS funding_operation_type,
+          so.logical_key AS funding_logical_key,
+          so.amount AS funding_amount,
+          mj.created_at
+        FROM marketplace_jobs mj
+        JOIN job_agreements ja ON ja.job_id = mj.id
+        JOIN settlement_operations so ON so.job_id = mj.id
+          AND so.operation_type = 'CREATE_ESCROW'
+        WHERE mj.id = ${jobId}
+          AND (
+            mj.payer_actor_id = ${marketplaceActor.id}
+            OR mj.requester_actor_id = ${marketplaceActor.id}
+            OR mj.provider_actor_id = ${marketplaceActor.id}
+          )
+        LIMIT 1
+      `
+      const row = rows[0]
+      return row ? jobView(row) : null
+    })
   }
 
   private async command<T>(input: {

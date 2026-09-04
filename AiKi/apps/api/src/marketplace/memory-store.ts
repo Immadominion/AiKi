@@ -330,6 +330,19 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     })
   }
 
+  async getJob(actor: ActorIdentity, jobId: string): Promise<JobView | null> {
+    const actorId = this.actor(actor)
+    const job = this.jobs.get(jobId)
+    if (
+      !job ||
+      (job.payerActorId !== actorId &&
+        job.requesterActorId !== actorId &&
+        job.providerActorId !== actorId)
+    )
+      return null
+    return structuredClone(job)
+  }
+
   async startJob(
     actor: ActorIdentity,
     jobId: string,

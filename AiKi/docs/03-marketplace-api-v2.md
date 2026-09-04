@@ -116,9 +116,20 @@ The job response is deliberately `settlementState: UNFUNDED` and
 or provider earnings. Escrow creation is accepted only for the enabled BNB APEX
 settlement rail and configured settlement asset.
 
-Release, refund, delivery finalization, disputes, and receipts are still future
-slices. They require chain event projection, reconciliation, and the hard-expiry
-refund path before the API can safely move jobs to terminal states.
+Refunds, disputes, and receipt projection are still future slices. Release now
+requires finalized APEX submission and completion evidence before AiKi marks a
+job terminal.
+
+## Job reading
+
+```http
+GET /v2/jobs/{jobId}
+```
+
+Only the payer, requester, or assigned provider can read a job. Strangers get
+`404 JOB_NOT_FOUND`, not a leaked existence check. The response is the UI source
+of truth for work state, settlement state, payout state, immutable agreement
+terms, deadlines, settlement rail, funding operation status, and the next action.
 
 ## Settlement preparation
 

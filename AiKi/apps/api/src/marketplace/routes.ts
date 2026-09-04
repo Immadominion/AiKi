@@ -153,6 +153,17 @@ export function registerMarketplaceRoutes(app: FastifyInstance, store: Marketpla
     )
   })
 
+  app.get<{ Params: { id: string } }>('/v2/jobs/:id', async (request, reply) => {
+    const actor = identity(request, reply)
+    if (!actor) return reply
+    const job = await store.getJob(actor, routeId(request.params.id, 'job'))
+    if (!job)
+      return reply.code(404).send({
+        error: { code: 'JOB_NOT_FOUND', message: 'No such job.', retryable: false },
+      })
+    return job
+  })
+
   app.post<{ Params: { id: string } }>('/v2/jobs/:id/start', async (request, reply) => {
     const actor = identity(request, reply)
     if (!actor) return reply

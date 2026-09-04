@@ -234,6 +234,35 @@ describe('canonical marketplace routes', () => {
       BSC_MAINNET.contracts.erc8183Commerce.toLowerCase(),
     )
 
+    const readableByRequester = await app.inject({
+      method: 'GET',
+      url: `/v2/jobs/${created.json().id}`,
+      headers: cookie(OTHER),
+    })
+    expect(readableByRequester.statusCode).toBe(200)
+    expect(readableByRequester.json()).toMatchObject({
+      id: created.json().id,
+      workState: 'ASSIGNED',
+      settlementState: 'UNFUNDED',
+      nextAction: 'CREATE_ESCROW',
+    })
+
+    const readableByProvider = await app.inject({
+      method: 'GET',
+      url: `/v2/jobs/${created.json().id}`,
+      headers: cookie(),
+    })
+    expect(readableByProvider.statusCode).toBe(200)
+    expect(readableByProvider.json().id).toBe(created.json().id)
+
+    const hiddenFromStrangers = await app.inject({
+      method: 'GET',
+      url: `/v2/jobs/${created.json().id}`,
+      headers: cookie(`0x${'99'.repeat(20)}`),
+    })
+    expect(hiddenFromStrangers.statusCode).toBe(404)
+    expect(hiddenFromStrangers.json().error.code).toBe('JOB_NOT_FOUND')
+
     const replay = await app.inject({
       method: 'POST',
       url: '/v2/jobs',

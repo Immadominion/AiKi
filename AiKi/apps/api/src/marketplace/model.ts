@@ -140,9 +140,17 @@ export type JobView = Readonly<{
   previewHash: string
   title: string
   workState: 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED' | 'CHANGES_REQUESTED' | 'ACCEPTED'
-  settlementState: 'UNFUNDED' | 'FUNDING_SUBMITTED' | 'FUNDED' | 'DELIVERABLE_SUBMITTED'
+  settlementState:
+    | 'UNFUNDED'
+    | 'FUNDING_SUBMITTED'
+    | 'FUNDED'
+    | 'DELIVERABLE_SUBMITTED'
+    | 'RELEASE_SUBMITTED'
+    | 'RELEASED'
+    | 'REFUND_SUBMITTED'
+    | 'REFUNDED'
   disputeState: 'NONE'
-  payoutState: 'NONE' | 'HOLD'
+  payoutState: 'NONE' | 'HOLD' | 'AVAILABLE' | 'PAID' | 'FAILED'
   payerActorId: string
   requesterActorId: string
   providerActorId: string
@@ -176,7 +184,16 @@ export type JobView = Readonly<{
   }
   fundingOperation: {
     id: string
-    status: 'REQUESTED'
+    status:
+      | 'REQUESTED'
+      | 'PREPARED'
+      | 'SUBMITTING'
+      | 'SUBMITTED'
+      | 'MINED'
+      | 'FINALIZED'
+      | 'REPLACED'
+      | 'REVERTED'
+      | 'ABANDONED'
     operationType: 'CREATE_ESCROW'
     logicalKey: string
     amount: string
@@ -190,6 +207,7 @@ export type JobView = Readonly<{
     | 'WAIT_FOR_REVIEW'
     | 'REVISE_WORK'
     | 'RELEASE_PAYMENT'
+    | 'VIEW_RECEIPT'
   createdAt: string
 }>
 

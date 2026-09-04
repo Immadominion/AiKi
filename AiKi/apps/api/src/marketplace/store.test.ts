@@ -153,6 +153,21 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
     expect(created.body.settlementState).toBe('UNFUNDED')
     expect(created.body.fundingOperation.status).toBe('REQUESTED')
     expect(created.body.settlement.totalAmount).toBe(preview.settlement.quote?.totalAmount)
+    const createdJobRead = await store.getJob(stranger, created.body.id)
+    expect(createdJobRead).toMatchObject({
+      id: created.body.id,
+      workState: 'ASSIGNED',
+      settlementState: 'UNFUNDED',
+      nextAction: 'CREATE_ESCROW',
+    })
+    expect(createdJobRead?.fundingOperation).toMatchObject({
+      id: created.body.fundingOperation.id,
+      status: 'REQUESTED',
+      operationType: 'CREATE_ESCROW',
+    })
+    await expect(
+      store.getJob({ chainId: 56, address: `0x${'99'.repeat(20)}` }, created.body.id),
+    ).resolves.toBeNull()
 
     const rows = await sql<
       {
@@ -928,6 +943,14 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
       completed_events: '1',
       released_events: '1',
       marketplace_events: '1',
+    })
+    const releasedJobRead = await store.getJob(stranger, created.body.id)
+    expect(releasedJobRead).toMatchObject({
+      id: created.body.id,
+      workState: 'ACCEPTED',
+      settlementState: 'RELEASED',
+      payoutState: 'PAID',
+      nextAction: 'VIEW_RECEIPT',
     })
   })
 })
