@@ -12,6 +12,7 @@ import {
   LayersIcon,
   LayoutGridIcon,
   ShieldCheckIcon,
+  UserIcon,
   WalletIcon,
 } from '@animateicons/react/lucide'
 import Image from 'next/image'
@@ -58,6 +59,8 @@ const GROUPS: { label: string; items: Item[] }[] = [
       // The other side of the marketplace: work nobody has listed, that a person
       // can do and be paid for.
       { label: 'Work', icon: ClipboardIcon, href: '/work' },
+      // The other side of it: who can be hired, as opposed to what.
+      { label: 'People', icon: UserIcon, href: '/people' },
       { label: 'My agents', icon: LayoutGridIcon, href: '/agents' },
     ],
   },
