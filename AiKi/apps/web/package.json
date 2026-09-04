@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "NEXT_PUBLIC_API_URL=http://localhost:4700 next dev --turbopack --port 4747",
+    "dev": "NEXT_PUBLIC_API_URL=http://127.0.0.1:4700 next dev --turbopack --hostname 127.0.0.1 --port 4747",
     "build": "next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit"

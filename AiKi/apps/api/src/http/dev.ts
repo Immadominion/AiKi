@@ -135,17 +135,18 @@ const app = createApiServer({
 if (marketplace instanceof PostgresMarketplaceStore)
   app.addHook('onClose', async () => marketplace.close())
 
-// The web app runs on another localhost port; production CORS policy is the
-// deployment's decision, not this harness's.
-const WEB_ORIGIN = process.env.WEB_ORIGIN ?? 'http://localhost:4747'
+// The web app runs on another loopback port; production CORS policy is the
+// deployment's decision, not this harness's. Keep this on 127.0.0.1 so local
+// browser cookies stay same-site with the API.
+const WEB_ORIGIN = process.env.WEB_ORIGIN ?? 'http://127.0.0.1:4747'
 app.addHook('onRequest', async (request, reply) => {
   // A wildcard origin cannot carry credentials, and the session is a cookie, so
   // the dev server names the one origin it trusts.
-  reply.header('access-control-allow-origin', WEB_ORIGIN)
-  reply.header('access-control-allow-credentials', 'true')
-  reply.header('vary', 'origin')
-  reply.header('access-control-allow-headers', 'content-type, idempotency-key')
-  reply.header('access-control-allow-methods', 'GET, POST, PUT, OPTIONS')
+  reply.header('Access-Control-Allow-Origin', WEB_ORIGIN)
+  reply.header('Access-Control-Allow-Credentials', 'true')
+  reply.header('Vary', 'Origin')
+  reply.header('Access-Control-Allow-Headers', 'content-type, idempotency-key')
+  reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS')
   if (request.method === 'OPTIONS') return reply.code(204).send()
 })
 
