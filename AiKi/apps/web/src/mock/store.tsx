@@ -214,35 +214,23 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
           /*
            * Turn the mandate into authority the chain holds.
            *
-           * Everything above records what was chosen; this is where somebody
-           * actually grants it. It runs after the mandate exists because the API
-           * signs what it has already stored, never what this request supplies.
-           *
-           * A failure here is not fatal to the hire and must not be silent. The
-           * mandate is real either way, and the difference is who enforces it:
-           * signed means the chain refuses, unsigned means AiKi counts. Screens
-           * read that off the API rather than from anything decided here.
+           * A connected production wallet is not hired until the delegation is
+           * accepted. Continuing after a declined or invalid signature creates a
+           * job that cannot act, then lets the local demo runner invent progress
+           * for it. Throwing here keeps the job list aligned with what the agent
+           * can actually do.
            */
-          let mandateHeldBy: 'signed' | 'counted' = 'counted'
-          try {
-            const existing = await backend.account()
-            const account = existing.address ?? (await backend.createAccount()).address
-            const prep = await backend.prepareDelegation(authorization.id, account)
-            const signature = await signMandate(stateRef.current.address ?? '', {
-              domain: prep.domain,
-              types: prep.types,
-              primaryType: prep.primaryType,
-              message: prep.message,
-            })
-            if (signature !== 'declined') {
-              await backend.fileDelegation(authorization.id, { ...prep.unsigned, signature })
-              mandateHeldBy = 'signed'
-            }
-          } catch {
-            // Left as 'counted'. Never silent: somebody who believes the chain
-            // is holding their cap when it is not has been told the one thing
-            // this product may never get wrong.
-          }
+          const existing = await backend.account()
+          const account = existing.address ?? (await backend.createAccount()).address
+          const prep = await backend.prepareDelegation(authorization.id, account)
+          const signature = await signMandate(stateRef.current.address ?? '', {
+            domain: prep.domain,
+            types: prep.types,
+            primaryType: prep.primaryType,
+            message: prep.message,
+          })
+          if (signature === 'declined') throw new Error('The mandate signature was declined.')
+          await backend.fileDelegation(authorization.id, { ...prep.unsigned, signature })
 
           const job = await backend.createJob(authorization.id, `hire:${authorization.id}`)
           const hire: Hire = {
@@ -279,7 +267,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
             hires: [...s.hires.filter((h) => h.key !== input.key), hire],
             jobs: [...s.jobs.filter((j) => j.key !== input.key), remoteJob],
           }))
-          return { jobId: job.id, mandate: mandateHeldBy }
+          return { jobId: job.id, mandate: 'signed' as const }
         }
 
         const jobId = nextId('job')
