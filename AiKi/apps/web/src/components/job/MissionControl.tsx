@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Approvals } from '@/components/job/Approvals'
+import { MarketplaceJobControl } from '@/components/job/MarketplaceJobControl'
 import { OnChainRecord } from '@/components/job/OnChainRecord'
 import { Settlement } from '@/components/job/Settlement'
 import { WatchPanel } from '@/components/job/WatchPanel'
@@ -13,6 +14,7 @@ import { SpendMeter } from '@/components/ui/SpendMeter'
 import { StatusPill, type Tone } from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, AGENT_BY_KEY, agentRow } from '@/lib/agents'
+import { api, type MarketplaceJob } from '@/lib/api'
 import { hiredRows } from '@/lib/present'
 import { receiptHref, route } from '@/lib/routes'
 import { useMock } from '@/mock/store'
@@ -31,6 +33,24 @@ export function MissionControl({ jobId }: { jobId: string }) {
   const say = useToast()
   const router = useRouter()
   const [revoking, setRevoking] = useState(false)
+  const [marketplaceChecked, setMarketplaceChecked] = useState(false)
+  const [marketplaceJob, setMarketplaceJob] = useState<MarketplaceJob | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    api
+      .marketplaceJob(jobId)
+      .then((job) => {
+        if (!cancelled) setMarketplaceJob(job)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setMarketplaceChecked(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [jobId])
 
   const job = state.jobs.find((j) => j.id === jobId)
   const hire = job ? state.hires.find((h) => h.key === job.key) : undefined
@@ -47,7 +67,9 @@ export function MissionControl({ jobId }: { jobId: string }) {
     return () => clearTimeout(id)
   }, [job, advance])
 
-  if (!ready) return <PageSkeleton rows={5} />
+  if (!marketplaceChecked || !ready) return <PageSkeleton rows={5} />
+
+  if (marketplaceJob) return <MarketplaceJobControl job={marketplaceJob} />
 
   if (!job || !hire) {
     return (

@@ -185,6 +185,79 @@ export interface CreditBalance {
   history: { id: string; delta: number; reason: string; createdAt: string }[]
 }
 
+export interface MarketplaceJob {
+  id: string
+  agreementId: string
+  previewHash: string
+  title: string
+  workState: 'ASSIGNED' | 'IN_PROGRESS' | 'SUBMITTED' | 'CHANGES_REQUESTED' | 'ACCEPTED'
+  settlementState:
+    | 'UNFUNDED'
+    | 'FUNDING_SUBMITTED'
+    | 'FUNDED'
+    | 'DELIVERABLE_SUBMITTED'
+    | 'RELEASE_SUBMITTED'
+    | 'RELEASED'
+    | 'REFUND_SUBMITTED'
+    | 'REFUNDED'
+  disputeState: 'NONE'
+  payoutState: 'NONE' | 'HOLD' | 'AVAILABLE' | 'PAID' | 'FAILED'
+  payerActorId: string
+  requesterActorId: string
+  providerActorId: string
+  offer: { id: string; version: number; termsHash: string }
+  scope: {
+    brief: string
+    requirements: Record<string, unknown>
+    definitionOfDone: string
+    evidenceRequirements: Record<string, unknown>
+  }
+  settlement: {
+    rail: 'BNB_APEX_ERC8183'
+    railVersion: string
+    chainId: number
+    contract: `0x${string}`
+    token: `0x${string}`
+    decimals: number
+    providerAmount: string
+    platformFeeAmount: string
+    totalAmount: string
+  }
+  deadlines: {
+    delivery: string
+    review: string
+    dispute: string
+    hardExpiry: string
+  }
+  fundingOperation: {
+    id: string
+    status:
+      | 'REQUESTED'
+      | 'PREPARED'
+      | 'SUBMITTING'
+      | 'SUBMITTED'
+      | 'MINED'
+      | 'FINALIZED'
+      | 'REPLACED'
+      | 'REVERTED'
+      | 'ABANDONED'
+    operationType: 'CREATE_ESCROW'
+    logicalKey: string
+    amount: string
+  }
+  nextAction:
+    | 'CREATE_ESCROW'
+    | 'WAIT_FOR_FUNDING'
+    | 'START_WORK'
+    | 'SUBMIT_WORK'
+    | 'WAIT_FOR_ONCHAIN_SUBMISSION'
+    | 'WAIT_FOR_REVIEW'
+    | 'REVISE_WORK'
+    | 'RELEASE_PAYMENT'
+    | 'VIEW_RECEIPT'
+  createdAt: string
+}
+
 export const api = {
   stats: () => req<EcosystemStats>('/v1/stats'),
   me: () => req<{ address: string; chainId: number }>('/v1/auth/me'),
@@ -451,4 +524,5 @@ export const api = {
         body: JSON.stringify({ agentIds }),
       },
     ),
+  marketplaceJob: (id: string) => req<MarketplaceJob>(`/v2/jobs/${id}`),
 }
