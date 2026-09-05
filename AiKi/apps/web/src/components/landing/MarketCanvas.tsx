@@ -2,7 +2,16 @@
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import type { MotionValue } from 'motion/react'
-import { Component, type ErrorInfo, type ReactNode, Suspense, useEffect, useRef } from 'react'
+import {
+  Component,
+  type ErrorInfo,
+  type ReactNode,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { ACESFilmicToneMapping, PCFShadowMap, SRGBColorSpace } from 'three'
 import styles from './landing.module.css'
 import { MarketWorld } from './MarketWorld'
@@ -10,6 +19,17 @@ import type { LandingAgentNode, LandingMarketAggregate } from './market-data'
 
 const DPR_TIERS = [1, 1.5, 2] as const
 const QUALITY_COOLDOWN_MS = 5_000
+
+/* ─────────────────────────────────────────────────────────
+ * SCENE BOOT STORYBOARD
+ *
+ *    0ms   light market-map placeholder is already visible
+ *  frame   loaded town paints once behind the placeholder
+ * +200ms   placeholder fades away to reveal that exact frame
+ * ───────────────────────────────────────────────────────── */
+const SCENE_BOOT = {
+  fadeMs: 200,
+} as const
 
 function average(samples: readonly number[]) {
   return samples.reduce((total, sample) => total + sample, 0) / Math.max(samples.length, 1)
@@ -71,7 +91,26 @@ function AdaptiveQuality({ reducedMotion }: { reducedMotion: boolean }) {
   return null
 }
 
-class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+function SceneFallback({ onReady }: { onReady: () => void }) {
+  useEffect(() => onReady(), [onReady])
+
+  return (
+    <div
+      className={styles.sceneFallback}
+      role="img"
+      aria-label="Abstract map of the AiKi Agent Market"
+    >
+      <span className={styles.fallbackRing} />
+      <span className={styles.fallbackPath} />
+      <span className={styles.fallbackNode} />
+    </div>
+  )
+}
+
+class SceneBoundary extends Component<
+  { children: ReactNode; onFallback: () => void },
+  { failed: boolean }
+> {
   state = { failed: false }
 
   static getDerivedStateFromError() {
@@ -84,20 +123,23 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
   render() {
     if (this.state.failed) {
-      return (
-        <div
-          className={styles.sceneFallback}
-          role="img"
-          aria-label="Abstract map of the AiKi Agent Market"
-        >
-          <span className={styles.fallbackRing} />
-          <span className={styles.fallbackPath} />
-          <span className={styles.fallbackNode} />
-        </div>
-      )
+      return <SceneFallback onReady={this.props.onFallback} />
     }
     return this.props.children
   }
+}
+
+/** Report only after the loaded world has reached the screen once. */
+function FirstSceneFrame({ onReady }: { onReady: () => void }) {
+  const reported = useRef(false)
+
+  useFrame(() => {
+    if (reported.current) return
+    reported.current = true
+    onReady()
+  })
+
+  return null
 }
 
 export default function MarketCanvas({
@@ -119,26 +161,25 @@ export default function MarketCanvas({
   selectedAgentId: string | null
   onSelectAgent: (agent: LandingAgentNode) => void
 }) {
+  const [sceneReady, setSceneReady] = useState(false)
+  const markSceneReady = useCallback(() => setSceneReady(true), [])
+
   return (
-    <SceneBoundary>
+    <SceneBoundary onFallback={markSceneReady}>
       <Canvas
         shadows
         dpr={reducedMotion ? [1, 1.5] : [1, 2]}
         camera={{ position: [15, 11, 20], fov: 36, near: 0.1, far: 120 }}
         gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
+        style={{ background: '#f4f6ff' }}
         onCreated={({ gl }) => {
+          gl.setClearColor('#f4f6ff', 1)
           gl.outputColorSpace = SRGBColorSpace
           gl.toneMapping = ACESFilmicToneMapping
           gl.toneMappingExposure = 1.12
           gl.shadowMap.type = PCFShadowMap
         }}
-        fallback={
-          <div
-            className={styles.sceneFallback}
-            role="img"
-            aria-label="Abstract map of the AiKi Agent Market"
-          />
-        }
+        fallback={<SceneFallback onReady={markSceneReady} />}
       >
         <AdaptiveQuality reducedMotion={reducedMotion} />
         <Suspense fallback={null}>
@@ -152,8 +193,26 @@ export default function MarketCanvas({
             selectedAgentId={selectedAgentId}
             onSelectAgent={onSelectAgent}
           />
+          <FirstSceneFrame onReady={markSceneReady} />
         </Suspense>
       </Canvas>
+      <div
+        className={styles.sceneLoading}
+        aria-hidden="true"
+        style={{
+          zIndex: 1,
+          pointerEvents: 'none',
+          opacity: sceneReady ? 0 : 1,
+          visibility: sceneReady ? 'hidden' : 'visible',
+          transition: reducedMotion
+            ? 'none'
+            : `opacity ${SCENE_BOOT.fadeMs}ms cubic-bezier(0, 0, 0.2, 1), visibility 0s linear ${SCENE_BOOT.fadeMs}ms`,
+        }}
+      >
+        <span />
+        <span />
+        <span />
+      </div>
     </SceneBoundary>
   )
 }
