@@ -131,7 +131,7 @@ export interface TaskStore {
   /** Record what a hired agent handed back. AiKi calls it; it has no session. */
   recordDelivery(id: string, agentId: string, submission: string): Promise<TaskRecord | null>
   /** Note that we called an agent, and what came of it. */
-  noteDispatch(id: string, note: string | null): Promise<void>
+  noteDispatch(id: string, note: string | null, attempted?: boolean): Promise<void>
   /**
    * Take back work whose claimant ran out of time.
    *
@@ -443,9 +443,10 @@ export class PostgresTaskStore implements TaskStore {
   }
 
   /** Note that we called an agent, and what came of it. */
-  async noteDispatch(id: string, note: string | null) {
+  async noteDispatch(id: string, note: string | null, attempted = true) {
     await this.sql`
-      UPDATE tasks SET dispatched_at = now(), dispatch_note = ${note}, updated_at = now()
+      UPDATE tasks SET dispatched_at = CASE WHEN ${attempted} THEN now() ELSE dispatched_at END,
+        dispatch_note = ${note}, updated_at = now()
        WHERE id = ${id}
     `
   }

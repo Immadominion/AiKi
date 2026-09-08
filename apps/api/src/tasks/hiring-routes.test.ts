@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto'
 import Fastify from 'fastify'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { settlementForPoints } from '../credits/pricing.js'
-import { InMemoryCreditStore } from '../credits/store.js'
+import {
+  DuplicateCharge,
+  ESCROW_ACCOUNT,
+  InMemoryCreditStore,
+  PostgresCreditStore,
+} from '../credits/store.js'
 import { PostgresJobStore } from '../jobs/postgres-store.js'
 import { JobService } from '../jobs/service.js'
 import { SETTLEMENT } from '../settlement/pricing.js'
@@ -31,14 +36,22 @@ describe.skipIf(!process.env.DATABASE_URL)(
     })
 
     async function harness(
-      options: { contact?: Partial<AgentTaskContact>; configured?: boolean; balance?: number } = {},
+      options: {
+        contact?: Partial<AgentTaskContact>
+        configured?: boolean
+        balance?: number
+        postgresCredits?: boolean
+      } = {},
     ) {
       const owner = `0x${randomUUID().replaceAll('-', '')}12345678`
       const seller = `0x${'ab'.repeat(20)}`
       const tasks = new PostgresTaskStore(process.env.DATABASE_URL as string)
       const jobStore = new PostgresJobStore(process.env.DATABASE_URL as string)
       const jobs = new JobService(jobStore)
-      const credits = new InMemoryCreditStore()
+      const credits = options.postgresCredits
+        ? new PostgresCreditStore(process.env.DATABASE_URL as string)
+        : new InMemoryCreditStore()
+      if (credits instanceof PostgresCreditStore) cleanup.push(() => credits.close())
       await credits.deposit({
         owner,
         points: options.balance ?? 5_000,
@@ -70,6 +83,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         tasks,
         jobs,
         credits,
+        settlementTreasury: `0x${'cd'.repeat(20)}`,
         ...(options.configured === false
           ? {}
           : { publicUrl: 'https://api.example', deliverySecret: 'test-delivery-secret' }),
@@ -102,7 +116,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           headers: { 'idempotency-key': key },
           payload: body,
         })
-      return { app, tasks, jobs, credits, owner, authorization, payload, request }
+      return { app, tasks, jobs, credits, owner, seller, authorization, payload, request }
     }
 
     it('replays one actual task without repeating the cap, funding or agent dispatch', async () => {
@@ -227,6 +241,126 @@ describe.skipIf(!process.env.DATABASE_URL)(
       } finally {
         create.mockRestore()
       }
+    })
+
+    it.each(['lost acknowledgement', 'duplicate reference'])(
+      'reconciles committed PostgreSQL funding after a %s without cancelling or charging twice',
+      async (failure) => {
+        const h = await harness({ postgresCredits: true })
+        const transfer = h.credits.transfer.bind(h.credits)
+        const mocked = vi.spyOn(h.credits, 'transfer').mockImplementationOnce(async (input) => {
+          await transfer(input)
+          if (failure === 'duplicate reference') throw new DuplicateCharge(input.reference)
+          throw new Error('Commit acknowledgement lost')
+        })
+        try {
+          const first = await h.request()
+          expect(first.statusCode).toBe(201)
+          expect(first.json().status).toBe('SUBMITTED')
+          expect((await h.request()).json()).toEqual(first.json())
+          expect(await h.credits.balance(h.owner)).toBe(4_488)
+          expect((await h.jobs.getAuthorization(h.authorization.id)).spent).toBe(
+            settlementForPoints(512, SETTLEMENT.decimals),
+          )
+          expect(mocked).toHaveBeenCalledTimes(1)
+          expect(fetched).toHaveBeenCalledTimes(1)
+        } finally {
+          mocked.mockRestore()
+        }
+      },
+    )
+
+    it('keeps uncertain funding and the cap recoverable without dispatch or another charge', async () => {
+      const h = await harness({ postgresCredits: true })
+      const transfer = h.credits.transfer.bind(h.credits)
+      const mocked = vi.spyOn(h.credits, 'transfer').mockImplementationOnce(async (input) => {
+        await transfer(input)
+        throw new Error('Commit acknowledgement lost')
+      })
+      const lookup = vi
+        .spyOn(h.credits, 'transferRecorded')
+        .mockRejectedValueOnce(new Error('Read unavailable'))
+      try {
+        const first = await h.request()
+        expect(first.statusCode).toBe(503)
+        expect(first.json().error.code).toBe('TASK_FUNDING_UNCONFIRMED')
+        const task = (await h.tasks.mine(h.owner))[0]
+        expect(task?.status).toBe('CLAIMED')
+        expect(task?.dispatchedAt).toBeUndefined()
+        expect(task?.dispatchNote).toContain('Payment confirmation is pending')
+        expect((await h.jobs.getAuthorization(h.authorization.id)).spent).toBe(
+          settlementForPoints(512, SETTLEMENT.decimals),
+        )
+        expect(await h.credits.balance(h.owner)).toBe(4_488)
+        expect((await h.request()).json()).toEqual(first.json())
+        expect(mocked).toHaveBeenCalledTimes(1)
+        expect(fetched).not.toHaveBeenCalled()
+      } finally {
+        mocked.mockRestore()
+        lookup.mockRestore()
+      }
+    })
+
+    it('fails closed before payout when the funding lookup itself is unavailable', async () => {
+      const h = await harness({ postgresCredits: true })
+      const first = await h.request()
+      expect(first.statusCode).toBe(201)
+      const taskId = first.json().id
+      const escrowBefore = await h.credits.balance(ESCROW_ACCOUNT)
+      const lookup = vi
+        .spyOn(h.credits, 'transferRecorded')
+        .mockRejectedValue(new Error('Read unavailable'))
+      try {
+        for (const action of ['accept', 'release', 'cancel']) {
+          const result = await h.app.inject({
+            method: 'POST',
+            url: `/v1/tasks/${taskId}/${action}`,
+          })
+          expect(result.statusCode).toBe(503)
+          expect(result.json().error.code).toBe('TASK_FUNDING_UNCONFIRMED')
+        }
+        expect((await h.tasks.get(taskId))?.status).toBe('SUBMITTED')
+        expect(await h.credits.balance(ESCROW_ACCOUNT)).toBe(escrowBefore)
+        expect(await h.credits.balance(h.owner)).toBe(4_488)
+      } finally {
+        lookup.mockRestore()
+      }
+    })
+
+    it("never pays or refunds an unfunded task from another task's shared escrow", async () => {
+      const h = await harness({ postgresCredits: true })
+      const mocked = vi
+        .spyOn(h.credits, 'transfer')
+        .mockRejectedValueOnce(new Error('Transfer unavailable'))
+      const result = await h.request()
+      mocked.mockRestore()
+      expect(result.statusCode).toBe(503)
+      const task = (await h.tasks.mine(h.owner))[0]
+      if (!task) throw new Error('Expected preserved task')
+      // Escrow can have other buyers' money. This is not proof of our funding.
+      await h.credits.deposit({
+        owner: ESCROW_ACCOUNT,
+        points: 2_000,
+        reason: 'other funding',
+        reference: randomUUID(),
+      })
+      const escrowBefore = await h.credits.balance(ESCROW_ACCOUNT)
+      await h.tasks.recordDelivery(task.id, '315943', 'Work without a confirmed payment')
+      for (const action of ['accept', 'release', 'cancel']) {
+        const response = await h.app.inject({
+          method: 'POST',
+          url: `/v1/tasks/${task.id}/${action}`,
+        })
+        expect(response.statusCode).toBe(503)
+        expect(response.json().error.code).toBe('TASK_FUNDING_UNCONFIRMED')
+      }
+      expect(await h.credits.balance(ESCROW_ACCOUNT)).toBe(escrowBefore)
+      expect(await h.credits.balance(h.owner)).toBe(5_000)
+      expect((await h.tasks.get(task.id))?.status).toBe('SUBMITTED')
+      expect((await h.jobs.getAuthorization(h.authorization.id)).spent).toBe(
+        settlementForPoints(512, SETTLEMENT.decimals),
+      )
+      expect(fetched).not.toHaveBeenCalled()
     })
   },
 )

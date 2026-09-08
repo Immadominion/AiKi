@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { requireSession } from '../auth/guard.js'
 import { settlementForPoints } from '../credits/pricing.js'
 import {
@@ -54,6 +54,26 @@ const MAX_SUBMISSION = 20_000
 /** A tenth of a cent. Below this the fee rounds to nothing and so does the work. */
 const MIN_PRICE_POINTS = 10
 
+const fundingTransfer = (task: TaskRecord) => ({
+  from: task.poster,
+  to: ESCROW_ACCOUNT,
+  points: task.totalPoints,
+  reason: 'task_funding',
+  reference: `task:${task.id}:funding`,
+})
+
+const fundingUnconfirmed = (reply: FastifyReply, taskId: string) =>
+  reply.code(503).send({
+    error: {
+      code: 'TASK_FUNDING_UNCONFIRMED',
+      message:
+        'AiKi cannot confirm this task payment yet. No new work was sent. Keep this task and check Work before trying another hire.',
+      taskId,
+      workUrl: '/work',
+      retryable: false,
+    },
+  })
+
 export function registerTaskRoutes(
   app: FastifyInstance,
   input: {
@@ -80,6 +100,18 @@ export function registerTaskRoutes(
   const text = (value: unknown, max: number) =>
     typeof value === 'string' ? value.trim().slice(0, max) : ''
   const activeRequests = new WeakMap<FastifyRequest, string>()
+  const requireFunding = async (task: TaskRecord, reply: FastifyReply) => {
+    // Existing injected test stores may omit the read. Both production ledger
+    // stores implement it, so shared escrow is never proof of this task's funds.
+    if (!input.credits?.transferRecorded) return true
+    try {
+      if (await input.credits.transferRecorded(fundingTransfer(task))) return true
+    } catch {
+      // An unavailable ledger is uncertainty, not permission to pay or refund.
+    }
+    fundingUnconfirmed(reply, task.id)
+    return false
+  }
 
   app.get<{ Params: { id: string } }>('/v1/agents/:id/task-support', async (request) => {
     const base = { minimumPricePoints: MIN_PRICE_POINTS, feeBasisPoints: PLATFORM_FEE_BPS }
@@ -481,27 +513,28 @@ export function registerTaskRoutes(
 
       try {
         await credits.transfer({
-          from: session.address,
-          to: ESCROW_ACCOUNT,
-          points: total,
-          reason: 'task_funding',
-          reference: `task:${task.id}:funding`,
+          ...fundingTransfer(task),
           detail: { taskId: task.id, kind },
         })
       } catch (error) {
-        /*
-         * The task exists and the money did not move, so it must not sit on the
-         * board looking funded. Cancelled rather than deleted: a row somebody can
-         * read is better than a gap, and the resolution says what happened.
-         */
-        await input.tasks.advance(
-          task.id,
-          ['OPEN', 'CLAIMED'],
-          'CANCELLED',
-          'The money could not be held.',
-        )
-        await releaseCap?.()
-        if (error instanceof InsufficientBalance)
+        let recorded: boolean | null = null
+        try {
+          recorded = (await credits.transferRecorded?.(fundingTransfer(task))) ?? null
+        } catch {
+          // A commit can succeed before its acknowledgement is lost. Never
+          // infer failure from an exception or infer funding from total escrow.
+        }
+        if (
+          error instanceof InsufficientBalance &&
+          (recorded === false || !credits.transferRecorded)
+        ) {
+          await input.tasks.advance(
+            task.id,
+            ['OPEN', 'CLAIMED'],
+            'CANCELLED',
+            'The money could not be held.',
+          )
+          await releaseCap?.()
           return reply.code(402).send({
             error: {
               code: 'INSUFFICIENT_POINTS',
@@ -509,15 +542,17 @@ export function registerTaskRoutes(
               retryable: false,
             },
           })
-        if (error instanceof DuplicateCharge)
-          return reply.code(409).send({
-            error: {
-              code: 'TASK_ALREADY_FUNDED',
-              message: 'This task has already been paid for.',
-              retryable: false,
-            },
-          })
-        throw error
+        }
+        if (recorded !== true) {
+          await input.tasks.noteDispatch(
+            task.id,
+            'Payment confirmation is pending. No work was sent. The spending allowance stays reserved until the task funding is reconciled.',
+            false,
+          )
+          return fundingUnconfirmed(reply, task.id)
+        }
+        // Both exact funding legs exist. Continue this one task, including when
+        // a duplicate reference reported that the transfer was already made.
       }
 
       /*
@@ -701,6 +736,8 @@ export function registerTaskRoutes(
   app.post<{ Params: { id: string } }>('/v1/tasks/:id/claim', async (request, reply) => {
     const session = requireSession(request, reply)
     if (!session) return reply
+    const existing = await input.tasks.get(request.params.id)
+    if (existing && !(await requireFunding(existing, reply))) return reply
     const claimed = await input.tasks.claim(request.params.id, session.address)
     if (!claimed) {
       const task = await input.tasks.get(request.params.id)
@@ -783,6 +820,8 @@ export function registerTaskRoutes(
         },
       })
 
+    if (!(await requireFunding(task, reply))) return reply
+
     // Claim the payout before any money moves, on the same reasoning the job
     // routes use: only one of accepting and disputing may take a task out of
     // SUBMITTED, or both could pay out against one funding.
@@ -856,6 +895,7 @@ export function registerTaskRoutes(
         error: { code: 'TASK_NOT_FOUND', message: 'No such task.', retryable: false },
       })
 
+    if (!(await requireFunding(task, reply))) return reply
     const released = await input.tasks.claimLapsedReview(task.id, session.address)
     if (!released)
       return reply.code(409).send({
@@ -981,6 +1021,7 @@ export function registerTaskRoutes(
      * recoverable by hand. That is the right way round: money briefly stuck and
      * countable beats a cap that quietly resets.
      */
+    if (!(await requireFunding(task, reply))) return reply
     const cancelled =
       (await input.tasks.advance(task.id, ['OPEN'], 'CANCELLED', 'The poster took it back.')) ??
       /*

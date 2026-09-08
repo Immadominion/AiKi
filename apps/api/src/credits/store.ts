@@ -68,6 +68,14 @@ export class DuplicateDeposit extends Error {
   }
 }
 
+export interface CreditTransferReference {
+  from: string
+  to: string
+  points: number
+  reason: string
+  reference: string
+}
+
 export interface CreditStore {
   balance(owner: string): Promise<number>
   /** Adds points against a payment. Refuses to credit the same reference twice. */
@@ -131,6 +139,8 @@ export interface CreditStore {
     reference: string
     detail?: Record<string, unknown>
   }): Promise<{ moved: number; fromBalance: number; toBalance: number }>
+  /** Verify both committed ledger legs after a transfer response was lost. */
+  transferRecorded?(input: CreditTransferReference): Promise<boolean>
   history(owner: string, limit?: number): Promise<CreditEntry[]>
   /**
    * How many times one reason has moved points to a person since a moment.
@@ -314,6 +324,25 @@ export class InMemoryCreditStore implements CreditStore {
     return this.entries.filter(
       (e) => e.reason === reason && e.createdAt >= since && !e.owner.startsWith('aiki:'),
     ).length
+  }
+
+  async transferRecorded(input: CreditTransferReference): Promise<boolean> {
+    return (
+      this.entries.some(
+        (entry) =>
+          entry.reference === `${input.reference}:out` &&
+          entry.owner === lower(input.from) &&
+          entry.delta === -input.points &&
+          entry.reason === input.reason,
+      ) &&
+      this.entries.some(
+        (entry) =>
+          entry.reference === `${input.reference}:in` &&
+          entry.owner === lower(input.to) &&
+          entry.delta === input.points &&
+          entry.reason === input.reason,
+      )
+    )
   }
 
   async history(owner: string, limit = 25) {
@@ -569,6 +598,22 @@ export class PostgresCreditStore implements CreditStore {
          AND owner NOT LIKE 'aiki:%'
     `
     return Number(rows[0]?.n ?? 0)
+  }
+
+  async transferRecorded(input: CreditTransferReference): Promise<boolean> {
+    const rows = await this.sql<{ recorded: boolean }[]>`
+      SELECT (
+        EXISTS (SELECT 1 FROM credit_entries
+          WHERE reference = ${`${input.reference}:out`}
+            AND owner = ${lower(input.from)} AND delta = ${-input.points}
+            AND reason = ${input.reason})
+        AND EXISTS (SELECT 1 FROM credit_entries
+          WHERE reference = ${`${input.reference}:in`}
+            AND owner = ${lower(input.to)} AND delta = ${input.points}
+            AND reason = ${input.reason})
+      ) AS recorded
+    `
+    return rows[0]?.recorded === true
   }
 
   async history(owner: string, limit = 25) {
