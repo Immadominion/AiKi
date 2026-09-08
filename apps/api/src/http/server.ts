@@ -239,9 +239,18 @@ export function createApiServer(input: {
         const passport = projectPassport(agentId, observations)
         const owner = passport.identity?.owner
         if (!owner) return null
+        // Match the passport's subject and latest-observed registration, regardless
+        // of store ordering. A withdrawn endpoint must never fall back to an old one.
         const registration = observations
-          .filter((o) => o.predicate === 'erc8004.registration_resolution')
-          .at(-1)
+          .filter(
+            (o) =>
+              o.predicate === 'erc8004.registration_resolution' &&
+              o.subject.agentId === agentId &&
+              o.subject.chainId === passport.chainId &&
+              o.subject.registry.toLowerCase() === passport.registry?.toLowerCase(),
+          )
+          .sort((a, b) => b.observedAt.localeCompare(a.observedAt))
+          .at(0)
         const services = (
           registration?.value as { manifest?: { services?: { endpoint?: unknown }[] } } | undefined
         )?.manifest?.services

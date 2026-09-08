@@ -1,15 +1,17 @@
 import { ROOT_AUTHORITY } from '@aiki/contracts'
 import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { InMemoryAccountStore } from '../accounts/store.js'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
 import { compileCaveats } from '../authority/caveats.js'
 import type { ChainReader } from '../authority/chain-reader.js'
 import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
+import { InMemoryCreditStore } from '../credits/store.js'
 import { InMemoryEvidenceStore } from '../evidence/store.js'
 import { JobService } from '../jobs/service.js'
+import * as guardedNetwork from '../net/guard.js'
 import { createApiServer } from './server.js'
 
 const SECRET = 'server-test-secret-long-enough-here'
@@ -29,7 +31,102 @@ const cookie = { cookie: `aiki_session=${signer.issue(OWNER, 56)}` }
 const apps: ReturnType<typeof createApiServer>[] = []
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()))
+  vi.restoreAllMocks()
 })
+it.each([
+  { order: 'ascending', advertised: true },
+  { order: 'descending', advertised: true },
+  { order: 'ascending', advertised: false },
+  { order: 'descending', advertised: false },
+])(
+  'checks only the latest matching task registration ($order observations, support $advertised)',
+  async ({ order, advertised }) => {
+    const store = new InMemoryEvidenceStore()
+    const subject = { type: 'agent', chainId: 56, registry: '0x8004', agentId: 'updated' } as const
+    const base = { subject, source: 'test', method: 'test', evidenceClass: 'B' as const }
+    const oldEndpoint = 'https://agent.example/obsolete'
+    const currentEndpoint = 'https://agent.example/current'
+    const foreignEndpoint = 'https://another-chain.example/task'
+    const append = async (predicate: string, value: Record<string, unknown>, observedAt: string) =>
+      store.append({
+        ...base,
+        predicate,
+        value,
+        validAt: observedAt,
+        observedAt,
+        dedupeKey: `${predicate}:${observedAt}`,
+      })
+    await append('erc8004.agent_registered', { owner: OWNER }, '2026-01-01T00:00:00.000Z')
+    await append('agent.liveness_verdict', { state: 'LIVE' }, '2026-01-02T00:00:00.000Z')
+    await append(
+      'erc8004.registration_resolution',
+      { manifest: { name: 'Old agent name', services: [{ endpoint: oldEndpoint }] } },
+      '2026-01-03T00:00:00.000Z',
+    )
+    await append(
+      'erc8004.registration_resolution',
+      { manifest: { name: 'Updated agent name', services: [{ endpoint: currentEndpoint }] } },
+      '2026-02-01T00:00:00.000Z',
+    )
+    // A newer row for the same token on a different chain must not supply its endpoint.
+    await store.append({
+      ...base,
+      subject: { ...subject, chainId: 97 },
+      predicate: 'erc8004.registration_resolution',
+      value: { manifest: { services: [{ endpoint: foreignEndpoint }] } },
+      validAt: '2026-03-01T00:00:00.000Z',
+      observedAt: '2026-03-01T00:00:00.000Z',
+      dedupeKey: 'foreign-registration',
+    })
+    const read = vi
+      .spyOn(guardedNetwork, 'guardedFetch')
+      .mockImplementation(async (url) =>
+        Response.json(
+          String(url) !== currentEndpoint || advertised
+            ? { taskProtocol: 'aiki.task/v1' }
+            : { name: 'Task delivery withdrawn' },
+        ),
+      )
+    const noTaskAccess = vi.fn(async () => {
+      throw new Error('Task support must not read or mutate task records.')
+    })
+    const observations = () =>
+      [...store.observations].sort((a, b) =>
+        order === 'ascending'
+          ? a.observedAt.localeCompare(b.observedAt)
+          : b.observedAt.localeCompare(a.observedAt),
+      )
+    const app = createApiServer({
+      observations,
+      observationsForAgents: observations,
+      tasks: {
+        create: noTaskAccess,
+        get: noTaskAccess,
+        open: noTaskAccess,
+        mine: noTaskAccess,
+        claim: noTaskAccess,
+        claimLapsedReview: noTaskAccess,
+        submit: noTaskAccess,
+        recordDelivery: noTaskAccess,
+        noteDispatch: noTaskAccess,
+        cancelLapsedClaim: noTaskAccess,
+        advance: noTaskAccess,
+      },
+      assistant: { credits: new InMemoryCreditStore(), selfUrl: 'https://api.example' },
+      publicUrl: 'https://api.example',
+      deliverySecret: 'test-delivery-secret',
+    })
+    apps.push(app)
+    const passport = (await app.inject('/v1/agents/updated/passport')).json()
+    expect(passport).toMatchObject({ chainId: 56, name: 'Updated agent name', liveness: 'LIVE' })
+    const response = await app.inject('/v1/agents/updated/task-support')
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({ available: advertised })
+    expect(read.mock.calls.map(([url]) => String(url))).toEqual([currentEndpoint])
+    expect(noTaskAccess).not.toHaveBeenCalled()
+  },
+)
+
 it('serves evidence-first passport and requires idempotency for jobs', async () => {
   const store = new InMemoryEvidenceStore()
   await store.append({
