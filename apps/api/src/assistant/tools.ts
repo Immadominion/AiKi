@@ -117,6 +117,16 @@ const spendingConstraints = (totalPoints: number, perTaskPoints: number, days: n
 
 export const TOOLS: Anthropic.Tool[] = [
   {
+    name: 'agent_task_support',
+    description:
+      'Check whether a specific agent currently accepts AiKi tasks before offering to hire it. Returns availability, input guidance when declared, minimum buyer offer and the platform fee. A live passport alone does not establish task compatibility.',
+    input_schema: {
+      type: 'object',
+      properties: { agent_id: { type: 'string' } },
+      required: ['agent_id'],
+    },
+  },
+  {
     name: 'search_agents',
     description:
       'Find agents on the registry with what AiKi measured about each. Note this searches the NAME ' +
@@ -478,6 +488,8 @@ export async function runTool(
     })
 
   switch (name) {
+    case 'agent_task_support':
+      return call(`/v1/agents/${encodeURIComponent(String(args.agent_id))}/task-support`)
     case 'search_agents':
       return post('/v1/search', {
         ...(args.query ? { query: args.query } : {}),

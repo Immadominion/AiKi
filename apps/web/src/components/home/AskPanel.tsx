@@ -33,7 +33,7 @@ import { PANEL, SCREEN } from './shards'
  * destroyed. The `{full && …}` holes below keep every child at a fixed index.
  */
 export function AskPanel() {
-  const { connected, connect } = useAccount()
+  const { connected, authenticated, connect } = useAccount()
   const say = useToast()
   const [full, setFull] = useState(false)
 
@@ -87,7 +87,7 @@ export function AskPanel() {
         frame={full ? SCREEN : PANEL}
         connected={connected}
         footer={
-          connected ? null : (
+          authenticated ? null : (
             <button
               type="button"
               onClick={() => {
@@ -95,8 +95,10 @@ export function AskPanel() {
               }}
               className="mt-[14px] border-0 bg-none text-[12.5px] font-medium text-[#767676] hover:text-[#141414]"
             >
-              New here?{' '}
-              <span className="font-bold underline underline-offset-[3px]">Connect a wallet</span>
+              {connected ? 'Your wallet is connected. ' : 'New here? '}
+              <span className="font-bold underline underline-offset-[3px]">
+                {connected ? 'Sign in to continue' : 'Connect a wallet'}
+              </span>
             </button>
           )
         }

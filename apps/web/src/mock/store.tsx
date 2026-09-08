@@ -1,17 +1,34 @@
 'use client'
 
 import type { ApprovalMode, CapPeriod } from '@aiki/contracts'
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  createContext,
+  Fragment,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { mandateConstraints } from '@/components/hire/mandate'
+import { WalletPicker } from '@/components/shell/WalletPicker'
 import { api as backend } from '@/lib/api'
 import {
   type ConnectOutcome,
   connectInjected,
+  discoverWallets,
+  readInjectedAccount,
+  restoreWalletSession,
+  selectWallet,
   signIn,
   signMandate,
   signOut,
+  type WalletOption,
+  walletReadyForRestore,
   watchAccounts,
 } from '@/lib/wallet'
+import { subscribeWalletSession, walletSession } from '@/lib/wallet-session'
 import { buildReceipt, runStep } from './script'
 import { demoState, freshState } from './seed'
 import type { ListingKey } from './types'
@@ -31,6 +48,7 @@ const KEY = 'aiki.mock.v1'
 interface MockApi {
   state: MockState
   ready: boolean
+  authenticated: boolean
   connect: () => Promise<ConnectOutcome>
   disconnect: () => void
   hire: (input: {
@@ -113,16 +131,19 @@ const nextId = (prefix: string) =>
 export function MockProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<MockState>(EMPTY)
   const [ready, setReady] = useState(false)
+  const [authenticated, setAuthenticated] = useState(false)
+  const [wallets, setWallets] = useState<WalletOption[]>([])
+  const [choosingWallet, setChoosingWallet] = useState(false)
+  const walletChoice = useRef<((wallet: WalletOption | null) => void) | null>(null)
+  const connectAttempt = useRef(0)
+  const requestingConnection = useRef(false)
+  const bootstrapped = useRef(false)
   const stateRef = useRef(state)
   stateRef.current = state
 
-  useEffect(() => {
-    setState(read() ?? EMPTY)
-    setReady(true)
-  }, [])
-
   const commit = useCallback((next: MockState) => {
     const stamped = { ...next, seq: next.seq + 1 }
+    stateRef.current = stamped
     setState(stamped)
     write(stamped)
   }, [])
@@ -132,13 +153,102 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
     [commit],
   )
 
+  useEffect(() => discoverWallets(setWallets), [])
+  useEffect(
+    () =>
+      subscribeWalletSession(() => {
+        setAuthenticated(walletSession().address === stateRef.current.address.toLowerCase())
+      }),
+    [],
+  )
+
   useEffect(() => {
-    return watchAccounts((accounts) => {
-      const current = stateRef.current
-      if (!current.connected || current.walletKind !== 'injected') return
-      const address = accounts[0]
-      commit(address ? { ...current, address } : { ...current, connected: false, chainId: null })
-    })
+    if (bootstrapped.current) return
+    // An explicit connection owns the account now, even if its prompt is declined.
+    if (connectAttempt.current !== 0) {
+      bootstrapped.current = true
+      setReady(true)
+      return
+    }
+    const saved = read()
+    if (saved?.connected && saved.walletKind === 'injected' && !walletReadyForRestore(wallets)) {
+      // Keep browsing available while the preferred extension announces itself.
+      // Retain the saved connection and retry when discovery updates `wallets`.
+      setReady(true)
+      return
+    }
+    let cancelled = false
+    const attempt = connectAttempt.current
+    const restore = async () => {
+      try {
+        if (saved?.walletKind === 'simulated' && process.env.NODE_ENV !== 'production') {
+          commit(saved)
+        } else if (saved?.connected && saved.walletKind === 'injected') {
+          const account = await readInjectedAccount()
+          if (cancelled || attempt !== connectAttempt.current) return
+          if (account) {
+            const sameWallet = account.address.toLowerCase() === saved.address.toLowerCase()
+            commit({
+              ...(sameWallet ? saved : EMPTY),
+              ...account,
+              connected: true,
+              walletKind: 'injected',
+            })
+            const signedIn = await restoreWalletSession(account.address, account.chainId)
+            if (cancelled || attempt !== connectAttempt.current) return
+            setAuthenticated(signedIn)
+          } else {
+            await signOut()
+            if (cancelled || attempt !== connectAttempt.current) return
+            commit({ ...EMPTY, address: '' })
+          }
+        } else {
+          await signOut()
+          if (cancelled || attempt !== connectAttempt.current) return
+          commit({ ...EMPTY, address: '' })
+        }
+      } finally {
+        // A superseded account attempt must not leave every private page loading.
+        if (!cancelled) {
+          bootstrapped.current = true
+          setReady(true)
+        }
+      }
+    }
+    void restore()
+    return () => {
+      cancelled = true
+    }
+  }, [commit, wallets])
+
+  useEffect(() => {
+    return watchAccounts(
+      (accounts) => {
+        const current = stateRef.current
+        if (current.walletKind !== 'injected') return
+        const address = accounts[0]
+        if (address?.toLowerCase() === current.address.toLowerCase()) return
+        if (!requestingConnection.current) ++connectAttempt.current
+        // Invalidates local credentials immediately, before the logout request settles.
+        void signOut()
+        setAuthenticated(false)
+        commit({
+          ...EMPTY,
+          connected: Boolean(address),
+          walletKind: 'injected',
+          address: address ?? '',
+          chainId: address ? current.chainId : null,
+        })
+      },
+      (chainId) => {
+        const current = stateRef.current
+        if (current.walletKind !== 'injected' || current.chainId === chainId) return
+        if (!requestingConnection.current) ++connectAttempt.current
+        void signOut()
+        setAuthenticated(false)
+        commit({ ...current, chainId })
+      },
+    )
   }, [commit])
 
   const api = useMemo<MockApi>(() => {
@@ -154,40 +264,54 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
     return {
       state,
       ready,
+      authenticated,
 
-      connect: () =>
-        connectInjected().then(async (result) => {
-          if (result.kind === 'connected') {
-            patch((s) => ({
-              ...s,
-              connected: true,
-              walletKind: 'injected',
-              address: result.address,
-              chainId: result.chainId,
-            }))
-            // Reading an address is not proving it. Declining the signature
-            // still leaves you connected, just unable to authorize anything.
-            const proof = await signIn(result.address, result.chainId)
-            return proof === 'signed-in' ? ('injected' as const) : ('unsigned' as const)
-          }
-          if (result.kind === 'no_wallet') {
-            // No extension: the demo stays walkable, and every surface that
-            // shows the address labels it simulated.
-            patch((s) => ({
-              ...s,
-              connected: true,
-              walletKind: 'simulated',
-              address: EMPTY.address,
-              chainId: null,
-            }))
-            return 'simulated' as const
-          }
-          // A rejection is an answer; nothing changes and nothing pretends.
-          return 'rejected' as const
-        }),
-      disconnect: () => {
+      connect: async () => {
+        if (walletChoice.current) return 'rejected'
+        if (wallets.length) {
+          const chosen = await new Promise<WalletOption | null>((resolve) => {
+            walletChoice.current = resolve
+            setChoosingWallet(true)
+          })
+          if (!chosen) return 'rejected'
+          selectWallet(chosen)
+        }
+        const attempt = ++connectAttempt.current
         void signOut()
-        patch((s) => ({ ...s, connected: false, chainId: null }))
+        setAuthenticated(false)
+        requestingConnection.current = true
+        const result = await connectInjected().finally(() => {
+          requestingConnection.current = false
+        })
+        if (attempt !== connectAttempt.current) return 'unsigned'
+        if (result.kind === 'connected') {
+          patch((s) => ({
+            ...(s.address.toLowerCase() === result.address.toLowerCase() ? s : EMPTY),
+            connected: true,
+            walletKind: 'injected',
+            address: result.address,
+            chainId: result.chainId,
+          }))
+          // Reading an address is not proving it. Declining the signature
+          // still leaves you connected, just unable to authorize anything.
+          const proof = await signIn(result.address, result.chainId)
+          if (attempt !== connectAttempt.current) return 'unsigned'
+          setAuthenticated(proof === 'signed-in')
+          setReady(true)
+          return proof === 'signed-in' ? ('injected' as const) : ('unsigned' as const)
+        }
+        if (result.kind === 'no_wallet') {
+          commit({ ...EMPTY, address: '' })
+          return 'no_wallet' as const
+        }
+        // A rejection is an answer; nothing changes and nothing pretends.
+        return 'rejected' as const
+      },
+      disconnect: () => {
+        ++connectAttempt.current
+        void signOut()
+        setAuthenticated(false)
+        commit({ ...EMPTY, address: '' })
       },
 
       hire: async (input) => {
@@ -199,6 +323,11 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
         // enforces. A simulated wallet stays local, and every screen says so.
         let authorizationId: string | undefined
         if (stateRef.current.walletKind === 'injected') {
+          if (
+            !stateRef.current.connected ||
+            walletSession().address !== stateRef.current.address.toLowerCase()
+          )
+            throw new Error('Sign in with your connected wallet before hiring an agent.')
           // Built by the same function the builder previews, so what was shown
           // and what is created cannot drift apart.
           const constraints = mandateConstraints({
@@ -276,6 +405,9 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
           return { jobId: job.id, mandate: 'signed' as const }
         }
 
+        if (process.env.NODE_ENV === 'production') {
+          throw new Error('Connect a wallet and sign in before hiring an agent.')
+        }
         const jobId = nextId('job')
         const hire: Hire = {
           key: input.key,
@@ -456,12 +588,35 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
         }))
       },
 
-      seed: (mode) =>
-        commit(mode === 'demo' ? demoState() : mode === 'fresh' ? freshState() : EMPTY),
+      seed: (mode) => {
+        if (process.env.NODE_ENV === 'production') return
+        void signOut()
+        setAuthenticated(false)
+        commit(mode === 'demo' ? demoState() : mode === 'fresh' ? freshState() : EMPTY)
+      },
     }
-  }, [state, ready, patch, commit])
+  }, [state, ready, authenticated, wallets, patch, commit])
 
-  return <Ctx.Provider value={api}>{children}</Ctx.Provider>
+  const finishWalletChoice = (wallet: WalletOption | null) => {
+    const resolve = walletChoice.current
+    walletChoice.current = null
+    setChoosingWallet(false)
+    resolve?.(wallet)
+  }
+
+  return (
+    <Ctx.Provider value={api}>
+      {/* Clear private screen state when its wallet or sign-in changes. */}
+      <Fragment key={`${state.address}:${state.chainId}:${authenticated}`}>{children}</Fragment>
+      {choosingWallet ? (
+        <WalletPicker
+          wallets={wallets}
+          onSelect={finishWalletChoice}
+          onClose={() => finishWalletChoice(null)}
+        />
+      ) : null}
+    </Ctx.Provider>
+  )
 }
 
 const TITLES: Record<string, string> = {

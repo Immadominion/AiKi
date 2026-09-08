@@ -1,98 +1,105 @@
 'use client'
 
 import type { ProjectedPassport } from '@aiki/contracts'
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { MandateBuilder } from '@/components/hire/MandateBuilder'
-import { type HireSubject, hireSubjectFromPassport } from '@/components/hire/subject'
+import { AgentTaskForm } from '@/components/hire/AgentTaskForm'
 import { PageCard } from '@/components/shell/PageCard'
-import { api } from '@/lib/api'
+import { type AgentTaskSupport, api } from '@/lib/api'
 
-/**
- * Hiring a real agent, on the same screen the examples use.
- *
- * The mandate builder was always real: it previews limits against the API's
- * deployed enforcers, opens an authorization, signs an EIP-712 delegation and
- * creates a job. It simply read the agent's name, price and permissions out of
- * the six-row example table, so the only agents on the marketplace anybody
- * could hire were six that do not exist. It takes a subject now, and this
- * builds one from the passport and the agent's own published price.
- */
 export function RegistryHire({ agentId }: { agentId: string }) {
-  const [subject, setSubject] = useState<HireSubject | null>(null)
+  const [details, setDetails] = useState<{
+    passport: ProjectedPassport
+    support: AgentTaskSupport
+  } | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
+  // Retrying intentionally repeats the same support request.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt is an explicit retry trigger.
   useEffect(() => {
     let cancelled = false
-    Promise.all([
-      api.passport(agentId),
-      // A refused quote is an answer, not a failure: an agent with no published
-      // price is hireable in principle and unpriceable in practice, and the
-      // screen has to say which.
-      api.quote(agentId).catch(() => null),
-    ])
-      .then(([passport, quote]) => {
-        if (cancelled) return
-        const p = passport as ProjectedPassport
-        if (p.liveness !== 'LIVE') {
-          setProblem(
-            `AiKi has not seen this agent answer. Its last verdict was ${p.liveness
-              .replace(/_/g, ' ')
-              .toLowerCase()}, so it is listed but not for sale.`,
-          )
-          return
-        }
-        setSubject(
-          hireSubjectFromPassport(
-            p,
-            quote
-              ? {
-                  price: quote.price.amount,
-                  asset: quote.price.asset,
-                  decimals: quote.price.decimals,
-                }
-              : null,
-            {
-              address: (quote?.settlementAsset.address ?? '0x0') as `0x${string}`,
-              symbol: quote?.price.asset ?? 'U',
-              decimals: quote?.settlementAsset.decimals ?? 18,
-            },
-          ),
-        )
+    setDetails(null)
+    setProblem(null)
+    Promise.all([api.passport(agentId), api.taskSupport(agentId)])
+      .then(([passport, support]) => {
+        if (!cancelled) setDetails({ passport, support })
       })
       .catch(() => {
         if (!cancelled)
-          setProblem('The registry could not be reached, so there is nothing to hire yet.')
+          setProblem('We could not check whether this agent can take work. Try again in a moment.')
       })
     return () => {
       cancelled = true
     }
-  }, [agentId])
+  }, [agentId, attempt])
 
-  if (problem)
-    return (
-      <PageCard
-        title="Hire"
-        count=""
-        tabs={[]}
-        tabHint=""
-        back={{ href: `/registry/${agentId}`, label: `Agent ${agentId}` }}
-      >
-        <p className="max-w-[620px] text-[13.5px]">{problem}</p>
-      </PageCard>
-    )
+  if (details?.support.available) {
+    return <AgentTaskForm passport={details.passport} support={details.support} />
+  }
 
-  if (!subject)
-    return (
-      <PageCard
-        title="Hire"
-        count=""
-        tabs={[]}
-        tabHint=""
-        back={{ href: `/registry/${agentId}`, label: `Agent ${agentId}` }}
-      >
-        <p className="text-muted text-[13.5px]">Reading the passport and the price…</p>
-      </PageCard>
-    )
-
-  return <MandateBuilder subject={subject} />
+  return (
+    <PageCard
+      title="Request work"
+      count=""
+      tabs={[]}
+      tabHint=""
+      back={{ href: `/registry/${agentId}`, label: details?.passport.name ?? `Agent ${agentId}` }}
+    >
+      {problem || details ? (
+        <section className="max-w-xl rounded-2xl border border-black/10 p-6">
+          <h1 className="m-0 text-lg font-bold">
+            {problem ? 'Connection check unavailable' : 'This agent cannot take work here yet'}
+          </h1>
+          <p
+            className="text-muted mt-2 text-sm leading-relaxed"
+            role={problem ? 'alert' : undefined}
+          >
+            {problem ??
+              details?.support.reason ??
+              'AiKi has not confirmed a supported task connection for this agent.'}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            {problem ? (
+              <button
+                type="button"
+                onClick={() => setAttempt((value) => value + 1)}
+                className="bg-ink-app min-h-11 rounded-xl px-4 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"
+              >
+                Try again
+              </button>
+            ) : null}
+            <Link
+              href={`/registry/${agentId}`}
+              className="inline-flex min-h-11 items-center rounded-xl bg-black/5 px-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"
+            >
+              Back to agent
+            </Link>
+          </div>
+        </section>
+      ) : (
+        <div
+          role="status"
+          aria-label="Checking agent task support"
+          className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]"
+        >
+          <div className="space-y-5 rounded-2xl border border-black/10 p-5">
+            <p className="text-muted m-0 text-sm">Checking this agent’s task connection…</p>
+            <div
+              aria-hidden="true"
+              className="h-12 rounded-xl bg-black/5 motion-safe:animate-pulse"
+            />
+            <div
+              aria-hidden="true"
+              className="h-40 rounded-xl bg-black/5 motion-safe:animate-pulse"
+            />
+          </div>
+          <div
+            aria-hidden="true"
+            className="h-64 rounded-2xl bg-black/5 motion-safe:animate-pulse"
+          />
+        </div>
+      )}
+    </PageCard>
+  )
 }

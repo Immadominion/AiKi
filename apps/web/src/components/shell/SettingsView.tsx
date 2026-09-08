@@ -61,7 +61,7 @@ export function SettingsView() {
   const say = useToast()
   const router = useRouter()
   const { layout, switchMode } = useModeNavigation()
-  const { connected, connect, disconnect, address, walletKind } = useAccount()
+  const { connected, authenticated, connect, disconnect, address, walletKind } = useAccount()
 
   const header = (
     <div className="flex flex-wrap items-start gap-[14px]">
@@ -92,7 +92,7 @@ export function SettingsView() {
                   : address
                 : 'AiKi cannot see any balances or positions right now.'
             }
-            action="Copy"
+            action={connected ? 'Copy' : ''}
             onAction={() => {
               navigator.clipboard
                 ?.writeText(address)
@@ -100,6 +100,14 @@ export function SettingsView() {
                 .catch(() => say('Your browser would not let us copy.'))
             }}
           />
+          {connected && walletKind === 'injected' && !authenticated ? (
+            <Row
+              title="Sign-in required"
+              body="Sign a message with this wallet to use Fast mode and hire agents. This does not move funds."
+              action="Sign in"
+              onAction={() => void connect().then((outcome) => say(CONNECT_TOAST[outcome]))}
+            />
+          ) : null}
           <Row
             title="Network"
             body="BNB Smart Chain · chain 56. Agents are ERC-8004 identities on this chain and nowhere else."

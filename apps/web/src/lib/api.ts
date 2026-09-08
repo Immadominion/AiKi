@@ -12,6 +12,7 @@ import type {
   ProjectedSearchResponse,
   SearchRequest,
 } from '@aiki/contracts'
+import { invalidateWalletSession, isWalletSessionCurrent, walletSession } from './wallet-session'
 
 /**
  * Empty means this origin, which is how it is deployed: the app proxies /v1 to
@@ -33,26 +34,43 @@ export class ApiError extends Error {
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const session = walletSession()
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: { 'content-type': 'application/json', ...init?.headers },
-    // The session is an HttpOnly cookie, so it only travels when asked for.
-    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      ...init?.headers,
+      ...(session.address ? { 'x-aiki-wallet-address': session.address } : {}),
+    },
+    // A stale cookie must not act as the previous wallet while logout is pending.
+    credentials: session.address ? 'include' : 'omit',
+    signal: init?.signal ? AbortSignal.any([init.signal, session.signal]) : session.signal,
     cache: 'no-store',
   })
 
+  if (!isWalletSessionCurrent(session.revision)) {
+    throw new ApiError(401, 'WALLET_CHANGED', 'Your wallet changed. Sign in to continue.', false)
+  }
+
   if (!res.ok) {
+    if (res.status === 401 && session.address) invalidateWalletSession()
     const body = (await res.json().catch(() => null)) as {
       error?: { code: string; message: string; retryable: boolean }
     } | null
     throw new ApiError(
       res.status,
       body?.error?.code ?? 'UNKNOWN',
-      body?.error?.message ?? res.statusText,
+      res.status === 401
+        ? 'Sign in with your connected wallet to continue.'
+        : (body?.error?.message ?? res.statusText),
       body?.error?.retryable ?? false,
     )
   }
-  return (await res.json()) as T
+  const body = (await res.json()) as T
+  if (!isWalletSessionCurrent(session.revision)) {
+    throw new ApiError(401, 'WALLET_CHANGED', 'Your wallet changed. Sign in to continue.', false)
+  }
+  return body
 }
 
 /**
@@ -148,6 +166,27 @@ export interface TaskSummary {
   resolution?: string
   createdAt: string
   updatedAt: string
+}
+
+export interface AgentTaskSupport {
+  available: boolean
+  reason?: string
+  protocol?: string
+  minimumPricePoints: number
+  feeBasisPoints: number
+  inputHint?: string
+  kinds?: string[]
+}
+
+export interface TaskRequest {
+  title: string
+  brief: string
+  kind: string
+  pricePoints: number
+  workHours?: number
+  authorizationId?: string
+  assignAgentId?: string
+  hirePerson?: string
 }
 
 export interface Seller {
@@ -410,20 +449,12 @@ export const api = {
   tasks: () => req<{ kinds: Record<string, string>; tasks: TaskSummary[] }>('/v1/tasks'),
   myTasks: () => req<{ tasks: TaskSummary[] }>('/v1/tasks/mine'),
   task: (id: string) => req<TaskSummary>(`/v1/tasks/${id}`),
-  postTask: (task: {
-    title: string
-    brief: string
-    kind: string
-    pricePoints: number
-    workHours?: number
-    authorizationId?: string
-    /** Hire this one agent instead of opening the work to whoever claims it. */
-    assignAgentId?: string
-    /** Or hire this one person, by address. */
-    hirePerson?: string
-  }) =>
+  taskSupport: (agentId: string) =>
+    req<AgentTaskSupport>(`/v1/agents/${encodeURIComponent(agentId)}/task-support`),
+  postTask: (task: TaskRequest, idempotencyKey?: string) =>
     req<TaskSummary & { heldPoints: number }>('/v1/tasks', {
       method: 'POST',
+      ...(idempotencyKey ? { headers: { 'idempotency-key': idempotencyKey } } : {}),
       body: JSON.stringify(task),
     }),
   claimTask: (id: string) => req<TaskSummary>(`/v1/tasks/${id}/claim`, { method: 'POST' }),

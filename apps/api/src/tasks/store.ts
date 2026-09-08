@@ -93,6 +93,9 @@ export interface NewTask {
 }
 
 export interface TaskStore {
+  /** A committed request claim prevents retries from charging or dispatching twice. */
+  beginCreateRequest?(owner: string, key: string, requestHash: string): Promise<TaskRequestClaim>
+  completeCreateRequest?(id: string, statusCode: number, body: unknown): Promise<void>
   create(task: NewTask): Promise<TaskRecord>
   get(id: string): Promise<TaskRecord | null>
   /** The board. Open work only, newest first. */
@@ -128,7 +131,7 @@ export interface TaskStore {
   /** Record what a hired agent handed back. AiKi calls it; it has no session. */
   recordDelivery(id: string, agentId: string, submission: string): Promise<TaskRecord | null>
   /** Note that we called an agent, and what came of it. */
-  noteDispatch(id: string, note: string | null): Promise<void>
+  noteDispatch(id: string, note: string | null, attempted?: boolean): Promise<void>
   /**
    * Take back work whose claimant ran out of time.
    *
@@ -147,6 +150,12 @@ export interface TaskStore {
     resolution?: string,
   ): Promise<TaskRecord | null>
 }
+
+export type TaskRequestClaim =
+  | { kind: 'started'; id: string }
+  | { kind: 'replayed'; statusCode: number; body: unknown }
+  | { kind: 'conflict' }
+  | { kind: 'in_progress' }
 
 const lower = (address: string) => address.toLowerCase()
 
@@ -224,6 +233,68 @@ export class PostgresTaskStore implements TaskStore {
   private readonly sql: postgres.Sql
   constructor(databaseUrl: string) {
     this.sql = postgres(databaseUrl, { max: 4, idle_timeout: 20 })
+  }
+
+  async beginCreateRequest(
+    owner: string,
+    key: string,
+    requestHash: string,
+  ): Promise<TaskRequestClaim> {
+    // Task balances belong to an address, independent of the wallet's selected
+    // network. Use its BNB registry actor so switching networks cannot bypass
+    // the same request key. The claim commits before any external side effect.
+    return this.sql.begin(async (tx) => {
+      const actors = await tx<{ id: string }[]>`
+        INSERT INTO actors (id, actor_type, chain_id, controller_address)
+        VALUES (${randomUUID()}, 'HUMAN', 56, ${lower(owner)})
+        ON CONFLICT (chain_id, controller_address) WHERE actor_type = 'HUMAN'
+        DO UPDATE SET controller_address = EXCLUDED.controller_address
+        RETURNING id
+      `
+      const actor = actors[0]
+      if (!actor) throw new Error('The task requester could not be recorded.')
+      const id = randomUUID()
+      const inserted = await tx<{ id: string }[]>`
+        INSERT INTO idempotency_records
+          (id, actor_id, operation, idempotency_key, request_hash, expires_at)
+        VALUES (${id}, ${actor.id}, 'v1.tasks.create', ${key}, ${requestHash}, now() + interval '90 days')
+        ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING
+        RETURNING id
+      `
+      if (inserted.length) return { kind: 'started', id } as const
+      const records = await tx<
+        {
+          request_hash: string
+          status: string
+          response_status: number | null
+          response_body: unknown
+        }[]
+      >`
+        SELECT request_hash, status, response_status, response_body FROM idempotency_records
+        WHERE actor_id = ${actor.id} AND operation = 'v1.tasks.create' AND idempotency_key = ${key}
+      `
+      const record = records[0]
+      if (!record) throw new Error('The task request record could not be read.')
+      if (record.request_hash !== requestHash) return { kind: 'conflict' } as const
+      if (record.status === 'COMPLETED' && record.response_status !== null)
+        return {
+          kind: 'replayed',
+          statusCode: record.response_status,
+          body: record.response_body,
+        } as const
+      // An uncertain original request must not be restarted automatically: it
+      // may already have reserved a cap, moved points, or reached the agent.
+      return { kind: 'in_progress' } as const
+    })
+  }
+
+  async completeCreateRequest(id: string, statusCode: number, body: unknown): Promise<void> {
+    await this.sql`
+      UPDATE idempotency_records
+      SET status = 'COMPLETED', response_status = ${statusCode},
+          response_body = ${this.sql.json(body as never)}, updated_at = now()
+      WHERE id = ${id} AND operation = 'v1.tasks.create' AND status = 'IN_PROGRESS'
+    `
   }
 
   async create(task: NewTask) {
@@ -372,9 +443,10 @@ export class PostgresTaskStore implements TaskStore {
   }
 
   /** Note that we called an agent, and what came of it. */
-  async noteDispatch(id: string, note: string | null) {
+  async noteDispatch(id: string, note: string | null, attempted = true) {
     await this.sql`
-      UPDATE tasks SET dispatched_at = now(), dispatch_note = ${note}, updated_at = now()
+      UPDATE tasks SET dispatched_at = CASE WHEN ${attempted} THEN now() ELSE dispatched_at END,
+        dispatch_note = ${note}, updated_at = now()
        WHERE id = ${id}
     `
   }

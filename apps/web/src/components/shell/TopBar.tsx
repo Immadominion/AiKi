@@ -3,6 +3,7 @@
 import { CalendarIcon, ChevronDownIcon, LayersIcon } from '@animateicons/react/lucide'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { useHoverIcon } from '@/components/ui/AnimatedIcon'
 import { useToast } from '@/components/ui/Toast'
@@ -114,7 +115,8 @@ function notesFrom(state: MockState): Note[] {
 }
 
 export function TopBar({ onMenu }: { onMenu: () => void }) {
-  const { state, connect } = useMock()
+  const router = useRouter()
+  const { state, authenticated, connect } = useMock()
   const connected = state.connected
   const [open, setOpen] = useState(false)
   const [bell, setBell] = useState(false)
@@ -176,6 +178,16 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
         </button>
       )}
 
+      {connected && state.walletKind === 'injected' && !authenticated ? (
+        <button
+          type="button"
+          onClick={() => void connect().then((outcome) => say(CONNECT_TOAST[outcome]))}
+          className="bg-ink-app hidden h-11 items-center rounded-[15px] px-4 text-[13px] font-bold text-white sm:flex"
+        >
+          Sign in
+        </button>
+      ) : null}
+
       {CHIPS.map((c) => (
         <Chip key={c.label} label={c.label} icon={c.icon} onClick={() => say(c.msg)} />
       ))}
@@ -191,7 +203,10 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
         <button
           type="button"
           onClick={() => {
-            if (!connected || !live.length) return
+            if (!connected || !live.length) {
+              router.push('/work')
+              return
+            }
             setOpen((o) => !o)
             setBell(false)
           }}
@@ -211,15 +226,9 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
             }}
           />
           <span className="whitespace-nowrap">
-            {/*
-              This pill counts YOUR hires, and it used to say "No agents yet",
-              which a first-time visitor reads as a claim about the marketplace
-              rather than about themselves. On a page whose job is to convince
-              someone there is something here, that is the worst possible
-              misreading, and it is above the fold.
-            */}
+            {/* The legacy live-job count does not include one-time tasks. */}
             {!connected || !live.length ? (
-              'No agents hired'
+              'Your work'
             ) : (
               <>
                 {live.length} agent{live.length === 1 ? '' : 's'}
