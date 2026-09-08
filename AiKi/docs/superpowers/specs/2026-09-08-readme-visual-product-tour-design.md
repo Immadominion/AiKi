@@ -93,4 +93,3 @@ The finished result must render correctly on GitHub, use repository-relative ass
 - Check exported images at full width and at a narrow README width.
 - Confirm no source capture or approved landing asset was overwritten.
 - Run `git diff --check`.
-
