@@ -1,7 +1,9 @@
 # Design research
 
-Primary research behind `docs/design-system-brief.md`. Five parallel passes on the
-visual problems specific to AiKi, since none of them have off-the-shelf solutions.
+Research behind the [archived design brief](../../../../docs/archive/2026-08-19-design-system-brief.md), originally `docs/design-system-brief.md`: five parallel studies
+of uncertainty, permissions, dense data, brand and typography. These are inputs to
+particular interface decisions, not a complete marketplace design brief. Current
+product scope is defined in [PRODUCT.md](../../../docs/PRODUCT.md).
 
 | File | Covers |
 |---|---|
@@ -16,5 +18,9 @@ and `anti_patterns[]`.
 
 **The convergent finding:** four of five independently concluded that AiKi should use
 **stroke/outline weight** as the semantic channel for confidence and enforcement,
-because opacity is taken by disabled/loading and colour is taken by P&L — and because
+because opacity is taken by disabled/loading and colour is taken by P&L - and because
 the sticker logo already makes outline native to the brand.
+
+That conclusion describes the research recommendation, not a requirement that
+every component encode confidence or enforcement. Hiring, delivery, review,
+payment and human-agent handoffs need clear interaction design in their own right.

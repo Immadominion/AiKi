@@ -1,5 +1,7 @@
 # Agent profile workbench design
 
+Design record from 29 August 2026. The collectible card and responsive workbench support a hiring decision within the [marketplace](../../PRODUCT.md). The full profile must explain the offer, price, expected work and required access; identity and proof remain supporting detail. The fixture values and proposed tabs below document that design pass, not universal agent capabilities or current deployment guarantees.
+
 ## Outcome
 
 Replace the current four-tab agent dossier with a compact, responsive agent profile that keeps the collectible passport visible while the user inspects authority, proof, and identity in place.

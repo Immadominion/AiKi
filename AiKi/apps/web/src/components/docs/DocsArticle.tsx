@@ -102,7 +102,7 @@ export function DocsArticle({ slug }: { slug: string }) {
 
   const title = isEvidence ? 'How we test' : (doc?.title ?? 'Not a page')
   const summary = isEvidence
-    ? 'Every number on this site comes from something AiKi did itself.'
+    ? 'How endpoint checks help you choose an agent, and what those checks cannot tell you.'
     : (doc?.summary ?? 'Nothing lives at that address. Pick something from the contents instead.')
 
   return (

@@ -1,25 +1,28 @@
-# AiKi System Architecture
+# AiKi system architecture research
 
-**Status:** derived from verified research. Every design decision below cites the fact that forced it.
+**Status:** August design proposal, with product-scope corrections recorded below. This is not a description of the deployed system.
 **Written:** 18 August 2026, after 15 research topics and three adversarial verification rounds.
+**Product framing clarified:** 8 September 2026
 
 ---
 
-## 0. The shape of the problem, after research
+## 0. The marketplace these systems support
 
-Research changed three things about the design.
+AiKi is a marketplace for humans and AI agents to get work done together. The current [product definition](../../docs/PRODUCT.md) places discovery, hiring, work agreements, delivery, review, payment and participant handoffs at the centre of the system. Fast and Manual are two interfaces to that marketplace; an MCP client is another route into it.
 
-**1. There is no supply.** Zero of 400 sampled BSC agents exposed an invocable endpoint. The four judged categories have 132 / 40 / 10 / **4** matching agents. So AiKi is not primarily a *discovery* problem — it is an *evidence generation* problem with a discovery surface on top.
+The August research established constraints on parts of this workflow. Its 400-agent sample found no remotely invocable endpoint, and its keyword search found 132 / 40 / 10 / 4 entries in the four judged categories. Those findings identify a supply risk in the sampled registry. They do not establish that human providers or all other sources of agent work are absent.
 
-**2. The scoring layer is already commoditised.** trust8004 and 8004scan both ship confidence-weighted, explainable, multi-dimension scores today, for free. Re-weighting the same worthless inputs is not a product.
+The same research found existing scoring products and candidate on-chain authorization mechanisms. These are integration and quality inputs. Their existence does not make evidence generation the whole product, nor prove that AiKi has implemented a particular guarantee.
 
-**3. The enforcement layer is genuinely achievable.** EIP-7702 has been live on BSC for 17 months; SmartSession and Altana's KeyStore are deployed and audited. T0 cryptographic mandates are real.
+The architecture must carry a job from agreement through delivery, review and settlement, including failure and recovery. The participant model must account for humans and agents as buyers or providers, and for handoffs between them. Registry identity and endpoint probing apply to relevant agent integrations; a human provider does not become a registry agent to participate.
 
-> **Therefore the architecture is organised around producing evidence that costs real money to fake, and around authority that the chain — not our backend — enforces.**
+The sections below preserve the original technical proposal. Schemas, protocol choices and ADR entries remain design history unless the current implementation and tests establish them. Supporting systems should make a hiring decision clearer or a job safer without preventing ordinary work from being completed.
 
 ---
 
-## 1. Planes
+## 1. Planes proposed in August
+
+The original diagram put evidence ahead of commerce. It remains here to explain the later subsystem designs, not to prescribe today's dependency order. The marketplace workflow is the current organizing principle; evidence and delegated authority support it where needed.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -47,21 +50,21 @@ Research changed three things about the design.
 └──────────────────────────────────────────────────────────────┘
 ```
 
-The **evidence plane is the moat**. Everything above it is a projection; everything below it is replaceable.
+The evidence plane records observations used by discovery, quality checks and work history. Commerce still needs its own authoritative job and payment state; it is not a projection of probe results.
 
 ---
 
-## 2. Ingestion — constrained by what the chain actually allows
+## 2. Ingestion - constrained by what the chain actually allows
 
 ### 2.1 Three hard constraints discovered by measurement
 
 | Constraint | Consequence |
 |---|---|
-| **`totalSupply()` reverts** — the canonical IdentityRegistry is **not** ERC721Enumerable | A `1..totalSupply()` scan is impossible. **Index `Registered` events.** |
-| **`Registered` DOES index agentId and owner** (verified by decoding a live log: `topics=3`) | `Registered(uint256 indexed agentId, string agentURI, address indexed owner)` — agentId is `topics[1]`, owner is `topics[2]`. Per-agent filters DO work. `NewFeedback` still indexes only `tag1`. |
-| **`NewFeedback` indexes only `tag1`** — not `agentId`, not `clientAddress` | **Per-agent log filters are impossible.** Index the full stream and shard downstream. |
+| **`totalSupply()` reverts** - the canonical IdentityRegistry is **not** ERC721Enumerable | A `1..totalSupply()` scan is impossible. **Index `Registered` events.** |
+| **`Registered` DOES index agentId and owner** (verified by decoding a live log: `topics=3`) | `Registered(uint256 indexed agentId, string agentURI, address indexed owner)` - agentId is `topics[1]`, owner is `topics[2]`. Per-agent filters DO work. `NewFeedback` still indexes only `tag1`. |
+| **`NewFeedback` indexes only `tag1`** - not `agentId`, not `clientAddress` | **Per-agent log filters are impossible.** Index the full stream and shard downstream. |
 
-Plus: `eth_getLogs` is **disabled** on public dataseeds; caps elsewhere run 5k–50k blocks — and at 0.45s/block a 10,000-block window is **75 minutes**.
+Plus: `eth_getLogs` is **disabled** on public dataseeds; caps elsewhere run 5k–50k blocks - and at 0.45s/block a 10,000-block window is **75 minutes**.
 
 ### 2.2 Design
 
@@ -94,13 +97,13 @@ raw log store ──► decode ──► Observation (append-only)
 
 ⚠️ **Never store a registry address as a chain-agnostic constant.** Adversarial verification flagged this on Altana: addresses differ per chain and a global constant *corrupts silently*. All addresses live in a per-chain config keyed by chain ID, asserted at startup.
 
-**Ordering:** key every event by `(blockNumber, logIndex)`. Use BSC's non-standard **`milliTimestamp`** for wall-clock — the standard `timestamp` is second-resolution and now spans ~2.2 blocks, so 2–3 blocks share a value. Generic EVM indexers drop this field silently.
+**Ordering:** key every event by `(blockNumber, logIndex)`. Use BSC's non-standard **`milliTimestamp`** for wall-clock - the standard `timestamp` is second-resolution and now spans ~2.2 blocks, so 2–3 blocks share a value. Generic EVM indexers drop this field silently.
 
-**Scale:** ~272,500 agents (20 Aug 2026). Registration is BURSTY — a 75-minute window implied ~27,000/day while the agentId delta over 11.5 hours implied ~4,400/day. Never extrapolate a rate from a short window.
+**Scale:** ~272,500 agents (20 Aug 2026). Registration is BURSTY - a 75-minute window implied ~27,000/day while the agentId delta over 11.5 hours implied ~4,400/day. Never extrapolate a rate from a short window.
 
 ---
 
-## 3. Evidence graph — the moat (HP-4)
+## 3. Evidence graph: provenance and history (HP-4)
 
 ### 3.1 Bitemporal, append-only
 
@@ -138,11 +141,11 @@ Observation {
 | Class | Meaning | On BSC today |
 |---|---|---|
 | **A** | Cryptographic / on-chain | ERC-8183 settlement, `agentWallet` proof |
-| **B** | AiKi-observed | Probes, Arena runs — **the class AiKi manufactures** |
+| **B** | AiKi-observed | Probes, Arena runs - **the class AiKi manufactures** |
 | **C** | Independent attestation | Validator responses, A2A card JWS |
 | **D** | Claims | Registration files, self-reported metrics |
 
-> On-chain ERC-8004 feedback is *nominally* Class A but is **empirically worthless** — 100% lacks interaction proof, $0.0042 to forge. It is ingested, and it is weighted near zero. **Evidence class is not the same as evidence value**, and the model must carry both.
+> On-chain ERC-8004 feedback is *nominally* Class A but is **empirically worthless** - 100% lacks interaction proof, $0.0042 to forge. It is ingested, and it is weighted near zero. **Evidence class is not the same as evidence value**, and the model must carry both.
 
 ### 3.2 Projections
 
@@ -150,29 +153,29 @@ Passport and Proof Score are **materialised views**, rebuildable from the log. E
 
 ---
 
-## 4. Verification — the differentiator
+## 4. Verification for discovery and quality
 
-The competitive teardown is blunt: scoring is commoditised, **evidence generation is not**. This subsystem is the product.
+Verification helps determine what an agent declares, what was tested and whether the tested endpoint answered. It supports provider selection. A successful probe is not a delivered job, and this subsystem does not replace hiring, delivery, review or payment.
 
-### 4.1 Detection rules — each derived from an observed failure
+### 4.1 Detection rules - each derived from an observed failure
 
 | # | Rule | Catches |
 |---|---|---|
-| **D1** | Probe with a **valid ID and a nonsense ID**. Byte-identical response ⇒ `IMPOSTOR_STATIC`. | 141/147 "live" endpoints — **30% of BSC** |
-| **D2** | Reject endpoints containing unexpanded `{…}` **before indexing** | The `{agentId}` template bug — a *documented-workflow* hazard |
+| **D1** | Probe with a **valid ID and a nonsense ID**. Byte-identical response ⇒ `IMPOSTOR_STATIC`. | 141/147 "live" endpoints - **30% of BSC** |
+| **D2** | Reject endpoints containing unexpanded `{…}` **before indexing** | The `{agentId}` template bug - a *documented-workflow* hazard |
 | **D3** | `transport: "stdio"` ⇒ declared-but-not-invocable. A distinct state from live. | q402 descriptors |
-| **D4** | `data:` URIs resolve with zero I/O — **exclude from "resolvable" metrics** | 58.3% inflation |
+| **D4** | `data:` URIs resolve with zero I/O - **exclude from "resolvable" metrics** | 58.3% inflation |
 | **D5** | Require content-type + capability handshake. **HTTP 200 is not liveness.** | all of the above |
 | **D6** | Reviewer concentration, first-funder clustering, **degenerate score distributions** (66% identical value) | wash reputation |
-| **D7** | Weight feedback by payment proof / task linkage — **which zeroes 100% of BSC feedback** | ungrounded reputation |
-| **D8** | **Reciprocal proof**: fetch `/.well-known/agent-registration.json`, require `agentRegistry` + `agentId` to match on-chain | **0.04% adoption — near-free, high-signal** |
+| **D7** | Weight feedback by payment proof / task linkage - **which zeroes 100% of BSC feedback** | ungrounded reputation |
+| **D8** | **Reciprocal proof**: fetch `/.well-known/agent-registration.json`, require `agentRegistry` + `agentId` to match on-chain | **0.04% adoption - near-free, high-signal** |
 | **D9** | **Verify A2A card JWS** (detached, RFC 8785 canonical, defaults removed, `signatures` excluded) | unsigned/forged cards |
 
-**D1 is the flagship.** It was discovered by measurement, it invalidates the headline liveness number of every competitor doing naive 200-checks, and it is cheap.
+D1 was derived from the recorded sample and checks a failure that an HTTP-200 test misses. Its result should remain scoped to that test rather than presented as a complete judgment of the provider's work.
 
 ### 4.2 Prober
 
-- Multi-region quorum — distinguishes *network* failure from *service* failure so agents aren't penalised for our connectivity.
+- Multi-region quorum - distinguishes *network* failure from *service* failure so agents aren't penalised for our connectivity.
 - Availability reported at the **Wilson lower bound**, not the point estimate.
 - Every probe writes an Observation. Failures are evidence (MPSS §10.4).
 
@@ -201,13 +204,13 @@ confidence      = 1 - interval_width
 | Reputation | Beta over sybil-filtered clients via `getSummary(agentId, clientAddresses, …)` | A, heavily discounted |
 | Safety | policy denials, escalation attempts | B |
 
-**Publish the method, withhold the weights and the held-out set** (HP-6). Wilson and Beta have no free parameters, so publishing the method costs nothing — an agent can only raise its score by actually being more reliable.
+**Publish the method, withhold the weights and the held-out set** (HP-6). Wilson and Beta have no free parameters, so publishing the method costs nothing - an agent can only raise its score by actually being more reliable.
 
 `getSummary`'s `clientAddresses` filter is the on-chain hook for sybil-filtered reputation. Use it.
 
 ---
 
-## 6. Authority — the mandate layer (HP-3)
+## 6. Authority - the mandate layer (HP-3)
 
 ### 6.1 Every constraint carries its enforcement tier
 
@@ -222,19 +225,21 @@ confidence      = 1 - interval_width
 
 ### 6.2 What is enforceable today
 
+"Today" in this table means the initial 18 August study. The [19 August execution-path follow-up](../01-protocols/08-execution-path.md) superseded its lifetime-only recommendation and resolved O-2/O-3. Neither study alone proves the guarantees of AiKi's currently selected adapter; verify the actual implementation before labeling a user limit as chain-enforced.
+
 | Constraint | Status |
 |---|---|
 | Per-action value cap | ✅ T0 |
 | Target/contract allowlist | ✅ T0 (`UniversalActionPolicy`) |
 | Function-selector allowlist | ✅ T0 |
 | **Lifetime session cap** | ✅ T0 (`ERC20SpendingLimitPolicy`) |
-| Expiry | ⚠️ `TimeFramePolicy` **not deployed on 56 — AiKi must deploy it** |
+| Expiry | ⚠️ `TimeFramePolicy` **not deployed on 56 - AiKi must deploy it** |
 | **Rolling window ("$250/month renewing")** | ❌ **needs custom policy** |
-| Instant revocation | ✅ T0 — single userOp, no off-chain coordination |
+| Instant revocation | ✅ T0 - single userOp, no off-chain coordination |
 
 **`ERC20SpendingLimitPolicy` stores `alreadySpent` as a monotonic counter with no `block.timestamp` and never resets.** It is a lifetime cap.
 
-**Decision (recommendation):** ship lifetime caps — *"this session may spend at most $250 total, expiring 18 Sep"* — which is fully enforceable and arguably a clearer promise. Treat a `RollingWindowSpendPolicy` as a separate funded, audited workstream. Writing unaudited fund-holding code under a three-week deadline is how marketplaces lose money.
+**Decision (recommendation):** ship lifetime caps - *"this session may spend at most $250 total, expiring 18 Sep"* - which is fully enforceable and arguably a clearer promise. Treat a `RollingWindowSpendPolicy` as a separate funded, audited workstream. Writing unaudited fund-holding code under a three-week deadline is how marketplaces lose money.
 
 **Do not claim "per month" until it is enforced.**
 
@@ -244,7 +249,7 @@ AP2 v0.2's open/closed model is adopted as the base (ADR-005): user signs a **co
 
 AiKi extends it with what DeFi execution needs and AP2 lacks: contract/selector allowlists, slippage bounds, and on-chain trigger conditions (health-factor thresholds, price bands).
 
-**The payment-shaped subset *is* an AP2 mandate.** Compilation targets: SmartSession policies, Altana session grants, or a T1 signer — selected by adapter capability, with the resulting tier surfaced.
+**The payment-shaped subset *is* an AP2 mandate.** Compilation targets: SmartSession policies, Altana session grants, or a T1 signer - selected by adapter capability, with the resulting tier surfaced.
 
 ---
 
@@ -252,7 +257,7 @@ AiKi extends it with what DeFi execution needs and AP2 lacks: contract/selector 
 
 ### 7.1 Canonical job model, ERC-8183 as one adapter
 
-AiKi's lifecycle is richer than ERC-8183's six states (it must cover off-chain jobs, recurring work and workflows). ERC-8183 maps as a projection:
+The proposed canonical lifecycle is richer than ERC-8183's six states because the marketplace includes off-chain work, recurring jobs and handoffs. ERC-8183 is one settlement adapter. A job's client, provider, deliverable and review must remain identifiable even when it uses another payment path. The August state-machine proposal was:
 
 ```
 AiKi:  DRAFT→QUOTED→AUTHORIZED→FUNDED→DISPATCHED→RUNNING→SUBMITTED→EVALUATING→COMPLETED→SETTLED
@@ -266,13 +271,15 @@ AiKi:  DRAFT→QUOTED→AUTHORIZED→FUNDED→DISPATCHED→RUNNING→SUBMITTED�
 | `fund(uint256,uint256,bytes)` | `fund(uint256,bytes)` |
 | `setProvider(uint256,address,bytes)` | `setProvider(uint256,address)` |
 
-Adversarial verification confirmed **the spec contradicts its own reference implementation on `fund`**. Pin the implementation address (`0xd5f9b570…`) and assert it at startup — the proxy is upgradeable.
+Adversarial verification confirmed **the spec contradicts its own reference implementation on `fund`**. Pin the implementation address (`0xd5f9b570…`) and assert it at startup - the proxy is upgradeable.
 
-Inherited trust assumptions to surface in the Passport risk section: the commerce proxy is **upgradeable, pausable, owner-controlled**, and the **EvaluatorRouter is both evaluator of record and `IACPHook`** — a single point of extension and centralisation.
+Inherited trust assumptions to surface in the Passport risk section: the commerce proxy is **upgradeable, pausable, owner-controlled**, and the **EvaluatorRouter is both evaluator of record and `IACPHook`** - a single point of extension and centralisation.
 
 Adopt ERC-8183's invariant: **no extension point may trap user funds** (`claimRefund` is deliberately not hookable).
 
-### 7.2 Payments — `$U`, not USDT
+### 7.2 Payments - `$U`, not USDT
+
+This section concerns the BSC ERC-8183/x402 path researched in August. It does not prescribe a single settlement asset for every marketplace job or equate points, cash and on-chain token payments. Each quote must identify the payment path it actually uses.
 
 ```
 supports_eip3009 | supports_permit2612 | requires_permit2_approval | decimals
@@ -280,13 +287,13 @@ supports_eip3009 | supports_permit2612 | requires_permit2_approval | decimals
 
 | Token | EIP-3009 | Decimals |
 |---|---|---|
-| **USDT-BSC** | ❌ | **18 — not 6** |
+| **USDT-BSC** | ❌ | **18 - not 6** |
 | Binance-Peg USDC | ❌ | |
 | **`$U` United Stables** | ✅ | 18 |
 
 **The 18-decimals trap is the highest-frequency bug risk in the codebase.** Porting a Base/Arbitrum USDC assumption of 6 decimals makes every amount wrong by **10¹²**. Decimals come from config per token, never from a constant.
 
-Chain 56 is absent from x402's `DEFAULT_STABLECOINS`, so the `price: "$0.10"` sugar throws — always specify `asset` + `amount`. Pin `@x402/*` v2 with CAIP-2 network ids.
+Chain 56 is absent from x402's `DEFAULT_STABLECOINS`, so the `price: "$0.10"` sugar throws - always specify `asset` + `amount`. Pin `@x402/*` v2 with CAIP-2 network ids.
 
 **Settlement asset must be visible in the quote, before authorization.**
 
@@ -302,7 +309,9 @@ Chain 56 is absent from x402's `DEFAULT_STABLECOINS`, so the `price: "$0.10"` su
 
 ## 8. Arena (HP-1, HP-2)
 
-### 8.1 Replay is feasible — with declared limits
+Arena is the benchmark design proposed for evaluating agents. It is a supporting research programme, not a prerequisite for every marketplace task. Preserve these constraints if implementing comparisons; do not require a benchmark result to stand in for a real delivery and buyer review.
+
+### 8.1 Replay is feasible - with declared limits
 
 ```bash
 anvil --fork-url <NodeReal archive> \
@@ -319,61 +328,63 @@ Gas reproduces exactly (34,515 measured == on-chain).
 | Prices | ✅ frozen snapshot (Binance klines, 6,000 weight/min) |
 | Wall clock | ✅ virtualised |
 | AiKi-mediated HTTP | ✅ recorded/replayed |
-| **Agent-internal LLM sampling** | ❌ **third-party endpoint — uncontrollable** |
+| **Agent-internal LLM sampling** | ❌ **third-party endpoint - uncontrollable** |
 
 **The run manifest states which inputs were pinned and which were not.** Agent-internal nondeterminism is handled by **N trials with a reported interval**, never a single run presented as fact.
 
-### 8.2 The statistical rules — non-negotiable
+### 8.2 The statistical rules - non-negotiable
 
-> **Separating two agents differing by 0.5 annualised Sharpe at 5%/80% power requires ~63 years of returns. Sampling more frequently does not help — the required duration is frequency-invariant.**
+> **Separating two agents differing by 0.5 annualised Sharpe at 5%/80% power requires ~63 years of returns. Sampling more frequently does not help - the required duration is frequency-invariant.**
 >
 > With 100 zero-skill agents and σ(SR)=0.5, the *winner* averages **SR ≈ mean + 1.27 from pure noise**.
 
 **R1.** Never rank trading agents by realized Sharpe or PnL across different periods. Not with caveats.
-**R2.** **Paired replay on identical scenarios is the only honest comparison** — it removes the cross-sectional noise term entirely.
+**R2.** **Paired replay on identical scenarios is the only honest comparison** - it removes the cross-sectional noise term entirely.
 **R3.** Report intervals with multiple-testing deflation. *"These three agents are statistically indistinguishable on current evidence"* is a **designed first-class state**, not an error.
 
 **Arena's honest claim:** *"On these 40 identical replayed scenarios, agent A outperformed agent B in 31, interval [x, y]."* Narrower than a leaderboard, far stronger, and not copyable without building the same harness.
 
 ### 8.3 Integrity
 
-Per-season uuid4 canary embedded in held-out tasks; **publish its hash on-chain with the season commitment** — tamper-evident and dated without disclosure. Tripwire: prompt a candidate model with a truncated GUID prefix; completion ⇒ contamination. Public preview tasks stay separate from hidden scoring tasks.
+Per-season uuid4 canary embedded in held-out tasks; **publish its hash on-chain with the season commitment** - tamper-evident and dated without disclosure. Tripwire: prompt a candidate model with a truncated GUID prefix; completion ⇒ contamination. Public preview tasks stay separate from hidden scoring tasks.
 
-**For AiKi's four launch categories evaluation is almost entirely objective** — did the health factor hold, did the LP stay in range. No LLM judge needed. Where a judge is unavoidable: ≥2 judges of different families, swap-and-require-consistency (GPT-4 position-bias consistency is 65.0%, Claude-v1 **23.8%**), length normalisation, agreement reported.
-
----
-
-## 9. Validator role
-
-The ValidationRegistry is deployed with **zero validators and zero validations, globally, across 743K agents.**
-
-AiKi writes Arena results and liveness verdicts as `validationResponse(requestHash, response 0–100, responseURI, responseHash, tag)` — producing on-chain, portable, third-party-consumable Class-A evidence. `tag` scopes the verdict (`liveness`, `arena:health-factor`), and `getSummary(agentId, validatorAddresses, tag)` lets consumers filter to validators they trust.
-
-⚠️ **Validation is owner-initiated** — a provider must open the request. AiKi cannot unilaterally publish verdicts about unwilling agents; unsolicited findings stay in AiKi's own graph.
+**For AiKi's four launch categories evaluation is almost entirely objective** - did the health factor hold, did the LP stay in range. No LLM judge needed. Where a judge is unavoidable: ≥2 judges of different families, swap-and-require-consistency (GPT-4 position-bias consistency is 65.0%, Claude-v1 **23.8%**), length normalisation, agreement reported.
 
 ---
 
-## 10. Machine surface — MCP `2026-07-28`
+## 9. Proposed validator role
+
+The August research recorded **zero validators and zero validations across 743K agents** in its sources. The validator proposal below was based on that snapshot; it is not AiKi's current product identity or a claim that AiKi has published validations.
+
+The proposal was to write Arena results and liveness verdicts as `validationResponse(requestHash, response 0–100, responseURI, responseHash, tag)`, producing on-chain, portable, third-party-consumable Class-A evidence. `tag` scopes the verdict (`liveness`, `arena:health-factor`), and `getSummary(agentId, validatorAddresses, tag)` lets consumers filter to validators they trust.
+
+⚠️ **Validation is owner-initiated** - a provider must open the request. AiKi cannot unilaterally publish verdicts about unwilling agents; unsolicited findings stay in AiKi's own graph.
+
+---
+
+## 10. Machine surface - MCP `2026-07-28`
 
 Stateless; `server/discover` replaces the handshake; routing headers (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`) let the gateway authorize, price and shard without parsing bodies.
 
-Long-running jobs ride the **`io.modelcontextprotocol/tasks`** extension — statuses `working | input_required | completed | failed | cancelled` map onto AiKi's lifecycle, and `input_required` is the natural carrier for human spend approval. ⚠️ It is a **draft extension**: the canonical job model stays AiKi's; MCP is a projection (ADR-010).
+Long-running jobs ride the **`io.modelcontextprotocol/tasks`** extension - statuses `working | input_required | completed | failed | cancelled` map onto AiKi's lifecycle, and `input_required` is the natural carrier for human spend approval. ⚠️ It is a **draft extension**: the canonical job model stays AiKi's; MCP is a projection (ADR-010).
 
 🔒 **`requestState` in MRTR is attacker-controlled.** It MUST be a MAC'd envelope binding `{principal, job_id, authorization_id, nonce, expiry}`, verified before any economically meaningful action. Unbound, it is a direct replay and privilege-escalation vector on spend approval.
 
-Auth: OAuth 2.1 + RFC 9728 PRM + RFC 8707 resource indicators, all mandatory. Rate limiting is **unspecified by the protocol** — AiKi defines and documents its own.
+Auth: OAuth 2.1 + RFC 9728 PRM + RFC 8707 resource indicators, all mandatory. Rate limiting is **unspecified by the protocol** - AiKi defines and documents its own.
 
 ---
 
-## 11. Receipts — profile SCITT, don't invent
+## 11. Receipts - profile SCITT, don't invent
 
 `Execution Receipt` = a profile of **SCITT (RFC 9943)** + **COSE Receipts (RFC 9942)**, both Proposed Standard since June 2026.
 
-Adopt AP2's binding pattern: the receipt's `reference` is **the hash of the closed mandate it acted under** — cryptographically tying work to authority. Transparency-log inclusion proofs give append-only guarantees without a bespoke log, and third parties can verify with off-the-shelf tooling. That is what "prove what happened" requires.
+Adopt AP2's binding pattern: the receipt's `reference` is **the hash of the closed mandate it acted under** - cryptographically tying work to authority. Transparency-log inclusion proofs give append-only guarantees without a bespoke log, and third parties can verify with off-the-shelf tooling. That is what "prove what happened" requires.
 
 ---
 
 ## 12. ADR decisions taken here
+
+These entries preserve the decisions recorded by this proposal. ADR-006's blocked state and ADR-014's lifetime-only recommendation were superseded by the [19 August follow-up](../01-protocols/08-execution-path.md). The [current product definition](../../docs/PRODUCT.md) supersedes the evidence-first product priority; it does not silently replace technical ADR history.
 
 | ADR | Decision | Forced by |
 |---|---|---|
@@ -381,7 +392,7 @@ Adopt AP2's binding pattern: the receipt's `reference` is **the hash of the clos
 | 002 | Append-only bitemporal Observations + rebuildable projections | HP-4 |
 | 003 | Wilson LB + Beta + EB shrinkage. **`z` pinned in `scoring_version`.** | Measurement science |
 | 005 | Policy DSL = AP2 superset, compiled per adapter, **tier surfaced** | AP2 v0.2 + T0 availability |
-| 006 | ⚠️ **BLOCKED** — no bundler/paymaster verified on chain 56 | O-3 |
+| 006 | ⚠️ **BLOCKED** - no bundler/paymaster verified on chain 56 | O-3 |
 | 007 | Double-entry ledger authoritative; chain reconciled against it | HP-5 |
 | 009 | anvil + `--evm-version prague` + NodeReal archive; paired replay | HP-1/HP-2 |
 | 010 | Canonical job model is AiKi's; MCP Tasks is a projection | draft extension |
@@ -390,14 +401,16 @@ Adopt AP2's binding pattern: the receipt's `reference` is **the hash of the clos
 
 ---
 
-## 13. What blocks what
+## 13. Blockers recorded in the original proposal
+
+This is the original blocker table. O-2/O-3 have the follow-up linked above; the other entries need their own current checks. It is not the active delivery queue.
 
 | Blocker | Blocks | Owner |
 |---|---|---|
-| **O-3** no verified bundler/paymaster on 56 | ADR-006, entire T0 execution path | **research — do first** |
+| **O-3** no verified bundler/paymaster on 56 | ADR-006, entire T0 execution path | **research - do first** |
 | **O-2** Altana spend-cap not read at source | the T0 claim in the UI | research |
 | **O-1** Terms of Participation | submission, IP posture | **founder** |
 | `TimeFramePolicy` not deployed on 56 | mandate expiry | engineering |
 | `$U` liquidity unknown | checkout UX | product |
 
-**A smart-account architecture with no verified bundler has no execution path.** O-3 is the top of the queue.
+The original plan placed O-3 first. The later follow-up found a bundler and an alternative self-relay path. Current prioritisation must start with the marketplace workflow that is actually blocked, rather than restarting the August research sequence.

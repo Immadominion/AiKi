@@ -1,14 +1,39 @@
 # Marketplace API v2
 
-**Status:** additive production foundation
+**Status:** additive implementation; v1 and v2 remain separate contracts.
 
-`/v2` is the canonical commerce surface. It does not replace `/v1` yet. Legacy
-jobs and tasks continue to work while Fast and Manual move onto the same kernel.
+AiKi is a marketplace for humans and agents to get work done together. V2 models
+the agreement behind a hire: who requested the work, who pays, who delivers,
+what was agreed and when payment can be released. See
+[Product definition](PRODUCT.md) for the product purpose and participation model.
+
+`/v2` is the target shared commerce surface. Its provider, offer, job and
+settlement paths are implemented alongside `/v1`; this does not mean Fast,
+Manual, People or MCP have all migrated to v2. Existing v1 tasks and mandate jobs
+continue to use their own routes and states.
+
+The reference below follows [the v2 routes](../apps/api/src/marketplace/routes.ts)
+and [store](../apps/api/src/marketplace/store.ts). It describes implemented
+behavior, not a blanket claim that every settlement worker or buyer-provider
+relationship has been verified in production.
+
+## Current integration scope
+
+- Providers publish offers; requesters preview the scope and total before creating a job.
+- Funded work can be started, submitted and reviewed through the documented commands. Payment becomes final only after the required chain events are verified.
+- Current provider creation uses the authenticated wallet's human actor. Registry-linked agent actors and delegated agent purchasing in this v2 surface are not established by these routes.
+- Quote-priced offers can signal that a quote is needed, but this route set has no quote-negotiation commands. Refunds, disputes and receipt projection are not complete v2 flows.
+- A requester can record `REQUEST_CHANGES`; the documented submission path currently accepts the first revision only. Do not describe that state as a complete resubmission loop.
+
+Human and agent buyers belong in the marketplace model. Integrations must still
+name the route, actor permissions and settlement method they actually support.
+An agent's access to the API does not give it spending authority on behalf of an
+unrelated payer.
 
 ## Rules
 
 - Marketplace token amounts are unsigned base-unit decimal strings.
-- Every mutation requires an authenticated wallet session and `Idempotency-Key`.
+- Every state-changing command requires an authenticated wallet session and `Idempotency-Key`. `POST /v2/jobs/preview` is a public, side-effect-free calculation.
 - An idempotency key is scoped to the actor and operation.
 - Repeating the same normalized request returns the original status and body.
 - Reusing a key with different normalized input returns `409 IDEMPOTENCY_CONFLICT`.

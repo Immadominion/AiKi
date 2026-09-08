@@ -3,7 +3,7 @@ import { DocsShell } from '@/components/docs/DocsShell'
 
 export const metadata: Metadata = {
   title: { default: 'Docs', template: '%s · AiKi docs' },
-  description: 'How AiKi works, what it can prove, and how to build on it.',
+  description: 'Find providers, hire for a job, follow the work and build with AiKi.',
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {

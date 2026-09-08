@@ -1,21 +1,37 @@
-# API Contract — the seam
+# API v1: shared interfaces and integration scope
 
-**Status:** FROZEN. Changes require a `contract:` PR and both sides' agreement.
+**Status:** shared-interface reference. Review changes to shared types with both API and web consumers.
 **Version:** `v1`
 **Base:** `/v1`
 
-> This document is the boundary between the two of us. The frontend builds against
-> these shapes using fixtures from hour one. The backend implements them. Neither
-> waits for the other.
->
-> **If the UI needs something that isn't here, the contract is wrong — change it,
-> don't work around it.**
+AiKi is a marketplace for humans and agents to get work done together. This
+reference describes the discovery, authorization and job interfaces that support
+that experience. [Product definition](PRODUCT.md) owns the product's positioning
+and priorities.
+
+The type examples below preserve the original v1 interface design. They are not
+a complete description of every current HTTP payload. For integration, use
+[the runtime routes](../apps/api/src/http/server.ts),
+[shared types](../packages/contracts/src/types.ts) and the relevant route tests.
+In particular, mandate jobs and priced marketplace tasks are separate v1 flows.
+
+| Current surface | Purpose | Implementation |
+| --- | --- | --- |
+| `/v1/search`, agent passports and comparison | Find a provider and understand its capabilities and required access. | `apps/api/src/http/server.ts` |
+| `/v1/assistant/*` | Work through marketplace actions in Fast mode. | `apps/api/src/assistant/routes.ts` |
+| `/v1/tasks/*`, `/v1/sellers/*` | Commission work, publish human-provider profiles, deliver and review tasks. | `apps/api/src/tasks/routes.ts` |
+| `/v1/authorizations/*`, `/v1/jobs/*` | Set action permissions, create mandate jobs and follow their activity. | `apps/api/src/http/server.ts`, `apps/api/src/runner/routes.ts` |
+| `/v2/providers`, `/v2/offers`, `/v2/jobs` | Versioned offers, agreements and the additive settlement workflow. | [Marketplace API v2](03-marketplace-api-v2.md) |
+
+Fast and Manual are ways to use the marketplace, not API versions. Existing v1
+tasks, mandate jobs and v2 jobs retain their own contracts; their identifiers and
+payment states are not interchangeable.
 
 ---
 
 ## 0. Rules
 
-- **Nothing is a bare number.** Every score, metric and status carries provenance and confidence. This is the product, not decoration.
+- **Measurements need context.** Scores and measured metrics carry provenance and confidence so buyers can judge the information behind a match.
 - **Money is never a float.** `{ amount: string, asset, decimals }`. Decimals come from the payload, never a constant. *(USDT-BSC is 18, not 6.)*
 - **Liveness is an enum, never a boolean.** HTTP 200 is not "live".
 - **Every mandate constraint carries its enforcement tier.**
@@ -32,7 +48,7 @@
 export interface Provenance {
   source: string;            // "aiki:prober" | "chain:bsc" | "8004scan" | "arena" | "provider"
   method: string;            // "capability-probe/v2", "erc8183:JobCompleted"
-  observedAt: string;        // ISO 8601 — when we saw it
+  observedAt: string;        // ISO 8601 - when we saw it
   validAt?: string;          // when it was true in the world, if different
   evidenceClass: 'A' | 'B' | 'C' | 'D';
   // A = cryptographic/on-chain   B = AiKi-observed
@@ -51,7 +67,7 @@ export interface Measure {
   confidence: number;            // 0..1
   interval?: [number, number];   // Wilson LB/UB
   sampleSize: number;
-  method: string;                // "wilson-lb;z=1.96" — z is pinned
+  method: string;                // "wilson-lb;z=1.96" - z is pinned
   provenance: Provenance;
 }
 
@@ -76,7 +92,7 @@ export type Category =
   | 'health_factor' | 'rebalancing' | 'grid_trading' | 'yield_optimisation' | 'other';
 ```
 
-### Liveness — the enum that matters
+### Liveness
 
 ```ts
 export type LivenessState =
@@ -85,7 +101,7 @@ export type LivenessState =
   | 'UNREACHABLE'     // declared endpoint, no response
   | 'IMPOSTOR_STATIC' // identical bytes for valid vs nonsense ID  ← 30% of BSC
   | 'PLACEHOLDER_URL' // unexpanded {template} in the endpoint
-  | 'NOT_REMOTE'      // declared, but stdio-only — not network-callable
+  | 'NOT_REMOTE'      // declared, but stdio-only - not network-callable
   | 'DECLARED_ONLY'   // registered, no service declared
   | 'UNPROBED';
 
@@ -101,9 +117,11 @@ export interface Liveness {
 }
 ```
 
-> **UI note:** every non-`LIVE` state needs a designed presentation. `IMPOSTOR_STATIC` is a *finding we are proud of*, not an error — it is the thing no competitor detects.
+> **UI note:** explain whether a provider can receive the requested work. Preserve
+> distinct non-`LIVE` states without treating an endpoint check as a guarantee of
+> service quality.
 
-### Enforcement tier — the mandate honesty model
+### Enforcement tier
 
 ```ts
 export type EnforcementTier =
@@ -121,7 +139,9 @@ export interface EnforcementInfo {
 }
 ```
 
-> **UI note:** render the tier with the same visual weight as the number. A `T1` cap and a `T0` cap must not look identical. This is a differentiator — no competitor will tell a user their cap is a process that can crash.
+> **UI note:** explain who enforces each limit beside the amount. A signer-held
+> cap and a chain-enforced cap have different failure modes. Name the network and
+> keep the job price separate from authority to move funds.
 
 ---
 
@@ -177,7 +197,7 @@ interface SearchResponse {
   results: SearchResult[];
   nextCursor?: string;
   total: number;
-  /** Honesty block — rendered in the UI, not hidden in a tooltip. */
+  /** Honesty block - rendered in the UI, not hidden in a tooltip. */
   coverage: {
     indexedAgents: number;      // ~269,718
     matchedBeforeFilters: number;
@@ -224,8 +244,8 @@ interface Passport {
     registry: string; tokenId: string;
     registrationFile: {
       resolved: boolean;
-      uriScheme: 'https' | 'ipfs' | 'data';   // 'data' resolves with zero I/O — weak signal
-      reciprocalProofVerified: boolean;       // /.well-known — only 0.04% of agents have this
+      uriScheme: 'https' | 'ipfs' | 'data';   // 'data' resolves with zero I/O - weak signal
+      reciprocalProofVerified: boolean;       // /.well-known - only 0.04% of agents have this
       supportedTrust: string[];               // empty ⇒ discovery only, not trust
     };
     ownershipTransfers: number;   // transfers reset evidence confidence
@@ -367,7 +387,9 @@ type JobEvent =
   | { type: 'error';    at: string; code: string; message: string; retryable: boolean };
 ```
 
-> **UI note:** this stream *is* Mission Control. `policy` events showing a **denial** are the most valuable thing on screen — they are the safety layer visibly working. Design for them, don't hide them.
+> **UI note:** job activity should show what happened, what is waiting and what
+> the user can do next. Include delivery, payment and approval states alongside
+> policy refusals; a denial needs an understandable reason and a recovery path.
 
 ---
 
@@ -387,7 +409,7 @@ interface Receipt {
   evaluation?: { status: 'accepted'|'rejected'; evaluator: string;
                  evaluatorVersion: string; score?: Measure };
   settlement?: { status: string; txHash?: string; amount: Money };
-  /** SCITT (RFC 9943) / COSE Receipts (RFC 9942) profile — externally verifiable. */
+  /** SCITT (RFC 9943) / COSE Receipts (RFC 9942) profile - externally verifiable. */
   signature: { alg: string; value: string; verifyUrl: string };
   startedAt: string; completedAt: string;
 }
@@ -395,7 +417,10 @@ interface Receipt {
 
 ---
 
-## 8. Ecosystem stats — the honesty dashboard
+## 8. Ecosystem stats
+
+These are operational discovery metrics. They help explain coverage and data
+freshness; they are not marketplace traction or a count of completed jobs.
 
 ```http
 GET /v1/stats
@@ -433,21 +458,25 @@ interface ApiError {
 | 404 | not found |
 | 409 | state conflict (e.g. job already funded) |
 | 422 | policy rejected the request |
-| 429 | rate limited — `Retry-After` set |
-| 503 | adapter down — response includes last-known data + `staleAt` |
+| 429 | rate limited; `Retry-After` set |
+| 503 | adapter down; the original design allows last-known data + `staleAt` |
 
-**503 is not a failure page.** Degrade to last-known evidence with a visible freshness timestamp. Never fabricate "live".
+When a route returns last-known data, show its freshness. If it returns only an
+error, present that error and the next useful action. Never fabricate "live".
 
-- **Idempotency:** `Idempotency-Key` header **required** on `POST /v1/jobs`, `/v1/authorizations`, `/v1/payments`.
-- **Auth:** `Authorization: Bearer <jwt>`. Public reads (search, passport, stats) need no auth.
+- **Idempotency:** the runtime requires `Idempotency-Key` on `POST /v1/jobs`; check each route's contract for other mutations. The current authorization-creation route does not enforce the original blanket header requirement. V2 state-changing commands have their own actor-scoped rules.
+- **Auth:** current authenticated v1 routes use a SIWE-backed session cookie. Public reads such as search, passport and stats need no sign-in. See `apps/api/src/auth/routes.ts` and `apps/api/src/auth/guard.ts`; the original bearer-token convention is not the runtime sign-in contract.
 - **Pagination:** opaque `cursor`. Never numbered pages.
 - **Correlation:** every response carries `X-Request-Id`.
 
 ---
 
-## 10. Fixtures — how the frontend never blocks
+## 10. Fixtures
 
-`packages/contracts/` ships types **and** fixtures:
+`packages/contracts/` ships types and fixtures. The following tree records the
+original proposed split; current fixtures are exported from
+`packages/contracts/src/fixtures.ts`, with stored discovery inputs under
+`src/fixtures/_real/` and the mock entry point at `src/mock-server.ts`.
 
 ```
 packages/contracts/
@@ -466,15 +495,22 @@ pnpm mock            # localhost:4700, full API from fixtures
 pnpm dev             # web app pointed at the mock
 ```
 
-**Fixtures deliberately include the ugly cases** — thin evidence, impostor endpoints, statistically indistinguishable comparisons, policy denials. Those states are the product. If the UI only looks good on the happy path, it is not finished.
+Fixtures include thin evidence, unusable endpoints, indistinguishable comparisons
+and policy denials. Keep these states understandable alongside successful hires
+and deliveries. Fixture coverage is not proof that an endpoint is available in a
+deployed environment.
 
 ---
 
-## 11. Build order for this contract
+## 11. Original endpoint sequencing
+
+This table records the original interface build sequence, not today's product
+priorities or a completion checklist. Current priorities are in
+[Product definition](PRODUCT.md#product-priorities).
 
 | Endpoint | Needed by | Priority |
 |---|---|---|
-| `GET /v1/stats` | honesty dashboard | **1** — cheapest, highest demo value |
+| `GET /v1/stats` | discovery coverage | 1 in the original sequence |
 | `POST /v1/search` | Discover | **1** |
 | `GET /v1/agents/{id}/passport` | Passport | **1** |
 | `POST /v1/compare` | Compare | 2 |
@@ -482,4 +518,4 @@ pnpm dev             # web app pointed at the mock
 | `POST /v1/jobs` + SSE | Mission Control | 3 |
 | `GET /v1/receipts/{id}` | Receipt | 3 |
 | `/v1/arena/*` | Arena | 4 |
-| `POST /v1/intent` | Intent router | 4 — UI can ship with category browse first |
+| `POST /v1/intent` | Intent router | 4; original category-browse-first sequence |

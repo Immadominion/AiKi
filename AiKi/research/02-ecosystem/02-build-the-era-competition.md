@@ -1,4 +1,4 @@
-# Build the Era — Verified Competition Mechanics
+# Build the Era - Verified Competition Mechanics
 
 **Research verdict:** SOLID
 **Verified:** 18 August 2026
@@ -9,7 +9,7 @@
 
 ## The three things that matter most
 
-1. **The deadline is 12:00 UTC on 9 September 2026 — midday, not midnight.** That is **~3 weeks** from today. Anything not merged and publicly deployed by 11:00 UTC that day does not exist.
+1. **The deadline is 12:00 UTC on 9 September 2026 - midday, not midnight.** That is **~3 weeks** from today. Anything not merged and publicly deployed by 11:00 UTC that day does not exist.
 2. **The Terms of Participation are not publicly fetchable.** IP assignment, licensing and open-source obligations are therefore *entirely unknown*. This is the single largest commercial risk in the programme and it is blocking.
 3. **"Agent Diversity" is a supply trap, not a UI problem.** Health Factor Monitoring has ~4 matching agents on all of BSC. Grid Trading has ~10. You cannot satisfy "all four categories with equal depth" by indexing.
 
@@ -25,7 +25,7 @@
 | Phase 2 | Exists, criteria **[REDACTED]** on the page |
 | Winner announced | 5 Nov 2026 |
 | Intake | A single **Google Form**. No DoraHacks, no Devfolio, no public leaderboard. |
-| Judges | "Three judges, scored independently" — **none named anywhere** |
+| Judges | "Three judges, scored independently" - **none named anywhere** |
 
 The exact UTC time appears *only* in the registration form's availability-confirmation field. The hackathon page says "5 Aug - 9 Sep, 2026 (UTC +0)" with no time of day; the blog gives no year and no timezone. **Plan to the midday cutoff.**
 
@@ -33,11 +33,11 @@ The exact UTC time appears *only* in the registration form's availability-confir
 
 Three criteria, presented without percentages, all main-track:
 
-> **Functionality** — "The full journey works end to end: land, find an agent by category, understand what it does, activate it, with minimal friction. Someone with zero Agent Studio knowledge should be able to get through it without hitting a dead end."
+> **Functionality** - "The full journey works end to end: land, find an agent by category, understand what it does, activate it, with minimal friction. Someone with zero Agent Studio knowledge should be able to get through it without hitting a dead end."
 
-> **Data Quality** — "Real-time, accurate data that goes beyond basic counts. A user should be able to look at what you're showing and make a genuinely informed call on which agent to hire."
+> **Data Quality** - "Real-time, accurate data that goes beyond basic counts. A user should be able to look at what you're showing and make a genuinely informed call on which agent to hire."
 
-> **Agent Diversity** — "All four categories (rebalancing, grid trading, yield, health factor) surfaced with equal depth. A submission that treats one category as the main event and the rest as an afterthought won't score well here."
+> **Agent Diversity** - "All four categories (rebalancing, grid trading, yield, health factor) surfaced with equal depth. A submission that treats one category as the main event and the rest as an afterthought won't score well here."
 
 > "We'all also assess more criterias in the second phase, stay tuned to find out!" *[sic]*
 
@@ -45,9 +45,9 @@ Three criteria, presented without percentages, all main-track:
 
 → **Instrument usage telemetry from day one.** Unique wallets, activations, completed hires, retained sessions. Cheap now, impossible to backfill after 9 Sep.
 
-*Verification note: "explicitly equally weighted" was rated PARTIALLY_TRUE — the page states no numeric weights for the main track. Equal thirds is a reasonable reading, not a published fact. Only the TermiX partner track publishes weights (30/30/20/20).*
+*Verification note: "explicitly equally weighted" was rated PARTIALLY_TRUE - the page states no numeric weights for the main track. Equal thirds is a reasonable reading, not a published fact. Only the TermiX partner track publishes weights (30/30/20/20).*
 
-## 3. Categories — note the discrepancy
+## 3. Categories - note the discrepancy
 
 The hackathon page (the operative rules surface) lists:
 
@@ -58,7 +58,7 @@ The hackathon page (the operative rules surface) lists:
 | Yield Optimisation | "Routes liquidity to the highest available APR" |
 | Health Factor Monitoring | "Protects lending positions from liquidation" |
 
-**The blog and press release substitute "Monitoring agents" for "Rebalancing."** Build to the hackathon page — it carries the Agent Diversity criterion — but consider surfacing generic monitoring as a fifth facet to cover both framings.
+**The blog and press release substitute "Monitoring agents" for "Rebalancing."** Build to the hackathon page - it carries the Agent Diversity criterion - but consider surfacing generic monitoring as a fifth facet to cover both framings.
 
 ## 4. Supply in the judged categories is nearly nonexistent
 
@@ -75,15 +75,15 @@ Keyword counts via `/agents?chainId=56&search=`, 18 Aug 2026, against 257,865 to
 
 Sampled results are visibly hackathon-seeded and very recent:
 
-- **"BNB Grid Trader (test)"** — created 2026-08-17T20:10:38Z — *"TEST DEPLOYMENT — not for production use. Autonomous PancakeSwap V3 BNB/USDT grid trader… priced in $U via ERC-8183"*
-- **"GridMaster Ops (Agent Studio)"** — 2026-08-14 — *"Hires and transacts inside Altana sessions with onchain spend caps and revocable authority"*
-- "Portfolio Rebalancer", "Yield Allocator" — both 2026-08-17
+- **"BNB Grid Trader (test)"** - created 2026-08-17T20:10:38Z - *"TEST DEPLOYMENT - not for production use. Autonomous PancakeSwap V3 BNB/USDT grid trader… priced in $U via ERC-8183"*
+- **"GridMaster Ops (Agent Studio)"** - 2026-08-14 - *"Hires and transacts inside Altana sessions with onchain spend caps and revocable authority"*
+- "Portfolio Rebalancer", "Yield Allocator" - both 2026-08-17
 
 **This is live competitive intelligence.** Intake is a private form with no public leaderboard until the shortlist, so the *only* observable competitor signal is on-chain: poll `GET /agents?chainId=56` sorted by `created_at` for hackathon-themed registrations. Competitors building on Altana sessions are already visible.
 
-→ **Publishing AiKi-operated reference agents in the thin categories is mandatory scope, not optional polish.** This independently confirms the conclusion reached from the ecosystem measurement (see [ERC-8004 reality](01-erc8004-reality-on-bsc.md) §6.2, path B).
+**Recommendation recorded in August:** publish AiKi-operated reference agents in the thin categories, following [the ecosystem measurement's supply-creation proposal](01-erc8004-reality-on-bsc.md). The category requirement is a competition rule; operating every provider ourselves is a proposed way to address supply, not a rule or a permanent product boundary.
 
-## 5. The registry is metadata-dark — which is the opening
+## 5. The registry is metadata-dark - which is the opening
 
 From `/stats`, 18 Aug 2026:
 
@@ -102,11 +102,11 @@ From `/stats`, 18 Aug 2026:
 
 Two conclusions with direct product consequences:
 
-**The Data Quality criterion cannot be won by proxying 8004scan.** 91.9% of agents have unknown protocol and only 4,272 of 733,946 have resolved registration metadata. A marketplace that renders 8004scan's fields will look identical to every other entrant. Independent enrichment — liveness probing, capability verification, classification, provenance — *is* the criterion.
+**The Data Quality criterion cannot be won by proxying 8004scan.** 91.9% of agents have unknown protocol and only 4,272 of 733,946 have resolved registration metadata. A marketplace that renders 8004scan's fields will look identical to every other entrant. Independent enrichment - liveness probing, capability verification, classification, provenance - *is* the criterion.
 
-**The ERC-8004 Validation Registry is specified and entirely unused: zero validators, zero validations, network-wide.** That is the clearest open niche on the chain. AiKi could be the first validator — a rubric differentiator and a durable product position simultaneously. *(Weigh against Draft status: the Validation interface may still change.)*
+**The recorded ERC-8004 Validation Registry snapshot showed zero validators and zero validations.** The August research proposed a validator service as a possible differentiator. It remains an optional supporting capability, subject to current adoption, provider cooperation and the interface's Draft status.
 
-## 6. Correct a marketing figure — and score points doing it
+## 6. Correct a marketing figure - and score points doing it
 
 Blog and press release claim:
 
@@ -132,27 +132,27 @@ The absolute count is accurate and understated; the share and network count are 
 
 No contract, no grant figure, no incubation stipend, no equity or token terms are published anywhere.
 
-→ **Treat the $30,000 as the only certain consideration and adoption as an unpriced option.** Settlement asset is also unpinned — the page says "$30,000 equivalent", the blog says "$30,000 USDT".
+→ **Treat the $30,000 as the only certain consideration and adoption as an unpriced option.** Settlement asset is also unpinned - the page says "$30,000 equivalent", the blog says "$30,000 USDT".
 
 ### The TermiX track is unusually high expected value
 
-It is the only track with published weights — Value of services 30%, Proven agent advantage 30%, High-stakes categories & track record 20%, Marketplace quality 20% — and the deliverable is concrete and checkable: an **Agent Advantage Report** with ≥3 real tasks run *both ways* (with agent vs. without), time/cost/quality metrics per task, actual outputs attached, and ≥1 task from trading/stock/security/equities.
+It is the only track with published weights - Value of services 30%, Proven agent advantage 30%, High-stakes categories & track record 20%, Marketplace quality 20% - and the deliverable is concrete and checkable: an **Agent Advantage Report** with ≥3 real tasks run *both ways* (with agent vs. without), time/cost/quality metrics per task, actual outputs attached, and ≥1 task from trading/stock/security/equities.
 
 **TermiX states it will actually hire from your marketplace and evaluate results.** That artifact doubles as the "real-world usage" evidence the press release names. One piece of work, two scoring surfaces, largely orthogonal to the main-track build.
 
-### The Altana track is a spec for what AiKi should build anyway
+### The Altana track concerns delegated on-chain work
 
-Its requirements: per-agent wallets, sessions with call allowlist + spend cap + expiry, Keystore registration, real on-chain transactions via session key, user-facing revocation. That is AiKi's mandate layer, described by someone else. See §8.3.
+Its requirements: per-agent wallets, sessions with call allowlist + spend cap + expiry, Keystore registration, real on-chain transactions via session key, user-facing revocation. These overlap with the proposed mandate layer for jobs requiring on-chain authority. They do not apply automatically to every human or agent job. See §8.3.
 
 ## 8. Substrate facts surfaced by this research
 
 These properly belong to the protocol documents (round-2 research is verifying them independently), but they are recorded here because they emerged from the competition sweep and several are decision-changing.
 
-### 8.1 ERC-8183 is real, deployed infrastructure — not a paper spec
+### 8.1 ERC-8183 is real, deployed infrastructure - not a paper spec
 
 This answers charter question **A2**, and the answer is more favourable than expected.
 
-**EIP-8183 "Agentic Commerce"** — Status **Draft**, Standards Track: Interface, created **2026-02-25**.
+**EIP-8183 "Agentic Commerce"** - Status **Draft**, Standards Track: Interface, created **2026-02-25**.
 
 ```
 JobStatus { Open, Funded, Submitted, Completed, Rejected, Expired }
@@ -160,7 +160,7 @@ lifecycle: createJob / setBudget / fund / submit / complete / reject / claimRefu
 IACPHook: beforeAction / afterAction
 ```
 
-**APEX contract deployments** (from the `apex-contracts` README — ⚠️ **verify on BscScan before mainnet use; a README is not a source of truth for an address**):
+**APEX contract deployments** (from the `apex-contracts` README - ⚠️ **verify on BscScan before mainnet use; a README is not a source of truth for an address**):
 
 | Contract | BSC Mainnet (56) |
 |---|---|
@@ -178,7 +178,7 @@ IACPHook: beforeAction / afterAction
 
 Architecture is a kernel / router / policy pattern.
 
-### 8.2 BNB Agent Studio — and a security pattern worth copying
+### 8.2 BNB Agent Studio - and a security pattern worth copying
 
 Live on BSC **mainnet since ~1 July 2026**. Six layers: user code → IDE (Claude Code / Cursor) → Studio surfaces (`bag` CLI, MCP server, recipes, skills) → `bnbagent_studio_core` (wallet factories, Policy, ERC-8004/8183 workflows, x402, audit logging) → `bnbagent-sdk` (`ERC8004Agent`, `ERC8183Client`, `EVMWalletProvider`) → BSC.
 
@@ -192,7 +192,7 @@ Studio registers an ERC-8004 identity per agent and binds its wallet to that ide
 
 > "Service → Agent. The public Service can only ask the Agent to sign; the Agent re-validates on chain before signing."
 
-Signing lives in fixed entrypoint code and is **never an LLM-callable tool**. For a platform handling third-party funds that separation is the correct default — and it is the pattern BNB Chain's judges will recognise. This maps directly onto **HP-3** (the enforcement gap).
+Signing lives in fixed entrypoint code and is **never an LLM-callable tool**. For a platform handling third-party funds that separation is the correct default - and it is the pattern BNB Chain's judges will recognise. This maps directly onto **HP-3** (the enforcement gap).
 
 ### 8.3 Altana already implements delegated agent hiring on BSC
 
@@ -203,12 +203,12 @@ getErc8183DeliverableUrl(...)       // manifest URL after submission
 settleErc8183Job(wallet, signer, { jobId, action?: "dispute" }, { network: BNB })
 buildClaimRefundCall(chainId, jobId)
 ERC8183_ADDRESSES                   // kernel, EvaluatorRouter, OptimisticPolicy,
-                                    // ERC-8004 registry, $U — for chainId 56 and 97
+                                    // ERC-8004 registry, $U - for chainId 56 and 97
 ```
 
 `budget` is a bigint at 18 decimals. **Session keys are accepted as the signer**, giving a scoped key with an on-chain spend limit.
 
-→ **Evaluate adopting or interoperating with this rather than rebuilding escrowed agent hiring from scratch.** This is precisely the "do not rebuild what exists" principle from the decision register. Round-2 research is verifying what Altana enforces *on-chain* versus in its backend — the HP-3 tier question — before we commit.
+→ **Evaluate adopting or interoperating with this rather than rebuilding escrowed agent hiring from scratch.** This is precisely the "do not rebuild what exists" principle from the decision register. Round-2 research is verifying what Altana enforces *on-chain* versus in its backend - the HP-3 tier question - before we commit.
 
 ### 8.4 8004scan has a *documented public* API tier
 
@@ -229,27 +229,27 @@ GET /feedbacks       GET /chains
 
 Headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
 
-**Pro tier is free for hackathon participants** via `https://forms.gle/jQevEPCAacBXaKG79` — worth claiming immediately.
+**Pro tier is free for hackathon participants** via `https://forms.gle/jQevEPCAacBXaKG79` - worth claiming immediately.
 
 ⚠️ Reliability caveat: `/agents/search` returned **HTTP 502** during testing. Never place it on the critical path during judging, when "functional and publicly accessible" is an eligibility condition. Ingest and cache behind a circuit breaker.
 
-## 9. Open gaps — with commercial consequence
+## 9. Open gaps - with commercial consequence
 
 | Gap | Consequence |
 |---|---|
-| **Terms of Participation not fetchable** | IP ownership, license obligations, open-source requirement, warranty, dispute resolution, and the actual legal meaning of "official adoption" are all unknown. **Request this document from BNB Chain before submitting.** Other BNB hackathons have required work to be "open source and free for others to use" — if that carries over, submitting AiKi's trust/verification core could force it under a permissive license. |
-| Phase 2 criteria redacted | Format, weights, whether it involves live demo/interview/user-testing — unknown. "Real-world usage" is inference, not stated fact. |
+| **Terms of Participation not fetchable** | IP ownership, license obligations, open-source requirement, warranty, dispute resolution, and the actual legal meaning of "official adoption" are all unknown. **Request this document from BNB Chain before submitting.** Other BNB hackathons have required work to be "open source and free for others to use" - if that carries over, submitting AiKi's trust/verification core could force it under a permissive license. |
+| Phase 2 criteria redacted | Format, weights, whether it involves live demo/interview/user-testing - unknown. "Real-world usage" is inference, not stated fact. |
 | Judges unnamed | Cannot calibrate to audience. |
 | Mainnet vs testnet ambiguous | Main track says only "live on BSC" without a chain ID. Only Altana's track carries "testnet counts, mainnet is stronger". |
-| No demo-video or deployed-URL field in the form | Unclear how judges receive the live URL — plausibly the free-text Project Description, or a later follow-up step. |
+| No demo-video or deployed-URL field in the form | Unclear how judges receive the live URL - plausibly the free-text Project Description, or a later follow-up step. |
 | Prior-work rule unpublished | Neither permitted nor prohibited in any source. Permission is *inferred* from the form's "Working MVP" prototype-stage option. |
-| Team size | Form dropdown ends at "5+" — a UI limit, not a stated rule. |
+| Team size | Form dropdown ends at "5+" - a UI limit, not a stated rule. |
 | Prize settlement asset | "$30,000 equivalent" vs "$30,000 USDT". |
 | Whether an adopted marketplace is exclusive | Entirely unaddressed. Relevant if AiKi is a company, not an entry. |
 
-## 10. Strategic reading
+## 10. Strategic reading recorded in August
 
-**The rubric and AiKi's thesis are unusually well aligned — this is not a case of bending the product to fit a competition.**
+The original strategy below emphasised Data Quality and evidence generation. It is retained as the interpretation of this dated study. Current product scope comes from [PRODUCT.md](../../docs/PRODUCT.md): AiKi is a marketplace for humans and AI agents to get work done together. The competition's four categories constrain the submission, not the entire product or its participant model.
 
 Data Quality asks for exactly what the ecosystem lacks and what AiKi was already going to build: liveness probing, verification, provenance, reputation independent of a feedback blob that costs $0.0042 to forge. The measurement work in [ERC-8004 reality](01-erc8004-reality-on-bsc.md) *is* the Data Quality submission.
 
@@ -259,7 +259,7 @@ Three concrete positions follow:
 2. **Publish reference agents in the thin categories.** Health factor (4 agents) and grid (10) cannot be satisfied by indexing. This is forced scope.
 3. **Consider becoming the first ERC-8004 validator.** Zero validators exist network-wide. It is a rubric differentiator and a durable product position.
 
-And one caution: **the competition's shape rewards a working end-to-end journey over architectural depth.** The MPSS's complete-product scope is correct as a *product* commitment, but the three-week window means the judged surface must be a coherent, genuinely working loop — not a broad, shallow footprint. Sequencing matters more than usual here, and that is a build-order decision, not a scope reduction.
+For current planning, assess the complete marketplace journey and the four-category requirement directly. Probing and provenance support an informed choice; they do not substitute for a usable activation path, delivery and ongoing work. The historical recommendation to become a validator is optional quality infrastructure, not a condition of AiKi being complete. Recheck the operative rules before submission rather than treating this August report as the latest rules.
 
 ---
 

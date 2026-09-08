@@ -1,18 +1,25 @@
 # Research Status Ledger
 
-**Updated:** 18 August 2026
-**Rule:** a topic is DONE only when a primary source was fetched and the finding is written up. Everything else is UNKNOWN and may not be built on.
+**Research recorded:** 18-20 August 2026
+**Product framing clarified:** 8 September 2026; no technical finding was revalidated by this documentation change.
+**Rule:** DONE means a primary source was fetched and a finding written up at the stated date. It does not mean an integration shipped, a workflow passed, or a mutable fact remains current.
+
+## What this ledger does and does not establish
+
+AiKi's current scope is a marketplace for humans and AI agents to get work done together. See [PRODUCT.md](../../docs/PRODUCT.md). This ledger tracks research into supporting infrastructure, not whether people can currently discover, hire, deliver, review and pay through the deployed product.
+
+Read SOLID and PARTIAL as research verdicts. The protocol versions, addresses, provider availability, counts and proposed guarantees below retain their original dates. They need implementation checks before they support a current user-facing claim. In particular, finding a deployed spend-cap mechanism does not prove that AiKi's chosen authorization path enforces that cap.
 
 ---
 
-## ✅ Ground-truth research complete — 15/15 topics
+## ✅ Ground-truth research complete - 15/15 topics
 
 | Topic | Verdict | Document |
 |---|---|---|
 | ERC-8004 specification (**A1**) | SOLID | [01-protocols/01](../01-protocols/01-erc8004-trustless-agents.md) |
 | BSC infrastructure, measured live (**C2**, **C3**) | SOLID | [01-protocols/02](../01-protocols/02-bsc-infrastructure.md) |
 | MCP `2026-07-28` (**A5**) | SOLID | [01-protocols/03](../01-protocols/03-mcp-2026-07-28.md) |
-| Adjacent standards — A2A / AP2 / ACP / SCITT (**D1**, **D3**, **B4**) | SOLID | [01-protocols/04](../01-protocols/04-adjacent-standards.md) |
+| Adjacent standards - A2A / AP2 / ACP / SCITT (**D1**, **D3**, **B4**) | SOLID | [01-protocols/04](../01-protocols/04-adjacent-standards.md) |
 | ERC-8183 commerce (**A2**) | SOLID | [01-protocols/05](../01-protocols/05-erc8183-commerce.md) |
 | x402 payments (**A3**, **B4**) | SOLID | [01-protocols/06](../01-protocols/06-x402-payments.md) |
 | Mandate enforcement (**B1–B3**) | PARTIAL | [01-protocols/07](../01-protocols/07-mandate-enforcement.md) |
@@ -29,25 +36,25 @@ Raw structured output: `research/_raw/*.json`. Round-1 adversarial verdicts: `_r
 
 ---
 
-## ✅ C-1 RESOLVED — two registries, only one matters
+## ✅ C-1 RESOLVED - two registries, only one matters
 
 Both researchers were right about the bytes and wrong about exclusivity. **BSC hosts two independent ERC-8004-shaped registry pairs.** All four addresses verified by direct `eth_getCode` / `eth_call`.
 
-### (A) CANONICAL — index this one
+### (A) CANONICAL - index this one
 
 | | Address |
 |---|---|
 | Identity | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` |
 | Reputation | `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` |
 
-ERC-1967 proxies. `name()` = **"AgentIdentity"**, `symbol()` = **"AGENT"**, `getVersion()` = **"2.0.0"** on both. The Reputation proxy's `getIdentityRegistry()` returns the Identity proxy — **the pair is wired**. Implementations (`0x7274e874…`, `0x16e0fa7f…`) are **source-verified on Sourcify** as `IdentityRegistryUpgradeable` / `ReputationRegistryUpgradeable`, and the ABI matches ERC-8004 v1 exactly.
+ERC-1967 proxies. `name()` = **"AgentIdentity"**, `symbol()` = **"AGENT"**, `getVersion()` = **"2.0.0"** on both. The Reputation proxy's `getIdentityRegistry()` returns the Identity proxy - **the pair is wired**. Implementations (`0x7274e874…`, `0x16e0fa7f…`) are **source-verified on Sourcify** as `IdentityRegistryUpgradeable` / `ReputationRegistryUpgradeable`, and the ABI matches ERC-8004 v1 exactly.
 
 - Highest tokenId: **269,718** (binary search on `ownerOf`)
 - **~460 registrations/day** (4 `Registered` events per 1,000-block window)
-- **This is where the 257,865 agents live** — that figure is a stale/filtered snapshot of this contract.
+- **This is where the 257,865 agents live** - that figure is a stale/filtered snapshot of this contract.
 - **`bnb-chain/bnbagent-sdk` pins chain 56 → `0x8004A169…`**
 
-### (B) BRC8004 — dead, ignore
+### (B) BRC8004 - dead, ignore
 
 | | Address |
 |---|---|
@@ -60,17 +67,17 @@ ERC-1967 proxies. `name()` = **"AgentIdentity"**, `symbol()` = **"AGENT"**, `get
 
 ---
 
-## ✅ O-2 and O-3 RESOLVED — 19 Aug 2026
+## ✅ O-2 and O-3 RESOLVED - 19 Aug 2026
 
 See [01-protocols/08-execution-path.md](../01-protocols/08-execution-path.md). Verified by direct RPC.
 
-**O-3 was not a blocker.** Pimlico's bundler is live on chain 56 (`https://public.pimlico.io/v2/56/rpc` — chain must be **numeric**; `/v2/bsc/rpc` errors). Four EntryPoints deployed, gas oracle answering at ~0.06 gwei. Etherspot/Skandha is open-source and self-hostable.
+**O-3 was not a blocker.** Pimlico's bundler is live on chain 56 (`https://public.pimlico.io/v2/56/rpc` - chain must be **numeric**; `/v2/bsc/rpc` errors). Four EntryPoints deployed, gas oracle answering at ~0.06 gwei. Etherspot/Skandha is open-source and self-hostable.
 
-**Better: we don't need a bundler.** The **MetaMask Delegation Framework v1.3.0** is deployed on BSC — DelegationManager `0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3`, EIP7702StatelessDeleGatorImpl `0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B`. AiKi self-relays a type-0x4 SetCode tx via viem and redeems delegations as relayer. **5–8 eng days vs 8–14 for the 4337 route.**
+**Better: we don't need a bundler.** The **MetaMask Delegation Framework v1.3.0** is deployed on BSC - DelegationManager `0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3`, EIP7702StatelessDeleGatorImpl `0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B`. AiKi self-relays a type-0x4 SetCode tx via viem and redeems delegations as relayer. **5–8 eng days vs 8–14 for the 4337 route.**
 
-**🎯 The rolling-window gap is closed.** `ERC20PeriodTransferEnforcer` is a **resetting** per-period cap. We can honestly say *"$250 per month, renewing"* and have the **chain** enforce it — no custom contract, no audit of our own. **ADR-014 (ship lifetime-only caps) is withdrawn.**
+**🎯 The rolling-window gap is closed.** `ERC20PeriodTransferEnforcer` is a **resetting** per-period cap. We can honestly say *"$250 per month, renewing"* and have the **chain** enforce it - no custom contract, no audit of our own. **ADR-014 (ship lifetime-only caps) is withdrawn.**
 
-**O-2 closed: Altana is genuinely T0 with a true rolling window** — but enforcement is **not** in KeyStore (a registry). It is in the account implementation `0x4b5d20cd8a3927b500540d9bccddc27385c9fa79` (Porto), which reverts `ExceededSpendLimit`. ⚠️ **The CertiK audit covered the registry, not the enforcing contract** — never cite the audit beside the spend cap.
+**O-2 closed: Altana is genuinely T0 with a true rolling window** - but enforcement is **not** in KeyStore (a registry). It is in the account implementation `0x4b5d20cd8a3927b500540d9bccddc27385c9fa79` (Porto), which reverts `ExceededSpendLimit`. ⚠️ **The CertiK audit covered the registry, not the enforcing contract** - never cite the audit beside the spend cap.
 
 **ADR-006 unblocked.** Recommended: 7702 self-relay as primary, ERC-4337 + Pimlico behind the same adapter as secondary.
 
@@ -78,8 +85,8 @@ See [01-protocols/08-execution-path.md](../01-protocols/08-execution-path.md). V
 
 | # | Item | Blocks | Priority |
 |---|---|---|---|
-| **O-1** | **Terms of Participation** — not publicly fetchable; IP/licensing/open-source obligations unknown | Submission | **Founder action** |
-| **O-8** | Which of the two v0.8 EntryPoints is canonical — `0x4337084D…` or `0x433709009B…` (both deployed) | Only the 4337 path | Low |
+| **O-1** | **Terms of Participation** - not publicly fetchable; IP/licensing/open-source obligations unknown | Submission | **Founder action** |
+| **O-8** | Which of the two v0.8 EntryPoints is canonical - `0x4337084D…` or `0x433709009B…` (both deployed) | Only the 4337 path | Low |
 | **O-9** | Sourcify verification for the Altana account implementation | Strength of the T0 claim | Low |
 | O-4 | ERC-8183 BscScan source verification (Cloudflare 403; needs Etherscan v2 key) | Mainnet funds | Medium |
 | O-5 | `$U` liquidity, depth, on/off-ramps | Checkout UX | Medium (product risk) |
@@ -88,29 +95,29 @@ See [01-protocols/08-execution-path.md](../01-protocols/08-execution-path.md). V
 
 ---
 
-## VERIFIED — may be built on
+## VERIFIED - may be built on
 
-**Identity.** ERC-8004 is `Draft` (commit 2026-01-25; moved to Review Oct 2025 then reverted — pin a commit hash). Identity is a transferable ERC-721; `agentId` == `tokenId`. `agentWallet` is the only cryptographically proven field (EIP-712/ERC-1271), auto-cleared on transfer. Registration files carry **no signature** — always resolve top-down chain → URI → file. `/.well-known/agent-registration.json` reciprocal proof exists at **0.04% adoption**. Reputation is `int128` + caller-set `valueDecimals`; `getSummary` accepts a client filter; `revokeFeedback` exists. **ValidationRegistry: zero validators, zero validations, globally.** Validation is owner-initiated.
+**Identity.** ERC-8004 is `Draft` (commit 2026-01-25; moved to Review Oct 2025 then reverted - pin a commit hash). Identity is a transferable ERC-721; `agentId` == `tokenId`. `agentWallet` is the only cryptographically proven field (EIP-712/ERC-1271), auto-cleared on transfer. Registration files carry **no signature** - always resolve top-down chain → URI → file. `/.well-known/agent-registration.json` reciprocal proof exists at **0.04% adoption**. Reputation is `int128` + caller-set `valueDecimals`; `getSummary` accepts a client filter; `revokeFeedback` exists. **ValidationRegistry: zero validators, zero validations, globally.** Validation is owner-initiated.
 
-**Commerce.** ERC-8183 is Draft (2026-02-25), deployed and **busy** — job 56,610 same-day. AgenticCommerce proxy `0xEa4DAa31…`, impl `0xd5f9b570…`. **Deployed ABI diverges from spec: `fund(uint256,uint256,bytes)` and `setProvider(uint256,address,bytes)`.** Proxy is upgradeable, pausable, owner-controlled. `claimRefund` is deliberately not hookable. Fees only on `Completed`. Expiry is permissionless. EvaluatorRouter is both evaluator and `IACPHook`.
+**Commerce.** ERC-8183 is Draft (2026-02-25), deployed and **busy** - job 56,610 same-day. AgenticCommerce proxy `0xEa4DAa31…`, impl `0xd5f9b570…`. **Deployed ABI diverges from spec: `fund(uint256,uint256,bytes)` and `setProvider(uint256,address,bytes)`.** Proxy is upgradeable, pausable, owner-controlled. `claimRefund` is deliberately not hookable. Fees only on `Completed`. Expiry is permissionless. EvaluatorRouter is both evaluator and `IACPHook`.
 
 **Payments.** x402 **v2** is current (`@x402/*` 2.23.0; unscoped v1 frozen at 1.2.x); headers `PAYMENT-REQUIRED`/`PAYMENT-SIGNATURE`/`PAYMENT-RESPONSE`, CAIP-2 networks. **USDT-BSC implements neither EIP-3009 nor permit, and is 18 decimals.** **Chain 56 is absent from `DEFAULT_STABLECOINS`.** **`$U`** (`0xcE2443…666666`, "United Stables", 18dp) implements EIP-3009 and is ERC-8183's `paymentToken`. **B402 is third-party (`b402.ai`), abandons EIP-3009, and its "RelayerV3 contract" is an EOA with no code.**
 
-**Enforcement.** EIP-7702 live since **2025-03-20** (Pascal), 1.40% of txs. EntryPoints v0.6/v0.7/v0.8 all deployed; 7702+4337-v0.8 live in production. Rhinestone SmartSession `0x00000000008bDABA73cD9815d79069c247Eb4bDA` deployed; SpendingLimits/UniversalAction/Sudo policies deployed; **TimeFrame/UsageLimit/ValueLimit NOT deployed on 56 — AiKi must deploy them.** **`ERC20SpendingLimitPolicy` is a lifetime cap, not a rolling window** (monotonic `alreadySpent`, no `block.timestamp`). Altana KeyStore `0x6572427E…` + Controller `0x0834Ee2C…` have bytecode on 56; CertiK-audited 15 Jul 2026; revocation is a single userOp, immediate, no off-chain coordination. **Altana = T0** (with the §O-2 asterisk); **TWAK = T3** (no constraint surface).
+**Enforcement.** EIP-7702 live since **2025-03-20** (Pascal), 1.40% of txs. EntryPoints v0.6/v0.7/v0.8 all deployed; 7702+4337-v0.8 live in production. Rhinestone SmartSession `0x00000000008bDABA73cD9815d79069c247Eb4bDA` deployed; SpendingLimits/UniversalAction/Sudo policies deployed; **TimeFrame/UsageLimit/ValueLimit NOT deployed on 56 - AiKi must deploy them.** **`ERC20SpendingLimitPolicy` is a lifetime cap, not a rolling window** (monotonic `alreadySpent`, no `block.timestamp`). Altana KeyStore `0x6572427E…` + Controller `0x0834Ee2C…` have bytecode on 56; CertiK-audited 15 Jul 2026; revocation is a single userOp, immediate, no off-chain coordination. **Altana = T0** (with the §O-2 asterisk); **TWAK = T3** (no constraint surface).
 
-**Chain.** 0.45s blocks, `finalized` lag 2 blocks, reorg bound 8 blocks (`turnLength`). Non-standard **`milliTimestamp`** — generic indexers drop it. `eth_getLogs` **disabled** on public dataseeds; caps 5k–50k elsewhere. **anvil forks BSC, gas exact, needs `--evm-version prague`.** NodeReal **$39/mo with archive on all tiers**. **Mandatory Pasteur hardfork 25 Aug 2026.**
+**Chain.** 0.45s blocks, `finalized` lag 2 blocks, reorg bound 8 blocks (`turnLength`). Non-standard **`milliTimestamp`** - generic indexers drop it. `eth_getLogs` **disabled** on public dataseeds; caps 5k–50k elsewhere. **anvil forks BSC, gas exact, needs `--evm-version prague`.** NodeReal **$39/mo with archive on all tiers**. **Mandatory Pasteur hardfork 25 Aug 2026.**
 
 **Competition.** Deadline **12:00 UTC 9 Sep 2026**. Rubric: Functionality / Data Quality / Agent Diversity; press release adds "real-world usage"; Phase 2 redacted. Category supply: yield 132, rebalancing 40, grid 10, **health factor 4**.
 
-**Competitive reality.** Confidence-weighted scoring (trust8004), explainable ranking + liveness (8004scan v5), on-chain mandate ceilings (winsznx/mandate), staked typed evaluators (TermiX AACP) are **all already shipped**. The unoccupied position is **independent evidence generation** — the empty ValidationRegistry, and the fact that 100% of BSC feedback lacks interaction proof.
+**Competitive research, August snapshot.** The study recorded confidence-weighted scoring (trust8004), explainable ranking + liveness (8004scan v5), on-chain mandate ceilings (winsznx/mandate), and staked typed evaluators (TermiX AACP). It proposed independent evidence generation as a differentiator. That proposal is historical; it does not define AiKi's current product scope or establish that no competing marketplace offers the same capability now.
 
-**Measurement.** Wilson LB gives the required score/confidence inversion for free. **Separating 0.5 Sharpe needs ~63 years** — leaderboards are statistically void; **paired replay on identical scenarios is the only honest comparison.** Wash trading is detectable by iterative SCC counting + volume matching.
+**Measurement.** Wilson LB gives the required score/confidence inversion for free. **Separating 0.5 Sharpe needs ~63 years** - leaderboards are statistically void; **paired replay on identical scenarios is the only honest comparison.** Wash trading is detectable by iterative SCC counting + volume matching.
 
 ---
 
-## Next: architecture
+## Architecture sequence proposed in August
 
-Ground truth is complete enough to design. Order:
+The research originally proposed the order below. It is preserved as planning history, not the current queue:
 
 1. Canonical domain model + evidence graph (HP-4)
 2. Ingestion and verification pipeline (D1–D7 detection rules)
@@ -119,3 +126,7 @@ Ground truth is complete enough to design. Order:
 5. Commerce + payment routing (ERC-8183 / x402 / `$U`)
 6. ADR set
 7. Feasibility, critical path, build sequence
+
+## Current research priority
+
+Follow a real job through the marketplace before expanding the measurement programme. Establish how a participant finds help, agrees to the brief and price, hands off the work, receives and reviews a delivery, and pays or recovers from failure. Check Fast and Manual against the same workflow, and check human and agent roles separately. Then prioritise evidence and control research that resolves a specific gap in those paths.

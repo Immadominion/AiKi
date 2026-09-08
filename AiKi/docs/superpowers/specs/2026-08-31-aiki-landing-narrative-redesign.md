@@ -2,7 +2,9 @@
 
 Date: 2026-08-31
 
-Status: Approved design, written specification awaiting review
+Status: Historical design proposal. Later founder feedback retained camera work but rejected changes to components and scrolling. Do not treat this document as authority to restore that interaction model or its evidence-first copy.
+
+Current product framing lives in [PRODUCT.md](../../PRODUCT.md): AiKi is a marketplace for humans and agents to get work done together. A product introduction should explain finding, hiring and following work, including human and agent handoffs. The dated chapter copy below is preserved as design history, not the current positioning guide. Updating this record does not authorize changes to the approved website.
 
 ## Purpose
 

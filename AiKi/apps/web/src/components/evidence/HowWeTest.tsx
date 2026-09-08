@@ -4,13 +4,13 @@ import type { LivenessState } from '@aiki/contracts'
 import { LIVENESS_DETAIL, LIVENESS_LABEL } from '@/components/ui/LivenessBadge'
 
 /**
- * The sweep. Real numbers, from our own prober, not estimates.
+ * Counts recorded in the 20 August 2026 first-party sweep report.
  *
  * 400 agents drawn across 126 distinct 1,000-id blocks of the canonical BSC
- * ERC-8004 registry, August 2026. Spread across blocks rather than taken from a
- * few pages, because a registry dominated by bulk minting returns near-identical
- * neighbours — a few big pages is cluster sampling wearing the costume of a
- * random sample, and any percentage taken from it is falsely precise.
+ * ERC-8004 registry. Spreading the draw reduces concentration in neighbouring
+ * registrations; it does not establish registry-wide prevalence. The raw sweep
+ * artifact referenced by the report was missing from the checkout on
+ * 8 September 2026, so the report is not a complete reproducibility package.
  */
 const SWEEP: { state: LivenessState; n: number }[] = [
   { state: 'DECLARED_ONLY', n: 243 },
@@ -21,54 +21,67 @@ const SWEEP: { state: LivenessState; n: number }[] = [
 ]
 const TOTAL = 400
 
+// The report's classifications are narrower than the current shared UI labels.
+const SNAPSHOT_LABEL: Partial<Record<LivenessState, string>> = {
+  DEGRADED: 'Reachable, not yet proven',
+  IMPOSTOR_STATIC: 'Static or shared response',
+  PLACEHOLDER_URL: 'Unresolved address template',
+}
+const SNAPSHOT_DETAIL: Partial<Record<LivenessState, string>> = {
+  DEGRADED: 'The endpoint responded, but the sweep did not establish agent-specific behavior.',
+  IMPOSTOR_STATIC:
+    'D1 found identical responses to varied inputs, or D10 found the same URL under different identities.',
+  PLACEHOLDER_URL: 'The declared address contained an unexpanded template such as {agentId}.',
+}
+
 const RULES = [
   {
     id: 'D0',
     name: 'Nothing to call',
     what: 'The registration file declares no network endpoint at all, or the endpoint refuses every connection.',
-    why: 'Six in ten agents on BNB Chain stop here. They registered a name and never published anything to talk to.',
+    why: 'Six in ten registrations in the 20 August sample declared no endpoint. That describes this sample, not every agent on BNB Chain.',
   },
   {
     id: 'D1',
     name: 'Same answer every time',
-    what: 'We ask three times: once properly, once with a nonsense id, once with a non-numeric id. Then we hash each response. Identical hashes mean the endpoint is not reading the question.',
-    why: 'A third of the registry does this. Every explorer that checks for HTTP 200 shows these agents as healthy. They are a page, not an agent.',
+    what: 'We ask three times: once properly, once with a nonsense id, once with a non-numeric id. Then we hash each response. Identical hashes do not establish agent-specific behavior.',
+    why: 'About a third of the sample was flagged by D1 or D10. An HTTP 200 response alone would miss these distinctions; it does not prove that an agent can do the job.',
   },
   {
     id: 'D2',
     name: 'The address is not real',
     what: 'localhost, 127.0.0.1, example.com, 0.0.0.0 and their relatives.',
-    why: 'Registered from a developer machine and never updated.',
+    why: 'A placeholder or local address does not identify a publicly callable service.',
   },
   {
     id: 'D3',
     name: 'Not reachable over a network',
     what: 'The declared transport is stdio, a local pipe rather than an address anyone else can call.',
-    why: 'Perfectly valid MCP. Just not something you can hire from here.',
+    why: 'A valid local MCP transport is not a remotely callable service. This check does not assess other ways the provider might offer work.',
   },
   {
     id: 'D4',
     name: 'Resolving it cost nothing',
     what: 'The registration file is a data: URI, so it resolves without a single network call.',
-    why: 'Not a fault, but not evidence either. Resolving it proves nothing about whether anyone is home.',
+    why: 'This provides registration metadata, not evidence that the declared service is running.',
   },
   {
     id: 'D5',
     name: 'It answered properly',
     what: 'A real capability handshake: it parsed, it responded in the shape it promised, and it responded differently to different inputs.',
-    why: 'This is the only path to Answering. Everything else is a way of failing.',
+    why: 'Passing this check supports an Answering verdict. It is not a guarantee of job quality, safety or successful delivery.',
   },
   {
     id: 'D8',
     name: 'The domain agrees',
     what: 'We fetch /.well-known/agent-registration.json from the endpoint’s own origin and check it names this registry and this token.',
-    why: 'Around 0.04% of agents on BNB Chain serve one. Its absence is normal; its presence is the strongest identity signal available.',
+    why: 'An August 8004scan snapshot reported around 0.04% reciprocal verification across its broader registry dataset, not BNB alone. A matching record links the domain and registration; it does not establish capability or safety.',
   },
   {
     id: 'D10',
     name: 'Many agents, one endpoint',
     what: 'The same exact URL is declared by other identities in the registry.',
-    why: 'A URL shared by dozens of identities cannot be agent-specific. D1 cannot catch this on its own, because a URL with no identifier in it has nothing to vary.',
+    why: 'A shared URL alone does not establish which agent is answering, so this rule flags it. D1 cannot vary a URL identifier when none is present; a provider may need another way to demonstrate agent-specific behavior.',
   },
 ]
 
@@ -76,22 +89,22 @@ const CLASSES = [
   {
     cls: 'A',
     title: 'On-chain, cryptographic',
-    body: 'Transactions, signatures, registry state. Strongest by construction, and still not automatically valuable. every piece of ERC-8004 feedback we have seen on BNB Chain carries no payment proof, and moving an agent past a trust threshold costs about $0.0042. We ingest it and weight it near zero.',
+    body: 'Transactions, signatures and registry state can verify particular facts, not the quality of a job. The 2026 study Can Trustless Agents Be Trusted? reported no payment proof or task linkage in its BSC feedback dataset and a modeled median cost of $0.0042 to cross its trust threshold. Those are study findings, not current prices or results from this sweep.',
   },
   {
     cls: 'B',
     title: 'We watched it ourselves',
-    body: 'Our probes and benchmark runs. The only class we fully control, and the one the proof score is mostly built from.',
+    body: 'Checks AiKi runs itself. A result describes what was observed under those conditions. Our own method can have faults, and these checks are not independent attestations.',
   },
   {
     cls: 'C',
     title: 'Someone independent attested',
-    body: 'A third party we did not pay and do not control. Rare.',
+    body: 'A third-party attestation. Its value depends on who made it, what they checked and whether they are independent of the provider.',
   },
   {
     cls: 'D',
     title: 'Someone said so',
-    body: 'Self-reported uptime, marketing copy, registry metadata. Recorded, shown, and never allowed to move a score on its own.',
+    body: 'Self-reported uptime, descriptions and registry metadata. Useful for understanding an offer, but a claim alone does not prove that the provider can deliver it.',
   },
 ]
 
@@ -123,24 +136,23 @@ const Section = ({
 )
 
 /**
- * The evidence layer, as a docs article.
- *
- * Lives inside the docs rather than as a page of its own, because it is the
- * flagship answer to "why should I believe any of this" and every other doc
- * eventually points back at it.
+ * Documentation for endpoint checks that support marketplace discovery.
+ * These checks are separate from hiring, delivery, buyer review and payment.
  */
 export function HowWeTestBody() {
   return (
     <>
       <Section
-        title="What the registry actually contains"
-        note="400 agents drawn across 126 separate blocks of the BNB Chain ERC-8004 registry, August 2026. Spread across blocks rather than taken from a few pages: a registry dominated by bulk minting returns near-identical neighbours, so a few big pages is cluster sampling in the costume of a random sample."
+        title="What one registry sample showed"
+        note="On 20 August 2026, AiKi's sweep report recorded checks on 400 registrations across 126 separate 1,000-id blocks of the BNB Chain ERC-8004 registry. These counts describe that sample and date. They are not current totals or a measure of every provider available for hire."
       >
         <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-[16px]">
           {SWEEP.map((r) => (
             <div key={r.state} className="mb-[14px] last:mb-0">
               <div className="flex items-baseline gap-[9px]">
-                <span className="text-[13.5px] font-semibold">{LIVENESS_LABEL[r.state]}</span>
+                <span className="text-[13.5px] font-semibold">
+                  {SNAPSHOT_LABEL[r.state] ?? LIVENESS_LABEL[r.state]}
+                </span>
                 <div className="flex-1" />
                 <span className="text-[13.5px] font-bold tabular-nums">{r.n}</span>
                 <span className="text-muted w-[52px] text-right text-[12.5px] font-semibold tabular-nums">
@@ -151,7 +163,7 @@ export function HowWeTestBody() {
                 <Bar n={r.n} />
               </div>
               <div className="text-muted mt-[6px] text-[12px] leading-[1.45] text-pretty">
-                {LIVENESS_DETAIL[r.state]}
+                {SNAPSHOT_DETAIL[r.state] ?? LIVENESS_DETAIL[r.state]}
               </div>
             </div>
           ))}
@@ -162,28 +174,28 @@ export function HowWeTestBody() {
             !
           </span>
           <span className="text-[12.5px] leading-[1.55] text-pretty text-[#6B5A34]">
-            <b className="font-bold">Not one agent in that sample was fully live.</b> That is the
-            honest headline, it is worse than anything published about this registry, and it is why
-            AiKi tests rather than lists. Two were reachable but slow. The rest could not be called
-            at all, or answered without reading the question.
+            <b className="font-bold">No sampled endpoint passed the full check.</b> Two were
+            reachable but remained unproven. This is a result under the sweep's rules, not a verdict
+            on every agent or hiring path. Endpoint checks help people choose an available provider;
+            completed work and buyer review answer different questions.
           </span>
         </div>
 
         <p className="text-muted mt-3 mb-0 max-w-[680px] text-[12.5px] leading-[1.55] text-pretty">
-          These are the numbers from that one fixed draw, and they do not move. The{' '}
+          These historical counts are separate from the{' '}
           <a className="font-semibold underline underline-offset-2" href="/registry">
             registry page
           </a>{' '}
-          shows the running totals from the continuous sweep, and it does find live agents. The two
-          disagree because they are different populations: this sample was stratified to be
-          representative, while the sweep works through whatever is due to be re-checked. Take the
-          percentages from here and the current counts from there, and do not mix them.
+          and its ongoing checks. Different dates and selections can produce different results, so
+          do not combine their totals. As of 8 September 2026, the raw file referenced by this
+          historical sweep report was missing from the retained research files. These are the
+          report's recorded figures; independent reproduction needs that source file.
         </p>
       </Section>
 
       <Section
-        title="How we decide"
-        note="Every agent runs through the same rules in the same order. A verdict always names the rule that produced it, so a claim about an agent can be traced to the check behind it, and disputed."
+        title="How endpoint checks work"
+        note="These rules assess declared agent endpoints, not human providers or the whole marketplace journey. A verdict should identify the check behind it so the result can be inspected and corrected."
       >
         <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)]">
           {RULES.map((r, i) => (
@@ -209,8 +221,8 @@ export function HowWeTestBody() {
       </Section>
 
       <Section
-        title="Why a score is never a raw percentage"
-        note="Four successes out of four and 171 out of 174 are both “100%” and “98%” to a naive ratio, and the first tells you almost nothing. We publish the lower end of a Wilson interval instead, so a thin sample cannot look like a strong one."
+        title="Why sample size matters"
+        note="Four successes out of four gives 100%; 171 out of 174 gives about 98%. The smaller sample carries more uncertainty. These examples use the lower end of a Wilson interval to show that difference. They describe checks, not a guarantee of future job performance."
       >
         <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)]">
           {[
@@ -218,7 +230,7 @@ export function HowWeTestBody() {
               label: '4 of 4 checks passed',
               naive: '100%',
               ours: '51',
-              note: 'Four checks cannot tell a good agent from a lucky one.',
+              note: 'Four successful checks provide limited evidence of reliability.',
             },
             {
               label: '6 of 7 checks passed',
@@ -230,7 +242,7 @@ export function HowWeTestBody() {
               label: '171 of 174 checks passed',
               naive: '98%',
               ours: '95',
-              note: 'Enough evidence to print two digits and mean them.',
+              note: 'More observations narrow the interval under the same test conditions.',
             },
           ].map((r, i) => (
             <div
@@ -251,15 +263,15 @@ export function HowWeTestBody() {
           ))}
         </div>
         <p className="text-muted mt-3 mb-0 max-w-[680px] text-[12.5px] leading-[1.55] text-pretty">
-          The number of digits we print is itself a claim about how much we know. Printing 95.3 on a
-          handful of observations is a lie told in typography, so precision is clamped to confidence
-          and, below a floor, we print no number at all.
+          A number like 95.3 can imply more precision than a small sample supports. Sample size,
+          uncertainty and test conditions belong beside a result. A precise-looking score still does
+          not establish that a provider can complete your particular job.
         </p>
       </Section>
 
       <Section
-        title="What each kind of evidence is worth"
-        note="Class is not the same as value. On-chain evidence is the strongest by construction and can still be close to worthless in practice. We say which, rather than letting the label do the arguing."
+        title="Where evidence comes from"
+        note="Source and usefulness are different questions. A transaction can prove that a payment happened without proving that the work was good. Read each source alongside the fact it supports."
       >
         <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)]">
           {CLASSES.map((c, i) => (
@@ -293,7 +305,7 @@ export function HowWeTestBody() {
             ],
             [
               'We cannot separate close performers',
-              'Telling apart two agents differing by half a Sharpe ratio needs decades of data. Where the ranges overlap we say so instead of ranking.',
+              'Under the assumptions in our measurement research, separating agents differing by half a Sharpe ratio takes decades of data. Overlapping ranges do not support a confident ranking.',
             ],
             [
               'We cannot enforce what the chain does not hold',
