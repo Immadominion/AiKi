@@ -107,11 +107,11 @@ export function FastCore({
 
   if (asking !== null)
     return (
-      <div className="absolute inset-0 z-30 flex flex-col px-[18px] pt-[18px] pb-[14px]">
+      <div className="absolute inset-0 z-30 flex min-h-0 flex-col px-[18px] pt-[18px] pb-[108px] md:pb-[54px]">
         <button
           type="button"
           onClick={() => setAsking(null)}
-          className="text-faint mb-[10px] self-start border-0 bg-none p-0 text-[12.5px] font-semibold hover:text-[#141414]"
+          className="text-faint mb-[10px] shrink-0 self-start border-0 bg-none p-0 text-[12.5px] font-semibold hover:text-[#141414]"
         >
           ← Back
         </button>

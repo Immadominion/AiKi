@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { type AssistantStep, type AssistantTurn, api, type CreditBalance } from '@/lib/api'
+import { FastMessage } from './FastMessage'
 
 /**
  * Fast mode: asking for the thing instead of finding the screen for it.
@@ -37,11 +38,24 @@ const nextId = () => `m${++counter}`
 const TOOL_LABEL: Record<string, string> = {
   search_agents: 'searched the registry',
   agent_passport: 'read an agent’s evidence',
+  agent_task_support: 'checked whether the agent accepts tasks',
   ecosystem_stats: 'checked what has been measured',
   preview_limits: 'priced your limits',
   my_account: 'looked up your account',
   create_mandate: 'created a mandate',
+  create_spending_mandate: 'set your work budget',
   hire: 'started a job',
+  hire_agent: 'created a task for the agent',
+  my_tasks: 'checked your work',
+  open_tasks: 'looked for available work',
+  post_task: 'posted your task',
+  accept_task: 'accepted the work and released payment',
+  decline_task: 'marked the work as disputed',
+  find_people: 'looked for people',
+  hire_person: 'sent your brief to the provider',
+  claim_task: 'claimed the task',
+  submit_task: 'submitted the work',
+  release_task: 'released payment',
   watch_position: 'put an agent on duty',
   watch_status: 'checked the watch',
   stop_watching: 'stood the agent down',
@@ -56,7 +70,7 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
   const [busy, setBusy] = useState(false)
   const [credits, setCredits] = useState<CreditBalance | null>(null)
   const [unavailable, setUnavailable] = useState<string | null>(null)
-  const endRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const loadCredits = useCallback(async () => {
     try {
@@ -79,6 +93,7 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
       const asked: Message[] = [...messages, { id: nextId(), role: 'user', content: question }]
       setMessages(asked)
       setBusy(true)
+      setUnavailable(null)
       try {
         const turn = await api.assistant(asked.map((m) => ({ role: m.role, content: m.content })))
         setMessages([
@@ -102,7 +117,10 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
         setDraft(question)
       } finally {
         setBusy(false)
-        requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }))
+        requestAnimationFrame(() => {
+          const scroller = scrollRef.current
+          if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
+        })
       }
     },
     [busy, messages, say, loadCredits],
@@ -124,8 +142,8 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
   }, [opening, ask])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex flex-wrap items-baseline justify-between gap-[10px] px-[4px] pb-[12px]">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <header className="flex shrink-0 flex-wrap items-baseline justify-between gap-[10px] px-[4px] pb-[12px]">
         <div>
           <div className="text-[14.5px] font-bold">Fast mode</div>
           <p className="text-muted mt-[3px] mb-0 max-w-[520px] text-[12.5px] leading-[1.5] text-pretty">
@@ -151,7 +169,10 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-[4px]">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[4px] pb-2"
+      >
         {messages.length === 0 ? (
           <p className="text-faint mt-[8px] mb-0 text-[13px] leading-[1.6] text-pretty">
             Try: “which agents have actually been verified?”, “what would a 50 USDT per action limit
@@ -163,13 +184,24 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
           {messages.map((m) => (
             <li key={m.id} className={m.role === 'user' ? 'self-end' : ''}>
               {m.role === 'user' ? (
-                <p className="text-ink-app m-0 max-w-[520px] rounded-[16px] bg-[rgb(26_26_25_/_0.055)] px-[14px] py-[10px] text-[13px] leading-[1.55] whitespace-pre-wrap">
+                <p className="text-ink-app m-0 max-w-[520px] rounded-[16px] bg-[rgb(26_26_25_/_0.055)] px-[14px] py-[10px] text-[13px] leading-[1.55] whitespace-pre-wrap [overflow-wrap:anywhere]">
                   {m.content}
                 </p>
               ) : (
                 <div className="max-w-[620px]">
                   {m.steps?.length ? <Steps steps={m.steps} /> : null}
-                  <p className="m-0 text-[13px] leading-[1.6] whitespace-pre-wrap">{m.content}</p>
+                  <FastMessage text={m.content} />
+                  {m.steps?.some(
+                    (step) =>
+                      step.ok && ['hire_agent', 'post_task', 'my_tasks'].includes(step.tool),
+                  ) ? (
+                    <a
+                      href="/work"
+                      className="mt-3 inline-block text-[12.5px] font-semibold underline underline-offset-4"
+                    >
+                      Open your work →
+                    </a>
+                  ) : null}
                   {m.cost ? (
                     <p
                       className="text-faint mt-[8px] mb-0 text-[11.5px] leading-[1.45]"
@@ -187,11 +219,11 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
           ))}
         </ol>
         {busy ? <p className="text-faint mt-[14px] mb-0 text-[12.5px]">Working…</p> : null}
-        <div ref={endRef} />
       </div>
 
-      <div className="flex items-end gap-[8px] px-[4px] pt-[12px]">
+      <div className="flex shrink-0 items-end gap-[8px] px-[4px] pt-[12px]">
         <textarea
+          aria-label="Message Fast mode"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -203,7 +235,7 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
           }}
           rows={1}
           placeholder="Ask for what you need…"
-          className="text-ink-app min-h-[44px] flex-1 resize-none rounded-[14px] border border-[rgb(26_26_25_/_0.14)] bg-transparent px-[14px] py-[12px] text-[13.5px] leading-[1.45] outline-none focus:border-[rgb(26_26_25_/_0.4)]"
+          className="text-ink-app min-h-[44px] min-w-0 flex-1 resize-none rounded-[14px] border border-[rgb(26_26_25_/_0.14)] bg-transparent px-[14px] py-[12px] text-[13.5px] leading-[1.45] outline-none focus:border-[rgb(26_26_25_/_0.4)]"
         />
         <button
           type="button"
@@ -252,6 +284,11 @@ function Steps({ steps }: { steps: AssistantStep[] }) {
             {TOOL_LABEL[s.tool] ?? s.tool}
             {s.ok ? '' : ' (refused)'}
           </span>
+          {s.ok && typeof s.input.agent_id === 'string' && /^\d+$/.test(s.input.agent_id) ? (
+            <a href={`/registry/${s.input.agent_id}`} className="underline underline-offset-2">
+              View agent
+            </a>
+          ) : null}
         </li>
       ))}
     </ul>
