@@ -1,14 +1,17 @@
 import { getAddress } from 'viem'
 import { createSiweMessage } from 'viem/siwe'
+import {
+  acceptWalletSession,
+  invalidateWalletSession,
+  isWalletSessionCurrent,
+} from './wallet-session'
 
 /**
  * The thinnest possible bridge to an injected EIP-1193 wallet.
  *
  * No SDK: connecting and watching accounts needs four requests, and every
- * dependency here would outweigh the code. When no extension exists the app
- * falls back to a clearly-labelled simulated wallet rather than a dead button,
- * because a walkable demo beats a wall - but it never lets the simulation
- * pass as a connection.
+ * dependency here would outweigh the code. Missing extensions leave the app
+ * disconnected; fixture wallets are available only through the development panel.
  */
 export const BSC_CHAIN_ID = 56
 
@@ -18,13 +21,93 @@ interface Eip1193Provider {
   removeListener?(event: string, handler: (payload: unknown) => void): void
 }
 
+export interface WalletOption {
+  uuid: string
+  name: string
+  rdns: string
+  icon: string
+  provider: Eip1193Provider
+}
+
+const PROVIDER_KEY = 'aiki.wallet.provider'
+const PROVIDER_CHANGED = 'aiki:wallet-provider-changed'
+let selectedProvider: Eip1193Provider | null = null
+
+export function selectWallet(wallet: WalletOption) {
+  selectedProvider = wallet.provider
+  try {
+    localStorage.setItem(PROVIDER_KEY, wallet.rdns)
+  } catch {
+    /* The wallet selection still works without browser storage. */
+  }
+  window.dispatchEvent(new Event(PROVIDER_CHANGED))
+}
+
+/** EIP-6963 announcements distinguish extensions that share window.ethereum. */
+export function discoverWallets(onChange: (wallets: WalletOption[]) => void) {
+  const wallets = new Map<string, WalletOption>()
+  let preferred: string | null = null
+  try {
+    preferred = localStorage.getItem(PROVIDER_KEY)
+  } catch {
+    /* No saved preference. */
+  }
+  const announce = (event: Event) => {
+    const detail = (event as CustomEvent).detail as {
+      info?: Omit<WalletOption, 'provider'>
+      provider?: Eip1193Provider
+    }
+    if (
+      !detail?.info?.uuid ||
+      !detail.info.name ||
+      typeof detail.provider?.request !== 'function'
+    ) {
+      return
+    }
+    const wallet = { ...detail.info, provider: detail.provider }
+    wallets.set(wallet.uuid, wallet)
+    if (!selectedProvider && preferred === wallet.rdns) selectWallet(wallet)
+    onChange([...wallets.values()])
+  }
+  window.addEventListener('eip6963:announceProvider', announce)
+  window.dispatchEvent(new Event('eip6963:requestProvider'))
+  return () => window.removeEventListener('eip6963:announceProvider', announce)
+}
+
 const provider = (): Eip1193Provider | null => {
   if (typeof window === 'undefined') return null
+  if (selectedProvider) return selectedProvider
   const injected = (window as { ethereum?: Eip1193Provider }).ethereum
   return injected ?? null
 }
 
 export const hasInjectedWallet = () => provider() !== null
+
+/** A saved EIP-6963 choice must arrive before restoration can use a provider. */
+export function walletReadyForRestore(wallets: WalletOption[]) {
+  if (selectedProvider) return true
+  try {
+    const preferred = localStorage.getItem(PROVIDER_KEY)
+    return !preferred || wallets.some((wallet) => wallet.rdns === preferred)
+  } catch {
+    return true
+  }
+}
+
+/** Read permission already granted to this origin without opening a wallet prompt. */
+export async function readInjectedAccount() {
+  const eth = provider()
+  if (!eth) return null
+  try {
+    const accounts = (await eth.request({ method: 'eth_accounts' })) as string[]
+    const address = accounts[0]
+    if (!address) return null
+    const chainHex = (await eth.request({ method: 'eth_chainId' })) as string
+    return { address, chainId: Number.parseInt(chainHex, 16) }
+  } catch {
+    return null
+  }
+}
 
 export type ConnectResult =
   | { kind: 'connected'; address: string; chainId: number }
@@ -47,21 +130,45 @@ export async function connectInjected(): Promise<ConnectResult> {
     } catch {
       /* staying on another chain is the user's call; we record what it is */
     }
-    const chainHex = (await eth.request({ method: 'eth_chainId' })) as string
-    return { kind: 'connected', address, chainId: Number.parseInt(chainHex, 16) }
+    const active = await readInjectedAccount()
+    return active ? { kind: 'connected', ...active } : { kind: 'rejected' }
   } catch {
     return { kind: 'rejected' }
   }
 }
 
 /** Fires with the new address list on every account change; [] means locked. */
-export function watchAccounts(onChange: (accounts: string[]) => void): () => void {
-  const eth = provider()
-  if (!eth?.on) return () => {}
+export function watchAccounts(
+  onChange: (accounts: string[]) => void,
+  onChainChange?: (chainId: number) => void,
+): () => void {
   const handler = (payload: unknown) =>
     onChange(Array.isArray(payload) ? (payload as string[]) : [])
-  eth.on('accountsChanged', handler)
-  return () => eth.removeListener?.('accountsChanged', handler)
+  let eth: Eip1193Provider | null = null
+  const disconnect = () => onChange([])
+  const chain = (payload: unknown) => {
+    if (typeof payload !== 'string') return
+    const chainId = Number.parseInt(payload, 16)
+    if (Number.isFinite(chainId)) onChainChange?.(chainId)
+  }
+  const detach = () => {
+    eth?.removeListener?.('accountsChanged', handler)
+    eth?.removeListener?.('disconnect', disconnect)
+    eth?.removeListener?.('chainChanged', chain)
+  }
+  const attach = () => {
+    detach()
+    eth = provider()
+    eth?.on?.('accountsChanged', handler)
+    eth?.on?.('disconnect', disconnect)
+    eth?.on?.('chainChanged', chain)
+  }
+  attach()
+  window.addEventListener(PROVIDER_CHANGED, attach)
+  return () => {
+    detach()
+    window.removeEventListener(PROVIDER_CHANGED, attach)
+  }
 }
 
 /**
@@ -71,6 +178,47 @@ export function watchAccounts(onChange: (accounts: string[]) => void): () => voi
  */
 const API = process.env.NEXT_PUBLIC_API_URL ?? ''
 
+// Cookie writes are ordered so an old verification response cannot undo logout.
+let cookieWrite: Promise<unknown> = Promise.resolve()
+function writeSessionCookie<T>(write: () => Promise<T>): Promise<T> {
+  const result = cookieWrite.then(write, write)
+  cookieWrite = result.catch(() => {})
+  return result
+}
+
+function clearSessionCookie() {
+  return writeSessionCookie(() =>
+    fetch(`${API}/v1/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      signal: AbortSignal.timeout(15_000),
+    }).then(() => {}),
+  )
+}
+
+export async function restoreWalletSession(address: string, chainId: number) {
+  const revision = invalidateWalletSession()
+  try {
+    await cookieWrite
+    const response = await fetch(`${API}/v1/auth/me`, {
+      credentials: 'include',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
+    })
+    const session = response.ok
+      ? ((await response.json()) as { address?: string; chainId?: number })
+      : null
+    if (!isWalletSessionCurrent(revision)) return false
+    if (session?.address?.toLowerCase() === address.toLowerCase() && session.chainId === chainId) {
+      return acceptWalletSession(address, revision)
+    }
+  } catch {
+    if (!isWalletSessionCurrent(revision)) return false
+  }
+  await signOut()
+  return false
+}
+
 /**
  * Proving the address, not just reading it.
  *
@@ -79,48 +227,80 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? ''
  * would be taking a caller's word for whose money it is about to limit.
  */
 export async function signIn(address: string, chainId: number): Promise<'signed-in' | 'declined'> {
+  const revision = invalidateWalletSession()
   const eth = provider()
   if (!eth) return 'declined'
-  const { nonce } = (await (
-    await fetch(`${API}/v1/auth/nonce`, { method: 'POST', credentials: 'include' })
-  ).json()) as { nonce: string }
-
-  // getAddress applies EIP-55 checksumming, which EIP-4361 requires and wallets
-  // return without; createSiweMessage builds the rest to spec, so the exact
-  // bytes the wallet shows are the bytes the server re-parses.
-  const message = createSiweMessage({
-    domain: window.location.host,
-    address: getAddress(address),
-    statement:
-      'Sign in to AiKi. This proves you control this address. It grants no permission to move funds.',
-    uri: window.location.origin,
-    version: '1',
-    chainId,
-    nonce,
-    issuedAt: new Date(),
-  })
-
-  let signature: string
   try {
-    signature = (await eth.request({
-      method: 'personal_sign',
-      params: [message, address],
-    })) as string
+    await clearSessionCookie()
+    if (!isWalletSessionCurrent(revision)) return 'declined'
+    const response = await fetch(`${API}/v1/auth/nonce`, {
+      method: 'POST',
+      credentials: 'include',
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!response.ok) return 'declined'
+    const { nonce } = (await response.json()) as { nonce: string }
+    if (!isWalletSessionCurrent(revision)) return 'declined'
+
+    // getAddress applies EIP-55 checksumming, which EIP-4361 requires and wallets
+    // return without; createSiweMessage builds the rest to spec, so the exact
+    // bytes the wallet shows are the bytes the server re-parses.
+    const message = createSiweMessage({
+      domain: window.location.host,
+      address: getAddress(address),
+      statement:
+        'Sign in to AiKi. This proves you control this address. It grants no permission to move funds.',
+      uri: window.location.origin,
+      version: '1',
+      chainId,
+      nonce,
+      issuedAt: new Date(),
+    })
+
+    let signature: string
+    try {
+      signature = (await eth.request({
+        method: 'personal_sign',
+        params: [message, address],
+      })) as string
+    } catch {
+      return 'declined'
+    }
+
+    return await writeSessionCookie(async () => {
+      if (!isWalletSessionCurrent(revision)) return 'declined'
+      // The active account may have changed while the signature prompt was open.
+      const active = await readInjectedAccount()
+      if (
+        !active ||
+        active.address.toLowerCase() !== address.toLowerCase() ||
+        active.chainId !== chainId ||
+        !isWalletSessionCurrent(revision)
+      )
+        return 'declined'
+      const verified = await fetch(`${API}/v1/auth/verify`, {
+        method: 'POST',
+        credentials: 'include',
+        signal: AbortSignal.timeout(15_000),
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message, signature }),
+      })
+      if (!verified.ok || !isWalletSessionCurrent(revision)) return 'declined'
+      const session = (await verified.json()) as { address?: string; chainId?: number }
+      return session.address?.toLowerCase() === address.toLowerCase() &&
+        session.chainId === chainId &&
+        acceptWalletSession(address, revision)
+        ? 'signed-in'
+        : 'declined'
+    })
   } catch {
     return 'declined'
   }
-
-  const verified = await fetch(`${API}/v1/auth/verify`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ message, signature }),
-  })
-  return verified.ok ? 'signed-in' : 'declined'
 }
 
 export async function signOut() {
-  await fetch(`${API}/v1/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {})
+  invalidateWalletSession()
+  await clearSessionCookie().catch(() => {})
 }
 
 export const shortAddress = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)}`
@@ -130,12 +310,14 @@ export const CONNECT_TOAST: Record<ConnectOutcome, string> = {
   injected:
     'Wallet connected and signed in. AiKi can read your balances; it still cannot move anything.',
   unsigned:
-    'Wallet connected, but you did not finish signing in. You can browse; hiring an agent needs the signature.',
-  simulated: 'No wallet extension found, so this is a simulated wallet. Every screen says so.',
-  rejected: 'The wallet declined the connection. Nothing was connected.',
+    'Wallet connected, but sign-in was not completed. Sign in to use Fast mode or hire an agent.',
+  simulated: 'A development wallet is active. No real wallet is connected.',
+  no_wallet:
+    'No wallet found. Open AiKi in MetaMask or a browser with a wallet extension, then connect.',
+  rejected: 'Wallet connection was not completed. Choose a wallet to try again.',
 }
 
-export type ConnectOutcome = 'injected' | 'unsigned' | 'simulated' | 'rejected'
+export type ConnectOutcome = 'injected' | 'unsigned' | 'simulated' | 'no_wallet' | 'rejected'
 
 /**
  * Sign a mandate, in the wallet, with the wallet's own typed-data prompt.

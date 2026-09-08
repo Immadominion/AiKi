@@ -15,7 +15,27 @@ declare module 'fastify' {
  * the reply has already been sent.
  */
 export function requireSession(request: FastifyRequest, reply: FastifyReply): Session | null {
-  if (request.session) return request.session
+  if (request.session) {
+    // Cookies are shared across tabs, but each tab can select a different wallet.
+    // This header is a consistency check, never a source of authentication.
+    const expected = request.headers['x-aiki-wallet-address']
+    if (
+      expected !== undefined &&
+      (typeof expected !== 'string' ||
+        expected.toLowerCase() !== request.session.address.toLowerCase())
+    ) {
+      reply.code(401).send({
+        error: {
+          code: 'WALLET_SESSION_CHANGED',
+          message: 'The signed-in wallet changed in another tab. Sign in again to continue.',
+          retryable: false,
+          requestId: request.headers['x-request-id'],
+        },
+      })
+      return null
+    }
+    return request.session
+  }
   reply.code(401).send({
     error: {
       code: 'UNAUTHENTICATED',

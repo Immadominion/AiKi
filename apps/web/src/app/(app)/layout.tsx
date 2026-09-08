@@ -5,11 +5,11 @@ import { MockProvider } from '@/mock/store'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <MockProvider>
-      <ToastProvider>
+    <ToastProvider>
+      <MockProvider>
         <AppShell>{children}</AppShell>
-      </ToastProvider>
-      <DevPanel />
-    </MockProvider>
+        <DevPanel />
+      </MockProvider>
+    </ToastProvider>
   )
 }

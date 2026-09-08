@@ -23,7 +23,7 @@ import { usePalette } from '@/components/shell/CommandPalette'
 import { useHoverIcon } from '@/components/ui/AnimatedIcon'
 import { useToast } from '@/components/ui/Toast'
 import { FAST_HOME, route } from '@/lib/routes'
-import { shortAddress } from '@/lib/wallet'
+import { CONNECT_TOAST, shortAddress } from '@/lib/wallet'
 import { useAccount, useIsPhone, useModeNavigation, useTour } from './prefs'
 
 interface Item {
@@ -188,7 +188,7 @@ export function Sidebar({
   const { layout, switchMode } = useModeNavigation()
   const onPhone = useIsPhone()
   const [accountOpen, setAccountOpen] = useState(false)
-  const { connected, connect, disconnect, address, walletKind } = useAccount()
+  const { connected, authenticated, connect, disconnect, address, walletKind } = useAccount()
   const { replay } = useTour(layout)
 
   // The collapse preference belongs to the desktop column. In the drawer the
@@ -359,6 +359,18 @@ export function Sidebar({
                   {address}
                 </div>
               </div>
+              {!authenticated && walletKind === 'injected' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccountOpen(false)
+                    void connect().then((outcome) => say(CONNECT_TOAST[outcome]))
+                  }}
+                  className="block w-full border-t border-black/5 px-[14px] py-[10px] text-left text-[13px] font-semibold hover:bg-[#FAFAF9]"
+                >
+                  Sign in with this wallet
+                </button>
+              ) : null}
               {[
                 [
                   'Copy address',
@@ -429,6 +441,7 @@ export function Sidebar({
                   <span className="text-muted mt-px block text-[11.5px]">
                     {shortAddress(address)}
                     {walletKind === 'simulated' ? ' · simulated' : ''}
+                    {walletKind === 'injected' && !authenticated ? ' · sign in' : ''}
                   </span>
                 </span>
                 <span className="text-muted flex-none text-[13px]">{accountOpen ? '×' : '⌄'}</span>
@@ -439,7 +452,7 @@ export function Sidebar({
           <button
             type="button"
             onClick={() => {
-              connect()
+              void connect().then((outcome) => say(CONNECT_TOAST[outcome]))
               onNavigate()
             }}
             title={collapsed ? 'Connect a wallet' : undefined}
