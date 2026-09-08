@@ -3,6 +3,7 @@ export interface InlinePart {
   text: string
   offset: number
   href?: string
+  children?: InlinePart[]
 }
 
 export type MessageBlock =
@@ -17,8 +18,17 @@ export function safeMessageHref(value: string): string | undefined {
   try {
     const url = new URL(value, 'https://www.useaiki.xyz')
     if (url.username || url.password) return undefined
-    if (local || ['useaiki.xyz', 'www.useaiki.xyz'].includes(url.hostname))
+    if (local || ['useaiki.xyz', 'www.useaiki.xyz'].includes(url.hostname)) {
+      const task =
+        /^\/work\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i.exec(
+          url.pathname,
+        )
+      if (task?.[1]) {
+        url.pathname = '/work'
+        url.searchParams.set('task', task[1])
+      }
       return `${url.pathname}${url.search}${url.hash}`
+    }
     return url.href
   } catch {
     return undefined
@@ -26,9 +36,16 @@ export function safeMessageHref(value: string): string | undefined {
 }
 
 /** A small text-only subset, with no HTML parsing or automatic image requests. */
-export function messageInlines(text: string): InlinePart[] {
+export function messageInlines(text: string, depth = 0, allowLinks = true): InlinePart[] {
+  const prose = (value: string) =>
+    value.includes('`')
+      ? value
+      : value.replace(/https?:\/\/\S+|[ \t]*\u2014[ \t]*/g, (match) =>
+          /^https?:\/\//.test(match) ? match : ' - ',
+        )
+  if (depth >= 8) return [{ kind: 'text', text: prose(text), offset: 0 }]
   const pattern =
-    /(!?)\[([^\]\n]+)\]\(([^\s)]+)\)|`([^`\n]+)`|\*\*([^*\n]+)\*\*|__([^_\n]+)__|\*([^*\n]+)\*/g
+    /(!?)\[([^\]\n]+)\]\(([^\s)]+)\)|(?<!`)(`+)(?!`)([^\n]*?)(?<!`)\4(?!`)|\*\*([^*\n]+)\*\*|__([^_\n]+)__|\*([^*\n]+)\*/g
   const parts: InlinePart[] = []
   let cursor = 0
   for (const match of text.matchAll(pattern)) {
@@ -36,21 +53,32 @@ export function messageInlines(text: string): InlinePart[] {
       parts.push({ kind: 'text', text: text.slice(cursor, match.index), offset: cursor })
     const offset = match.index
     if (match[2] !== undefined) {
-      const href = match[1] ? undefined : safeMessageHref(match[3] ?? '')
+      const href = match[1] || !allowLinks ? undefined : safeMessageHref(match[3] ?? '')
       parts.push({
         kind: href ? 'link' : 'text',
         text: match[2],
         offset,
-        ...(href ? { href } : {}),
+        ...(href ? { href, children: messageInlines(match[2], depth + 1, false) } : {}),
       })
-    } else if (match[4] !== undefined) parts.push({ kind: 'code', text: match[4], offset })
-    else if (match[5] !== undefined || match[6] !== undefined)
-      parts.push({ kind: 'strong', text: match[5] ?? match[6] ?? '', offset })
-    else parts.push({ kind: 'em', text: match[7] ?? '', offset })
+    } else if (match[5] !== undefined) parts.push({ kind: 'code', text: match[5], offset })
+    else if (match[6] !== undefined || match[7] !== undefined)
+      parts.push({
+        kind: 'strong',
+        text: match[6] ?? match[7] ?? '',
+        offset,
+        children: messageInlines(match[6] ?? match[7] ?? '', depth + 1, allowLinks),
+      })
+    else
+      parts.push({
+        kind: 'em',
+        text: match[8] ?? '',
+        offset,
+        children: messageInlines(match[8] ?? '', depth + 1, allowLinks),
+      })
     cursor = offset + match[0].length
   }
   if (cursor < text.length) parts.push({ kind: 'text', text: text.slice(cursor), offset: cursor })
-  return parts
+  return parts.map((part) => (part.kind === 'text' ? { ...part, text: prose(part.text) } : part))
 }
 
 export function messageBlocks(text: string): MessageBlock[] {
@@ -63,10 +91,12 @@ export function messageBlocks(text: string): MessageBlock[] {
       index++
       continue
     }
-    if (/^\s*```/.test(line)) {
+    const fence = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
+    if (fence) {
       const content: string[] = []
+      const closing = new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`)
       index++
-      while (index < lines.length && !/^\s*```/.test(lines[index] ?? ''))
+      while (index < lines.length && !closing.test(lines[index] ?? ''))
         content.push(lines[index++] ?? '')
       index++
       blocks.push({ kind: 'code', text: content.join('\n'), offset })
@@ -95,7 +125,7 @@ export function messageBlocks(text: string): MessageBlock[] {
     index++
     while (index < lines.length) {
       const next = lines[index] ?? ''
-      if (!next.trim() || /^\s*(?:```|#{1,6}\s|[-*]\s|\d+[.)]\s)/.test(next)) break
+      if (!next.trim() || /^\s*(?:`{3,}|~{3,}|#{1,6}\s|[-*]\s|\d+[.)]\s)/.test(next)) break
       paragraph.push(next)
       index++
     }

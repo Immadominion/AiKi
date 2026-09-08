@@ -1,12 +1,20 @@
-import { messageBlocks, messageInlines } from './fast-message'
+import { type InlinePart, messageBlocks, messageInlines } from './fast-message'
 
-function Inline({ text }: { text: string }) {
-  return messageInlines(text).map((part) => {
+function InlineParts({ parts }: { parts: InlinePart[] }) {
+  return parts.map((part) => {
     switch (part.kind) {
       case 'strong':
-        return <strong key={part.offset}>{part.text}</strong>
+        return (
+          <strong key={part.offset}>
+            {part.children ? <InlineParts parts={part.children} /> : part.text}
+          </strong>
+        )
       case 'em':
-        return <em key={part.offset}>{part.text}</em>
+        return (
+          <em key={part.offset}>
+            {part.children ? <InlineParts parts={part.children} /> : part.text}
+          </em>
+        )
       case 'code':
         return (
           <code key={part.offset} className="rounded bg-black/5 px-1 py-0.5 text-[0.92em]">
@@ -23,13 +31,17 @@ function Inline({ text }: { text: string }) {
               : {})}
             className="font-semibold underline decoration-black/25 underline-offset-[3px] hover:decoration-current focus-visible:outline-2 focus-visible:outline-offset-2"
           >
-            {part.text}
+            {part.children ? <InlineParts parts={part.children} /> : part.text}
           </a>
         )
       default:
         return <span key={part.offset}>{part.text}</span>
     }
   })
+}
+
+function Inline({ text }: { text: string }) {
+  return <InlineParts parts={messageInlines(text)} />
 }
 
 export function FastMessage({ text }: { text: string }) {
