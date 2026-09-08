@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { requireSession } from '../auth/guard.js'
 import { settlementForPoints } from '../credits/pricing.js'
 import {
@@ -8,11 +8,14 @@ import {
   InsufficientBalance,
 } from '../credits/store.js'
 import type { JobService } from '../jobs/service.js'
-import { priceJob, SETTLEMENT } from '../settlement/pricing.js'
+import { hashCanonicalJson } from '../marketplace/canonical-json.js'
+import type { JsonValue } from '../marketplace/model.js'
+import { PLATFORM_FEE_BPS, priceJob, SETTLEMENT } from '../settlement/pricing.js'
 import { DISPATCH_PROTOCOL, deliveryToken, dispatchToAgent, tokenMatches } from './dispatch.js'
 import { isTaskKind, TASK_KINDS, type TaskKind } from './kinds.js'
 import type { PostgresSellerStore } from './sellers.js'
-import type { TaskStore } from './store.js'
+import type { TaskRecord, TaskStore } from './store.js'
+import type { AgentTaskContact } from './support.js'
 
 /**
  * Work posted for somebody else to do, and the money that backs it.
@@ -65,9 +68,7 @@ export function registerTaskRoutes(
      * Absent means hiring a named agent is not offered, rather than offered and
      * then failing at the moment somebody's money is involved.
      */
-    agentContact?: (
-      agentId: string,
-    ) => Promise<{ owner: string; endpoint: string; live: boolean } | null>
+    agentContact?: (agentId: string) => Promise<AgentTaskContact | null>
     /** Where an agent sends work back to. This API, from outside. */
     publicUrl?: string
     /** Signs the delivery tokens. Derived per task, never stored. */
@@ -78,6 +79,39 @@ export function registerTaskRoutes(
 ) {
   const text = (value: unknown, max: number) =>
     typeof value === 'string' ? value.trim().slice(0, max) : ''
+  const activeRequests = new WeakMap<FastifyRequest, string>()
+
+  app.get<{ Params: { id: string } }>('/v1/agents/:id/task-support', async (request) => {
+    const base = { minimumPricePoints: MIN_PRICE_POINTS, feeBasisPoints: PLATFORM_FEE_BPS }
+    if (!input.credits || !input.agentContact || !input.publicUrl || !input.deliverySecret)
+      return {
+        ...base,
+        available: false,
+        reason: 'Task delivery is not configured on this deployment.',
+      }
+    const contact = await input.agentContact(request.params.id)
+    if (!contact?.owner)
+      return { ...base, available: false, reason: 'This agent has no recorded owner to pay.' }
+    if (!contact.live)
+      return {
+        ...base,
+        available: false,
+        reason: 'This agent is not currently available for hire.',
+      }
+    if (!contact.endpoint || contact.compatible === false)
+      return {
+        ...base,
+        available: false,
+        reason: contact.reason ?? 'This agent does not support AiKi task delivery.',
+      }
+    return {
+      ...base,
+      available: true,
+      protocol: DISPATCH_PROTOCOL,
+      ...(contact.inputHint ? { inputHint: contact.inputHint } : {}),
+      ...(contact.kinds?.length ? { kinds: contact.kinds } : {}),
+    }
+  })
 
   /**
    * The board.
@@ -130,275 +164,405 @@ export function registerTaskRoutes(
       /** Or hire this one person, by address. Nothing is dispatched: they see it. */
       hirePerson?: string
     }
-  }>('/v1/tasks', async (request, reply) => {
-    const session = requireSession(request, reply)
-    if (!session) return reply
-    const credits = input.credits
-    if (!credits)
-      return reply.code(503).send({
-        error: {
-          code: 'SETTLEMENT_UNAVAILABLE',
-          message: 'This deployment has no points ledger, so it cannot hold money for a task.',
-          retryable: false,
-        },
-      })
-
-    const title = text(request.body?.title, MAX_TITLE)
-    const brief = text(request.body?.brief, MAX_BRIEF)
-    const kind = request.body?.kind
-    const pricePoints = Math.trunc(Number(request.body?.pricePoints ?? 0))
-
-    if (!title || !brief)
-      return reply.code(400).send({
-        error: {
-          code: 'TASK_INCOMPLETE',
-          message: 'A task needs a title and a brief saying what done looks like.',
-          retryable: false,
-        },
-      })
-    if (!isTaskKind(kind))
-      return reply.code(400).send({
-        error: {
-          code: 'TASK_KIND_UNKNOWN',
-          // Named rather than hinted at, because the list IS the safety
-          // mechanism and somebody refused by it deserves to see it.
-          message: `kind must be one of: ${Object.keys(TASK_KINDS).join(', ')}.`,
-          retryable: false,
-        },
-      })
-    if (!Number.isFinite(pricePoints) || pricePoints < MIN_PRICE_POINTS)
-      return reply.code(400).send({
-        error: {
-          code: 'TASK_PRICE_TOO_LOW',
-          message: `A task pays at least ${MIN_PRICE_POINTS} points.`,
-          retryable: false,
-        },
-      })
-
-    /*
-     * How long whoever claims it has. The poster chooses, because only they know
-     * whether this is twenty minutes or two days, and it is bounded so a task
-     * cannot be posted with a window long enough to lock the money up for a
-     * year by accident.
-     */
-    const workHours = Math.min(720, Math.max(1, Math.trunc(Number(request.body?.workHours ?? 48))))
-
-    /*
-     * Hiring a named agent rather than posting openly.
-     *
-     * Resolved before any money moves, because everything here can refuse and a
-     * refusal after the charge is a refusal that costs somebody.
-     */
-    let assigned: { agentId: string; owner: string; endpoint: string } | undefined
-    if (request.body?.assignAgentId) {
-      if (!input.agentContact)
+  }>(
+    '/v1/tasks',
+    {
+      preHandler: async (request, reply) => {
+        const key = request.headers['idempotency-key']
+        if (key === undefined) return
+        const session = requireSession(request, reply)
+        if (!session) return reply
+        if (typeof key !== 'string' || !/^[\x21-\x7e]{1,200}$/.test(key))
+          return reply.code(400).send({
+            error: {
+              code: 'INVALID_IDEMPOTENCY_KEY',
+              message: 'Use a request key of 1 to 200 printable characters.',
+              retryable: false,
+            },
+          })
+        if (!input.tasks.beginCreateRequest || !input.tasks.completeCreateRequest)
+          return reply.code(503).send({
+            error: {
+              code: 'TASK_IDEMPOTENCY_UNAVAILABLE',
+              message: 'This deployment cannot safely retry task requests yet.',
+              retryable: false,
+            },
+          })
+        let requestHash: string
+        try {
+          requestHash = hashCanonicalJson((request.body ?? {}) as JsonValue)
+        } catch {
+          return reply.code(400).send({
+            error: {
+              code: 'TASK_INVALID_BODY',
+              message: 'The task request is too complex.',
+              retryable: false,
+            },
+          })
+        }
+        const claim = await input.tasks.beginCreateRequest(session.address, key, requestHash)
+        if (claim.kind === 'conflict')
+          return reply.code(409).send({
+            error: {
+              code: 'TASK_IDEMPOTENCY_CONFLICT',
+              message:
+                'That request key was already used for different work. Use a new key for a new task.',
+              retryable: false,
+            },
+          })
+        if (claim.kind === 'in_progress')
+          return reply
+            .header('retry-after', '3')
+            .code(409)
+            .send({
+              error: {
+                code: 'TASK_REQUEST_IN_PROGRESS',
+                message:
+                  'The original request is still being confirmed. Check your work before creating another task.',
+                retryable: true,
+              },
+            })
+        if (claim.kind === 'replayed')
+          return reply
+            .header('idempotency-replayed', 'true')
+            .code(claim.statusCode)
+            .send(claim.body)
+        activeRequests.set(request, claim.id)
+        reply.header('idempotency-replayed', 'false')
+      },
+      onSend: async (request, reply, payload) => {
+        const id = activeRequests.get(request)
+        if (!id) return payload
+        activeRequests.delete(request)
+        const body: unknown = JSON.parse(typeof payload === 'string' ? payload : String(payload))
+        await input.tasks.completeCreateRequest?.(id, reply.statusCode, body)
+        return payload
+      },
+    },
+    async (request, reply) => {
+      const session = requireSession(request, reply)
+      if (!session) return reply
+      const credits = input.credits
+      if (!credits)
         return reply.code(503).send({
           error: {
-            code: 'HIRING_UNAVAILABLE',
-            message: 'This deployment cannot look up agents, so it cannot hire one.',
+            code: 'SETTLEMENT_UNAVAILABLE',
+            message: 'This deployment has no points ledger, so it cannot hold money for a task.',
             retryable: false,
           },
         })
-      const contact = await input.agentContact(request.body.assignAgentId)
-      if (!contact?.owner)
-        return reply.code(422).send({
+
+      const title = text(request.body?.title, MAX_TITLE)
+      const brief = text(request.body?.brief, MAX_BRIEF)
+      const kind = request.body?.kind
+      const pricePoints = Number(request.body?.pricePoints ?? 0)
+
+      if (!title || !brief)
+        return reply.code(400).send({
           error: {
-            code: 'AGENT_NOT_HIREABLE',
-            message: 'The registry records no owner for this agent, so there is nobody to pay.',
+            code: 'TASK_INCOMPLETE',
+            message: 'A task needs a title and a brief saying what done looks like.',
             retryable: false,
           },
         })
-      if (!contact.endpoint)
-        return reply.code(422).send({
+      if (!isTaskKind(kind))
+        return reply.code(400).send({
           error: {
-            code: 'AGENT_HAS_NO_ENDPOINT',
-            message:
-              'This agent declares no endpoint, so there is nowhere to send the work. Post it openly instead.',
+            code: 'TASK_KIND_UNKNOWN',
+            // Named rather than hinted at, because the list IS the safety
+            // mechanism and somebody refused by it deserves to see it.
+            message: `kind must be one of: ${Object.keys(TASK_KINDS).join(', ')}.`,
             retryable: false,
           },
         })
-      assigned = {
-        agentId: request.body.assignAgentId,
-        owner: contact.owner,
-        endpoint: contact.endpoint,
+      if (!Number.isFinite(pricePoints) || pricePoints < MIN_PRICE_POINTS)
+        return reply.code(400).send({
+          error: {
+            code: 'TASK_PRICE_TOO_LOW',
+            message: `A task pays at least ${MIN_PRICE_POINTS} points.`,
+            retryable: false,
+          },
+        })
+      if (!Number.isSafeInteger(pricePoints))
+        return reply.code(400).send({
+          error: {
+            code: 'TASK_PRICE_INVALID',
+            message: 'The offer must be a safe whole number of points.',
+            retryable: false,
+          },
+        })
+      const priced = priceJob(BigInt(pricePoints))
+      const total = Number(priced.total)
+      if (!Number.isSafeInteger(total))
+        return reply.code(400).send({
+          error: {
+            code: 'TASK_PRICE_INVALID',
+            message: 'The offer plus the platform fee is too large.',
+            retryable: false,
+          },
+        })
+
+      /*
+       * How long whoever claims it has. The poster chooses, because only they know
+       * whether this is twenty minutes or two days, and it is bounded so a task
+       * cannot be posted with a window long enough to lock the money up for a
+       * year by accident.
+       */
+      const requestedHours = Number(request.body?.workHours ?? 48)
+      if (!Number.isFinite(requestedHours))
+        return reply.code(400).send({
+          error: {
+            code: 'TASK_DURATION_INVALID',
+            message: 'The work duration must be a finite number of hours.',
+            retryable: false,
+          },
+        })
+      const workHours = Math.min(720, Math.max(1, Math.trunc(requestedHours)))
+
+      /*
+       * Hiring a named agent rather than posting openly.
+       *
+       * Resolved before any money moves, because everything here can refuse and a
+       * refusal after the charge is a refusal that costs somebody.
+       */
+      let assigned: { agentId: string; owner: string; endpoint: string } | undefined
+      if (request.body?.assignAgentId) {
+        if (!input.publicUrl || !input.deliverySecret)
+          return reply.code(503).send({
+            error: {
+              code: 'DISPATCH_UNAVAILABLE',
+              message: 'Task delivery is not configured. Nothing was charged.',
+              retryable: false,
+            },
+          })
+        if (!input.agentContact)
+          return reply.code(503).send({
+            error: {
+              code: 'HIRING_UNAVAILABLE',
+              message: 'This deployment cannot look up agents, so it cannot hire one.',
+              retryable: false,
+            },
+          })
+        const contact = await input.agentContact(request.body.assignAgentId)
+        if (!contact?.owner)
+          return reply.code(422).send({
+            error: {
+              code: 'AGENT_NOT_HIREABLE',
+              message: 'The registry records no owner for this agent, so there is nobody to pay.',
+              retryable: false,
+            },
+          })
+        if (!contact.live)
+          return reply.code(422).send({
+            error: {
+              code: 'AGENT_NOT_LIVE',
+              message: 'This agent is not currently available for hire. Nothing was charged.',
+              retryable: false,
+            },
+          })
+        if (contact.compatible === false)
+          return reply.code(422).send({
+            error: {
+              code: 'AGENT_TASK_PROTOCOL_UNSUPPORTED',
+              message:
+                contact.reason ??
+                'This agent does not support AiKi task delivery. Nothing was charged.',
+              retryable: false,
+            },
+          })
+        if (!contact.endpoint)
+          return reply.code(422).send({
+            error: {
+              code: 'AGENT_HAS_NO_ENDPOINT',
+              message:
+                'This agent declares no endpoint, so there is nowhere to send the work. Post it openly instead.',
+              retryable: false,
+            },
+          })
+        assigned = {
+          agentId: request.body.assignAgentId,
+          owner: contact.owner,
+          endpoint: contact.endpoint,
+        }
       }
-    }
 
-    /*
-     * Hiring one person rather than opening the work.
-     *
-     * Nothing is sent anywhere: a person is not an endpoint. The work appears in
-     * their own list with the same clock on it a claimed task has, so somebody
-     * who is commissioned and then goes quiet frees the buyer's money on exactly
-     * the terms everybody else does.
-     */
-    const hirePerson = request.body?.hirePerson
-    if (hirePerson && !/^0x[0-9a-fA-F]{40}$/.test(hirePerson))
-      return reply.code(400).send({
-        error: {
-          code: 'NOT_AN_ADDRESS',
-          message: 'Hire somebody by their address.',
-          retryable: false,
-        },
-      })
-    if (hirePerson && hirePerson.toLowerCase() === session.address.toLowerCase())
-      return reply.code(400).send({
-        error: {
-          code: 'CANNOT_HIRE_YOURSELF',
-          message: 'Paying yourself through escrow is not a trade, it is a fee.',
-          retryable: false,
-        },
-      })
-    if (hirePerson && request.body?.assignAgentId)
-      return reply.code(400).send({
-        error: {
-          code: 'ONE_SELLER',
-          message: 'Hire an agent or a person, not both.',
-          retryable: false,
-        },
-      })
-
-    const priced = priceJob(BigInt(pricePoints))
-    const total = Number(priced.total)
-    const outlay = settlementForPoints(total, SETTLEMENT.decimals)
-
-    /*
-     * An agent posting under a mandate spends against that mandate.
-     *
-     * Optional, because a person posting their own work answers to nobody but
-     * their balance. Enforced when present, because an agent given a budget for
-     * on-chain actions has not been given an unlimited one for human labour,
-     * and buying work is the easiest way around a limit that only reads calls.
-     */
-    let releaseCap: (() => Promise<void>) | null = null
-    if (request.body?.authorizationId) {
-      const authorization = await input.jobs.getAuthorization(request.body.authorizationId)
-      if (authorization.owner && authorization.owner !== session.address.toLowerCase())
-        return reply.code(403).send({
-          error: {
-            code: 'NOT_YOUR_MANDATE',
-            message: 'That mandate belongs to somebody else.',
-            retryable: false,
-          },
-        })
-      const verdict = await input.jobs.attemptPurchase(
-        request.body.authorizationId,
-        outlay,
-        new Date().toISOString(),
-        SETTLEMENT.address,
-      )
-      if (!verdict.allow)
-        return reply.code(403).send({
-          error: { code: 'MANDATE_REFUSED', message: verdict.reason, retryable: false },
-        })
-      const authorizationId = request.body.authorizationId
-      releaseCap = () => input.jobs.releaseSpend(authorizationId, outlay)
-    }
-
-    const task = await input.tasks.create({
-      poster: session.address,
-      ...(request.body?.authorizationId ? { authorizationId: request.body.authorizationId } : {}),
-      title,
-      brief,
-      kind,
-      pricePoints,
-      feePoints: Number(priced.platformFee),
-      totalPoints: total,
-      outlay,
-      workHours,
-      ...(assigned ? { assigned: { agentId: assigned.agentId, owner: assigned.owner } } : {}),
-      ...(hirePerson ? { hiredPerson: hirePerson } : {}),
-    })
-
-    try {
-      await credits.transfer({
-        from: session.address,
-        to: ESCROW_ACCOUNT,
-        points: total,
-        reason: 'task_funding',
-        reference: `task:${task.id}:funding`,
-        detail: { taskId: task.id, kind },
-      })
-    } catch (error) {
       /*
-       * The task exists and the money did not move, so it must not sit on the
-       * board looking funded. Cancelled rather than deleted: a row somebody can
-       * read is better than a gap, and the resolution says what happened.
+       * Hiring one person rather than opening the work.
+       *
+       * Nothing is sent anywhere: a person is not an endpoint. The work appears in
+       * their own list with the same clock on it a claimed task has, so somebody
+       * who is commissioned and then goes quiet frees the buyer's money on exactly
+       * the terms everybody else does.
        */
-      await input.tasks.advance(task.id, ['OPEN'], 'CANCELLED', 'The money could not be held.')
-      await releaseCap?.()
-      if (error instanceof InsufficientBalance)
-        return reply.code(402).send({
+      const hirePerson = request.body?.hirePerson
+      if (hirePerson && !/^0x[0-9a-fA-F]{40}$/.test(hirePerson))
+        return reply.code(400).send({
           error: {
-            code: 'INSUFFICIENT_POINTS',
-            message: `This task costs ${total} points and the balance is ${error.held}.`,
+            code: 'NOT_AN_ADDRESS',
+            message: 'Hire somebody by their address.',
             retryable: false,
           },
         })
-      if (error instanceof DuplicateCharge)
-        return reply.code(409).send({
+      if (hirePerson && hirePerson.toLowerCase() === session.address.toLowerCase())
+        return reply.code(400).send({
           error: {
-            code: 'TASK_ALREADY_FUNDED',
-            message: 'This task has already been paid for.',
+            code: 'CANNOT_HIRE_YOURSELF',
+            message: 'Paying yourself through escrow is not a trade, it is a fee.',
             retryable: false,
           },
         })
-      throw error
-    }
+      if (hirePerson && request.body?.assignAgentId)
+        return reply.code(400).send({
+          error: {
+            code: 'ONE_SELLER',
+            message: 'Hire an agent or a person, not both.',
+            retryable: false,
+          },
+        })
 
-    /*
-     * Ask the agent, now that the money behind the request is real.
-     *
-     * After funding on purpose. An agent asked to work before the money is
-     * committed is being asked on a promise, which is the thing this whole board
-     * exists not to do.
-     *
-     * Failure here is not failure of the request. The task exists, the money is
-     * held, and what happened when we called is written down: if the agent never
-     * answers, its claim runs out on the same clock a person's would and the
-     * buyer takes their money back. Most of this registry will not answer, and
-     * that being visible is the point rather than the problem.
-     */
-    if (assigned && !(input.publicUrl && input.deliverySecret))
+      const outlay = settlementForPoints(total, SETTLEMENT.decimals)
+
       /*
-       * Not silently skipped. A hire that never called the agent, with the money
-       * held and nothing on the record saying why, is exactly the failure this
-       * area exists to remove. The task still cancels on its deadline so the
-       * buyer is not stuck, but the reason is written down.
+       * An agent posting under a mandate spends against that mandate.
+       *
+       * Optional, because a person posting their own work answers to nobody but
+       * their balance. Enforced when present, because an agent given a budget for
+       * on-chain actions has not been given an unlimited one for human labour,
+       * and buying work is the easiest way around a limit that only reads calls.
        */
-      await input.tasks.noteDispatch(
-        task.id,
-        'AiKi is not configured with a public address, so it could not send the work or receive an answer.',
-      )
-    if (assigned && input.publicUrl && input.deliverySecret) {
-      const outcome = await dispatchToAgent({
-        endpoint: assigned.endpoint,
-        envelope: {
-          protocol: DISPATCH_PROTOCOL,
-          taskId: task.id,
-          agentId: assigned.agentId,
+      let releaseCap: (() => Promise<void>) | null = null
+      if (request.body?.authorizationId) {
+        const authorization = await input.jobs.getAuthorization(request.body.authorizationId)
+        if (authorization.owner && authorization.owner !== session.address.toLowerCase())
+          return reply.code(403).send({
+            error: {
+              code: 'NOT_YOUR_MANDATE',
+              message: 'That mandate belongs to somebody else.',
+              retryable: false,
+            },
+          })
+        const verdict = await input.jobs.attemptPurchase(
+          request.body.authorizationId,
+          outlay,
+          new Date().toISOString(),
+          SETTLEMENT.address,
+        )
+        if (!verdict.allow)
+          return reply.code(403).send({
+            error: { code: 'MANDATE_REFUSED', message: verdict.reason, retryable: false },
+          })
+        const authorizationId = request.body.authorizationId
+        releaseCap = () => input.jobs.releaseSpend(authorizationId, outlay)
+      }
+
+      let task: TaskRecord
+      try {
+        task = await input.tasks.create({
+          poster: session.address,
+          ...(request.body?.authorizationId
+            ? { authorizationId: request.body.authorizationId }
+            : {}),
           title,
           brief,
+          kind,
           pricePoints,
-          deadline: new Date(Date.now() + workHours * 3_600_000).toISOString(),
-          callback: {
-            url: `${input.publicUrl}/v1/tasks/${task.id}/deliver`,
-            token: deliveryToken(input.deliverySecret, task.id),
-          },
-        },
-      })
-      await input.tasks.noteDispatch(task.id, outcome.note)
-      if (outcome.delivered)
-        await input.tasks.recordDelivery(task.id, assigned.agentId, outcome.delivered)
-    }
+          feePoints: Number(priced.platformFee),
+          totalPoints: total,
+          outlay,
+          workHours,
+          ...(assigned ? { assigned: { agentId: assigned.agentId, owner: assigned.owner } } : {}),
+          ...(hirePerson ? { hiredPerson: hirePerson } : {}),
+        })
+      } catch (error) {
+        // No ledger transfer or dispatch has happened yet.
+        await releaseCap?.()
+        throw error
+      }
 
-    const settled = (await input.tasks.get(task.id)) ?? task
-    return reply.code(201).send({
-      ...settled,
-      outlay: settled.outlay.toString(),
-      heldPoints: total,
-    })
-  })
+      try {
+        await credits.transfer({
+          from: session.address,
+          to: ESCROW_ACCOUNT,
+          points: total,
+          reason: 'task_funding',
+          reference: `task:${task.id}:funding`,
+          detail: { taskId: task.id, kind },
+        })
+      } catch (error) {
+        /*
+         * The task exists and the money did not move, so it must not sit on the
+         * board looking funded. Cancelled rather than deleted: a row somebody can
+         * read is better than a gap, and the resolution says what happened.
+         */
+        await input.tasks.advance(
+          task.id,
+          ['OPEN', 'CLAIMED'],
+          'CANCELLED',
+          'The money could not be held.',
+        )
+        await releaseCap?.()
+        if (error instanceof InsufficientBalance)
+          return reply.code(402).send({
+            error: {
+              code: 'INSUFFICIENT_POINTS',
+              message: `This task costs ${total} points and the balance is ${error.held}.`,
+              retryable: false,
+            },
+          })
+        if (error instanceof DuplicateCharge)
+          return reply.code(409).send({
+            error: {
+              code: 'TASK_ALREADY_FUNDED',
+              message: 'This task has already been paid for.',
+              retryable: false,
+            },
+          })
+        throw error
+      }
+
+      /*
+       * Ask the agent, now that the money behind the request is real.
+       *
+       * After funding on purpose. An agent asked to work before the money is
+       * committed is being asked on a promise, which is the thing this whole board
+       * exists not to do.
+       *
+       * Failure here is not failure of the request. The task exists, the money is
+       * held, and what happened when we called is written down: if the agent never
+       * answers, its claim runs out on the same clock a person's would and the
+       * buyer takes their money back. Most of this registry will not answer, and
+       * that being visible is the point rather than the problem.
+       */
+      if (assigned && input.publicUrl && input.deliverySecret) {
+        const outcome = await dispatchToAgent({
+          endpoint: assigned.endpoint,
+          envelope: {
+            protocol: DISPATCH_PROTOCOL,
+            taskId: task.id,
+            agentId: assigned.agentId,
+            title,
+            brief,
+            pricePoints,
+            deadline: new Date(Date.now() + workHours * 3_600_000).toISOString(),
+            callback: {
+              url: `${input.publicUrl}/v1/tasks/${task.id}/deliver`,
+              token: deliveryToken(input.deliverySecret, task.id),
+            },
+          },
+        })
+        await input.tasks.noteDispatch(task.id, outcome.note)
+        if (outcome.delivered)
+          await input.tasks.recordDelivery(task.id, assigned.agentId, outcome.delivered)
+      }
+
+      const settled = (await input.tasks.get(task.id)) ?? task
+      return reply.code(201).send({
+        ...settled,
+        outlay: settled.outlay.toString(),
+        heldPoints: total,
+      })
+    },
+  )
 
   /**
    * People who can be found and hired.

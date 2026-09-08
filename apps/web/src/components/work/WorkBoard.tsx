@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { api, type TaskSummary } from '@/lib/api'
 
@@ -58,6 +58,12 @@ export function WorkBoard() {
   const [me, setMe] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [draft, setDraft] = useState<Record<string, string>>({})
+  const [focusTask, setFocusTask] = useState<string | null>(null)
+  const focused = useRef(false)
+
+  useEffect(() => {
+    setFocusTask(new URLSearchParams(window.location.search).get('task'))
+  }, [])
 
   const load = useCallback(() => {
     api
@@ -79,6 +85,32 @@ export function WorkBoard() {
   }, [])
 
   useEffect(load, [load])
+
+  useEffect(() => {
+    if (!focusTask || focused.current || !mine.some((task) => task.id === focusTask)) return
+    const item = document.getElementById(`task-${focusTask}`)
+    item?.scrollIntoView({ block: 'center' })
+    item?.focus({ preventScroll: true })
+    focused.current = true
+  }, [focusTask, mine])
+
+  const selected = mine.find((task) => task.id === focusTask && task.assignedAgentId)
+  const selectedTaskId = selected?.id
+  const selectedTaskStatus = selected?.status
+  useEffect(() => {
+    if (!selectedTaskId || !selectedTaskStatus || !['OPEN', 'CLAIMED'].includes(selectedTaskStatus))
+      return
+    const taskId = selectedTaskId
+    const timer = setInterval(() => {
+      void api
+        .task(taskId)
+        .then((fresh) => {
+          setMine((tasks) => tasks.map((task) => (task.id === fresh.id ? fresh : task)))
+        })
+        .catch(() => {})
+    }, 10_000)
+    return () => clearInterval(timer)
+  }, [selectedTaskId, selectedTaskStatus])
 
   const act = (id: string, run: () => Promise<unknown>, done: string) => {
     setBusy(id)
@@ -119,7 +151,9 @@ export function WorkBoard() {
               return (
                 <li
                   key={t.id}
-                  className="rounded-[16px] border border-[rgb(26_26_25_/_0.1)] bg-white px-[16px] py-[13px]"
+                  id={`task-${t.id}`}
+                  tabIndex={-1}
+                  className={`scroll-mt-4 rounded-[16px] border border-[rgb(26_26_25_/_0.1)] bg-white px-[16px] py-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 ${focusTask === t.id ? 'ring-2 ring-orange-500/40' : ''}`}
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-[8px]">
                     <span className="text-[14px] font-bold">{t.title}</span>

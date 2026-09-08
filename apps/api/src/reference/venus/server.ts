@@ -165,6 +165,10 @@ export function createVenusReferenceServer(options: VenusReferenceServerOptions)
     if (request.query.account === undefined)
       return {
         capability: 'venus-health-factor-assessment',
+        taskProtocol: 'aiki.task/v1',
+        taskInputHint:
+          'Include the 0x wallet address whose Venus position you want assessed. This report only reads the position.',
+        taskKinds: ['research', 'data', 'verify'],
         category: 'health_factor',
         input: {
           account: '0x-prefixed EVM address',

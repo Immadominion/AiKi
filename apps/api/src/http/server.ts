@@ -37,6 +37,7 @@ import { priceForQuote, publishedAsset } from '../settlement/published-price.js'
 import { registerTaskRoutes } from '../tasks/routes.js'
 import type { PostgresSellerStore } from '../tasks/sellers.js'
 import type { TaskStore } from '../tasks/store.js'
+import { resolveTaskEndpoint } from '../tasks/support.js'
 import { asClientError, asProtocolError, asSchemaError, ClientError } from './errors.js'
 
 /**
@@ -244,10 +245,9 @@ export function createApiServer(input: {
         const services = (
           registration?.value as { manifest?: { services?: { endpoint?: unknown }[] } } | undefined
         )?.manifest?.services
-        const endpoint = Array.isArray(services)
-          ? services.map((svc) => svc?.endpoint).find((e): e is string => typeof e === 'string')
-          : undefined
-        return { owner, endpoint: endpoint ?? '', live: passport.liveness === 'LIVE' }
+        if (passport.liveness !== 'LIVE')
+          return { owner, endpoint: '', live: false, compatible: false }
+        return { owner, live: true, ...(await resolveTaskEndpoint(services)) }
       },
       ...(input.publicUrl ? { publicUrl: input.publicUrl } : {}),
       ...(input.deliverySecret ? { deliverySecret: input.deliverySecret } : {}),
