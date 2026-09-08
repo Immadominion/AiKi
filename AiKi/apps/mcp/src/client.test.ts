@@ -4,7 +4,7 @@ import { AikiClient, AikiError } from './client.js'
 /**
  * The two things this client does that a bare fetch does not: it keeps a
  * session, and it turns a refusal back into the sentence the API wrote. Both
- * matter more here than usual — the caller is a language model deciding what to
+ * matter more here than usual - the caller is a language model deciding what to
  * do next, and "409" tells it nothing.
  */
 

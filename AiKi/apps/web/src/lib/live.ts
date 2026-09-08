@@ -9,8 +9,8 @@ import { api } from './api'
  * probed, how many answered at all, and why the rest were left out.
  *
  * Served from /v1/stats when the API is reachable. When it is not, the numbers
- * fall back to the committed 20 Aug 2026 probe sweep — older measurements, not
- * invented ones — and the block says which of the two it is showing.
+ * fall back to the committed 20 Aug 2026 probe sweep - older measurements, not
+ * invented ones - and the block says which of the two it is showing.
  */
 export interface RegistryCoverage {
   /** Null when no chain-indexer evidence exists yet; probing alone cannot fake it. */

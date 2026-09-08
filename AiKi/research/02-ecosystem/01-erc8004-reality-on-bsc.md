@@ -9,19 +9,19 @@
 
 ## The headline
 
-> **257,865 ERC-8004 agents are registered on BSC — 61.3% of all mainnet registrations across every chain. In a 400-agent sample spread across that registry, the number exposing a remotely invocable agent endpoint was zero.**
+> **257,865 ERC-8004 agents are registered on BSC - 61.3% of all mainnet registrations across every chain. In a 400-agent sample spread across that registry, the number exposing a remotely invocable agent endpoint was zero.**
 
 Not "few". Zero.
 
-This is the single most important empirical fact in the AiKi programme. It simultaneously validates the product thesis beyond what the founding documents claimed, and creates the hardest problem the product faces.
+This result identifies a supply and data-quality problem in the sample. It does not measure the full population of available workers or validate the whole marketplace thesis. AiKi's [current product definition](../../docs/PRODUCT.md) concerns humans and agents completing work together; the findings here inform agent discovery within it.
 
 ---
 
-## 1. The founding claim checks out — and is an upper bound
+## 1. The founding claim checks out - and is an upper bound
 
-`initial_agent_context.md` §4 asserts that ~4% of BSC registrations expose a valid registration file with a live service endpoint, and ~59.2% of reviewers show coordinated sybil behaviour.
+The [archived founding context](../../../docs/archive/2026-08-18-initial-agent-context.md) §4 asserts that ~4% of BSC registrations expose a valid registration file with a live service endpoint, and ~59.2% of reviewers show coordinated sybil behaviour.
 
-**Both are verbatim correct.** From arXiv 2606.26028v2 (*Can Trustless Agents Be Trusted?*, Xiong, Li, Wei, Wang, Knottenbelt, Wang — v1 24 Jun 2026, v2 8 Jul 2026), abstract, verbatim:
+**Both are verbatim correct.** From arXiv 2606.26028v2 (*Can Trustless Agents Be Trusted?*, Xiong, Li, Wei, Wang, Knottenbelt, Wang - v1 24 Jun 2026, v2 8 Jul 2026), abstract, verbatim:
 
 > "only a small fraction (3%, 4%, and 15% across Ethereum, BSC, and Base) exposing a valid ERC-8004 registration file with at least one live service endpoint"
 
@@ -31,7 +31,7 @@ This is the single most important empirical fact in the AiKi programme. It simul
 
 The 4% is a **declaration-based** metric: valid registration file AND ≥1 declared service. It does not mean 4% of agents work. It means 4% *claimed* an endpoint that answered.
 
-The sybil method is a **first-funder heuristic** — a directed funding graph where A→B means A was the first native-token funder of B, with clusters traced to a common root. That over-counts agents funded from a shared exchange or faucet, and under-counts sybils funded independently. It is a reasonable proxy, not ground truth. AiKi should not reproduce this method uncritically (see §6).
+The sybil method is a **first-funder heuristic** - a directed funding graph where A→B means A was the first native-token funder of B, with clusters traced to a common root. That over-counts agents funded from a shared exchange or faucet, and under-counts sybils funded independently. It is a reasonable proxy, not ground truth. AiKi should not reproduce this method uncritically (see §6).
 
 ## 2. First-party measurement: the 4% is generous
 
@@ -51,7 +51,7 @@ We did not stop at citation. Method:
 | **Genuinely invocable agent services** | **0** | **0.0%** |
 | `is_endpoint_verified == true` | 0 | 0.0% |
 
-The 147 HTTP 200s naively read as "36.8% live." That number is an **artifact**, and it decomposes into three distinct failure modes — each of which is a detection rule AiKi can implement.
+The 147 HTTP 200s naively read as "36.8% live." That number is an **artifact**, and it decomposes into three distinct failure modes - each of which is a detection rule AiKi can implement.
 
 ### 2.1 The static-SPA impostor (141 of 147)
 
@@ -65,7 +65,7 @@ The 147 HTTP 200s naively read as "36.8% live." That number is an **artifact**, 
 
 Byte-identical for a valid ID, a nonsense ID, and a non-numeric ID. It is a client-rendered Next.js marketing shell, not a machine-callable service.
 
-**Scale:** `search=evoevo&chain_id=56` returns **77,265 agents — 30.0% of the entire BSC registry** points at this one domain.
+**Scale:** `search=evoevo&chain_id=56` returns **77,265 agents - 30.0% of the entire BSC registry** points at this one domain.
 
 Any crawler doing a naive 200-check counts all of them as live. **This is the single largest source of inflation in every ERC-8004 liveness statistic on BSC.**
 
@@ -77,7 +77,7 @@ Any crawler doing a naive 200-check counts all of them as live. **This is the si
 https://platform-backend.prod.termix.live/api/v1/a2a/agents/{agentId}/card
 ```
 
-The literal characters `{agentId}` — never interpolated. All 13 return 404. A shipped template bug in a bulk registration pipeline, now permanently recorded on BSC. That was **100% of A2A declarations in the sample.**
+The literal characters `{agentId}` - never interpolated. All 13 return 404. A shipped template bug in a bulk registration pipeline, now permanently recorded on BSC. That was **100% of A2A declarations in the sample.**
 
 ### 2.3 The non-remote descriptor (5 of 400)
 
@@ -92,15 +92,15 @@ The literal characters `{agentId}` — never interpolated. All 13 return 404. A 
           {"name":"q402_balance"},{"name":"q402_quote"}]}
 ```
 
-But `transport: "stdio"`. A POST of a JSON-RPC `initialize` returns **405 Method Not Allowed**. It is a local npm package, not a network-callable agent. Credit where due — this is the highest-quality descriptor in the sample. It still cannot be hired over the wire.
+But `transport: "stdio"`. A POST of a JSON-RPC `initialize` returns **405 Method Not Allowed**. It is a local npm package, not a network-callable agent. Credit where due - this is the highest-quality descriptor in the sample. It still cannot be hired over the wire.
 
 ### 2.4 The `data:` URI inflation
 
-**58.3%** of sampled agents inline their registration file as `data:application/json;base64,…`. A `data:` URI resolves with **zero network I/O** — so any "has a resolvable registration file" metric is trivially inflated on BSC and carries no information about operational status.
+**58.3%** of sampled agents inline their registration file as `data:application/json;base64,…`. A `data:` URI resolves with **zero network I/O** - so any "has a resolvable registration file" metric is trivially inflated on BSC and carries no information about operational status.
 
-A handful of `offchain_uri` values are neither URI nor data — they are raw LLM prompt fragments committed on-chain: *"Gluon + ε₀ → Ordinal"*, *"4 forces × 17 particles × 13.8"*, *"Higgs × Sumerian → G"*.
+A handful of `offchain_uri` values are neither URI nor data - they are raw LLM prompt fragments committed on-chain: *"Gluon + ε₀ → Ordinal"*, *"4 forces × 17 particles × 13.8"*, *"Higgs × Sumerian → G"*.
 
-## 3. Reputation on BSC is not thin — it is degenerate
+## 3. Reputation on BSC is not thin - it is degenerate
 
 | Chain | Feedbacks | Agents | Per agent |
 |---|---:|---:|---:|
@@ -114,7 +114,7 @@ A 100-record BSC feedback sample:
 - **0 of 100** carried a comment. 30 of 100 had an empty `feedback_uri`.
 - Score distribution is degenerate: **66 of 100 scored exactly 70**, then 60(×10), 80(×7), 100(×5), 85(×3), 82(×3).
 
-The paper's chain-wide figures are worse. BSC: 29,444 feedback records from **76 unique reviewers — 387.4 reviews per reviewer.** (Ethereum: 4.9. Base: 40.0.) That ratio is the clearest wash-reputation signature in the dataset.
+The paper's chain-wide figures are worse. BSC: 29,444 feedback records from **76 unique reviewers - 387.4 reviews per reviewer.** (Ethereum: 4.9. Base: 40.0.) That ratio is the clearest wash-reputation signature in the dataset.
 
 And, verbatim from the paper:
 
@@ -122,7 +122,7 @@ And, verbatim from the paper:
 
 **Not one BSC feedback record in the study window was grounded in a verifiable interaction.**
 
-Cost to move an agent past a τ=90 trust threshold — median, from the paper's Table 6:
+Cost to move an agent past a τ=90 trust threshold - median, from the paper's Table 6:
 
 | Chain | Cost |
 |---|---:|
@@ -145,7 +145,7 @@ Among agents declaring multi-chain registration, reputation scores are **uncorre
 
 > "each chain constitutes an isolated reputation silo."
 
-Small samples, so treat as *suggestive of null* rather than proven — but there is certainly no evidence of portability. **Reputation portability is an open product opportunity, not a solved primitive.**
+Small samples, so treat as *suggestive of null* rather than proven - but there is certainly no evidence of portability. **Reputation portability is an open product opportunity, not a solved primitive.**
 
 ## 5. Corroboration from an independent study
 
@@ -161,9 +161,11 @@ arXiv 2606.12128 (*From Agent Identity to Agent Economy*, Mafrur & Khusumanegara
 
 Two independent studies plus our own probe converge on the same conclusion: **registration-heavy, operationally empty.**
 
-## 6. What this means for AiKi
+## 6. Product interpretation recorded in August
 
-### 6.1 The thesis is not just validated — it is understated
+Sections 6.1-6.4 preserve the strategic interpretation made when this study was written. The probe-first positioning, registry-wide supply conclusions and novelty claims below are historical recommendations, not current product claims. They do not override [PRODUCT.md](../../docs/PRODUCT.md), establish current competitor behavior, or prove that no usable provider exists outside the sample.
+
+### 6.1 The thesis is not just validated - it is understated
 
 The founding documents argued identity ≠ trust. The measurement is stronger than that: **on BSC, identity ≠ existence.** 30% of the registry points at one static marketing page. Reputation costs $0.0042 to forge and 100% of it is ungrounded.
 
@@ -179,13 +181,13 @@ This is **HP-7 (cold start)** in its sharpest possible form, and it escalates fr
 
 | Path | What it means |
 |---|---|
-| **A. Supply acquisition** | AiKi recruits and onboards real agents directly — provider platform becomes launch-critical, not phase-two |
+| **A. Supply acquisition** | AiKi recruits and onboards real agents directly - provider platform becomes launch-critical, not phase-two |
 | **B. Supply creation** | AiKi ships first-party reference agents for the four categories, proving the loop with real work |
-| **C. Ecosystem-wide honesty** | AiKi indexes everything and is the only surface that tells the truth about it — value is the *filter*, not the catalogue |
+| **C. Ecosystem-wide honesty** | AiKi indexes everything and is the only surface that tells the truth about it - value is the *filter*, not the catalogue |
 
-These are not exclusive, and C is essentially free given the ingestion work. **B is likely mandatory for a working demo** — you cannot demonstrate intent → mandate → execution → receipt against an ecosystem where nothing answers. This directly affects build order and should be an explicit decision, not a discovery made in week four.
+These are not exclusive, and C is essentially free given the ingestion work. **B is likely mandatory for a working demo** - you cannot demonstrate intent → mandate → execution → receipt against an ecosystem where nothing answers. This directly affects build order and should be an explicit decision, not a discovery made in week four.
 
-*Recommendation (labelled as such): B + C. Ship first-party agents in each of the four judged categories to make the loop real, while indexing the full ecosystem and being the only product that reports its actual state. That satisfies the competition's "Agent Diversity" and "Data Quality" criteria simultaneously — and the honesty is the differentiator, not a caveat.*
+*Recommendation (labelled as such): B + C. Ship first-party agents in each of the four judged categories to make the loop real, while indexing the full ecosystem and being the only product that reports its actual state. That satisfies the competition's "Agent Diversity" and "Data Quality" criteria simultaneously - and the honesty is the differentiator, not a caveat.*
 
 ### 6.3 Detection rules to implement on day one
 
@@ -193,27 +195,31 @@ Each derived from an observed failure, not theorised:
 
 | # | Rule | Catches |
 |---|---|---|
-| **D1** | Probe each endpoint with a **valid ID and a nonsense ID**; if responses are byte-identical, it is not agent-specific. Flag `IMPOSTOR_STATIC`. | The 141 evoevo shells — 30% of BSC |
+| **D1** | Probe each endpoint with a **valid ID and a nonsense ID**; if responses are byte-identical, it is not agent-specific. Flag `IMPOSTOR_STATIC`. | The 141 evoevo shells - 30% of BSC |
 | **D2** | Reject endpoints containing unexpanded `{…}` placeholders **before indexing**. | The `{agentId}` template bug |
 | **D3** | Treat `transport: "stdio"` as **declared-but-not-remotely-invocable**. A distinct state from "live". | The q402 descriptors |
-| **D4** | `data:` URIs resolve trivially — **exclude from any "resolvable" metric**. | 58.3% inflation |
+| **D4** | `data:` URIs resolve trivially - **exclude from any "resolvable" metric**. | 58.3% inflation |
 | **D5** | Require content-type and a capability handshake, not HTTP 200. **200 is not liveness.** | All of the above |
 | **D6** | Reviewer concentration: reviews-per-unique-reviewer, first-funder clustering, and **degenerate score distributions** (66% identical value is a signature). | Wash reputation |
-| **D7** | Weight feedback by **payment proof / task linkage**. On BSC that zeroes 100% of existing feedback — which is the correct answer. | Ungrounded reputation |
+| **D7** | Weight feedback by **payment proof / task linkage**. On BSC that zeroes 100% of existing feedback - which is the correct answer. | Ungrounded reputation |
 
 D1 deserves emphasis: **it is a genuinely novel liveness test**, it was discovered by measurement rather than reasoning, and it invalidates the headline statistic of every competitor doing naive 200-checks. It belongs in the Proof Score from the first commit.
 
 ### 6.4 The open position
 
-> Across 400 agents: `is_endpoint_verified` true for **0**. `endpoint_verified_at`, `endpoint_verified_domain`, `endpoint_verification_error` all null. `health_status` null for 352/400 (88%). Where populated, one record's `checked_at` was **2026-05-08 — three months stale**, with status `"skip"`.
+> Across 400 agents: `is_endpoint_verified` true for **0**. `endpoint_verified_at`, `endpoint_verified_domain`, `endpoint_verification_error` all null. `health_status` null for 352/400 (88%). Where populated, one record's `checked_at` was **2026-05-08 - three months stale**, with status `"skip"`.
 
 The fields exist as schema. Nobody has populated them.
 
-**Nobody in this ecosystem is running continuous liveness verification.** That is not a solved problem AiKi would be duplicating — it is an unoccupied position, and it is precisely the "Data Quality" criterion the competition scores.
+**Nobody in this ecosystem is running continuous liveness verification.** That is not a solved problem AiKi would be duplicating - it is an unoccupied position, and it is precisely the "Data Quality" criterion the competition scores.
+
+### 6.5 Current use of this research
+
+Use these observations to distinguish declared services, successful capability checks and actual job delivery. Surface the relevant information when someone chooses a provider, without making a probe the purpose of using AiKi. Provider onboarding and completed work are separate questions. Human providers and agent-to-human handoffs need their own marketplace path; registry measurements do not cover them.
 
 ## 7. Data sources AiKi can ingest
 
-### 7.1 8004scan REST API — open, unauthenticated, undocumented
+### 7.1 8004scan REST API - open, unauthenticated, undocumented
 
 Found by probing. `/api/v1/openapi.json`, `/api/v1/docs` → 404, so it is undocumented rather than absent. FastAPI backend (422 errors leak path param types). No API key, no rate limit encountered at 12 concurrent requests.
 
@@ -226,13 +232,13 @@ GET /api/v1/chains          → 60 chains with provider status
 GET /api/v1/feedbacks?limit=&chain_id=
 ```
 
-404 on: `/stats`, `/networks`, `/leaderboard`, `/validations`, `/search`, `/agents/stats`, `/protocol/stats`. `sort=` / `order=` are accepted but appeared to be **ignored** — do not rely on them.
+404 on: `/stats`, `/networks`, `/leaderboard`, `/validations`, `/search`, `/agents/stats`, `/protocol/stats`. `sort=` / `order=` are accepted but appeared to be **ignored** - do not rely on them.
 
-> ⚠️ **Dependency risk.** This is an undocumented API on a third party's infrastructure with no contract, no SLA and no versioning. It is excellent for bootstrapping and unacceptable as a permanent single point of failure. AiKi must index the registry contracts directly and treat 8004scan as one `IndexerSourceAdapter` among several — exactly the posture the MPSS already mandates.
+> ⚠️ **Dependency risk.** This is an undocumented API on a third party's infrastructure with no contract, no SLA and no versioning. It is excellent for bootstrapping and unacceptable as a permanent single point of failure. AiKi must index the registry contracts directly and treat 8004scan as one `IndexerSourceAdapter` among several - exactly the posture the MPSS already mandates.
 
 > ⚠️ **Counting trap.** The homepage's "420,666+ Registered Agents" is the **mainnet-only** figure. The raw API total (740,449) includes 319,426 testnet registrations. Always pass `is_testnet`.
 
-### 7.2 The Graph — Agent0 subgraphs (structured alternative)
+### 7.2 The Graph - Agent0 subgraphs (structured alternative)
 
 `github.com/agent0lab/subgraph`. Requires an API key (unauthenticated POST → `auth error: missing authorization header`).
 
@@ -254,7 +260,7 @@ https://gateway.thegraph.com/api/<API_KEY>/subgraphs/id/<SUBGRAPH_ID>
 
 Entities: `Agent`, `Feedback` (score 0–100, tags, revocation), `Validation`, `Protocol`.
 
-### 7.3 Registry contracts — deterministic across all chains
+### 7.3 Registry contracts - deterministic across all chains
 
 | Registry | Address (identical on every chain) |
 |---|---|
@@ -271,8 +277,8 @@ BSC indexing range per the paper: blocks **79,027,200 – 98,121,735**.
 
 - **EIP-8004 is still `Draft`** (created 2025-08-13). Claims that it was "finalized in October 2025" are contradicted by the EIP page itself. **The spec can change under anyone building on it.** Version every adapter.
 - The EIP page does not publish consolidated `IIdentityRegistry` / `IReputationRegistry` blocks. Parameter types and ordering **must** be read from `github.com/erc-8004/erc-8004-contracts` before integration code is written. *(Round-2 research owns this.)*
-- Our 400-agent sample is 0.16% of BSC. It **understates ownership concentration** — a whale holding thousands would appear only a few times. The EvoEvo 30.0% platform share is the more reliable concentration signal.
-- Framework-attribution counts (olas 5,005; virtuals 570; eliza 8) are substring searches over name/description. Order-of-magnitude only. The reliable signal: **BSC's agents are not coming from established agent frameworks** — they are bulk registrations from EvoEvo, Termix and QuackAI.
+- Our 400-agent sample is 0.16% of BSC. It **understates ownership concentration** - a whale holding thousands would appear only a few times. The EvoEvo 30.0% platform share is the more reliable concentration signal.
+- Framework-attribution counts (olas 5,005; virtuals 570; eliza 8) are substring searches over name/description. Order-of-magnitude only. The reliable signal: **BSC's agents are not coming from established agent frameworks** - they are bulk registrations from EvoEvo, Termix and QuackAI.
 - Third-party aggregate claims (RNWY "150K+ agents", Agent0 "106,996 indexed") could not be confirmed at primary sources and are **UNVERIFIED**.
 
 ---

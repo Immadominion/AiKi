@@ -9,7 +9,7 @@ export const REGISTRY_STREAM = 'bsc:56:erc8004:registered'
  *
  * The registration checkpoint says where scanning got to; nothing said where it
  * started, so "have we seen the whole registry" had to be inferred from the
- * earliest event we happened to hold — a number that can never reach the
+ * earliest event we happened to hold - a number that can never reach the
  * registry's first block, because the first block predates the first event.
  */
 export const COVERAGE_START_STREAM = 'bsc:56:erc8004:coverage-start'

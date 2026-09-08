@@ -2,7 +2,7 @@
  * The four kinds of work AiKi claims today.
  *
  * Shared by the ask field and by search so they can never disagree about what
- * we say we can do — a suggestion the results page then fails to honour is worse
+ * we say we can do - a suggestion the results page then fails to honour is worse
  * than no suggestion.
  */
 export interface Task {
@@ -11,7 +11,7 @@ export interface Task {
   sub: string
   glyph: string
   bg: string
-  /** Derived, never written by hand — see AGENTS_FOR. */
+  /** Derived, never written by hand - see AGENTS_FOR. */
   meta: string
   intent: string
   keys: string[]

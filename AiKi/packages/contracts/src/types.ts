@@ -1,5 +1,5 @@
 /**
- * AiKi API contract — v1
+ * AiKi API contract - v1
  *
  * This file is THE SEAM between apps/web and apps/api. Both build against it.
  * Changing it requires a `contract:` PR and both engineers' agreement.
@@ -25,13 +25,13 @@ export type Id = string
 
 /**
  * How strongly a fact is evidenced.
- *  A — cryptographic / on-chain
- *  B — AiKi observed it directly (our probes, our benchmark runs)
- *  C — independent third-party attestation
- *  D — someone claimed it, unverified
+ *  A - cryptographic / on-chain
+ *  B - AiKi observed it directly (our probes, our benchmark runs)
+ *  C - independent third-party attestation
+ *  D - someone claimed it, unverified
  *
  * NOTE: evidence class is not the same as evidence VALUE. On-chain ERC-8004
- * feedback is nominally class A but empirically worthless — 100% of BSC feedback
+ * feedback is nominally class A but empirically worthless - 100% of BSC feedback
  * carries no payment proof, and moving an agent past a trust threshold costs
  * about $0.0042. Class A feedback is ingested and weighted near zero.
  */
@@ -61,7 +61,7 @@ export interface Provenance {
  *
  * NEVER render `value` without also rendering confidence. The UI encodes
  * confidence by changing HOW the number is drawn (precision clamping + interval),
- * never as a second number beside it — users read two numbers as two scores.
+ * never as a second number beside it - users read two numbers as two scores.
  */
 export interface Measure {
   value: number
@@ -70,7 +70,7 @@ export interface Measure {
   /** Wilson lower/upper bound. */
   interval?: [number, number]
   sampleSize: number
-  /** e.g. "wilson-lb;z=1.96" — z is pinned in config and recorded here. */
+  /** e.g. "wilson-lb;z=1.96" - z is pinned in config and recorded here. */
   method: string
   provenance: Provenance
 }
@@ -81,7 +81,7 @@ export interface Measure {
  */
 export interface Money {
   amount: string
-  /** "U" | "USDT" | "BNB" — $U is AiKi's default settlement asset on BSC. */
+  /** "U" | "USDT" | "BNB" - $U is AiKi's default settlement asset on BSC. */
   asset: string
   /** From config per token. USDT-BSC is 18. Assuming 6 is wrong by 10^12. */
   decimals: number
@@ -109,7 +109,7 @@ export type Category =
   | 'other'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Liveness — the enum that matters
+// Liveness - the enum that matters
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -145,15 +145,15 @@ export interface Liveness {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Enforcement — the mandate honesty model
+// Enforcement - the mandate honesty model
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Where a constraint is actually enforced.
- *  T0 — the chain rejects the call. Survives a compromised AiKi AND agent.
- *  T1 — a signer we control refuses. Survives a compromised agent only.
- *  T2 — backend check before relay. Survives an honest-but-buggy agent.
- *  T3 — detected after the fact. Survives nothing.
+ *  T0 - the chain rejects the call. Survives a compromised AiKi AND agent.
+ *  T1 - a signer we control refuses. Survives a compromised agent only.
+ *  T2 - backend check before relay. Survives an honest-but-buggy agent.
+ *  T3 - detected after the fact. Survives nothing.
  *
  * UI rule (from research: Chrome removed the padlock after only ~11% of users
  * understood it): positive trust badges get ignored, negative indicators change
@@ -208,7 +208,7 @@ export interface SearchFilters {
   category?: Category
   protocols?: string[]
   assets?: string[]
-  /** Defaults to ['LIVE','DEGRADED'] — unverified agents are hidden but counted. */
+  /** Defaults to ['LIVE','DEGRADED'] - unverified agents are hidden but counted. */
   liveness?: LivenessState[]
   minConfidence?: number
   maxPricePerTask?: Money
@@ -288,7 +288,7 @@ export interface PassportIdentity {
   tokenId: string
   registrationFile: {
     resolved: boolean
-    /** `data:` URIs resolve with zero network I/O — a weak signal, not evidence. */
+    /** `data:` URIs resolve with zero network I/O - a weak signal, not evidence. */
     uriScheme: 'https' | 'ipfs' | 'data'
     /** /.well-known/agent-registration.json bidirectional proof. Only ~0.04% have this. */
     reciprocalProofVerified: boolean
@@ -361,7 +361,7 @@ export interface CompareRow {
   metric: string
   label: string
   unit?: string
-  /** null means no evidence. Render it as such — do not coerce to 0. */
+  /** null means no evidence. Render it as such - do not coerce to 0. */
   values: (Measure | null)[]
   better: 'higher' | 'lower'
 }
@@ -447,12 +447,12 @@ export type ConstraintKind =
 
 /**
  * Cap period vocabulary borrowed from Privacy.com, which has shipped this to
- * consumers since 2016. `total` is a LIFETIME cap that never refills — visually
+ * consumers since 2016. `total` is a LIFETIME cap that never refills - visually
  * distinct from a renewing one.
  *
  * All four periods are enforceable at T0 on BSC via the MetaMask Delegation
  * Framework's ERC20PeriodTransferEnforcer, which genuinely resets per period.
- * (Rhinestone's SmartSession policy is lifetime-only — if that path is used
+ * (Rhinestone's SmartSession policy is lifetime-only - if that path is used
  * instead, only `total` is honest. The enforcement tier carries the difference.)
  */
 export type CapPeriod = 'per_transaction' | 'per_month' | 'per_year' | 'total'
@@ -526,7 +526,7 @@ export interface Job {
 
 /**
  * Mission Control's event stream (SSE).
- * A `policy` event with decision 'deny' is the most valuable thing on screen —
+ * A `policy` event with decision 'deny' is the most valuable thing on screen -
  * it is the safety layer visibly working. Design for it, don't bury it.
  */
 export type JobEvent =
@@ -589,11 +589,11 @@ export interface Receipt {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Ecosystem stats — the honesty dashboard
+// Ecosystem stats - the honesty dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface EcosystemStats {
-  /** Null until chain-indexer evidence exists — never derived from probe rows. */
+  /** Null until chain-indexer evidence exists - never derived from probe rows. */
   indexed: {
     totalAgents: number
     bscAgents: number
@@ -613,7 +613,7 @@ export interface EcosystemStats {
     agentsProbed: number
     /** The headline finding. */
     byState: Partial<Record<LivenessState, number>>
-    /** Null when nothing has been probed — never an epoch sentinel. */
+    /** Null when nothing has been probed - never an epoch sentinel. */
     lastProbeSweepAt: Timestamp | null
   }
   /** Null until feedback is actually ingested; zeros would claim a measurement. */
@@ -644,7 +644,7 @@ export interface ApiError {
 
 /**
  * Four data states, not two (modelled on Datadog's NO DATA monitor state).
- * Once a number has been rendered it may NEVER be replaced by a spinner —
+ * Once a number has been rendered it may NEVER be replaced by a spinner -
  * only by a newer number, or by a demoted state that still shows the old value.
  */
 export type DataState = 'LIVE' | 'STALE' | 'NO_DATA' | 'DEGRADED'
@@ -652,13 +652,13 @@ export type DataState = 'LIVE' | 'STALE' | 'NO_DATA' | 'DEGRADED'
 export interface Freshness {
   state: DataState
   observedAt?: Timestamp
-  /** The source's declared heartbeat — freshness is a contract it publishes. */
+  /** The source's declared heartbeat - freshness is a contract it publishes. */
   heartbeatMs?: number
   ageMs?: number
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Projected passport — what the evidence API can actually serve today
+// Projected passport - what the evidence API can actually serve today
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -724,7 +724,7 @@ export interface ProjectedPassport {
   }
   risks: ProjectedRisk[]
   evidence: { predicate: string; count: number; latestAt: Timestamp }[]
-  /** Null when we hold no observations at all — never an epoch sentinel. */
+  /** Null when we hold no observations at all - never an epoch sentinel. */
   updatedAt: Timestamp | null
   insufficientEvidence: boolean
 }

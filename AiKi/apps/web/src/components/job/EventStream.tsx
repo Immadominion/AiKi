@@ -15,7 +15,7 @@ const short = (h: string) => `${h.slice(0, 10)}…${h.slice(-8)}`
 /**
  * One event, drawn according to what it is.
  *
- * A refusal is the most valuable thing that can appear here — it is the safety
+ * A refusal is the most valuable thing that can appear here - it is the safety
  * layer visibly working, and the moment a user learns their limits are real. It
  * gets the loudest treatment on the page. A routine check gets almost none:
  * announcing every permitted action trains people to ignore the row that

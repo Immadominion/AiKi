@@ -65,7 +65,7 @@ async function main() {
   }
 
   const secs = (Date.now() - t0) / 1000
-  console.log(`\n\ndone in ${secs.toFixed(1)}s — ${all.length} Registered events\n`)
+  console.log(`\n\ndone in ${secs.toFixed(1)}s - ${all.length} Registered events\n`)
 
   if (!all.length) return
 
@@ -85,7 +85,7 @@ async function main() {
 
   const first = all[0]
   const last = all[all.length - 1]
-  if (!first || !last) throw new Error('No events in range — nothing to summarise.')
+  if (!first || !last) throw new Error('No events in range - nothing to summarise.')
   const blocksSpanned = last.blockNumber - first.blockNumber + 1
   const perDay = (all.length / (blocksSpanned * 0.45)) * 86_400
 
@@ -93,12 +93,12 @@ async function main() {
   console.log(`distinct owners   ${owners.size} / ${all.length}`)
   // Registration is BURSTY, so extrapolating a daily rate from a short window is
   // unreliable. Measured: a 9,000-block (~75 min) window implied ~27,000/day, while
-  // the agentId delta over 11.5 hours implied ~4,400/day — a 6x overstatement.
+  // the agentId delta over 11.5 hours implied ~4,400/day - a 6x overstatement.
   // Label it as what it is and prefer an agentId delta across a long gap.
   const windowMins = Math.round((blocksSpanned * 0.45) / 60)
   console.log(
     `rate in window    ~${Math.round(perDay).toLocaleString()}/day extrapolated from ${windowMins}min ` +
-      '— BURSTY, do not quote',
+      '- BURSTY, do not quote',
   )
   console.log('agentURI schemes:')
   for (const [s, n] of [...schemes].sort((a, b) => b[1] - a[1])) {

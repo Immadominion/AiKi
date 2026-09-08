@@ -5,7 +5,7 @@ import { MUTATING, runTool, TOOLS, type ToolContext } from './tools.js'
 /**
  * Fast mode: the model driving AiKi's own tools.
  *
- * The loop is ordinary — ask, run whatever tools were called, ask again — and
+ * The loop is ordinary - ask, run whatever tools were called, ask again - and
  * the two things worth knowing about it are both about honesty.
  *
  * Usage is summed across every request in the turn, not just the last one. A
@@ -78,7 +78,7 @@ relay its sentence rather than paraphrasing it away.
 
 How to be useful here:
 
-- Lead with what was measured. Every score has a sample size — always give it. Most of the registry
+- Lead with what was measured. Every score has a sample size - always give it. Most of the registry
   has never answered a probe, so a missing score is normal and is not a failure.
 - Never say an agent is "best" or "recommended". Say what was measured and let them decide. This is
   a marketplace and you have an incentive to rank things; do not.

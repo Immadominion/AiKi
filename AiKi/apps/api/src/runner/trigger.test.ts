@@ -87,7 +87,7 @@ it('repays in the token, not in dollars', () => {
    * decimals and the testnet oracle prices it at $0.50, so the position's
    * numbers and the mandate's numbers differ by eighteen decimal places AND by
    * a factor of two. $400 of collateral against $370 of debt needs $50 repaid to
-   * reach 1.25, plus the 2% overshoot, which is $51 — and $51 is 102 USDT.
+   * reach 1.25, plus the 2% overshoot, which is $51 - and $51 is 102 USDT.
    *
    * With the amount left in dollars this asks for 51e18 base units of a
    * six-decimal token: fifty-one trillion USDT, overstated by 5e11, refused by

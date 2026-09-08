@@ -155,7 +155,7 @@ it('projects stats counting each agent once by its latest verdict', () => {
     // that exists has been seen.
     complete: true,
   })
-  // Feedback is not ingested, so reputation is null — zeros would be a claim.
+  // Feedback is not ingested, so reputation is null - zeros would be a claim.
   expect(stats.reputation).toBeNull()
 })
 

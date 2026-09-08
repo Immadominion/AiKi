@@ -26,7 +26,7 @@ const KEY = 'aiki.mock.v1'
  *
  * Everything the app would ask apps/api for lives here instead, in one place,
  * behind actions shaped like the API calls that will replace them. The point is
- * not fidelity — it is that the flow is genuinely stateful, so hiring an agent
+ * not fidelity - it is that the flow is genuinely stateful, so hiring an agent
  * with a $40 cap and then watching that exact cap refuse something is something
  * you can do rather than something you have to imagine.
  */

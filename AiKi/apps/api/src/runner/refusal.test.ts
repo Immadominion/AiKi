@@ -76,7 +76,7 @@ it('gives the cap back when the chain refuses a watched repayment', async () => 
   /*
    * The bug this exists to stop: `attempt` charges the cap before the chain has
    * spoken, so a refusal leaves the counter ahead of reality. On a one-off
-   * action that is a wrong number. On a loop it is worse — four failed passes
+   * action that is a wrong number. On a loop it is worse - four failed passes
    * against a cap and the agent has spent nothing and has no room left, so it
    * quietly stops protecting the position for a reason that never happened.
    */

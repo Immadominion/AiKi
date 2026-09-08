@@ -7,7 +7,7 @@ import { usd } from '@/mock/types'
 /**
  * Turning mock state into the shapes the screens already render.
  *
- * Kept apart from both so the screens never learn the store's field names — the
+ * Kept apart from both so the screens never learn the store's field names - the
  * day apps/api replaces the store, this file is what changes.
  */
 export interface HiredRow {

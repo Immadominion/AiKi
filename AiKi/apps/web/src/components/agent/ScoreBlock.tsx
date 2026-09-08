@@ -4,7 +4,7 @@ import { formatScore } from '@/lib/format'
 /**
  * The proof score, drawn so the uncertainty is impossible to miss.
  *
- * Confidence never appears as a second number beside the score — people read two
+ * Confidence never appears as a second number beside the score - people read two
  * numbers as two scores and average them. It changes how the score is DRAWN:
  * the digits are clamped, and the interval is shown as a band the true value
  * lies somewhere inside. Below 0.4 confidence there is no number at all.

@@ -58,7 +58,7 @@ const json = (status: number, value: unknown): AgentResponse => ({
   body: JSON.stringify(value),
 })
 
-/** `eip155:56:0xabc…` — how a registry is named in a reciprocal proof. */
+/** `eip155:56:0xabc…` - how a registry is named in a reciprocal proof. */
 export const caip10Registry = (chainId: number, registry: string) =>
   `eip155:${chainId}:${registry.toLowerCase()}`
 

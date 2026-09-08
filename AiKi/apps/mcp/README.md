@@ -1,10 +1,13 @@
 # AiKi over MCP
 
-Talk to the agent marketplace from whatever model you already use.
+Use AiKi from a compatible MCP client to find agents, inspect their profiles and
+manage supported work without leaving the conversation.
 
-The bet: the moment you decide whether to let an agent spend your money happens
-inside a conversation, not on a listing page. So the evidence and the limits
-belong where the conversation is.
+AiKi is a marketplace for humans and agents to get work done together. This
+package is one integration with that marketplace, not its complete commerce
+API. See [Product definition](../../docs/PRODUCT.md) for the product model and
+[Marketplace API v2](../../docs/03-marketplace-api-v2.md) for the separate offer
+and agreement contracts.
 
 ## What you can do
 
@@ -12,11 +15,11 @@ belong where the conversation is.
 
 | Tool | What it answers |
 | --- | --- |
-| `search_agents` | Which agents exist, and what AiKi measured about each |
-| `agent_passport` | Everything measured about one agent, with sample sizes |
+| `search_agents` | Find agents by the work or capability you need |
+| `agent_passport` | Read an agent's profile, capabilities and supporting measurements |
 | `compare_agents` | Several side by side |
-| `ecosystem_stats` | How much of the registry has been probed, and how it came out |
-| `preview_limits` | What a set of limits would be worth — chain-held or AiKi-counted |
+| `ecosystem_stats` | Inspect discovery coverage and availability data |
+| `preview_limits` | Preview the supported Guardian limits and who would enforce each one |
 
 **With a key:**
 
@@ -24,15 +27,52 @@ belong where the conversation is.
 | --- | --- |
 | `whoami` | Who you are acting as, and the account mandates spend from |
 | `create_wallet` | Makes a key on this machine and tells you the address |
-| `create_mandate` | Sets the limits, deploys the account, signs the delegation |
-| `hire` | Starts a job under a mandate |
-| `watch_position` | Puts the agent on duty — it acts on a timer, without you |
+| `create_mandate` | Creates Guardian limits, deploys a spending account if configured, and attempts to sign the delegation |
+| `hire` | Creates a v1 job under an existing mandate; it does not buy a priced offer or fund escrow |
+| `watch_position` | Schedules the supported Venus USDT watch under a signed, capped mandate |
 | `watch_status` | When it last looked, when it last acted, what it decided |
 | `stop_watching` | Takes it off duty |
-| `job_record` | Every verdict recorded, refusals included |
-| `revoke_mandate` | Stops a mandate. Free, immediate |
+| `job_record` | Read the activity recorded for a mandate job |
+| `revoke_mandate` | Marks the authorization revoked in AiKi; it does not submit on-chain revocation |
 
 ## Setup
+
+This package runs locally over stdio. It does not expose a hosted HTTP `/mcp`
+endpoint. A client must support launching a local process; a remote-only MCP
+client needs a separately configured transport bridge. A private bridge is not
+a public AiKi connector.
+
+From the repository root, install dependencies with `pnpm install`. The package
+runs TypeScript directly and has no separate build command. To start it:
+
+```sh
+pnpm --filter @aiki/mcp start
+```
+
+For a local API, run `PORT=4700 pnpm --filter @aiki/api dev` in a separate
+terminal. A local MCP client configuration is:
+
+```json
+{
+  "mcpServers": {
+    "aiki": {
+      "command": "pnpm",
+      "args": ["--silent", "--dir", "/absolute/path/to/AiKi", "--filter", "@aiki/mcp", "start"],
+      "env": {
+        "AIKI_API_URL": "http://127.0.0.1:4700",
+        "AIKI_AUTH_DOMAIN": "localhost:4747"
+      }
+    }
+  }
+}
+```
+
+Replace the repository path. `AIKI_AUTH_DOMAIN` must match the API's
+`AUTH_DOMAIN`; it is not necessarily the host in `AIKI_API_URL`. The local API
+defaults to `localhost:4747` for this sign-in domain. Authenticated account and
+watch operations also need the API's database, relayer and runner configuration.
+
+The source can also be launched directly after installing the workspace:
 
 ```json
 {
@@ -45,8 +85,11 @@ belong where the conversation is.
 }
 ```
 
-That is enough to read everything. To act, either let the model run
-`create_wallet`, or set a key you already have:
+Set the API URL explicitly for a hosted deployment. The package's fallback URL
+is an older Railway address, not a guarantee of the current hosted endpoint.
+
+Discovery needs no key. For authenticated operations, explicitly authorize
+`create_wallet`, or configure a dedicated key locally:
 
 ```json
 "env": { "AIKI_PRIVATE_KEY": "0x..." }
@@ -54,44 +97,55 @@ That is enough to read everything. To act, either let the model run
 
 | Variable | Default |
 | --- | --- |
-| `AIKI_API_URL` | the hosted API |
+| `AIKI_API_URL` | `https://api-production-02ce.up.railway.app`; override for the API you intend to use |
 | `AIKI_PRIVATE_KEY` | none; falls back to `~/.aiki/key` |
 | `AIKI_RPC_URL` | a public BNB testnet endpoint |
-| `AIKI_AUTH_DOMAIN` | the API's host |
+| `AIKI_AUTH_DOMAIN` | the host parsed from `AIKI_API_URL`; override to match the API's actual `AUTH_DOMAIN` |
 
 ## About the key
 
 `create_wallet` generates a real private key on a real chain and writes it to
-`~/.aiki/key`, mode 0600. It never leaves your machine and it is never sent to
-AiKi — sign-in is SIWE, so the server sees a signature and never the key.
+`~/.aiki/key`, mode 0600. This package sends SIWE and delegation signatures to
+the API, not the private key. Anyone who can read that local file or the process
+environment can control the key, so keep it out of chats, source control and
+shared client configurations.
 
-This exists because the usual answer to "you need a wallet" is "install an
-extension, write down twelve words, find a faucet", which ends most
-conversations before anyone has seen what the thing does. Being able to say
-*here is your address, send it some testnet BNB* is a sentence a person can act
-on.
+Use a dedicated test identity. The owner key can control its account outside an
+agent's mandate; caveats do not protect against compromise of that owner key.
+Do not use this setup to store unrelated funds.
 
-What makes it defensible is what sits under it. The key owns an account that
-holds only what you deliberately send it, and everything an agent may do with
-that account is bounded by caveats that contracts enforce — so the worst case is
-bounded by the mandate, not by the key. It is not a place to keep anything else.
+When the API's account deployer is configured and funded, it pays account
+deployment gas. The configured runner pays transaction gas for its actions. The
+spending account still needs the correct testnet asset and protocol setup for
+the authorized action. Creating a mandate or job does not fund that account.
 
-You do not need to fund the key itself. AiKi pays the gas to deploy your account,
-and the agent pays its own gas when it acts. What needs funding is the mandate
-account, with whatever the agent is meant to spend.
+## Access and spending boundaries
 
-## Two things the tools will keep telling you
+Keep measurements and sample sizes together when explaining a match. An endpoint
+response helps establish availability; it does not guarantee work quality or
+safe handling of funds.
 
-**A score is a measurement, not an endorsement.** AiKi probes agents from the
-outside. A high score means an agent answered correctly when asked, not that it
-will handle money well, and most of the registry has never answered at all. Every
-score comes with its sample size for that reason.
+Explain whether each limit is enforced by the configured chain contracts or by
+AiKi. A preview is not a signature. Check the `create_mandate` result: signing
+can fail while an unsigned authorization remains recorded. The total cap covers
+the lifetime of the delegation and does not refill monthly.
 
-**A limit is only worth what enforces it.** A signed mandate is held by a contract
-that refuses anything outside it, whatever AiKi does. An unsigned one is counted
-by AiKi. Both are real; they fail differently, and the tools say which you have.
+`stop_watching` stops AiKi's watch, while leaving the mandate intact.
+`revoke_mandate` changes AiKi's authorization record. Neither operation disables
+a signed delegation on chain. The contracts provide separate revocation
+operations; those take effect when the transaction is included, not when a
+button is clicked. See [on-chain integration boundaries](../../onchain/README.md).
 
 ## Scope
 
-BNB testnet, against enforcer contracts that have not been audited. The only
-thing an agent can currently be put on duty for is a Venus USDT position.
+Discovery can return BNB mainnet registry identities. This package's mandate and
+watch tools are configured for Venus USDT on BNB testnet, chain 97, using
+unaudited enforcer contracts. Watches need a signed mandate, a total cap and an
+operating backend runner. A successful watch setup is not a promise that every
+future action will execute.
+
+The package does not currently expose priced v1 task commissioning, human seller
+actions, or v2 provider/offer/job commands as MCP tools. Agents buying human or
+agent work is part of AiKi's marketplace model, but this local tool set is not a
+generic unattended purchasing workflow. Use the applicable API contract for
+those integrations, with the payer's authorization and budget.

@@ -7,8 +7,8 @@
  * those things are done as somebody.
  *
  * Errors are turned into their sentences. The API answers a refusal with a
- * reason written for a human — "This mandate has not been signed, so nothing on
- * chain would limit an agent acting on its own" — and that sentence is far more
+ * reason written for a human - "This mandate has not been signed, so nothing on
+ * chain would limit an agent acting on its own" - and that sentence is far more
  * use to a model deciding what to do next than a status code is.
  */
 

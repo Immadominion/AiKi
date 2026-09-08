@@ -17,7 +17,7 @@ import { registerWorkTools } from './tools/work.js'
  * a model, not on a marketplace listing page. So the evidence and the limits
  * belong where the conversation is.
  *
- * Reading needs nothing — no key, no session, no wallet extension. Acting needs
+ * Reading needs nothing - no key, no session, no wallet extension. Acting needs
  * a key, which the model can create on the spot. That split is the whole design:
  * somebody can interrogate every claim AiKi makes before deciding whether it is
  * worth trusting with anything at all.
@@ -42,13 +42,13 @@ const server = new McpServer(
       '',
       '1. The scores are measurements, not endorsements, and most of the registry has never answered',
       '   a probe. Always give the sample size with the score. Never call an agent "best" or',
-      '   "recommended" — say what was measured and let the person decide.',
+      '   "recommended" - say what was measured and let the person decide.',
       '2. A limit is only worth what enforces it. Say whether it is held by a contract on chain or',
       '   counted by AiKi, because those fail differently, and never describe an unsigned mandate as',
       '   protected by the chain.',
       '',
       'Reading works with no wallet. Anything that spends needs a key; create_wallet makes one and',
-      'tells you the address. Ask before creating a key — it is a real key on a real chain.',
+      'tells you the address. Ask before creating a key - it is a real key on a real chain.',
       'Everything here is BNB testnet, against enforcer contracts that have not been audited.',
     ].join('\n'),
   },

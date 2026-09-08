@@ -1,5 +1,7 @@
 # Agent Advantage Report
 
+This is a focused measurement artifact for the submission, not the product definition or an exhaustive walkthrough. [AiKi's product documentation](../../docs/PRODUCT.md) describes the marketplace, hiring, delivery and human/agent work. The experiments below address selected discovery and assessment questions; they do not define the whole product's value or establish that every hiring path was exercised.
+
 Three real tasks, each run once by hand and once through AiKi, as required by the
 Build the Era submission.
 

@@ -23,7 +23,7 @@ const age = (ms: number) => {
  * Four states rather than two, following Datadog's NO DATA monitor state: an
  * absent number and a stale number are different problems, and collapsing them
  * into "loading" hides the one that should worry you. STALE keeps showing the
- * last known value and says how old it is — replacing a number with a spinner
+ * last known value and says how old it is - replacing a number with a spinner
  * because a refresh failed loses information the reader already had.
  */
 export function Freshness({ state, ageMs }: { state: DataState; ageMs?: number }) {

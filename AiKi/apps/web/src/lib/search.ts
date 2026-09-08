@@ -16,7 +16,7 @@ export function search(query: string): SearchOutcome {
   const understood = tasks[0]?.title ?? null
 
   // Agents are matched on the work they do, not on string similarity to their
-  // name — someone asking to avoid liquidation should not be shown an agent
+  // name - someone asking to avoid liquidation should not be shown an agent
   // called "Liquidator".
   const results = tasks.length
     ? AGENTS.filter((a) => tasks.some((t) => AGENTS_FOR[t.key]?.includes(a.key)))

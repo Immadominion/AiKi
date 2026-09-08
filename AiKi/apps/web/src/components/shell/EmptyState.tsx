@@ -6,7 +6,7 @@ import { route } from '@/lib/routes'
 /**
  * What a surface says when there is genuinely nothing on it.
  *
- * Never "no data" — that describes our situation, not theirs. Each of these
+ * Never "no data" - that describes our situation, not theirs. Each of these
  * says what the emptiness means and what would fill it, because the first
  * screen a new person sees is the one that decides whether they try anything.
  */

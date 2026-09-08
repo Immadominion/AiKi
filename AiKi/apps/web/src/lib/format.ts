@@ -22,13 +22,13 @@ export function formatScore(m: Measure): { text: string; withheld: boolean } {
   return { text: `≈${(Math.round(value / 10) * 10).toFixed(0)}`, withheld: false }
 }
 
-/** Evidence as a count, not a probability — non-experts reason about counts. */
+/** Evidence as a count, not a probability - non-experts reason about counts. */
 export function evidenceLabel(m: Measure): string {
   if (m.sampleSize === 0) return 'no observations yet'
   return `${m.sampleSize.toLocaleString()} observation${m.sampleSize === 1 ? '' : 's'}`
 }
 
-/** Truncate an address. EVM hex has no O/I/l — the real confusables are 8/B, 5/S. */
+/** Truncate an address. EVM hex has no O/I/l - the real confusables are 8/B, 5/S. */
 export const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 
 export const pct = (n: number, total: number) =>

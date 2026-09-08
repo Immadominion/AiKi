@@ -4,7 +4,7 @@
  * A spinner tells you to wait; a shape tells you what for, and stops the page
  * jumping when it arrives. The rule this exists to keep: once a number has been
  * rendered it is NEVER replaced by a skeleton. A skeleton is for the first load
- * only — a refresh shows the old number until there is a new one.
+ * only - a refresh shows the old number until there is a new one.
  */
 export function Bar({ w = '100%', h = 12 }: { w?: string | number; h?: number }) {
   return (

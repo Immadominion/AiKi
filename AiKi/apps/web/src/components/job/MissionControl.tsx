@@ -58,7 +58,7 @@ export function MissionControl({ jobId }: { jobId: string }) {
   /**
    * The job runs itself while you watch.
    *
-   * Only while RUNNING — it stops dead at an approval and stays stopped, which
+   * Only while RUNNING - it stops dead at an approval and stays stopped, which
    * is the behaviour that matters: if you do nothing, nothing happens.
    */
   useEffect(() => {

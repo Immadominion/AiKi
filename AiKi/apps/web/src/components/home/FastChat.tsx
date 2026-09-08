@@ -11,7 +11,7 @@ import { type AssistantStep, type AssistantTurn, api, type CreditBalance } from 
  * working them. Two things follow from that and shape everything here.
  *
  * The steps are shown, always. A model that quietly created a mandate is not a
- * faster way to use this product, it is a worse one — the whole premise is that
+ * faster way to use this product, it is a worse one - the whole premise is that
  * you can see what was done on your behalf. Anything that changed something is
  * marked, so "looked at four things" and "created a mandate" never read alike.
  *
@@ -94,8 +94,8 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
         await loadCredits()
       } catch (error) {
         const message = (error as Error).message
-        // The API's refusals are written to be acted on — "Fast mode needs at
-        // least 200 points and you have 0" — so they are shown, not replaced.
+        // The API's refusals are written to be acted on - "Fast mode needs at
+        // least 200 points and you have 0" - so they are shown, not replaced.
         if (/points|configured/i.test(message)) setUnavailable(message)
         else say(message)
         setMessages(messages)

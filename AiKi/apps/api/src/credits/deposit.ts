@@ -23,10 +23,10 @@ import type { CreditStore } from './store.js'
  * Four things are checked, and each one is a way this would otherwise be free
  * money:
  *
- *   the transaction succeeded    — a reverted transfer moved nothing
- *   the token is the one we take — any ERC-20 can emit a Transfer event
- *   the recipient is the treasury— otherwise a payment to anyone counts
- *   the sender is the depositor  — otherwise somebody else's payment counts
+ *   the transaction succeeded    - a reverted transfer moved nothing
+ *   the token is the one we take - any ERC-20 can emit a Transfer event
+ *   the recipient is the treasury- otherwise a payment to anyone counts
+ *   the sender is the depositor  - otherwise somebody else's payment counts
  *
  * The hash is then the ledger's reference, and a unique index makes crediting
  * the same payment twice a constraint violation rather than a doubling.

@@ -1,4 +1,4 @@
-# Adjacent Standards — What AiKi Must Not Reinvent
+# Adjacent Standards - What AiKi Must Not Reinvent
 
 **Research verdict:** SOLID
 **Verified:** 18 August 2026
@@ -16,25 +16,25 @@
 |---|---|:---:|:---:|
 | **USDT (BSC)** | `0x55d398326f99059fF775485246999027B3197955` | ❌ | ❌ |
 | **Binance-Peg USDC** | `0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d` | ❌ | ❌ |
-| FDUSD | — | ✅ | ✅ |
-| USD1 | — | ✅ | ✅ |
-| Permit2 | canonical address | ✅ live | — |
+| FDUSD | - | ✅ | ✅ |
+| USD1 | - | ✅ | ✅ |
+| Permit2 | canonical address | ✅ live | - |
 
 Every probe against USDT and Binance-Peg USDC **reverts with empty data**.
 
 ### Why this is architecturally decisive
 
-x402's `exact` scheme is built on **EIP-3009 `transferWithAuthorization`** — that is what makes the payment signable off-chain and settleable by a facilitator. **The dominant stablecoin on BSC does not implement it.**
+x402's `exact` scheme is built on **EIP-3009 `transferWithAuthorization`** - that is what makes the payment signable off-chain and settleable by a facilitator. **The dominant stablecoin on BSC does not implement it.**
 
 So one of the following must be true, and the x402 research now in flight must determine which:
 
-1. x402-on-BSC settles in a token that *does* support EIP-3009 — consistent with BNB Agent Studio settling in **`$U`** with "gasless transfers via EIP-3009" ([Agent Studio findings](../02-ecosystem/03-bnb-agent-studio.md)); or
+1. x402-on-BSC settles in a token that *does* support EIP-3009 - consistent with BNB Agent Studio settling in **`$U`** with "gasless transfers via EIP-3009" ([Agent Studio findings](../02-ecosystem/03-bnb-agent-studio.md)); or
 2. x402-on-BSC uses a different scheme; or
 3. x402-on-BSC does not really work with USDT and the ecosystem has quietly standardised on a niche asset.
 
 **Consequences either way:**
 
-- **AiKi cannot assume "pay in USDT" works with x402's exact scheme.** The Payment Router must model *token capability* — `supports_eip3009`, `supports_permit`, `requires_permit2` — as a first-class property, exactly as the MPSS's adapter philosophy prescribes for wallets.
+- **AiKi cannot assume "pay in USDT" works with x402's exact scheme.** The Payment Router must model *token capability* - `supports_eip3009`, `supports_permit`, `requires_permit2` - as a first-class property, exactly as the MPSS's adapter philosophy prescribes for wallets.
 - **Permit2 is the fallback** for USDT/USDC gasless approval, at the cost of a one-time approval to the Permit2 contract and a different signing flow.
 - **There is a UX consequence.** Telling a user "you'll pay in USDT" and then requiring FDUSD or `$U` is exactly the kind of hidden friction that kills a checkout. Settlement-asset capability belongs in the quote, visible before authorization.
 
@@ -42,9 +42,9 @@ This is a hard constraint discovered by probing, not a preference. It is filed a
 
 ---
 
-## 1. AP2 v0.2 — adopt this mandate model, do not invent one
+## 1. AP2 v0.2: the August mandate-model recommendation
 
-**This is the most important "do not rebuild" finding in the programme.**
+This section records the proposed authorization integration, not a requirement that every marketplace job use AP2. The [current product definition](../../docs/PRODUCT.md) separates buying work from granting spending authority.
 
 AP2 v0.2 (published **2026-04-28**) **threw away** the Intent / Cart / Payment mandate trio and the W3C Verifiable Credentials framing that all 2025 writing describes. Any AiKi design based on that material is building against a dead schema.
 
@@ -57,7 +57,7 @@ Two mandate types, as **SD-JWT VCs**, delivered via OpenID4VP `transaction_data`
 | Checkout Mandate | `mandate.checkout.1` / `mandate.checkout.open.1` |
 | Payment Mandate | `mandate.payment.1` / `mandate.payment.open.1` |
 
-### The open/closed delegation model — this is AiKi's mandate primitive
+### The open/closed delegation model - this is AiKi's mandate primitive
 
 - **Open mandate** = user-signed *constraint set* + agent `cnf` (confirmation) key
 - **Closed mandate** = agent-signed *concrete instance* within those constraints
@@ -68,17 +68,17 @@ And, verbatim from the Agent Authorization Framework:
 
 > "AP2 makes use of this model for the payments use case, but **the model could be applied more generally in the future**."
 
-**That is precisely AiKi's Mandate Builder, already specified by someone else, and explicitly designed to generalise beyond payments.**
+The August proposal was to reuse this model for AiKi's Mandate Builder. The quoted statement allows future generalisation; it does not establish that AP2 already covers every permission an AiKi job might require.
 
 ### The constraint algebra already exists
 
-`payment.budget` · `payment.amount_range` · `payment.agent_recurrence` · `payment.allowed_payees` · `payment.allowed_instrument` · `payment.allowed_pisp` · execution window · `checkout.line_items` — **with normative evaluation semantics.**
+`payment.budget` · `payment.amount_range` · `payment.agent_recurrence` · `payment.allowed_payees` · `payment.allowed_instrument` · `payment.allowed_pisp` · execution window · `checkout.line_items` - **with normative evaluation semantics.**
 
-Closed Payment Mandate carries `vct`, `transaction_id` (base64url hash of the checkout JWT), `payee`, `pisp`, `payment_amount` (ISO-4217 + **integer minor units** — 27999 = $279.99), `payment_instrument`, and chaining to a Checkout Mandate.
+Closed Payment Mandate carries `vct`, `transaction_id` (base64url hash of the checkout JWT), `payee`, `pisp`, `payment_amount` (ISO-4217 + **integer minor units** - 27999 = $279.99), `payment_instrument`, and chaining to a Checkout Mandate.
 
-Compare against the MPSS §14.1 policy dimensions — action allowlist, target allowlist, asset scope, value limits, time, approval mode. **The overlap is substantial.** AiKi's policy language should be a *superset* of AP2's algebra (AiKi additionally needs contract/selector allowlists and on-chain conditions like health-factor thresholds), expressed so that the payment-shaped subset **is** an AP2 mandate.
+Compare against the MPSS §14.1 policy dimensions - action allowlist, target allowlist, asset scope, value limits, time, approval mode. **The overlap is substantial.** AiKi's policy language should be a *superset* of AP2's algebra (AiKi additionally needs contract/selector allowlists and on-chain conditions like health-factor thresholds), expressed so that the payment-shaped subset **is** an AP2 mandate.
 
-**→ Recommendation (labelled as such): adopt AP2's open/closed model and constraint vocabulary as the basis for ADR-005 (policy language), extending rather than replacing it.** Rationale: it is a real, versioned, normatively-specified schema from the ecosystem AiKi wants interoperability with; inventing a parallel one means carrying both the maintenance cost of a standard *and* the integration cost of theirs — the exact NIH failure the charter warned about.
+**→ Recommendation (labelled as such): adopt AP2's open/closed model and constraint vocabulary as the basis for ADR-005 (policy language), extending rather than replacing it.** Rationale: it is a real, versioned, normatively-specified schema from the ecosystem AiKi wants interoperability with; inventing a parallel one means carrying both the maintenance cost of a standard *and* the integration cost of theirs - the exact NIH failure the charter warned about.
 
 ### AP2 ships x402 as a first-class rail
 
@@ -90,7 +90,7 @@ Sample flows cover Human-Present Cards, **Human-Present x402**, Human-Not-Presen
 
 ## 2. Execution Receipts already have an IETF standard
 
-The MPSS proposes an AiKi-defined Execution Receipt schema. **Do not define a new format.**
+The MPSS proposed an AiKi-defined Execution Receipt schema. This section records the August recommendation to reuse existing standards for signed execution receipts. It does not assert that AiKi currently implements them or that every delivery and buyer review must use this format.
 
 | Standard | RFC | Status |
 |---|---|---|
@@ -104,9 +104,9 @@ Together these already provide the full receipt/attestation vocabulary: signed s
 **→ AiKi's Execution Receipt should be a *profile* of SCITT/COSE Receipts, not a new format.**
 
 Why this is strictly better than inventing one:
-- Receipts become verifiable by third parties with off-the-shelf tooling — which is the entire point of "prove what happened."
+- Receipts become verifiable by third parties with off-the-shelf tooling - which is the entire point of "prove what happened."
 - Transparency-log inclusion proofs give append-only guarantees that match [HP-4](../00-method/02-hard-problems.md)'s evidence-integrity requirement, without building a bespoke log.
-- AP2's own Receipt types (Checkout Receipt, Payment Receipt — signed, bound by hash to the closed Mandate) give the commerce-layer analogue to align with.
+- AP2's own Receipt types (Checkout Receipt, Payment Receipt - signed, bound by hash to the closed Mandate) give the commerce-layer analogue to align with.
 
 AP2's Payment Receipt shape, for reference: `status` (Success|Error), `iss`, `iat`, `reference` (*"the hash of the closed Mandate that this receipt is binding to"*), `payment_id`, `psp_confirmation_id`, `network_confirmation_id`.
 
@@ -114,7 +114,7 @@ AP2's Payment Receipt shape, for reference: `status` (Success|Error), `iss`, `ia
 
 ---
 
-## 3. A2A v1.0.1 — the transport/discovery layer
+## 3. A2A v1.0.1 - the transport/discovery layer
 
 Released **2026-05-28** (v1.0.0 was 2026-03-12) under the **Linux Foundation**, 150+ supporting organizations.
 
@@ -132,7 +132,7 @@ Required AgentCard fields: `name`, `description`, `supported_interfaces`, `versi
 
 ⚠️ That canonicalization procedure is easy to get subtly wrong. Removing default-valued properties before canonicalizing is unusual and will break naive implementations.
 
-### Task lifecycle — 9 enum values
+### Task lifecycle - 9 enum values
 
 ```
 TASK_STATE_UNSPECIFIED = 0
@@ -156,12 +156,12 @@ TASK_STATE_AUTH_REQUIRED = 8   interrupted
 
 ERC-8004 explicitly positions itself as the discovery/trust layer *below* A2A and MCP. Its registration file **references an A2A AgentCard by URL**; it does not embed or mirror the schema.
 
-- ERC-8004 registration file: 4 descriptive fields (`type`, `name`, `description`, `image` — explicitly for ERC-721 app compatibility) + `services` / `registrations` / `supportedTrust` / `x402Support` / `active`.
+- ERC-8004 registration file: 4 descriptive fields (`type`, `name`, `description`, `image` - explicitly for ERC-721 app compatibility) + `services` / `registrations` / `supportedTrust` / `x402Support` / `active`.
 - A2A AgentCard: 14 fields dominated by `capabilities`, `skills`, `securitySchemes`, `supportedInterfaces`, JWS signatures.
 
-**There is no formal convergence effort.** And ⚠️ **ERC-8004's draft still pins A2A version `"0.3.0"`** — a version superseded by v1.0.0 in March 2026. The standard references a stale version of its neighbour.
+**There is no formal convergence effort.** And ⚠️ **ERC-8004's draft still pins A2A version `"0.3.0"`** - a version superseded by v1.0.0 in March 2026. The standard references a stale version of its neighbour.
 
-**→ AiKi must resolve both** — chain identity from ERC-8004, capability detail from the A2A card — and reconcile them. Where they disagree, the chain-anchored fact wins for identity and the card wins for capability, with the disagreement itself recorded as evidence. Card JWS verification is a genuine Class-A/C signal that almost nobody checks.
+**→ For a provider publishing both records, AiKi must reconcile them:** chain identity from ERC-8004 and declared capability detail from the A2A card. Where they disagree, the chain-anchored fact wins for identity and the card wins for its declared capabilities, with the disagreement recorded as evidence. This is an integration recommendation, not a requirement that every human or agent provider register on-chain or publish an A2A card. A signed capability claim still needs separate evidence that the service can do the work.
 
 ---
 
@@ -172,7 +172,7 @@ ERC-8004 explicitly positions itself as the discovery/trust layer *below* A2A an
 | **UCP** (Google Universal Commerce Protocol) | Launched **2026-01-11**, Apache-2.0, 3,314★, releases `v2026-01-11` / `v2026-01-23` / `v2026-04-08` | **The commerce layer AP2 secures.** Co-developed with Shopify, Etsy, Wayfair, Target, Walmart. **Amazon, Meta, Microsoft, Salesforce, Stripe joined the Tech Council 2026-04-24.** |
 | **ACP** (OpenAI + Stripe) | Alive, API version **`2026-04-17`**, 1,513★ | Competing, **card/PSP-centric**. No crypto rail, no agent-identity layer. Version `2026-01-30` deprecated. |
 
-**→ Neither is a direct AiKi competitor** — both are retail/checkout commerce, not delegated-work marketplaces. But **UCP + AP2 is consolidating into the default Western agent-commerce stack**, and AP2's mandate model is the piece AiKi genuinely overlaps with. Aligning there buys optionality; ignoring it means AiKi's mandates are a dialect nobody else speaks.
+**→ Neither is a direct AiKi competitor** - both are retail/checkout commerce, not delegated-work marketplaces. But **UCP + AP2 is consolidating into the default Western agent-commerce stack**, and AP2's mandate model is the piece AiKi genuinely overlaps with. Aligning there buys optionality; ignoring it means AiKi's mandates are a dialect nobody else speaks.
 
 ---
 
@@ -181,12 +181,12 @@ ERC-8004 explicitly positions itself as the discovery/trust layer *below* A2A an
 | Finding | Decision |
 |---|---|
 | **BSC USDT + Binance-Peg USDC support neither EIP-3009 nor permit** | **Hard constraint.** Payment Router models token capability explicitly. Permit2 as fallback. Settlement asset must be visible in the quote. |
-| FDUSD and USD1 support both | Candidate settlement assets — check liquidity before committing. |
+| FDUSD and USD1 support both | Candidate settlement assets - check liquidity before committing. |
 | **AP2 v0.2 replaced its entire mandate model** | Any design from 2025 AP2 writing is wrong. |
 | **AP2 open/closed mandates + constraint algebra** | **Adopt as the basis of ADR-005.** AiKi's policy language = superset; the payment-shaped subset *is* an AP2 mandate. |
 | AP2 Receipt binds by hash to the closed Mandate | Adopt the pattern: receipt cryptographically bound to the authority it acted under. |
 | **SCITT RFC 9943 + COSE Receipts RFC 9942** | **Execution Receipt = a profile of these, not a new format.** Third-party verifiable; transparency-log inclusion proofs satisfy HP-4. |
-| A2A v1.0.1, card at `/.well-known/agent-card.json`, detached JWS over RFC 8785 | Verify card signatures — a real trust signal nobody checks. Mind the canonicalization subtleties. |
+| A2A v1.0.1, card at `/.well-known/agent-card.json`, detached JWS over RFC 8785 | Verify signatures when ingesting these cards. Mind the canonicalization subtleties; a signature is not a capability test. |
 | A2A `A2A-Extensions` header | The extension hook if AiKi exposes an A2A interface. |
 | ERC-8004 references A2A but **pins stale v0.3.0** | Resolve both; reconcile; record disagreement as evidence. |
 | UCP+AP2 consolidating; ACP card-centric | Not direct competitors. Align with AP2 for optionality. |

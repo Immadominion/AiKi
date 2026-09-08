@@ -4,8 +4,8 @@ import postgres from 'postgres'
  * The rows that make an agent wake up.
  *
  * A mandate is permission and a job is a unit of work; neither causes anything
- * to happen on its own. A watch is the standing instruction — keep looking at
- * this position, on this cadence — and it is what separates an agent you hired
+ * to happen on its own. A watch is the standing instruction - keep looking at
+ * this position, on this cadence - and it is what separates an agent you hired
  * from a button you have to press.
  */
 
@@ -164,13 +164,13 @@ export class PostgresWatchStore implements WatchStore {
      * A CTE rather than `WHERE job_id IN (SELECT ... FOR UPDATE SKIP LOCKED)`:
      * this is the form whose locking behaviour is actually specified, and the
      * cost of being wrong here is a position repaid twice. Both orderings are
-     * covered — a second scheduler running at the same moment skips the locked
+     * covered - a second scheduler running at the same moment skips the locked
      * row and claims nothing, and one arriving after the first commits sees the
      * check time just written and is excluded by the staleness test.
      *
      * The rows come back with the check time already set to now, which is what
      * they mean: this pass is looking at them. Nothing downstream needs the
-     * previous value — the cooldown that stops a double repayment reads
+     * previous value - the cooldown that stops a double repayment reads
      * last_acted_at, which this does not touch.
      */
     const rows = await this.sql<WatchRow[]>`

@@ -22,7 +22,7 @@ interface Group {
 /**
  * Everything you have ever asked, and what came of it.
  *
- * Not a transcript of chat turns — an ask is a unit of work, so each row carries
+ * Not a transcript of chat turns - an ask is a unit of work, so each row carries
  * the outcome next to the words. That is the difference between a history you
  * scroll and a history you can act on: every row here is resumable.
  */
@@ -157,7 +157,7 @@ export function HistoryRail({ onResume }: { onResume: (ask: string) => void }) {
         <span className="text-[12px] font-semibold text-[#767676]">History</span>
       </button>
 
-      {/* Collapsed: an edge tab, on the same pattern as the MOCK control —
+      {/* Collapsed: an edge tab, on the same pattern as the MOCK control -
           flush to the side rather than floating with a margin, and parked low
           rather than centred, since centred is exactly where the shard cards
           sit. A rail hovering mid-screen was landing on top of them. */}

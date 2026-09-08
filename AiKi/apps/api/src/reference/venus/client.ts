@@ -61,8 +61,8 @@ function position(market: VenusMarketSnapshot): {
   /*
    * The liquidation threshold, not the collateral factor.
    *
-   * A health factor answers one question — how close is this position to being
-   * taken — and the number that decides that is the threshold. Using the factor
+   * A health factor answers one question - how close is this position to being
+   * taken - and the number that decides that is the threshold. Using the factor
    * instead understates the health of every position where the two differ, and
    * worse, it is then cross-checked below against `getAccountLiquidity`, which
    * Venus computes from the threshold. The two disagree, the assessment reports
@@ -159,8 +159,8 @@ export interface VenusReader {
  * Where Venus actually is, per chain.
  *
  * Deliberately its own small map rather than an entry in the chain-wide address
- * book. Venus has a testnet deployment; most of what that book holds — the
- * ERC-8004 registry, the commerce contracts — does not, and inventing addresses
+ * book. Venus has a testnet deployment; most of what that book holds - the
+ * ERC-8004 registry, the commerce contracts - does not, and inventing addresses
  * to satisfy the shape of a config object is how a zero address ends up looking
  * configured and reading nothing.
  */

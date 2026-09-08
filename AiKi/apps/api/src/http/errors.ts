@@ -4,7 +4,7 @@
  * The global handler used to return `error.message` verbatim with a 400 on every
  * throw. Deliberate validation messages read well that way, but the same path
  * carried whatever a Postgres driver, an RPC client or a failed fetch had to say
- * — connection targets, hostnames, driver internals — straight to the caller, and
+ * - connection targets, hostnames, driver internals - straight to the caller, and
  * labelled genuine faults as the caller's fault.
  *
  * A message is only shown when it was written to be shown. Everything else gets

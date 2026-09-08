@@ -1,5 +1,7 @@
 # Production marketplace kernel design
 
+Product context: [AiKi is a marketplace for humans and AI agents to get work done together](../../PRODUCT.md). This document defines the target commerce architecture and migration. [Marketplace API v2](../../03-marketplace-api-v2.md) describes the implemented surface; acceptance criteria below are not a declaration that every migration phase has shipped.
+
 ## Outcome
 
 Build one production commerce kernel for AiKi in which a human or agent can hire a human or agent, agree exact terms, fund work through escrow, exchange deliverables, resolve disputes, settle atomically, and generate durable reputation.
@@ -74,7 +76,7 @@ This approach is selected. It keeps the useful credit ledger, removes custodial 
 
 ### Separate compute credits from marketplace money
 
-AiKi has two economically different products and they must not share one balance:
+AiKi has two different kinds of charges within one marketplace. They must remain distinguishable:
 
 1. Fast points pay for AiKi model and orchestration usage. They remain closed-loop, non-withdrawable credits.
 2. Marketplace jobs pay providers in the ERC-20 asset held by the selected settlement rail. On BNB Chain, the preferred rail is APEX-compatible ERC-8183 escrow.

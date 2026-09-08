@@ -97,7 +97,7 @@ const score = (keys: string[], label: string, q: string) => {
  *
  * The last item is always "ask AiKi" with whatever you typed, so a query the
  * palette cannot resolve still goes somewhere useful instead of dead-ending in
- * an empty list. Nothing here is a search over content — it is navigation, and
+ * an empty list. Nothing here is a search over content - it is navigation, and
  * pretending otherwise would make it slower to trust.
  */
 const PaletteCtx = createContext<() => void>(() => {})

@@ -16,7 +16,7 @@ import type { Watch, WatchStore } from './store.js'
  * guardian rather than set a price alert.
  *
  * A pass never throws. One unreachable RPC, one mandate that turns out to be
- * revoked, one position the reader cannot parse — none of those may stop the
+ * revoked, one position the reader cannot parse - none of those may stop the
  * other watches from being looked at, because a runner that dies on the first
  * bad row stops being a runner. Each watch's failure is recorded against that
  * watch and the sweep moves on.

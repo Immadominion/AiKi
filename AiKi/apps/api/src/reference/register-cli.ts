@@ -74,7 +74,7 @@ const wallet = createWalletClient({ account, chain: bsc, transport: http(rpcUrl)
 /**
  * Refuse to write a URL the host does not serve.
  *
- * The manifest cannot return 200 yet — it has no id to name — but it must return
+ * The manifest cannot return 200 yet - it has no id to name - but it must return
  * the 503 that says "this route exists and is waiting for an identity". A 404 here
  * means a path typo, and a typo written on chain is a dead agent in the registry:
  * exactly the failure this product was built to measure in other people's agents.
@@ -98,7 +98,7 @@ console.log(`registrar   ${account.address}`)
 console.log(`balance     ${formatEther(balance)} BNB`)
 console.log(`registry    ${BSC_MAINNET.contracts.erc8004Identity}`)
 console.log(`base        ${base}`)
-console.log(dryRun ? 'mode        DRY RUN — nothing will be sent\n' : 'mode        LIVE\n')
+console.log(dryRun ? 'mode        DRY RUN - nothing will be sent\n' : 'mode        LIVE\n')
 
 const results: { label: string; env: string; agentId: string; txHash: string }[] = []
 

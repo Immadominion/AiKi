@@ -7,7 +7,7 @@
  *  - D1 (prober/detect.ts) can only run if the declared endpoint carries an
  *    identifier the prober can vary, and `d1Variants` will only vary the LAST PATH
  *    SEGMENT when that segment is all digits. An endpoint that ends in anything else
- *    is unprobeable, and `classify` correctly refuses to call it LIVE — it returns
+ *    is unprobeable, and `classify` correctly refuses to call it LIVE - it returns
  *    DEGRADED with rule `D1-inapplicable`. So the endpoint must end in the agent id.
  *
  *  - D8 needs the on-chain id echoed in `registrations[]` and again at

@@ -1,5 +1,7 @@
 # AiKi Landing Sticker Illustration Pass
 
+Historical illustration brief from 1 September 2026. Later founder direction selected orange mascots, a larger hero headline and layered mascot/type composition. The blue-primary and small, non-overlapping hero instructions below are superseded. Preserve the current approved assets and layout. [PRODUCT.md](../../PRODUCT.md) defines the marketplace story these illustrations support.
+
 ## Goal
 
 Add a coherent family of fun AiKi agent illustrations to the approved landing page and remove its beige cast without changing the page structure, copy, camera path, scroll behavior, section sizing, or existing interaction model.

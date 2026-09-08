@@ -1,8 +1,18 @@
-# AiKi — Decision Register
+# AiKi - Decision Register
 
-**Purpose:** separate what is *already decided* from what is *still open*, so that no agent, engineer or collaborator silently promotes a guess into a commitment.
+**Purpose:** preserve the decisions and open questions recorded from the August 2026 founding documents. The tables below describe that record, not the current implementation or an unchanged roadmap.
 
 **Sources:** `docs/agent-commerce-master-product-system-spec.docx` (MPSS v0.1, 18 Aug 2026), `docs/initial_agent_context.md`, `docs/ideation.txt`, `docs/name-lore.txt`.
+
+References to `initial_agent_context.md` below mean the [archived 18 August version](../../../docs/archive/2026-08-18-initial-agent-context.md), not the current handoff at that original path.
+
+## Product-scope clarification, 8 September 2026
+
+The current [product definition](../../docs/PRODUCT.md) is: **AiKi is a marketplace for humans and AI agents to get work done together.** Its core is discovering and hiring, defining work, delivery, review, payment and handoffs between participants. Fast and Manual use the same marketplace.
+
+This clarification supersedes the product-priority implications of rows 1.5 and 1.6, the mandatory-suite reading of section 3, and the evidence-first positioning in section 6. Probing, identity, budgets, scores and receipts are supporting systems. They do not define the product or make Arena and the validator role mandatory before ordinary work can be completed. A delivery receipt does not replace buyer review.
+
+The original entries remain below so the change is visible. A `LOCKED` marker means locked in the source document at that time; it is not authority to override the current product definition. Technical mechanisms and ADRs still need their own implementation decisions and verification.
 
 **Legend**
 
@@ -18,8 +28,8 @@
 
 | # | Item | State | Detail |
 |---|---|---|---|
-| 1.1 | Name is **AiKi**, pronounced EYE-kee | 🔒 | Hausa *aiki* — work, deed, job, craft, duty; verb sense *to send / to command*. Not an acronym; do not back-form one. |
-| 1.2 | Tagline direction: *"AiKi — put agents to work."* | 🧭 | Under consideration, not final. |
+| 1.1 | Name is **AiKi**, pronounced EYE-kee | 🔒 | Hausa *aiki* - work, deed, job, craft, duty; verb sense *to send / to command*. Not an acronym; do not back-form one. |
+| 1.2 | Tagline direction: *"AiKi - put agents to work."* | 🧭 | Under consideration, not final. |
 | 1.3 | Category **today**: agent marketplace / agent commerce platform | 🔒 | |
 | 1.4 | Category **long-term**: infrastructure for delegated autonomous work | 🔒 | "Agent" is one possible worker; the durable abstraction is *delegated work*. Do not hard-code `agent = BSC DeFi bot` into the core model. |
 | 1.5 | Product loop: **intent → evidence-backed selection → constrained authority → execution → verifiable receipt** | 🔒 | The single sentence that must survive everything: *Find the right agent. Know it works. Give it exactly enough power. Let it execute. Prove what happened.* |
@@ -48,7 +58,7 @@ All 🔒 as *concepts*; their internals are ❓.
 | **Agent Arena** | Independent benchmark harness producing evidence not controlled by providers | task definitions, replay determinism, evaluator model |
 | **Agent Checkout / Mandate Builder** | Authority granted as a readable *policy*, never a vague "connect wallet" | policy DSL, compilation target |
 | **Mission Control** | The operating surface after activation; AiKi does not hand the user off | event model, streaming transport |
-| **Agent Workspace** | Persistent threads/artifacts/context per hired agent | — |
+| **Agent Workspace** | Persistent threads/artifacts/context per hired agent | - |
 | **Workflow Studio** | Typed multi-agent composition with per-step policy and aggregate ceiling | DAG format, versioning semantics |
 | **Receipts, not reviews** | Every material job yields a verifiable receipt that feeds the evidence graph | signing, anchoring, schema |
 
@@ -56,16 +66,16 @@ All 🔒 as *concepts*; their internals are ❓.
 
 All 🔒.
 
-1. Evidence over claims — every material trust assertion traceable to a source, observation, benchmark, transaction or attestation.
-2. Intent over taxonomy — categories aid browsing; intent + constraints drive matching.
+1. Evidence over claims - every material trust assertion traceable to a source, observation, benchmark, transaction or attestation.
+2. Intent over taxonomy - categories aid browsing; intent + constraints drive matching.
 3. Least authority by default.
-4. Receipts everywhere — anything that spends value, changes permission, executes work, updates reputation or affects ranking is inspectable after the fact.
+4. Receipts everywhere - anything that spends value, changes permission, executes work, updates reputation or affects ranking is inspectable after the fact.
 5. Humans and machines are sibling first-class clients over one canonical backend (UI, API, MCP, SDK).
-6. Protocol-open — no product logic depending on one registry/wallet/runtime/chain.
+6. Protocol-open - no product logic depending on one registry/wallet/runtime/chain.
 7. Operational truth beats static metadata.
-8. Explain ranking — decomposable into reason codes, never "AI picked this".
+8. Explain ranking - decomposable into reason codes, never "AI picked this".
 9. Safety is product, not compliance. Caps, expiry, simulation, approvals, revoke must be excellent UX.
-10. Do not hide failure — failed jobs and degraded endpoints stay in the evidence history.
+10. Do not hide failure - failed jobs and degraded endpoints stay in the evidence history.
 11. Score and confidence are separate quantities. Sparse evidence must never render as false precision.
 12. Raw observations are append-only; corrections supersede rather than mutate.
 
@@ -82,7 +92,7 @@ All 🔒.
 | MCP | A machine surface, not the product. Claude integration is interesting as a *client of AiKi*, not as "Connect Claude" the feature. | 🔒 |
 | PancakeSwap / Venus | Initial DeFi execution + evidence environment. | 🔒 |
 
-## 6. The empirical premise the whole thesis rests on
+## 6. The evidence-first premise recorded in August
 
 🧭 **DIRECTION, pending verification (Group C1).**
 
@@ -96,17 +106,17 @@ This is load-bearing. It is the justification for the entire evidence layer and 
 
 **It must be independently verified before it is used in any external-facing claim.** If the numbers are wrong, the thesis still stands on first principles (identity ≠ capability), but the marketing claim does not.
 
-## 7. Open decisions — must be labelled as recommendations
+## 7. Open decisions - must be labelled as recommendations
 
 From `initial_agent_context.md` §24. Nothing here is settled; anyone proposing an answer must mark it as a recommendation.
 
-**Product ❓** — final information architecture; consumer navigation; chat vs direct manipulation ratio; workflow authoring UX; dispute model; marketplace take rate; Proof Score formula; ranking weights.
+**Product ❓** - final information architecture; consumer navigation; chat vs direct manipulation ratio; workflow authoring UX; dispute model; marketplace take rate; Proof Score formula; ranking weights.
 
-**Technical ❓** — frontend framework; backend language(s); database; queue/event infrastructure; chain indexing strategy; telemetry stack; custody/key provider mix; secret vault; LLM provider strategy; mobile timing.
+**Technical ❓** - frontend framework; backend language(s); database; queue/event infrastructure; chain indexing strategy; telemetry stack; custody/key provider mix; secret vault; LLM provider strategy; mobile timing.
 
-**Brand ❓** — final logo; complete colour system; typography; icon language; mascot/illustration; final tagline. *(Current exploration: chunky rounded wordmark, retro-sticker energy, thick dark outline, cream fill, bright orange dominant, yellow "AGENT MARKET" badge. This is a direction for the mark — it is explicitly **not** a commitment that every UI surface looks like a comic sticker.)*
+**Brand ❓** - final logo; complete colour system; typography; icon language; mascot/illustration; final tagline. *(Current exploration: chunky rounded wordmark, retro-sticker energy, thick dark outline, cream fill, bright orange dominant, yellow "AGENT MARKET" badge. This is a direction for the mark - it is explicitly **not** a commitment that every UI surface looks like a comic sticker.)*
 
-**Business ❓** — provider verification tiers; enterprise pricing; API monetization; insurance/staking; dispute economics.
+**Business ❓** - provider verification tiers; enterprise pricing; API monetization; insurance/staking; dispute economics.
 
 ## 8. Architecture Decision Records still to be written
 
@@ -144,10 +154,10 @@ The MPSS §34 names these. Each must be written before its subject becomes hard 
 
 ## 10. Known deadline
 
-🔒 **9 September 2026** — Build the Era submission. Judging 9–23 Sep; winner announced 5 Nov 2026. *(Dates per `initial_agent_context.md` §3.1; being independently verified — Group A/D research.)*
+🔒 **9 September 2026** - Build the Era submission. Judging 9–23 Sep; winner announced 5 Nov 2026. *(Dates per `initial_agent_context.md` §3.1; being independently verified - Group A/D research.)*
 
 A build-in-public sprint into that date is 🧭 intended but unplanned; it is explicitly *not* to read as "Day 7 building for the BNB hackathon 🚀" content, but as a real company/product story.
 
 ---
 
-**Maintenance rule:** when research resolves an ❓ or contradicts a 🧭, update this file in the same change that acts on the finding. This register is the reason we will not drift.
+**Maintenance rule:** append dated corrections or link the decision that supersedes an entry. Do not silently rewrite historical commitments as though they were the original decision. Current product scope belongs in [PRODUCT.md](../../docs/PRODUCT.md).

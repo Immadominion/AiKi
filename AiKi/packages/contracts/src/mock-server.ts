@@ -5,7 +5,7 @@
  *
  * This exists so apps/web is never blocked on apps/api. Every endpoint in
  * docs/01-api-contract.md answers here with realistic data, including the
- * states that matter most — thin evidence, impostor endpoints, statistically
+ * states that matter most - thin evidence, impostor endpoints, statistically
  * indistinguishable comparisons, policy denials and stale data.
  *
  * Query flags for exercising hard states:
@@ -130,7 +130,7 @@ app.get('/v1/jobs/:id', (c) => c.json(JOB))
 
 /**
  * SSE stream. Replays the fixture event sequence with a small delay so Mission
- * Control can be built against a genuinely live-feeling stream — including the
+ * Control can be built against a genuinely live-feeling stream - including the
  * policy DENY and the approval request, which are the two events that matter.
  */
 app.get('/v1/jobs/:id/events', () => {

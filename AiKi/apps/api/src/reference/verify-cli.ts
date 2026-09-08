@@ -3,7 +3,7 @@
  *
  * The product's whole claim is that it tests agents instead of listing them. The
  * first agents that claim has to survive are ours, and the only honest way to
- * check is to read the identity from the chain — not from our config — resolve
+ * check is to read the identity from the chain - not from our config - resolve
  * whatever the registry actually points at, and run the same rules we run on
  * strangers. Anything less is marking our own homework.
  *
@@ -56,17 +56,17 @@ for (const agentId of ids) {
   const ok = result.verdict.state === 'LIVE' && result.reciprocal?.verified && identityMatches
   if (!ok) failures += 1
 
-  console.log(`\n${ok ? 'PASS' : 'FAIL'}  agent ${agentId} — ${registration.manifest?.name ?? '?'}`)
+  console.log(`\n${ok ? 'PASS' : 'FAIL'}  agent ${agentId} - ${registration.manifest?.name ?? '?'}`)
   console.log(`  registration   ${registration.status} (${registration.scheme})  ${uri}`)
   console.log(`  endpoint       ${services[0]?.endpoint ?? 'none declared'}`)
   console.log(`  verdict        ${result.verdict.state} via ${result.verdict.rule}`)
   console.log(`                 ${result.verdict.detail}`)
   console.log(
-    `  D8 reciprocal  ${result.reciprocal?.verified ? 'verified' : 'NOT verified'} — ${result.reciprocal?.detail ?? 'not checked'}`,
+    `  D8 reciprocal  ${result.reciprocal?.verified ? 'verified' : 'NOT verified'} - ${result.reciprocal?.detail ?? 'not checked'}`,
   )
   console.log(`  D1 probes      ${result.samples.map((s) => `${s.label}:${s.status}`).join('  ')}`)
   // The bytes must differ across ids, or the endpoint is not reading the question
-  // and D1 would call it an impostor — correctly.
+  // and D1 would call it an impostor - correctly.
   const hashes = new Set(result.samples.map((s) => s.bodyHash))
   console.log(`  distinct bodies ${hashes.size} of ${result.samples.length}`)
   if (!identityMatches)

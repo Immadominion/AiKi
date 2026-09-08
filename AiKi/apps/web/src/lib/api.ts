@@ -2,7 +2,7 @@
  * API client for the AiKi backend.
  *
  * Points at the mock server by default (`pnpm mock` → :4700), so the frontend is
- * never blocked on apps/api existing. Same shapes either way — the contract is
+ * never blocked on apps/api existing. Same shapes either way - the contract is
  * the seam, and both sides build against it.
  */
 
@@ -357,7 +357,7 @@ export const api = {
     }),
   /**
    * One turn of Fast mode. The whole conversation goes up each time, because the
-   * server holds no session state for it — a turn is priced from the tokens it
+   * server holds no session state for it - a turn is priced from the tokens it
    * actually reads, so what is sent is what is paid for and both sides can see it.
    */
   assistant: (messages: { role: 'user' | 'assistant'; content: string }[]) =>

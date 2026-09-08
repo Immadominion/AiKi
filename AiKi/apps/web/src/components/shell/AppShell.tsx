@@ -10,7 +10,7 @@ import { TopBar } from './TopBar'
 /**
  * The app frame.
  *
- * On a phone the sidebar is a drawer rather than a column — at 390px a 200px
+ * On a phone the sidebar is a drawer rather than a column - at 390px a 200px
  * sidebar leaves nothing to look at. The collapse preference is a desktop idea
  * and is deliberately ignored there: the drawer is always full width when open,
  * because a 60px rail of glyphs is worse on touch than no rail at all.

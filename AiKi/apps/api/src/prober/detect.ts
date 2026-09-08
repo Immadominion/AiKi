@@ -25,7 +25,7 @@ export interface DeclaredService {
 
 export interface ProbeVerdict {
   state: LivenessState
-  /** Which rule decided it, e.g. "D1" — kept for provenance and auditability. */
+  /** Which rule decided it, e.g. "D1" - kept for provenance and auditability. */
   rule: string
   detail: string
   evidence?: Record<string, unknown>
@@ -38,7 +38,7 @@ const md5 = (s: string) => createHash('md5').update(s).digest('hex')
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * D2 — reject unexpanded URI templates before they enter the index.
+ * D2 - reject unexpanded URI templates before they enter the index.
  *
  * 13 agents in our sample published the literal string
  * `https://…/a2a/agents/{agentId}/card` on-chain, never interpolated. All 404.
@@ -57,7 +57,7 @@ export function d2_placeholderUrl(endpoint: string): ProbeVerdict | null {
 }
 
 /**
- * D3 — a declared service with stdio transport is real work, but it is not
+ * D3 - a declared service with stdio transport is real work, but it is not
  * remotely callable. A distinct state from "live" and from "broken".
  */
 export function d3_notRemote(service: DeclaredService): ProbeVerdict | null {
@@ -65,13 +65,13 @@ export function d3_notRemote(service: DeclaredService): ProbeVerdict | null {
   return {
     state: 'NOT_REMOTE',
     rule: 'D3',
-    detail: 'Service declares stdio transport — it is a local process, not a network endpoint.',
+    detail: 'Service declares stdio transport - it is a local process, not a network endpoint.',
     evidence: { transport: service.transport, name: service.name },
   }
 }
 
 /**
- * D4 — a `data:` URI resolves with zero network I/O.
+ * D4 - a `data:` URI resolves with zero network I/O.
  *
  * 58.3% of sampled agents inline their registration file this way, so any metric of
  * "has a resolvable registration file" is trivially inflated. This does not make the
@@ -82,7 +82,7 @@ export function d4_isZeroCostUri(uri: string): boolean {
   return uri.startsWith('data:')
 }
 
-/** No service declared at all — 59.8% of the sample. */
+/** No service declared at all - 59.8% of the sample. */
 export function declaredOnly(services: DeclaredService[]): ProbeVerdict | null {
   if (services.length > 0) return null
   return {
@@ -93,7 +93,7 @@ export function declaredOnly(services: DeclaredService[]): ProbeVerdict | null {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// D1 — the impostor test
+// D1 - the impostor test
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ProbeSample {
@@ -109,7 +109,7 @@ export interface ProbeSample {
 }
 
 /**
- * D1 — probe with a valid id, a nonsense id and a non-numeric id.
+ * D1 - probe with a valid id, a nonsense id and a non-numeric id.
  * If every response is byte-identical, the endpoint is not agent-specific.
  *
  * Measured evidence: evoevo.ai returned MD5 2067c4db4f3e15616e96894ef3f89cc0 for
@@ -139,7 +139,7 @@ export function d1_impostorStatic(samples: ProbeSample[]): ProbeVerdict | null {
 }
 
 /**
- * D5 — HTTP 200 is not liveness. Require a machine-readable content type and a
+ * D5 - HTTP 200 is not liveness. Require a machine-readable content type and a
  * capability signal, not just a successful status code.
  *
  * A permissive HTML check would let every marketing page through, which is exactly
@@ -180,11 +180,11 @@ export function d5_capabilityHandshake(sample: ProbeSample, body: string): Probe
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// D8 — reciprocal proof
+// D8 - reciprocal proof
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * D8 — the strongest cheap signal in ERC-8004, and almost nobody uses it.
+ * D8 - the strongest cheap signal in ERC-8004, and almost nobody uses it.
  *
  * On-chain → file proves the owner's claim. file-at-domain → on-chain proves whoever
  * controls that domain acknowledges the agent. Together they defeat domain squatting.
@@ -230,14 +230,14 @@ export interface ClassifyInput {
   samples: ProbeSample[]
   primaryBody?: string
   /**
-   * D10 — how many OTHER agents in this sweep declare the identical endpoint URL.
+   * D10 - how many OTHER agents in this sweep declare the identical endpoint URL.
    * One URL serving many identities cannot be agent-specific, by construction.
    */
   sharedWithOtherAgents?: number
 }
 
 /**
- * D10 — shared endpoint.
+ * D10 - shared endpoint.
  *
  * If several distinct agents register the exact same URL with no distinguishing
  * parameter, that endpoint is not agent-specific no matter what it returns. Observed:
@@ -245,7 +245,7 @@ export interface ClassifyInput {
  * static {"facilitator":"0x..."} config blob identical for every input.
  *
  * This is the companion to D1. D1 catches "same bytes for different inputs"; D10
- * catches "same URL for different agents" — which D1 cannot see, because a URL with
+ * catches "same URL for different agents" - which D1 cannot see, because a URL with
  * no identifier in it has nothing to vary.
  */
 export function d10_sharedEndpoint(sharedWith: number): ProbeVerdict | null {
@@ -264,7 +264,7 @@ export function d10_sharedEndpoint(sharedWith: number): ProbeVerdict | null {
  * Apply the rules in order and return the first that fires.
  *
  * Order matters: cheap static rules run before network rules, and D1 runs before
- * any success classification — otherwise an impostor scores as LIVE, which is the
+ * any success classification - otherwise an impostor scores as LIVE, which is the
  * exact mistake every naive crawler makes.
  */
 export function classify(input: ClassifyInput): ProbeVerdict {
@@ -315,7 +315,7 @@ export function classify(input: ClassifyInput): ProbeVerdict {
 
   /**
    * CRITICAL: D1 needs at least two probes to mean anything. If the URL carried no
-   * identifier we could vary, D1 never ran — and defaulting to LIVE there is exactly
+   * identifier we could vary, D1 never ran - and defaulting to LIVE there is exactly
    * the mistake D1 exists to prevent. Absence of evidence is not evidence of
    * liveness, so this reports as DEGRADED with the reason stated.
    */

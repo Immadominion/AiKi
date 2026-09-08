@@ -9,8 +9,8 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
  * bearer token is.
  *
  * It fails CLOSED. With no token configured the endpoint refuses everything,
- * because the alternative — an open write path into a leaderboard AiKi presents
- * as measured — lets anyone publish a number under our name, which is the exact
+ * because the alternative - an open write path into a leaderboard AiKi presents
+ * as measured - lets anyone publish a number under our name, which is the exact
  * claim this product exists to make trustworthy.
  */
 export function requireIngestToken(request: FastifyRequest, reply: FastifyReply): boolean {

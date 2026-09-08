@@ -340,7 +340,7 @@ export function LandingExperience() {
           <div className={styles.heroInner}>
             {/* Instruments, top right: measurements pinned INSIDE the world,
                 the way a survey photograph carries its plate data. Mono, small,
-                and factual — the page's first claim is a number, not a slogan. */}
+                and factual - the page's first claim is a number, not a slogan. */}
             {/*
               A pipeline, not a stat block. These three numbers are one story
               told in order: a sweep ran, it probed this many, this many
@@ -682,7 +682,7 @@ export function LandingExperience() {
       </div>
 
       {/* Motion replaces the element's CSS transform, which is where this
-          dock's centring lived — so the centring rides through motion too. */}
+          dock's centring lived - so the centring rides through motion too. */}
       <motion.div
         className={styles.dock}
         initial={reducedMotion ? { x: '-50%' } : { opacity: 0, y: 16, x: '-50%' }}

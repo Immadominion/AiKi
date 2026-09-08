@@ -1,7 +1,7 @@
 /**
  * The demo dataset the design reference was drawn against.
  *
- * This is the seed the UI is built on until apps/api serves the real thing —
+ * This is the seed the UI is built on until apps/api serves the real thing -
  * same field names as the contract in @aiki/contracts, so swapping the source
  * is a change of import, not a rewrite of every screen.
  */

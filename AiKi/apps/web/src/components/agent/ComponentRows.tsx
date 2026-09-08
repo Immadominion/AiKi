@@ -5,7 +5,7 @@ import { formatScore } from '@/lib/format'
  * The five things the score is made of.
  *
  * Each row shows its own band, so a strong overall score built on one thin
- * component cannot hide inside the average — which is exactly the failure mode
+ * component cannot hide inside the average - which is exactly the failure mode
  * a single headline number has.
  */
 export function ComponentRows({ rows }: { rows: { label: string; measure: Measure }[] }) {

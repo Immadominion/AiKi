@@ -450,7 +450,7 @@ export function MandateBuilder({ subject }: { subject: HireSubject }) {
         </div>
 
         {/* The summary leads with the weakest link, because that is the honest
-            headline — an average would let three strong limits hide a soft one. */}
+            headline - an average would let three strong limits hide a soft one. */}
         <div className="xl:sticky xl:top-0 xl:self-start">
           <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] p-[18px]">
             <div className="text-muted text-[12.5px] font-semibold">
