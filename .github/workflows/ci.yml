@@ -26,9 +26,6 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: AiKi
 
     services:
       # The SQL is the only thing these tests cannot check without a database,
@@ -56,9 +53,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: AiKi/.nvmrc
+          node-version-file: .nvmrc
           cache: pnpm
-          cache-dependency-path: AiKi/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
 
@@ -87,7 +84,7 @@ jobs:
       # rather than deleting the tests.
       - name: Contract tests
         run: forge test
-        working-directory: AiKi/onchain
+        working-directory: onchain
 
       - name: Web build
         run: pnpm --filter @aiki/web build
