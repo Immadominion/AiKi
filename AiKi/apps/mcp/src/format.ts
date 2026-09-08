@@ -27,13 +27,13 @@ export function passportLine(p: ProjectedPassport): string {
   const score = p.proofScore.sampleSize
     ? `${p.proofScore.value.toFixed(2)} from ${p.proofScore.sampleSize} checks`
     : 'no score yet'
-  return `${name} (id ${p.agentId}) — ${p.liveness}, proof ${score}`
+  return `${name} (id ${p.agentId}) - ${p.liveness}, proof ${score}`
 }
 
 export function passportDetail(p: ProjectedPassport): string {
   const lines: string[] = []
-  lines.push(`${p.name ?? 'Unnamed agent'} — id ${p.agentId} on chain ${p.chainId ?? '?'}`)
-  lines.push(`Liveness: ${p.liveness}${p.livenessDetail ? ` — ${p.livenessDetail}` : ''}`)
+  lines.push(`${p.name ?? 'Unnamed agent'} - id ${p.agentId} on chain ${p.chainId ?? '?'}`)
+  lines.push(`Liveness: ${p.liveness}${p.livenessDetail ? ` - ${p.livenessDetail}` : ''}`)
   lines.push(
     `Last probed: ${p.lastProbeAt ?? 'never'}${p.p95LatencyMs ? ` · p95 ${p.p95LatencyMs}ms` : ''}`,
   )

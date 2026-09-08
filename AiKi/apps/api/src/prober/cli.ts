@@ -29,7 +29,7 @@ import {
  *
  * Uses many small offsets rather than a few large pages. A page returns adjacent
  * agents, and on a registry dominated by bulk minting those come from one batch and
- * are near-identical — so a few big pages is cluster sampling wearing the costume of
+ * are near-identical - so a few big pages is cluster sampling wearing the costume of
  * a random sample, and any percentage taken from it is falsely precise.
  */
 async function sampleAgents(target: number): Promise<ScanAgent[]> {
@@ -118,7 +118,7 @@ async function main() {
   const concurrency = Number(arg('--concurrency') ?? 8)
 
   if (!hasKey()) {
-    console.warn('⚠  EIGHT004SCAN_API_KEY not set — anonymous limits, this will be slow.\n')
+    console.warn('⚠  EIGHT004SCAN_API_KEY not set - anonymous limits, this will be slow.\n')
   }
 
   console.log(`Sampling ${target} agents…`)
@@ -169,7 +169,7 @@ async function main() {
 
   const line = '─'.repeat(60)
   console.log(`\n${line}`)
-  console.log(`PROBE SWEEP — ${results.length} agents, BSC chain ${CHAIN_ID}`)
+  console.log(`PROBE SWEEP - ${results.length} agents, BSC chain ${CHAIN_ID}`)
   console.log(`sample drawn from ${blocks} distinct 1k-id blocks`)
   console.log(line)
   for (const [state, n] of [...byState.entries()].sort((a, b) => b[1] - a[1])) {
@@ -183,7 +183,7 @@ async function main() {
   console.log(`  reciprocal proof (D8)   ${reciprocal}`)
   console.log(`  data: URI (D4)          ${zeroCost}`)
   if (blocks < 15) {
-    console.log('\n  ⚠ CLUSTERED SAMPLE — too few distinct registry locations to quote')
+    console.log('\n  ⚠ CLUSTERED SAMPLE - too few distinct registry locations to quote')
     console.log('    these as ecosystem percentages. Raise --limit.')
   }
   console.log(line)

@@ -4,7 +4,7 @@
  * Three loops on three clocks. Indexing and probing build the evidence: the
  * registry grows on chain continuously, while probing is a courtesy call to
  * someone else's server and belongs on a slower clock. The runner is the third
- * and it is a different kind of thing — it is the one that spends money, on
+ * and it is a different kind of thing - it is the one that spends money, on
  * behalf of people who are not watching.
  *
  * No loop lets a failed pass end the process. A prober that dies on one bad

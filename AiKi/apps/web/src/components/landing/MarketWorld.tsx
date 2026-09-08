@@ -28,10 +28,10 @@ import type { LandingAgentNode, LandingMarketAggregate } from './market-data'
  * The construction follows Infinitown's discipline: one strict grid, a small
  * set of building shapes rotated four ways, fog in EXACTLY the background
  * colour so the town dissolves before an edge can exist, a single warm sun
- * with soft shadows, and life delivered through small loops — couriers on
+ * with soft shadows, and life delivered through small loops - couriers on
  * their rounds, clouds dragging their shade across the roofs. Nothing glows.
  *
- * The models are KayKit's City Builder Bits (CC0 — see the manifest beside
+ * The models are KayKit's City Builder Bits (CC0 - see the manifest beside
  * them). Infinitown's own models are commercial and its mirrors on GitHub are
  * unlicensed rips, so what we take from it is the craft, and the craft is laid
  * over assets we are actually allowed to ship.
@@ -210,7 +210,7 @@ function planTown(answering: number) {
   }
 
   /*
-   * Pavement furniture — the layer that does half the visual work in
+   * Pavement furniture - the layer that does half the visual work in
    * Infinitown. Seeded like everything else, sparse enough to stay furniture.
    */
   const streetlights: KitPlacement[] = []
@@ -355,7 +355,7 @@ function surfaceProfile(path: string): SurfaceProfile {
  * A glTF turned into instanceable parts.
  *
  * World transforms are baked into cloned geometry, then the whole model is
- * normalised — centred, grounded at y=0, scaled to a target size — so the
+ * normalised - centred, grounded at y=0, scaled to a target size - so the
  * per-instance matrix stays a plain place-rotate-scale. `footprint` normalises
  * by the x/z extent (buildings, cars); `max` by the largest extent, which
  * behaves for tall thin things like streetlights.
@@ -575,7 +575,7 @@ function Ground({ plinths }: { plinths: KitPlacement[] }) {
   return (
     <group>
       {/* One vast sheet of the page's own paper. With fog and clear colour
-          matched to it, the world has no edge — only distance. */}
+          matched to it, the world has no edge - only distance. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[240, 240]} />
         <meshStandardMaterial color={CANVAS} roughness={1} />
@@ -660,7 +660,7 @@ interface FleetUnit {
 }
 
 /**
- * Vehicles that actually drive. The delivery rovers are the agents at work —
+ * Vehicles that actually drive. The delivery rovers are the agents at work -
  * KayKit's spacetruck with a parcel on the bed, doing their rounds whether or
  * not anyone is watching. The cars are through-traffic, Infinitown's oldest
  * source of life. Both are the same instanced-kit machinery as the buildings;
@@ -762,7 +762,7 @@ const CLOUDS: { x: number; z: number; y: number; scale: number; speed: number }[
 /**
  * Clouds exist for their shadows. A soft patch of shade sliding over the roofs
  * is most of what makes the town read as a place with weather rather than a
- * render — Infinitown's oldest trick, and its best one.
+ * render - Infinitown's oldest trick, and its best one.
  */
 function Clouds({ reducedMotion }: { reducedMotion: boolean }) {
   const group = useRef<Group>(null)
@@ -807,7 +807,7 @@ function Clouds({ reducedMotion }: { reducedMotion: boolean }) {
 /**
  * The measured agents own a quarter of town: the tall paper buildings with the
  * orange caps, and the only thing here you can touch. Selection is shown with
- * ink — a ring on the pavement — because glow is a promise and a ring is just
+ * ink - a ring on the pavement - because glow is a promise and a ring is just
  * a fact.
  */
 function AgentBuilding({

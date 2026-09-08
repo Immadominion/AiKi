@@ -20,6 +20,6 @@ keystore/
 AGENTS.md
 CLAUDE.md
 
-# Local mock state — yours to tweak, not to push
+# Local mock state - yours to tweak, not to push
 apps/web/src/mock/local.*
 .vercel

@@ -90,8 +90,8 @@ export function WatchPanel({ jobId }: { jobId: string }) {
       )
       say(`On duty. It will keep your health factor at or above ${line}.`)
     } catch (error) {
-      // The API's refusals say why in a sentence — an unsigned mandate, no
-      // spending limit — and those are the sentences worth showing.
+      // The API's refusals say why in a sentence - an unsigned mandate, no
+      // spending limit - and those are the sentences worth showing.
       say((error as Error).message)
     } finally {
       setBusy(false)

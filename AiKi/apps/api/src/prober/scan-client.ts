@@ -103,14 +103,14 @@ async function get<T>(path: string, attempt = 0): Promise<T> {
 
 /** One page of the registry. `offset` is honoured on this surface. */
 export function listAgents(limit: number, offset: number): Promise<ListPage> {
-  // snake_case! `chainId` is SILENTLY IGNORED on this surface — it returns the
+  // snake_case! `chainId` is SILENTLY IGNORED on this surface - it returns the
   // all-chain total (742,106) and a cross-chain sample, while `chain_id` correctly
   // filters to 258,523 BSC agents. The /public surface uses camelCase for the same
   // parameter. Verified 20 Aug 2026.
   return get<ListPage>(`/agents?chain_id=${CHAIN_ID}&limit=${limit}&offset=${offset}`)
 }
 
-/** Full record. Note the path includes the contract address — /agents/{id} 404s. */
+/** Full record. Note the path includes the contract address - /agents/{id} 404s. */
 export function getAgent(tokenId: string): Promise<AgentDetail> {
   return get<AgentDetail>(`/agents/${CHAIN_ID}/${REGISTRY}/${tokenId}`)
 }

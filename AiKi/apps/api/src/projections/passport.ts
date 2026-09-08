@@ -8,7 +8,7 @@ import { SCORING_VERSION, wilson } from '../scoring/wilson.js'
  * The wire shape lives in @aiki/contracts as ProjectedPassport, so the
  * frontend types against exactly what this file produces. Every field is
  * either backed by evidence or explicitly null. Null means "we have not
- * measured this" — never coerced to zero, because a zero is a claim and an
+ * measured this" - never coerced to zero, because a zero is a claim and an
  * absence is not.
  */
 export type PassportProjection = ProjectedPassport
@@ -90,7 +90,7 @@ function deriveRisks(input: {
     })
   // Only meaningful when something answered: a dead endpoint failing to point
   // back at its token is noise, a live one failing to is a real gap. The claim
-  // is the absence of proof, not a verified mismatch — the well-known file may
+  // is the absence of proof, not a verified mismatch - the well-known file may
   // simply never have been readable.
   if ((input.state === 'LIVE' || input.state === 'DEGRADED') && input.reciprocalVerified !== true)
     risks.push({

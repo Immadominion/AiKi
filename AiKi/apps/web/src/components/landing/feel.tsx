@@ -7,9 +7,9 @@ import styles from './landing.module.css'
 /**
  * The feel layer: the small physics that make a page tactile.
  *
- * Reverse-engineered as technique from the reference the founder pointed at —
+ * Reverse-engineered as technique from the reference the founder pointed at -
  * its compiled bundle fingerprints to scrubbed scroll choreography, per-frame
- * lerps, press-and-hold interactions and a custom cursor — and rebuilt here
+ * lerps, press-and-hold interactions and a custom cursor - and rebuilt here
  * from scratch in AiKi's own register. Every effect respects
  * prefers-reduced-motion, and everything degrades to plain clicks and native
  * scroll on touch devices.
@@ -236,7 +236,7 @@ export function usePagedScroll(enabled: boolean, sectionSelector: string) {
   return useCallback((index: number) => goToRef.current(index), [])
 }
 
-/** Elements that lean toward the hand. Capped at a few pixels — furniture
+/** Elements that lean toward the hand. Capped at a few pixels - furniture
  *  shifting its weight, not furniture chasing you. */
 export function useMagnetic<T extends HTMLElement>(strength = 0.22, limit = 6) {
   const ref = useRef<T>(null)
@@ -271,7 +271,7 @@ const HOLD_MS = 450
 /**
  * Press and hold: a ring fills while you commit, and letting go early undoes
  * it. A tap teaches the gesture by nudging instead of failing silently.
- * Keyboard activation stays immediate — the ritual is for pointers.
+ * Keyboard activation stays immediate - the ritual is for pointers.
  */
 export function useHoldAction(onComplete: () => void, reducedMotion: boolean) {
   const [progress, setProgress] = useState(0)

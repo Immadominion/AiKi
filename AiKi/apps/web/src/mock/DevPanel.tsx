@@ -12,7 +12,7 @@ import { usd } from './types'
  * Dev only, and deliberately ugly-adjacent: it is a tool, not a surface, and it
  * should never be mistaken for one. Opens on the corner tab or ⌘M.
  *
- * The JSON box is the point — paste any state in and the whole app renders it,
+ * The JSON box is the point - paste any state in and the whole app renders it,
  * so shaping the data by hand is faster than clicking a flow forty times.
  */
 export function DevPanel() {

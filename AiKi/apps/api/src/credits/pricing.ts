@@ -3,7 +3,7 @@
  *
  * Points exist so that people who ask two questions a month are not charged like
  * people who ask two hundred. That only works if a point means something, so a
- * point is pinned to money — one point is a hundredth of a cent — and the cost of
+ * point is pinned to money - one point is a hundredth of a cent - and the cost of
  * a turn is computed from the tokens the model actually read and wrote.
  *
  * Nothing here is a guess or a per-message flat rate. A person who asks why an

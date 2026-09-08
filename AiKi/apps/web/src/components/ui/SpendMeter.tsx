@@ -2,7 +2,7 @@
  * Spend against the cap the user set.
  *
  * The number leads and the bar follows, because the number is the fact and the
- * bar is only its shape. `hot` turns the fill orange past a quarter of the cap —
+ * bar is only its shape. `hot` turns the fill orange past a quarter of the cap -
  * not a warning, just the point where the shape becomes worth reading.
  */
 export function SpendMeter({

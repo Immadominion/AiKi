@@ -15,7 +15,7 @@ import type { AgentKey } from '@/lib/agents'
  * Local mock state.
  *
  * Shaped like the contract so swapping it for apps/api is a change of import
- * rather than a rewrite — but deliberately simpler in two places:
+ * rather than a rewrite - but deliberately simpler in two places:
  *
  *  - money is integer CENTS, not the contract's Money strings. Cents cannot
  *    drift the way floats do, and a mock that quietly loses a penny would send

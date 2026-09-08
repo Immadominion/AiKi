@@ -63,7 +63,7 @@ export function registerWorkTools(server: Registrar, client: AikiClient, session
       title: 'Put an agent on duty',
       description:
         'Have the agent check your Venus position on a timer and repay under the mandate if the ' +
-        'health factor falls below your line — without waiting for you. This is the only tool here ' +
+        'health factor falls below your line - without waiting for you. This is the only tool here ' +
         'that causes money to move when nobody is asking, so it refuses a mandate that is unsigned ' +
         'or has no total cap.',
       inputSchema: {
@@ -154,7 +154,7 @@ export function registerWorkTools(server: Registrar, client: AikiClient, session
       if (!job.events.length) return text(`Job ${job.id} is ${job.status}. Nothing recorded yet.`)
       return text(
         [
-          `Job ${job.id} — ${job.status}`,
+          `Job ${job.id} - ${job.status}`,
           ...job.events.map((e) => `  ${e.at} [${e.type}] ${e.detail}`),
         ].join('\n'),
       )

@@ -4,7 +4,7 @@
 - Kit version: 1.0
 - Retrieved: 2026-08-30
 - Creator: Kay Lousberg (www.kaylousberg.com)
-- License: [Creative Commons Zero 1.0](https://creativecommons.org/publicdomain/zero/1.0/) —
+- License: [Creative Commons Zero 1.0](https://creativecommons.org/publicdomain/zero/1.0/) -
   "free to use in personal, educational and commercial projects". The original
   `LICENSE.txt` is retained in this directory. Credit is optional; we give it
   anyway, because that is cheap and true.
@@ -12,17 +12,17 @@
 Why THIS kit and not the Infinitown repo Dominion found: that repo re-hosts
 Little Workshop's code and VenCreations' commercial models with no license.
 This kit is one coherent visual language, actually licensed, in the same
-chunky low-poly register — laid out by our own Infinitown-style system
+chunky low-poly register - laid out by our own Infinitown-style system
 (grid, fog-as-composition, one sun, cloud shadows).
 
 Selected files (each `.gltf` pairs with its `.bin`; all share
 `citybits_texture.png`):
 
-- `building_A_withoutBase` … `building_H_withoutBase` — the eight town buildings
-- `bush` — all greenery, at varying scales
-- `bench`, `streetlight`, `firehydrant`, `dumpster` — pavement detail
-- `box_A`, `box_B` — market crates around the square
-- `car_sedan`, `car_hatchback`, `car_stationwagon` — parked traffic
+- `building_A_withoutBase` … `building_H_withoutBase` - the eight town buildings
+- `bush` - all greenery, at varying scales
+- `bench`, `streetlight`, `firehydrant`, `dumpster` - pavement detail
+- `box_A`, `box_B` - market crates around the square
+- `car_sedan`, `car_hatchback`, `car_stationwagon` - parked traffic
   (taxi and police deliberately not taken: wrong register for this town)
 
 ## Palette retheme

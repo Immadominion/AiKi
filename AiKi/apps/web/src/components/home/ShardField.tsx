@@ -5,7 +5,7 @@ import { type Frame, SCREEN, type ShardSpec, shardStyles } from './shards'
 /**
  * The floating agent cards either side of the hero.
  *
- * Decorative in composition but not in content — each one is a real agent with a
+ * Decorative in composition but not in content - each one is a real agent with a
  * real last-known state, and clicking it goes to that agent. The field is hidden
  * below 1024px, where there is no room either side of the hero for it to exist.
  */

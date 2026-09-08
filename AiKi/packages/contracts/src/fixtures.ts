@@ -1,13 +1,13 @@
 /**
  * Fixtures for the mock server and for UI development.
  *
- * These deliberately include the UGLY cases — thin evidence, impostor endpoints,
+ * These deliberately include the UGLY cases - thin evidence, impostor endpoints,
  * statistically indistinguishable comparisons, policy denials, stale data.
  * Those states are the product. If the UI only looks good on the happy path,
  * it is not finished.
  *
  * Agent names and ids are seeded from real 8004scan captures (19 Aug 2026):
- * see src/fixtures/_real/. `Agent #270263` is a genuine registry entry — minted
+ * see src/fixtures/_real/. `Agent #270263` is a genuine registry entry - minted
  * with a null description, no protocols and zero feedback. That is the canonical
  * thin-evidence case and it is extremely common.
  */
@@ -40,7 +40,7 @@ const prov = (
   extra: Partial<Provenance> = {},
 ): Provenance => ({ source, method, observedAt: NOW, evidenceClass, ...extra })
 
-/** Wilson lower bound — the same formula the backend uses. z is pinned. */
+/** Wilson lower bound - the same formula the backend uses. z is pinned. */
 export const Z = 1.96
 export function wilsonLb(successes: number, trials: number, z = Z): number {
   if (trials === 0) return 0
@@ -65,7 +65,7 @@ function measure(successes: number, trials: number, source = 'aiki:prober'): Mea
 }
 
 // Note: with exactOptionalPropertyTypes an optional field must be OMITTED, not
-// set to undefined — hence the conditional spread rather than a ternary.
+// set to undefined - hence the conditional spread rather than a ternary.
 const money = (amount: string, asset = 'U', decimals = 18): Money => ({
   amount,
   asset,
@@ -158,7 +158,7 @@ export const SEARCH_RESPONSE: SearchResponse = {
     {
       agent: AGENT_THIN,
       category: 'other',
-      // 4 of 4 — a perfect record that means nothing.
+      // 4 of 4 - a perfect record that means nothing.
       proofScore: measure(4, 4),
       liveness: LIVENESS_UNPROBED,
       reasons: [{ code: 'new', label: 'Registered today, no track record', weight: 0.05 }],
@@ -267,7 +267,7 @@ export const PASSPORT_STRONG: Passport = {
   updatedAt: NOW,
 }
 
-// ── compare — the indistinguishable case ─────────────────────────────────────
+// ── compare - the indistinguishable case ─────────────────────────────────────
 
 export const COMPARE_INDISTINGUISHABLE: CompareResponse = {
   category: 'grid_trading',
@@ -335,13 +335,13 @@ export const AUTHORIZATION: Authorization = {
       kind: 'session_total_cap',
       label: 'Maximum total spend',
       value: money('250000000000000000000'),
-      // Lifetime, not renewing — the shipping policy module has no time window.
+      // Lifetime, not renewing - the shipping policy module has no time window.
       period: 'total',
       enforcement: {
         tier: 'T0',
         enforcedBy: 'SmartSession:ERC20SpendingLimitPolicy',
         verified: true,
-        caveat: 'Lifetime cap. Does not renew — a new session is required after depletion.',
+        caveat: 'Lifetime cap. Does not renew - a new session is required after depletion.',
       },
     },
     {
@@ -369,12 +369,12 @@ export const AUTHORIZATION: Authorization = {
   expiresAt: '2026-09-18T09:00:00Z',
 }
 
-// ── job events — includes a DENY and an approval ─────────────────────────────
+// ── job events - includes a DENY and an approval ─────────────────────────────
 
 export const JOB_EVENTS: JobEvent[] = [
   { type: 'status', at: '2026-08-19T12:30:00Z', status: 'DISPATCHED' },
   { type: 'step', at: '2026-08-19T12:30:02Z', label: 'Reading Venus position' },
-  { type: 'step', at: '2026-08-19T12:30:05Z', label: 'Health factor 1.21 — below threshold' },
+  { type: 'step', at: '2026-08-19T12:30:05Z', label: 'Health factor 1.21 - below threshold' },
   {
     type: 'policy',
     at: '2026-08-19T12:30:07Z',
@@ -457,7 +457,7 @@ export const RECEIPT: Receipt = {
   completedAt: '2026-08-19T12:31:45Z',
 }
 
-// ── ecosystem stats — real numbers from 19 Aug 2026 ──────────────────────────
+// ── ecosystem stats - real numbers from 19 Aug 2026 ──────────────────────────
 
 export const ECOSYSTEM_STATS: EcosystemStats = {
   indexed: {
@@ -496,7 +496,7 @@ export const ECOSYSTEM_STATS: EcosystemStats = {
     {
       claim: 'BSC accounts for ~60% of ERC-8004 agents across 26 networks',
       actual: '270,263 of 736,076 = 36.7%, across 60 indexed chains',
-      source: 'https://8004scan.io/api/v1/public/stats — measured 19 Aug 2026',
+      source: 'https://8004scan.io/api/v1/public/stats - measured 19 Aug 2026',
     },
   ],
 }

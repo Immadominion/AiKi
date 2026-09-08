@@ -118,7 +118,7 @@ export class PostgresEvidenceStore implements EvidenceStore {
        *
        * The tiebreak is the point. Without it the unprobed group has no ordering
        * at all, so Postgres returns it in whatever order the plan happens to
-       * produce — on an append-only table, oldest first. An agent that registers
+       * produce - on an append-only table, oldest first. An agent that registers
        * today then waits behind every agent that has ever gone unprobed, and the
        * delay between "an agent exists" and "AiKi has an opinion about it" is
        * unbounded and unrepeatable. That delay is the product's core latency and
@@ -282,8 +282,8 @@ export class PostgresEvidenceStore implements EvidenceStore {
    * 315943 as LIVE, named, with eight predicates, while
    * `/v1/agents/315943/passport` reported UNPROBED, no name and a zero score at
    * the same instant, because the reference agents' continuous assessments had
-   * pushed its rows out of the page. UNPROBED is a positive claim — the UI
-   * renders it as "No probe has ever touched it" — so the window did not make
+   * pushed its rows out of the page. UNPROBED is a positive claim - the UI
+   * renders it as "No probe has ever touched it" - so the window did not make
    * the page empty, it made the page lie.
    *
    * Selecting by agent means the answer cannot depend on how busy the store has

@@ -10,8 +10,8 @@ import type { AgentKey } from './agents'
  * and says why. Claiming T0 for it named ERC20PeriodTransferEnforcer, which is
  * not in onchain/ and never was.
  *
- * Everything measurable is stored as the COUNTS behind it — successes out of
- * trials — never as a finished score. The score is computed at render time from
+ * Everything measurable is stored as the COUNTS behind it - successes out of
+ * trials - never as a finished score. The score is computed at render time from
  * those counts, so a number on screen can always be traced back to the evidence
  * that produced it, and cannot drift away from it when someone edits this file.
  */

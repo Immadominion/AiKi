@@ -9,7 +9,7 @@ const TONE: Record<EvidenceTone, string> = {
 /**
  * Five bars, one per batch of checks AiKi ran itself.
  *
- * Empty bars mean missing evidence, not bad performance — a distinction the
+ * Empty bars mean missing evidence, not bad performance - a distinction the
  * footnote under every table has to keep making, because a five-segment meter
  * reads as a rating unless you say otherwise.
  */

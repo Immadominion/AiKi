@@ -6,7 +6,7 @@ import { StatusPill } from './StatusPill'
  * Liveness in plain language.
  *
  * Seven answers to "is it online", and the difference between them is the most
- * valuable thing we know — so none of them reaches a user as an enum. The one
+ * valuable thing we know - so none of them reaches a user as an enum. The one
  * that matters most is IMPOSTOR_STATIC: an endpoint returning 200 with the same
  * bytes whatever you ask it. A third of the BSC registry does this, and every
  * other explorer shows those agents as healthy.

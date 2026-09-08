@@ -164,7 +164,7 @@ export function LimitsView() {
                   </div>
 
                   {/* The caps you actually chose, not the ones the passport
-                      advertises — those are two different claims. */}
+                      advertises - those are two different claims. */}
                   <div className="flex flex-wrap items-start gap-[11px] border-b border-[rgb(26_26_25_/_0.05)] px-4 py-[12px]">
                     <span className="min-w-0 flex-1 basis-[220px] text-[13px] leading-[1.45] font-semibold text-pretty">
                       Never more than {usd(h.mandate.perActionCents)} in one action, or{' '}

@@ -37,8 +37,8 @@ export function wilson(successes: number, trials: number, z = Z): Interval {
  * Confidence is derived from how wide the interval is, never hand-assigned.
  *
  * A tight interval means the evidence pins the value down; a wide one means it
- * does not, whatever the point estimate happens to be. Everything downstream —
- * how many digits we print, whether we print a number at all — reads this.
+ * does not, whatever the point estimate happens to be. Everything downstream -
+ * how many digits we print, whether we print a number at all - reads this.
  */
 export const confidenceFrom = (i: Interval) => Math.max(0, Math.min(1, 1 - (i.upper - i.lower)))
 
@@ -63,7 +63,7 @@ export function measureFrom(
 /**
  * Wilson interval from a rate rather than a count.
  *
- * Only for projections — "how much more evidence would we need" — where the
+ * Only for projections - "how much more evidence would we need" - where the
  * successes are hypothetical. Rounding a rate back into whole successes makes
  * the effective rate jitter with every n, and the interval width jitters with
  * it, which is how you end up reporting a knife-edge answer that flips the
@@ -82,7 +82,7 @@ export function wilsonRate(rate: number, trials: number, z = Z): Interval {
   }
 }
 
-/** Our own probes, observed directly. Class B — the only class we fully control. */
+/** Our own probes, observed directly. Class B - the only class we fully control. */
 export const aikiProbe = (observedAt: string): Provenance => ({
   source: 'aiki:prober',
   method: 'capability-probe/v2',

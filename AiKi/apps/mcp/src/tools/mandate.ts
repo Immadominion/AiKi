@@ -9,7 +9,7 @@ import type { Session } from '../session.js'
  *
  * The order matters and is the product: the limits are chosen, the account that
  * will spend under them is deployed, and only then is anything signed. A mandate
- * that is never signed is still a real mandate — AiKi will honour it — but only
+ * that is never signed is still a real mandate - AiKi will honour it - but only
  * a signed one is held by a contract instead of by us, and the difference is
  * stated everywhere it comes up rather than buried in a tier letter.
  */
@@ -102,12 +102,12 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
           `Taken together these limits are ${describeTier(out.tier)}.`,
           '',
           // The API's own sentence for each line. It explains WHY a limit lands
-          // where it does — "a cap needs the asset, contracts and functions it
-          // applies to before the chain can read an amount out of a call" — and
+          // where it does - "a cap needs the asset, contracts and functions it
+          // applies to before the chain can read an amount out of a call" - and
           // that reason is the part somebody can act on.
           ...out.limits.map(
             (l) =>
-              `  ${l.label} — ${l.tier}${l.enforcedBy ? ` via ${l.enforcedBy}` : ''}\n      ${l.why}`,
+              `  ${l.label} - ${l.tier}${l.enforcedBy ? ` via ${l.enforcedBy}` : ''}\n      ${l.why}`,
           ),
           '',
           'The total cap does not refill. When it is spent the agent stops until you raise it.',
@@ -123,7 +123,7 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
       title: 'Create a mandate',
       description:
         'Create the limits an agent will work under, and sign them onto the chain. Deploys the ' +
-        'account the value is spent from if there is not one already — AiKi pays that gas. ' +
+        'account the value is spent from if there is not one already - AiKi pays that gas. ' +
         'Returns a mandate id to hire against.',
       inputSchema: {
         per_action_usdt: z.number().positive(),
@@ -153,7 +153,7 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
 
       /*
        * Signing is attempted, never assumed. If it fails the mandate still
-       * exists and AiKi still honours it — what changes is who is holding the
+       * exists and AiKi still honours it - what changes is who is holding the
        * limit, and saying "signed" when nothing was signed is the one thing
        * this product may not get wrong.
        */

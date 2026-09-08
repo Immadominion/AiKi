@@ -1,7 +1,7 @@
 import { cn } from '@/lib/cn'
 
 /**
- * Agent identity mark. Rounded square in the app, circle on the ask page —
+ * Agent identity mark. Rounded square in the app, circle on the ask page -
  * that difference is in the reference and it is load-bearing: the ask page's
  * shards are soft and floating, the app's rows are dense and gridded.
  */

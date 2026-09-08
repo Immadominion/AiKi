@@ -18,7 +18,7 @@ interface PreferenceChange {
  * Read defensively and written the same way: a private window, cleared site data
  * or a browser set to block storage all make these throw, and the app has to
  * render correctly with no stored value at all. None of this is data worth
- * keeping — it is convenience, and convenience that breaks the page is not.
+ * keeping - it is convenience, and convenience that breaks the page is not.
  */
 function usePersisted<T extends string>(key: string, fallback: T, valid: readonly T[]) {
   const [value, setValue] = useState<T>(fallback)

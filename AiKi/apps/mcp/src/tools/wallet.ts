@@ -9,14 +9,14 @@ import type { Session } from '../session.js'
  * Having a wallet without going and getting one first.
  *
  * The usual answer to "you need a key" is "install an extension, write down
- * twelve words, find a faucet" — which ends most conversations before a person
+ * twelve words, find a faucet" - which ends most conversations before a person
  * has seen what the thing does. So the model can make a key here, say the
  * address out loud, and ask for some testnet BNB. That is a sentence somebody
  * can act on without having learned anything about delegations first.
  *
  * What is NOT hidden: this is a real key on a real chain, and the person is told
  * where it lives and what it can do. It is defensible because of what sits under
- * it — the key owns an account that holds only what is deliberately sent to it,
+ * it - the key owns an account that holds only what is deliberately sent to it,
  * and everything an agent may do with that account is bounded by caveats a
  * contract enforces. It is not defensible as a place to keep anything else.
  */
@@ -41,7 +41,7 @@ export function registerWalletTools(
         return text(
           [
             'No key yet, so nothing can be signed or spent.',
-            'Everything that only reads — searching agents, passports, comparing, previewing limits — works as it is.',
+            'Everything that only reads - searching agents, passports, comparing, previewing limits - works as it is.',
             '',
             `To act: run create_wallet (a key is made and kept at ${keyLocation}), or set AIKI_PRIVATE_KEY.`,
           ].join('\n'),
@@ -71,7 +71,7 @@ export function registerWalletTools(
       if (balance !== null && Number(balance) === 0)
         lines.push(
           '',
-          'This address holds no tBNB. It does not need any to create or sign a mandate — AiKi pays ' +
+          'This address holds no tBNB. It does not need any to create or sign a mandate - AiKi pays ' +
             'the gas to deploy the account, and the agent pays its own gas to act. It does need USDT ' +
             'in the mandate account before there is anything for an agent to spend.',
         )
@@ -90,7 +90,7 @@ export function registerWalletTools(
         confirm: z
           .boolean()
           .describe(
-            'Must be true. Ask the person first — this creates a real key on a real chain.',
+            'Must be true. Ask the person first - this creates a real key on a real chain.',
           ),
       },
     },
@@ -102,7 +102,7 @@ export function registerWalletTools(
       const existing = loadIdentity()
       if (existing)
         return text(
-          `A key already exists — acting as ${existing.account.address}. Nothing was changed.`,
+          `A key already exists - acting as ${existing.account.address}. Nothing was changed.`,
         )
 
       const identity = createIdentity()
@@ -118,7 +118,7 @@ export function registerWalletTools(
             'which whoami will show once a mandate exists.',
           '',
           'Back it up if you intend to keep using it. Losing this key means losing control of the ' +
-            'account it owns — though anything held there can only ever be spent inside a mandate.',
+            'account it owns - though anything held there can only ever be spent inside a mandate.',
         ].join('\n'),
       )
     },

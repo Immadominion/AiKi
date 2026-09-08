@@ -6,7 +6,7 @@ import type { EnforcementLine } from '@/lib/detail'
  *
  * Drawn against the obvious instinct: the STRONG tier is quiet and the WEAK tier
  * is loud. Chrome removed the padlock after finding only ~11% of users understood
- * it — positive trust badges get ignored, negative ones change behaviour. So a
+ * it - positive trust badges get ignored, negative ones change behaviour. So a
  * chain-enforced limit gets no decoration at all, and one held by a promise gets
  * a full callout saying what would break it.
  */

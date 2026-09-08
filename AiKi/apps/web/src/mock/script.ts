@@ -5,7 +5,7 @@ import type { ActivityEvent, Hire, Job, PendingApproval, Receipt } from './types
 /**
  * What a hired agent does, step by step.
  *
- * One script for every agent, parameterised by the mandate you actually set —
+ * One script for every agent, parameterised by the mandate you actually set -
  * so the refusal happens at YOUR per-action cap, not at a number baked into a
  * fixture. Walking the flow with a $40 cap and walking it with $150 should feel
  * like two different products, and it does.

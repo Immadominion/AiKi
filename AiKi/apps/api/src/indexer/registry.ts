@@ -1,5 +1,5 @@
 /**
- * ERC-8004 IdentityRegistry indexer — reads the chain directly.
+ * ERC-8004 IdentityRegistry indexer - reads the chain directly.
  *
  * 8004scan is a convenience, not a dependency. This is the authoritative path:
  * the registry contract is the source of truth and we index it ourselves.
@@ -10,7 +10,7 @@
  *    walk 1..totalSupply(). You must index `Registered` events.
  *
  *  - `Registered(uint256 indexed agentId, string agentURI, address indexed owner)`
- *    — agentId is topics[1], owner is topics[2], agentURI is the ABI-encoded string
+ *    - agentId is topics[1], owner is topics[2], agentURI is the ABI-encoded string
  *    in data. Both key fields ARE indexed, so per-agent log filters work.
  *
  *  - `eth_getLogs` is DISABLED on the official BSC dataseeds and capped elsewhere:
@@ -197,7 +197,7 @@ export interface Checkpoint {
  * Walk the registry from `fromBlock` to the finalized head, yielding batches.
  *
  * Stops at `finalized` rather than `latest` so nothing provisional enters the
- * evidence store unflagged — a reorg would otherwise silently corrupt scores.
+ * evidence store unflagged - a reorg would otherwise silently corrupt scores.
  */
 export async function* indexRegistry(
   cfg: RpcConfig,
@@ -222,7 +222,7 @@ export async function* indexRegistry(
       batch = await fetchWindow(cfg.url, cursor, to)
     } catch (err) {
       if (err instanceof ArchiveRequiredError) throw err
-      // Narrow and retry once — providers sometimes cap by response size, not span.
+      // Narrow and retry once - providers sometimes cap by response size, not span.
       const half = Math.max(1, Math.floor((to - cursor) / 2))
       batch = await fetchWindow(cfg.url, cursor, cursor + half)
       cursor = cursor + half + 1

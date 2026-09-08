@@ -7,7 +7,7 @@
  *
  * The two surfaces are deliberately different. The ask page is a warm page-white
  * (#FAFAF8) with the content floating on it. The app is a cooler tray (#EAEAE8)
- * with white cards sitting inside it. Same family, different job — so both live
+ * with white cards sitting inside it. Same family, different job - so both live
  * here as named tokens rather than one being bent into the other.
  */
 @theme {
@@ -166,7 +166,7 @@ body {
 }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* Motion is decoration here — every animated element still reads correctly still. */
+/* Motion is decoration here - every animated element still reads correctly still. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

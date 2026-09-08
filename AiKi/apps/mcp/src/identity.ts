@@ -23,7 +23,7 @@ import type { AikiClient } from './client.js'
  * Option 2 is the one worth explaining. Requiring a browser extension before a
  * model can do anything at all would put a wallet in the way of every first
  * conversation. Instead the model can make a key, tell the person the address,
- * and ask them to send it some testnet BNB — which is a sentence a person can
+ * and ask them to send it some testnet BNB - which is a sentence a person can
  * act on without knowing what a delegation is.
  *
  * The key is written 0600 and never leaves the machine. It is worth being blunt

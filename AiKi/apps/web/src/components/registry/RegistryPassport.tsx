@@ -43,7 +43,7 @@ function Fact({ label, value }: { label: string; value: string | null }) {
 /**
  * The evidence page for one registry agent: only what AiKi measured, with
  * every unmeasured field saying so. This page is the product's thesis in
- * miniature — if a field cannot be traced to an observation, it does not
+ * miniature - if a field cannot be traced to an observation, it does not
  * render a value here.
  */
 export function RegistryPassport({ agentId }: { agentId: string }) {

@@ -3,7 +3,7 @@
  *
  * No Postgres, no RPC. Every probe-sweep-*.json in the package root becomes
  * observations through the same shapes the prober's evidence sink writes, so
- * the projections the frontend sees here are the ones production will serve —
+ * the projections the frontend sees here are the ones production will serve -
  * over genuinely measured agents, not fixtures.
  */
 
@@ -62,10 +62,10 @@ const persistence = databaseUrl
   ? {
       jobs: new JobService(new PostgresJobStore(databaseUrl)),
       // Watches too, or the one part of the product that works without a person
-      // present is missing from the server a developer actually runs — which is
+      // present is missing from the server a developer actually runs - which is
       // how it goes unnoticed that a screen calls a route nobody registered.
       watches: new PostgresWatchStore(databaseUrl),
-      // Fast mode too, or it is missing from the server a developer runs — which
+      // Fast mode too, or it is missing from the server a developer runs - which
       // is how a screen ends up calling a route nobody registered.
       assistant: {
         credits: new PostgresCreditStore(databaseUrl),

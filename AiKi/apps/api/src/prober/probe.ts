@@ -24,7 +24,7 @@ export const USER_AGENT = 'AiKi-Prober/0.1 (+https://github.com/Immadominion/AiK
  * Per-host serialisation with a courtesy gap.
  *
  * Concurrency is bounded per AGENT, but the BSC registry is dominated by a handful
- * of hosts — one domain accounted for 120 of 146 declared endpoints in a 387-agent
+ * of hosts - one domain accounted for 120 of 146 declared endpoints in a 387-agent
  * sweep. Firing 8 concurrent agents x 3 D1 variants at a single host makes it time
  * out, and we then record OUR OWN overload as evidence that THEIR endpoint is
  * unreachable. That is both rude and factually wrong: re-probing one such host
@@ -55,7 +55,7 @@ function perHost<T>(url: string, fn: () => Promise<T>): Promise<T> {
 }
 
 const TIMEOUT_MS = 15_000
-/** Cap body reads — some endpoints will happily stream forever. */
+/** Cap body reads - some endpoints will happily stream forever. */
 const MAX_BODY_BYTES = 256 * 1024
 
 export interface FetchResult {
@@ -67,7 +67,7 @@ export interface FetchResult {
 }
 
 /**
- * Uses Node's built-in fetch (undici under the hood) — it follows redirects by
+ * Uses Node's built-in fetch (undici under the hood) - it follows redirects by
  * default, which matters because many declared endpoints redirect, and it keeps
  * the dependency surface at zero.
  */
@@ -87,7 +87,7 @@ async function fetchOnceRaw(url: string): Promise<FetchResult> {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
 
-    // Bound the read — some endpoints will happily stream forever.
+    // Bound the read - some endpoints will happily stream forever.
     const reader = res.body?.getReader()
     let body = ''
     if (reader) {
@@ -125,7 +125,7 @@ async function fetchOnceRaw(url: string): Promise<FetchResult> {
 /**
  * Build the three D1 probe URLs from one endpoint.
  *
- * We vary whatever identifier the URL carries — a query param or the last path
+ * We vary whatever identifier the URL carries - a query param or the last path
  * segment. If we cannot find one to vary, D1 cannot run and the caller must not
  * claim the endpoint is agent-specific.
  */
@@ -174,7 +174,7 @@ export interface ProbeAgentInput {
   services: DeclaredService[]
   /** The scheme of the agentURI, so D4 can be reported honestly. */
   agentUri?: string
-  /** D10 — count of OTHER agents declaring this identical endpoint URL. */
+  /** D10 - count of OTHER agents declaring this identical endpoint URL. */
   sharedWithOtherAgents?: number
 }
 
@@ -182,9 +182,9 @@ export interface ProbeAgentResult {
   agentId: string
   verdict: ProbeVerdict
   samples: ProbeSample[]
-  /** D8 — the reciprocal /.well-known proof. */
+  /** D8 - the reciprocal /.well-known proof. */
   reciprocal?: { verified: boolean; detail: string }
-  /** D4 — true when the registration file cost no network I/O to "resolve". */
+  /** D4 - true when the registration file cost no network I/O to "resolve". */
   registrationWasZeroCost: boolean
   probedAt: string
 }
@@ -245,7 +245,7 @@ export async function probeAgent(input: ProbeAgentInput): Promise<ProbeAgentResu
     sharedWithOtherAgents: input.sharedWithOtherAgents ?? 0,
   })
 
-  // D8 — only worth checking when there is a real host to check against.
+  // D8 - only worth checking when there is a real host to check against.
   let reciprocal: ProbeAgentResult['reciprocal']
   try {
     const origin = new URL(primary.endpoint).origin

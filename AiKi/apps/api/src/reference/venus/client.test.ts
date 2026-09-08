@@ -87,8 +87,8 @@ it('reads a position whose liquidation threshold differs from its collateral fac
   /*
    * The exact shape observed on BSC testnet vUSDT: Venus lends at 0.75 and
    * liquidates at 0.80. Deriving the health factor from the collateral factor
-   * puts adjusted collateral at 375 while the Comptroller — which uses the
-   * threshold — reports 400, the consistency check fires, and the guardian
+   * puts adjusted collateral at 375 while the Comptroller - which uses the
+   * threshold - reports 400, the consistency check fires, and the guardian
    * refuses to act on a position it has read perfectly correctly.
    *
    * Every number here is from the live chain: 1000 USDT supplied at $0.50, 740

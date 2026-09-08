@@ -58,7 +58,7 @@ export async function verifyReceipt(receipt: WireReceipt, publicKey: string): Pr
     return ok ? 'verified' : 'bad_signature'
   } catch {
     // A browser without WebCrypto Ed25519 cannot check locally; saying so is
-    // the only honest verdict — never fall back to trusting the server.
+    // the only honest verdict - never fall back to trusting the server.
     return 'unsupported'
   }
 }

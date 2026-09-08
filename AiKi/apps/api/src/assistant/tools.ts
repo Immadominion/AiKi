@@ -172,7 +172,7 @@ export const TOOLS: Anthropic.Tool[] = [
     name: 'create_mandate',
     description:
       'Create the limits an agent will work under. Deploys the account the value is spent from if ' +
-      'there is not one. IMPORTANT: this does NOT sign the mandate — signing needs the person’s ' +
+      'there is not one. IMPORTANT: this does NOT sign the mandate - signing needs the person’s ' +
       'wallet, which you do not have. Tell them to sign it, and say plainly that until they do, ' +
       'the limits are counted by AiKi rather than held by the chain.',
     input_schema: {
@@ -466,7 +466,7 @@ export async function runTool(
      * A refusal is returned to the model, not thrown. The API's refusals are
      * written as sentences a person can act on, and the useful thing for a model
      * that has just been told "this mandate has not been signed" is to say so
-     * and offer to fix it — not to see an exception and give up.
+     * and offer to fix it - not to see an exception and give up.
      */
     return { ok: res.ok, body }
   }

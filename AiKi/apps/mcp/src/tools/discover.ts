@@ -51,7 +51,7 @@ export function registerDiscovery(server: Registrar, client: AikiClient) {
        * results" would be misleading about why.
        *
        * AiKi's search is a substring match over the NAME an agent registered,
-       * and names in this registry do not describe capabilities — the verified
+       * and names in this registry do not describe capabilities - the verified
        * ones are called things like "Q402 Agent" and "SAT 578". So a sensible
        * question like "an agent that can protect my Venus loan" matches nothing,
        * and the honest answer is not "there are none" but "nothing is named
@@ -66,7 +66,7 @@ export function registerDiscovery(server: Registrar, client: AikiClient) {
             '',
             'AiKi searches the name an agent registered, and names in this registry rarely say what ' +
               'an agent does, so this is usually a fact about the naming rather than about what is available. ' +
-              `Here is what AiKi has verified instead — ${all.results.length} of ${all.total}:`,
+              `Here is what AiKi has verified instead - ${all.results.length} of ${all.total}:`,
             '',
             ...all.results.map((r) => `  ${passportLine(r)}`),
             '',

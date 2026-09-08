@@ -114,7 +114,7 @@ export function decide(assessment: Assessment, state: TriggerState, now = Date.n
    * mandate's cap is in base units of a token that may have six decimals and
    * may not be worth a dollar. Comparing the two directly, or handing the USD
    * figure to repayBorrow, overstates the repayment by the product of both
-   * differences — a factor of 5e11 for USDT at $0.50, which the cap then
+   * differences - a factor of 5e11 for USDT at $0.50, which the cap then
    * refuses on every pass forever.
    */
   const repay = (shortfallUsd * WAD) / state.price

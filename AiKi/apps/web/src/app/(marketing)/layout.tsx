@@ -14,7 +14,7 @@ import type { ReactNode } from 'react'
 /**
  * The landing's own type system, scoped so the app shell keeps its font.
  *
- * Archivo is the working grotesque — tight, upright, nothing rounded about it —
+ * Archivo is the working grotesque - tight, upright, nothing rounded about it -
  * and the mono is for captions that sit INSIDE the world: sweep dates, counts,
  * instrument text. Two voices: one speaks, one measures.
  */

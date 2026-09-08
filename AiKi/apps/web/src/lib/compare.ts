@@ -42,7 +42,7 @@ const MUST_HOLD_FOR = 12
  *
  * Holds the thin agent's observed success rate fixed and grows the sample until
  * its interval clears the other's. That answers the question a user actually
- * has — "how long until you know?" — instead of the one a p-value answers.
+ * has - "how long until you know?" - instead of the one a p-value answers.
  *
  * It returns null when the rate itself means the ranges will never part, which
  * is a real answer and a more useful one than a number.

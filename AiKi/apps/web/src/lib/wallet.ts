@@ -7,7 +7,7 @@ import { createSiweMessage } from 'viem/siwe'
  * No SDK: connecting and watching accounts needs four requests, and every
  * dependency here would outweigh the code. When no extension exists the app
  * falls back to a clearly-labelled simulated wallet rather than a dead button,
- * because a walkable demo beats a wall — but it never lets the simulation
+ * because a walkable demo beats a wall - but it never lets the simulation
  * pass as a connection.
  */
 export const BSC_CHAIN_ID = 56

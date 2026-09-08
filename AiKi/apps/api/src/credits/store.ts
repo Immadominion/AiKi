@@ -82,7 +82,7 @@ export interface CreditStore {
    * Takes points for work already done.
    *
    * Never below zero. A turn is estimated and reserved before it runs, so this
-   * settles a known cost rather than discovering one — but a model can overrun
+   * settles a known cost rather than discovering one - but a model can overrun
    * an estimate, and the honest response to that is to take what is left and
    * record the shortfall, not to invent a negative balance.
    */

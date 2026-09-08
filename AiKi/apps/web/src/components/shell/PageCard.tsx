@@ -16,7 +16,7 @@ export interface Banner {
  * The white card every app page lives inside.
  *
  * Header, tabs, banner and body are one component rather than four because their
- * spacing is interlocked — the divider bleeds to the card edge, and the banner
+ * spacing is interlocked - the divider bleeds to the card edge, and the banner
  * only exists in the gap between the tabs and the scroll region.
  */
 export function PageCard({

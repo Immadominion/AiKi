@@ -18,8 +18,8 @@ export interface Row {
 /**
  * The app's table.
  *
- * A CSS grid rather than a `<table>` so cells can hold real components — a spend
- * meter, an evidence strip, a pair of buttons — and still keep column alignment.
+ * A CSS grid rather than a `<table>` so cells can hold real components - a spend
+ * meter, an evidence strip, a pair of buttons - and still keep column alignment.
  * The grid template comes from the caller because column widths are page-specific
  * and getting them wrong is what makes a table feel generic.
  */

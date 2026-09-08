@@ -21,7 +21,7 @@ export interface StatsInput {
  *
  * This exists so the figures can be counted where the rows are. They used to be
  * folded in memory from `store.list()`, which is `ORDER BY observed_at DESC LIMIT
- * 10000` — so once the store held more than ten thousand observations the
+ * 10000` - so once the store held more than ten thousand observations the
  * dashboard was computed from a moving window of the most recent ones. Every new
  * registration pushed an older probe verdict out of that window, and the
  * published totals went DOWN as the system learned more: 1,392 agents probed
@@ -29,7 +29,7 @@ export interface StatsInput {
  * been reached.
  *
  * A silently truncated count is the one failure this product cannot have. Two
- * implementations produce this shape — one over an array, one in SQL — and a test
+ * implementations produce this shape - one over an array, one in SQL - and a test
  * runs the same evidence through both and requires identical output, because the
  * risk in having two is that they drift.
  */
@@ -174,7 +174,7 @@ export function aggregateStats(observations: Observation[]): StatsAggregate {
  * The honesty dashboard, projected purely from stored observations.
  *
  * `indexed` derives only from chain-indexer evidence and is null when none
- * exists — probe activity must never make a stalled indexer look fresh.
+ * exists - probe activity must never make a stalled indexer look fresh.
  * `probed.byState` counts each agent once, by its LATEST verdict. `reputation`
  * is null until feedback is actually ingested, because zeros would claim a
  * measurement that never ran.

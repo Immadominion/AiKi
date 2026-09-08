@@ -122,7 +122,7 @@ it.skipIf(!databaseUrl)(
     try {
       // Inserted oldest-block LAST, so heap order and registration order disagree.
       // Without an explicit tiebreak the plan tends to return insertion order and
-      // the newest agent — the one a user is most likely to be asking about — waits
+      // the newest agent - the one a user is most likely to be asking about - waits
       // behind every agent that has ever gone unprobed.
       /*
        * Blocks above any real BSC height, so these three head the unprobed queue

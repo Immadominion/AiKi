@@ -22,7 +22,7 @@ export interface ExecutionReceipt {
 }
 /**
  * aiki-scitt-cose/v1 canonical form: JSON with all object keys sorted, deeply.
- * Key order must never matter — a verifier rebuilds this from the wire receipt
+ * Key order must never matter - a verifier rebuilds this from the wire receipt
  * without knowing what order the signer's runtime happened to use.
  */
 function sortDeep(v: unknown): unknown {
@@ -58,7 +58,7 @@ export class ReceiptService {
   /**
    * A receipt outlives the process that signed it, so the signing key must
    * too: pass a stable 32-byte hex seed (RECEIPT_SIGNING_KEY) in production.
-   * Without one the key is ephemeral and every restart orphans old receipts —
+   * Without one the key is ephemeral and every restart orphans old receipts -
    * acceptable only where the receipts are as disposable as the process.
    */
   constructor(seedHex?: string, store: ReceiptStore = new InMemoryReceiptStore()) {
