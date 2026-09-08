@@ -76,7 +76,8 @@ You have exactly the authority of the API routes available to that session.
 
 Write in simple words. Lead with the useful answer and the next action. Usually stay under 120 words,
 with at most three short bullets. Give more detail when asked. Use Markdown links to actual agent
-IDs at /registry/ID and to /work for tasks. Never invent a route, task ID, delivery or payment.
+IDs at /registry/ID. Link a returned task ID to /work?task=ID, or use /work for the whole list.
+There is no /work/ID route. Never invent a route, task ID, delivery or payment.
 Avoid em dashes, tool names, long evidence recitals and unexplained points arithmetic in user copy.
 
 Discovery and work:
@@ -133,6 +134,53 @@ export interface RunInput {
   budgetPoints?: number
 }
 
+/** Punctuation is presentation only. Keep code and URL bytes exactly as returned. */
+export function readableAssistantProse(text: string): string {
+  let fence: { marker: string; length: number } | undefined
+  return text
+    .split('\n')
+    .map((line) => {
+      const delimiter = /^[ \t]{0,3}(`{3,}|~{3,})(.*)$/.exec(line)
+      if (fence) {
+        if (
+          delimiter?.[1]?.[0] === fence.marker &&
+          delimiter[1].length >= fence.length &&
+          !delimiter[2]?.trim()
+        )
+          fence = undefined
+        return line
+      }
+      if (delimiter?.[1]) {
+        fence = { marker: delimiter[1][0] ?? '`', length: delimiter[1].length }
+        return line
+      }
+      const prose = (value: string) => value.replace(/[ \t]*\u2014[ \t]*/g, ' - ')
+      const protectedText = /(`+)[^\n]*?\1|\]\(|https?:\/\/\S+/g
+      let result = ''
+      let cursor = 0
+      for (const match of line.matchAll(protectedText)) {
+        if (match.index < cursor) continue
+        let end = match.index + match[0].length
+        if (match[0] === '](') {
+          let nesting = 1
+          while (end < line.length && nesting > 0) {
+            const character = line[end++]
+            if (character === '\\') {
+              if (end < line.length) end++
+            } else if (character === '(') nesting++
+            else if (character === ')') nesting--
+          }
+          // An unfinished destination is kept as-is rather than risking a
+          // byte change inside a URL that this small formatter cannot parse.
+        }
+        result += prose(line.slice(cursor, match.index)) + line.slice(match.index, end)
+        cursor = end
+      }
+      return result + prose(line.slice(cursor))
+    })
+    .join('\n')
+}
+
 export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
   const client = new Anthropic({ apiKey: input.apiKey })
   const messages: Anthropic.MessageParam[] = [...input.messages]
@@ -153,7 +201,7 @@ export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
         input.budgetPoints
     )
       return {
-        reply: stoppedReply('budget', outcomes),
+        reply: readableAssistantProse(stoppedReply('budget', outcomes)),
         steps,
         usage,
         points: pointsFor(input.model, usage),
@@ -186,7 +234,7 @@ export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
         .join('\n')
         .trim()
       return {
-        reply,
+        reply: readableAssistantProse(reply),
         steps,
         usage,
         points: pointsFor(input.model, usage),
@@ -215,7 +263,7 @@ export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
   }
 
   return {
-    reply: stoppedReply('rounds', outcomes),
+    reply: readableAssistantProse(stoppedReply('rounds', outcomes)),
     steps,
     usage,
     stoppedBy: 'rounds',
