@@ -32,6 +32,7 @@ const config: NextConfig = {
     if (!target) return []
     return [
       { source: '/v1/:path*', destination: `${target}/v1/:path*` },
+      { source: '/v2/:path*', destination: `${target}/v2/:path*` },
       { source: '/healthz', destination: `${target}/healthz` },
       /**
        * D8, the reciprocal proof, is checked at the AGENT'S OWN domain: a
