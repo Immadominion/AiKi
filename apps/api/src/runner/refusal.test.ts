@@ -126,3 +126,37 @@ it('keeps the charge when the repayment lands', async () => {
   expect(result.acted).toBe(true)
   expect((await jobs.getAuthorization(id)).spent).toBeGreaterThan(0n)
 })
+
+it('keeps a pending repayment reserved and never sends it again on another tick', async () => {
+  executeMock.mockReset()
+  const hash = `0x${'aa'.repeat(32)}`
+  executeMock.mockResolvedValue({ status: 'unconfirmed', transactionHash: hash, gasUsed: 0n })
+  const { jobs, job, id } = await setup()
+  const first = await run(jobs, job.id)
+  expect(first).toMatchObject({ acted: false, needsReview: true, transactionHash: hash })
+  const held = (await jobs.getAuthorization(id)).spent
+  expect(held).toBeGreaterThan(0n)
+  const second = await run(jobs, job.id)
+  expect(second).toMatchObject({ acted: false, needsReview: true, transactionHash: hash })
+  expect((await jobs.getAuthorization(id)).spent).toBe(held)
+  expect(executeMock).toHaveBeenCalledOnce()
+})
+
+it.each(['PREPARING', 'SUBMITTED'] as const)(
+  'waits for a competing %s execution without asking the sweep to stop the watch',
+  async (state) => {
+    executeMock.mockReset()
+    const { jobs, job, id } = await setup()
+    const claim = await jobs.beginExecution(job.id, 97)
+    if (state === 'SUBMITTED')
+      await jobs.recordExecutionHash(claim.attempt.id, `0x${'aa'.repeat(32)}`)
+    expect(await run(jobs, job.id)).toMatchObject({
+      acted: false,
+      needsReview: false,
+      deniedBy: 'execution_pending',
+    })
+    expect(executeMock).not.toHaveBeenCalled()
+    expect((await jobs.pendingExecution(id))?.id).toBe(claim.attempt.id)
+    expect((await jobs.getAuthorization(id)).spent).toBe(0n)
+  },
+)

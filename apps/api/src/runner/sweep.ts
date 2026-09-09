@@ -1,6 +1,7 @@
 import type { Address } from 'viem'
 import type { WatchMandateVerifier } from '../authority/watch-readiness.js'
 import { executorAddress } from '../config/executor-identity.js'
+import { unresolvedExecutionMessage } from '../execution/attempts.js'
 import type { SignedDelegation } from '../execution/executor.js'
 import type { JobService } from '../jobs/service.js'
 import type { AuthorizationRecord } from '../jobs/store.js'
@@ -131,6 +132,14 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
   if (authorization.policy.expiresAt && Date.parse(authorization.policy.expiresAt) <= now)
     return halt('the mandate has expired')
 
+  // Stopping a revoked or expired watch above does not resolve its transaction
+  // or release any held limit. A live mandate may wait for an in-flight action.
+  const pending = await deps.jobs.pendingExecution(watch.authorizationId)
+  if (pending)
+    return pending.state === 'UNCONFIRMED'
+      ? halt(unresolvedExecutionMessage(pending))
+      : note(deps, watch, at, unresolvedExecutionMessage(pending))
+
   /*
    * No signature, no unattended action. An unsigned mandate is a real mandate
    * and AiKi will honour it for an action a person asked for, but nothing here
@@ -211,6 +220,15 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
     delegation,
     now: () => now,
   })
+  if (result.needsReview) {
+    const stopped = await halt(
+      `${result.reason}${result.transactionHash ? ` Transaction: ${result.transactionHash}.` : ''}`,
+    )
+    return {
+      ...stopped,
+      ...(result.transactionHash ? { transactionHash: result.transactionHash } : {}),
+    }
+  }
 
   await deps.watches.noteChecked(
     watch.jobId,

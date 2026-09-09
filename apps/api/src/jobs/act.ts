@@ -1,7 +1,7 @@
 import type { SignedDelegation } from '@aiki/contracts'
 import type { Address, Hex } from 'viem'
 import type { Action } from '../authority/policy.js'
-import { execute } from '../execution/executor.js'
+import { executeJobAction } from '../execution/job-execution.js'
 import { ClientError } from '../http/errors.js'
 import type { JobService } from './service.js'
 import type { AuthorizationRecord } from './store.js'
@@ -29,7 +29,7 @@ export interface ActOutcome {
    * nothing to link to.
    */
   chain?: {
-    status: 'landed' | 'reverted' | 'refused'
+    status: 'landed' | 'reverted' | 'refused' | 'unconfirmed'
     transactionHash?: Hex
     revertReason?: string
   }
@@ -74,26 +74,41 @@ export async function act(input: {
    * locked step. Two concurrent actions must not both fit under a limit only one
    * of them fits under.
    */
-  const policy = await jobs.attempt(jobId, action, input.why)
-  if (!policy.allow) return { policy, heldBy: authorization.delegation ? 'chain' : 'aiki' }
-
   const delegation = authorization.delegation as SignedDelegation | undefined
   if (!delegation || !config) {
     // Nothing was signed, or this deployment cannot reach a chain. The action is
     // permitted and AiKi is the only thing that held the limit, which is a real
     // answer and has to be reported as itself.
-    return { policy, heldBy: 'aiki' }
+    return { policy: await jobs.attempt(jobId, action, input.why), heldBy: 'aiki' }
   }
 
-  const outcome = await execute({
-    rpcUrl: config.rpcUrl,
-    chainId: config.chainId,
-    delegationManager: config.manager,
-    relayerKey: config.agentKey,
-    delegation: delegation as never,
-    action,
-    callData,
+  const { policy, outcome, inFlight } = await executeJobAction({
+    jobs,
+    jobId,
+    ...(input.why ? { why: input.why } : {}),
+    request: {
+      rpcUrl: config.rpcUrl,
+      chainId: config.chainId,
+      delegationManager: config.manager,
+      relayerKey: config.agentKey,
+      delegation: delegation as never,
+      action,
+      callData,
+    },
   })
+  if (!outcome) return { policy, heldBy: 'chain' }
+  if (outcome.status === 'unconfirmed')
+    return {
+      policy,
+      chain: {
+        status: 'unconfirmed',
+        ...(outcome.transactionHash ? { transactionHash: outcome.transactionHash } : {}),
+        revertReason: inFlight
+          ? 'An execution is still in progress. Wait for its recorded result; do not repeat it.'
+          : 'Execution needs review. The spending limit is held; do not repeat this action.',
+      },
+      heldBy: 'chain',
+    }
 
   if (outcome.status !== 'landed') {
     /*
@@ -104,7 +119,6 @@ export async function act(input: {
      * This is also the case worth the whole product existing: the two engines
      * disagreed and the chain won.
      */
-    await jobs.releaseSpend(authorization.id, action.amount)
     await jobs.record(jobId, {
       type: 'policy',
       detail:

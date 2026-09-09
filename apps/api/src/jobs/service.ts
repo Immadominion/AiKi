@@ -8,6 +8,7 @@ import {
   evaluatePurchase,
   needsApproval,
 } from '../authority/policy.js'
+import type { ExecutionAttempt, ExecutionState } from '../execution/attempts.js'
 import { ClientError } from '../http/errors.js'
 import {
   type AuthorizationRecord,
@@ -38,6 +39,40 @@ export class JobService {
 
   constructor(store: JobStore = new InMemoryJobStore()) {
     this.store = store
+  }
+
+  async beginExecution(
+    jobId: string,
+    chainId: number,
+  ): Promise<{ acquired: boolean; attempt: ExecutionAttempt }> {
+    const job = await this.getJob(jobId)
+    const attempt: ExecutionAttempt = {
+      id: randomUUID(),
+      jobId,
+      authorizationId: job.authorizationId,
+      chainId,
+      state: 'PREPARING',
+      createdAt: new Date().toISOString(),
+    }
+    if (await this.store.beginExecution(attempt)) return { acquired: true, attempt }
+    const pending = await this.store.pendingExecution(job.authorizationId)
+    if (!pending)
+      throw new Error('Execution changed concurrently. No action was sent; retry the request.')
+    return { acquired: false, attempt: pending }
+  }
+
+  pendingExecution(authorizationId: string) {
+    return this.store.pendingExecution(authorizationId)
+  }
+  recordExecutionHash(id: string, hash: `0x${string}`) {
+    return this.store.recordExecutionHash(id, hash.toLowerCase() as `0x${string}`)
+  }
+  finishExecution(
+    id: string,
+    state: Exclude<ExecutionState, 'PREPARING' | 'SUBMITTED'>,
+    release = 0n,
+  ) {
+    return this.store.finishExecution(id, state, release)
   }
 
   async authorize(constraints: Constraint[], owner: string | null): Promise<AuthorizationRecord> {
@@ -311,6 +346,7 @@ export class JobService {
   async getJob(id: string): Promise<JobRecord> {
     const record = await this.store.getJob(id)
     if (!record) throw new ClientError('Job not found.', { statusCode: 404, code: 'NOT_FOUND' })
-    return record
+    const execution = await this.store.pendingExecution(record.authorizationId)
+    return { ...record, ...(execution ? { execution } : {}) }
   }
 }

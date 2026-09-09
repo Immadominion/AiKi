@@ -31,9 +31,23 @@ The mainnet deployment file has not been produced or enabled in this repair. Mai
 
 `onchain/script/Deploy.s.sol` now requires `EXPECTED_CHAIN_ID` and rejects a mismatched RPC before reading a signing key. Simulate and review the deployment first. A successful simulation must not be recorded as a broadcast or a deployed mainnet address.
 
-A local chain56 fork simulation completed without broadcasting. It estimated 7,627,698 gas for the suite. The known prior deployment wallet has mainnet BNB, but its deployment key was not found in the project locations checked. The server's executor and account-funding keys are distinct operational roles, not substitutes for a reviewed deployment handoff. No real BNB was moved during this repair.
+A local chain56 fork simulation completed without broadcasting, using the verified prior deployment wallet. It estimated 7,627,729 gas for the suite, or 0.00038138645 BNB at the observed 0.05 gwei gas price. The wallet was recovered from the existing Git-ignored, owner-only deployment environment file; its key derives to the recorded deployment address. The server's executor and account-funding keys remain separate operational roles. No real BNB was moved during this repair, and simulation addresses are not deployed contracts.
 
 Points purchases remain separately configured on testnet. Changing the execution network does not silently migrate billing. Mainnet billing needs its own treasury, asset, RPC and end-to-end deposit checks.
+
+## Transactions awaiting confirmation
+
+A lost RPC response does not prove that a transaction failed. Execution now records an authorization-wide attempt before reserving spend, then persists the locally calculated signed transaction hash before broadcasting. The signed transaction bytes and signing key are not stored in this record.
+
+- Only one unresolved attempt may exist under a mandate, including across different jobs and server restarts.
+- A known preparation failure never broadcasts. A confirmed revert releases the reserved spend once. A confirmed success keeps that spend accounted for.
+- A send acknowledgement failure, receipt timeout, missing receipt hash or different replacement transaction is unresolved, not refused. Its limit stays reserved and the same mandate cannot send another action.
+- A live preparation or submission defers a scheduled pass without permanently stopping the watch. An explicitly unconfirmed result stops the watch for review.
+- The job page retains its last known pending state during refresh errors. A stale response from a different job or wallet cannot replace the current record.
+
+Migration `028_execution_attempts.sql` adds the durable records and a partial unique index for unresolved attempts. There is no automatic expiry, refund or retry for an abandoned attempt. Operator reconciliation and shared-signer nonce coordination remain open work; this repair does not claim to implement them.
+
+Release the API and scheduled execution worker together. Apply the additive migration before either new process handles jobs, and drain old execution processes before resuming work. Old code does not consult the new locks. Rolling back only the application while unresolved attempts exist would therefore be unsafe. Keep execution paused for a forward repair or a reviewed reconciliation; do not delete pending records or undo the migration to make a retry possible.
 
 ## What the external-provider survey establishes
 

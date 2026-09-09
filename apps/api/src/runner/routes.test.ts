@@ -134,6 +134,25 @@ it('starts a watch on a signed, capped mandate', async () => {
   expect((await watches.get(job.id))?.status).toBe('active')
 })
 
+it('does not activate a watch while its mandate has an unresolved transaction', async () => {
+  const reader = activation()
+  const { app, jobs, job, watches } = await harness({ activation: reader })
+  const claim = await jobs.beginExecution(job.id, 97)
+  const hash = `0x${'ab'.repeat(32)}` as const
+  await jobs.recordExecutionHash(claim.attempt.id, hash)
+  const response = await app.inject({
+    method: 'POST',
+    url: `/v1/jobs/${job.id}/watch`,
+    headers: cookie,
+    payload: START,
+  })
+  expect(response.statusCode).toBe(409)
+  expect(response.json().error.code).toBe('WATCH_EXECUTION_UNCONFIRMED')
+  expect(response.json().error.message).toContain(hash)
+  expect(await watches.get(job.id)).toBeNull()
+  expect(reader.snapshot).not.toHaveBeenCalled()
+})
+
 it('starts a mainnet watch when the reader and signed mandate both use chain56', async () => {
   const reader = { ...activation(), chainId: 56 }
   const { app, job, watches } = await harness({ activation: reader, delegationChainId: 56 })

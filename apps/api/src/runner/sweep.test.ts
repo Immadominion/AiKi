@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { executorAddress } from '../config/executor-identity.js'
+import { executeJobAction } from '../execution/job-execution.js'
 import { JobService } from '../jobs/service.js'
 import { InMemoryJobStore } from '../jobs/store.js'
 import type { VenusAccountSnapshot } from '../reference/venus/types.js'
@@ -46,7 +47,13 @@ const SNAPSHOT: VenusAccountSnapshot = {
 }
 
 async function setup(
-  options: { signed?: boolean; cap?: string; revoked?: boolean; chainId?: number } = {},
+  options: {
+    signed?: boolean
+    cap?: string
+    revoked?: boolean
+    chainId?: number
+    expiresAt?: string
+  } = {},
 ) {
   const chainId = options.chainId ?? 97
   const jobs = new JobService(new InMemoryJobStore())
@@ -68,7 +75,22 @@ async function setup(
           label: 'expiry',
         },
       ]
-  const authorization = await jobs.authorize(constraints, OWNER)
+  const authorization = await jobs.authorize(
+    [
+      ...constraints,
+      ...(options.expiresAt
+        ? [
+            {
+              kind: 'expiry' as const,
+              value: options.expiresAt,
+              tier: 'T2' as const,
+              label: 'expiry',
+            },
+          ]
+        : []),
+    ],
+    OWNER,
+  )
 
   if (options.signed !== false)
     await jobs.attachDelegation(authorization.id, {
@@ -203,6 +225,150 @@ it('stops watching when the mandate is revoked', async () => {
   expect(report.passes[0]?.reason).toMatch(/revoked/i)
   expect((await watches.get(job.id))?.status).toBe('stopped')
   expect(tickMock).not.toHaveBeenCalled()
+})
+
+it.each(['revoked', 'expired'] as const)(
+  'stops a %s mandate with a live execution while retaining its lock and held cap',
+  async (status) => {
+    tickMock.mockReset()
+    const expiresAt = new Date(Date.now() + 3_600_000).toISOString()
+    const { deps, watches, jobs, job, authorizationId } = await setup({ cap: '100', expiresAt })
+    await jobs.attempt(job.id, {
+      target: TOKEN,
+      selector: '0xa9059cbb',
+      asset: TOKEN,
+      amount: 30n,
+      at: new Date().toISOString(),
+    })
+    const claim = await jobs.beginExecution(job.id, 97)
+    if (status === 'revoked') await jobs.revoke(authorizationId)
+    else {
+      await jobs.recordExecutionHash(claim.attempt.id, `0x${'ab'.repeat(32)}`)
+      deps.now = () => Date.parse(expiresAt) + 1
+    }
+    const snapshot = vi.fn(async () => SNAPSHOT)
+    deps.reader = () => ({ snapshot, underlying: async () => TOKEN })
+    const before = await jobs.pendingExecution(authorizationId)
+    expect((await sweep(deps)).stopped).toBe(1)
+    expect((await watches.get(job.id))?.status).toBe('stopped')
+    expect((await watches.get(job.id))?.lastReason).toContain(status)
+    expect(await jobs.pendingExecution(authorizationId)).toEqual(before)
+    expect((await jobs.getAuthorization(authorizationId)).spent).toBe(30n)
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(tickMock).not.toHaveBeenCalled()
+  },
+)
+
+it('durably stops a watch when its repayment confirmation is unresolved', async () => {
+  tickMock.mockReset()
+  const hash = `0x${'ab'.repeat(32)}`
+  tickMock.mockResolvedValue({
+    acted: false,
+    needsReview: true,
+    reason: 'Execution needs review.',
+    transactionHash: hash,
+  })
+  const { deps, watches, job } = await setup({ cap: '100' })
+  expect((await sweep(deps)).stopped).toBe(1)
+  const saved = await watches.get(job.id)
+  expect(saved?.status).toBe('stopped')
+  expect(saved?.lastReason).toContain(hash)
+  expect((await sweep(deps)).looked).toBe(0)
+  expect(tickMock).toHaveBeenCalledOnce()
+})
+
+it('stops after a restart with an unresolved execution before reading or sending again', async () => {
+  tickMock.mockReset()
+  const { deps, watches, jobs, job } = await setup({ cap: '100' })
+  const claim = await jobs.beginExecution(job.id, 97)
+  const hash = `0x${'ab'.repeat(32)}` as const
+  await jobs.recordExecutionHash(claim.attempt.id, hash)
+  await jobs.finishExecution(claim.attempt.id, 'UNCONFIRMED')
+  const snapshot = vi.fn(async () => SNAPSHOT)
+  deps.reader = () => ({ snapshot, underlying: async () => TOKEN })
+  expect((await sweep(deps)).stopped).toBe(1)
+  expect((await watches.get(job.id))?.lastReason).toContain(hash)
+  expect(snapshot).not.toHaveBeenCalled()
+  expect(tickMock).not.toHaveBeenCalled()
+})
+
+it.each(['PREPARING', 'SUBMITTED'] as const)(
+  'defers a %s claim without stopping its watch or expiring the execution lock',
+  async (state) => {
+    tickMock.mockReset()
+    const { deps, watches, jobs, job, authorizationId } = await setup({ cap: '100' })
+    const claim = await jobs.beginExecution(job.id, 97)
+    if (state === 'SUBMITTED')
+      await jobs.recordExecutionHash(claim.attempt.id, `0x${'ab'.repeat(32)}`)
+    deps.now = () => Date.now() + 30 * 86_400_000
+    expect((await sweep(deps)).stopped).toBe(0)
+    expect((await watches.get(job.id))?.status).toBe('active')
+    expect((await watches.get(job.id))?.lastReason).toMatch(/still in progress/)
+    expect((await jobs.pendingExecution(authorizationId))?.id).toBe(claim.attempt.id)
+    expect(tickMock).not.toHaveBeenCalled()
+  },
+)
+
+it('keeps a watch scheduled when an overlapping manual action is later refused over its cap', async () => {
+  tickMock.mockReset().mockResolvedValue({ acted: false, reason: 'Position is healthy.' })
+  const { deps, watches, jobs, job, authorizationId } = await setup({ cap: '100' })
+  let release = () => {}
+  let claimed = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const started = new Promise<void>((resolve) => {
+    claimed = resolve
+  })
+  const attempt = jobs.attempt.bind(jobs)
+  vi.spyOn(jobs, 'attempt').mockImplementationOnce(async (...args) => {
+    claimed()
+    await gate
+    return attempt(...args)
+  })
+  const manual = executeJobAction({
+    jobs,
+    jobId: job.id,
+    request: {
+      ...CHAIN,
+      delegation: {} as never,
+      callData: '0x',
+      action: {
+        target: TOKEN,
+        selector: '0xa9059cbb',
+        asset: TOKEN,
+        amount: 101n,
+        at: new Date().toISOString(),
+      },
+    },
+  })
+  await started
+  const now = Date.now()
+  deps.now = () => now
+  expect((await sweep(deps)).stopped).toBe(0)
+  expect((await watches.get(job.id))?.status).toBe('active')
+  expect(tickMock).not.toHaveBeenCalled()
+  release()
+  expect((await manual).policy.allow).toBe(false)
+  expect(await jobs.pendingExecution(authorizationId)).toBeNull()
+  expect((await jobs.getAuthorization(authorizationId)).spent).toBe(0n)
+  deps.now = () => now + 6 * 60_000
+  expect((await sweep(deps)).stopped).toBe(0)
+  expect((await watches.get(job.id))?.status).toBe('active')
+  expect(tickMock).toHaveBeenCalledOnce()
+})
+
+it('does not stop a watch when a competing execution begins after the sweep precheck', async () => {
+  tickMock.mockReset().mockResolvedValue({
+    acted: false,
+    needsReview: false,
+    deniedBy: 'execution_pending',
+    reason: 'Another execution is still in progress.',
+  })
+  const { deps, watches, job } = await setup({ cap: '100' })
+  expect((await sweep(deps)).stopped).toBe(0)
+  expect((await watches.get(job.id))?.status).toBe('active')
+  expect(tickMock).toHaveBeenCalledOnce()
 })
 
 it('refuses to run against a mandate with no lifetime cap', async () => {

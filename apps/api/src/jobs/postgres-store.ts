@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
 import postgres from 'postgres'
 import type { CompiledPolicy } from '../authority/policy.js'
+import type { ExecutionAttempt, ExecutionState } from '../execution/attempts.js'
 import { ClientError } from '../http/errors.js'
 import type {
   ApprovalRequest,
@@ -107,6 +108,90 @@ export class PostgresJobStore implements JobStore {
 
   constructor(databaseUrl: string) {
     this.sql = postgres(databaseUrl, { max: 5 })
+  }
+
+  async beginExecution(attempt: ExecutionAttempt) {
+    const rows = await this.sql`
+      INSERT INTO execution_attempts (id, authorization_id, job_id, chain_id, state, created_at)
+      SELECT ${attempt.id}, ${attempt.authorizationId}, id, ${attempt.chainId}, 'PREPARING', ${attempt.createdAt}
+      FROM jobs WHERE id = ${attempt.jobId} AND authorization_id = ${attempt.authorizationId}
+      ON CONFLICT DO NOTHING RETURNING id
+    `
+    return rows.length === 1
+  }
+
+  async pendingExecution(authorizationId: string): Promise<ExecutionAttempt | null> {
+    const rows = await this.sql<
+      {
+        id: string
+        authorization_id: string
+        job_id: string
+        chain_id: number
+        state: ExecutionState
+        transaction_hash: `0x${string}` | null
+        created_at: Date
+      }[]
+    >`
+      SELECT * FROM execution_attempts WHERE authorization_id = ${authorizationId}
+      AND state IN ('PREPARING', 'SUBMITTED', 'UNCONFIRMED')
+    `
+    const row = rows[0]
+    return row
+      ? {
+          id: row.id,
+          authorizationId: row.authorization_id,
+          jobId: row.job_id,
+          chainId: Number(row.chain_id),
+          state: row.state,
+          createdAt: iso(row.created_at),
+          ...(row.transaction_hash ? { transactionHash: row.transaction_hash } : {}),
+        }
+      : null
+  }
+
+  async recordExecutionHash(id: string, hash: `0x${string}`) {
+    await this.sql.begin(async (tx) => {
+      const rows = await tx<
+        { job_id: string; chain_id: number; transaction_hash: string | null }[]
+      >`
+        SELECT job_id, chain_id, transaction_hash FROM execution_attempts
+        WHERE id = ${id} AND state IN ('PREPARING', 'SUBMITTED', 'UNCONFIRMED') FOR UPDATE
+      `
+      const row = rows[0]
+      if (!row || (row.transaction_hash && row.transaction_hash !== hash))
+        throw new Error('Execution hash cannot be changed.')
+      if (row.transaction_hash) return
+      await tx`UPDATE execution_attempts SET transaction_hash = ${hash}, state = 'SUBMITTED', updated_at = now() WHERE id = ${id}`
+      await tx`INSERT INTO job_events (job_id, type, detail, at) VALUES (${row.job_id}, 'status', ${`Execution prepared on chain ${row.chain_id}: ${hash}. Confirmation is pending; do not repeat it.`}, now())`
+    })
+  }
+
+  async finishExecution(
+    id: string,
+    state: Exclude<ExecutionState, 'PREPARING' | 'SUBMITTED'>,
+    release: bigint,
+  ) {
+    if (state === 'UNCONFIRMED' && release !== 0n)
+      throw new Error('Unconfirmed execution cannot release a spending limit.')
+    await this.sql.begin(async (tx) => {
+      const rows = await tx<
+        {
+          authorization_id: string
+          job_id: string
+          chain_id: number
+          transaction_hash: string | null
+        }[]
+      >`
+        SELECT authorization_id, job_id, chain_id, transaction_hash FROM execution_attempts
+        WHERE id = ${id} AND state IN ('PREPARING', 'SUBMITTED', 'UNCONFIRMED') FOR UPDATE
+      `
+      const row = rows[0]
+      if (!row) return
+      if (release > 0n)
+        await tx`UPDATE authorizations SET spent = GREATEST(0, spent - ${release.toString()}::numeric) WHERE id = ${row.authorization_id}`
+      await tx`UPDATE execution_attempts SET state = ${state}, updated_at = now() WHERE id = ${id}`
+      await tx`INSERT INTO job_events (job_id, type, detail, at) VALUES (${row.job_id}, 'status', ${`Execution ${state.toLowerCase()} on chain ${row.chain_id}${row.transaction_hash ? `: ${row.transaction_hash}` : ''}.${state === 'UNCONFIRMED' ? ' Spending limit held. Review required; no automatic retry.' : ''}`}, now())`
+    })
   }
 
   async createAuthorization(record: AuthorizationRecord) {

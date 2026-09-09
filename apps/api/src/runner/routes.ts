@@ -3,6 +3,7 @@ import { type Address, createPublicClient, http, type PublicClient, parseAbi } f
 import { bsc, bscTestnet } from 'viem/chains'
 import { requireOwner, requireSession } from '../auth/guard.js'
 import type { WatchMandateVerifier } from '../authority/watch-readiness.js'
+import { unresolvedExecutionMessage } from '../execution/attempts.js'
 import { ClientError } from '../http/errors.js'
 import type { JobService } from '../jobs/service.js'
 import { VenusClient, type VenusReader } from '../reference/venus/client.js'
@@ -124,6 +125,12 @@ export function registerWatchRoutes(app: FastifyInstance, config: WatchRoutesCon
       const job = await jobs.getJob(request.params.id)
       const authorization = await jobs.getAuthorization(job.authorizationId)
       if (!requireOwner(request, reply, session, authorization.owner, 'job')) return reply
+      const pending = await jobs.pendingExecution(authorization.id)
+      if (pending)
+        throw new ClientError(unresolvedExecutionMessage(pending), {
+          code: 'WATCH_EXECUTION_UNCONFIRMED',
+          statusCode: 409,
+        })
 
       const body = request.body ?? {}
       const chainId = body.chainId ?? config.activation?.chainId ?? authorization.delegationChainId
