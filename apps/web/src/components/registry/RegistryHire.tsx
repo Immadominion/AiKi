@@ -9,6 +9,11 @@ import { guardianSubjectFromPassport, isGuardianPassport } from '@/components/hi
 import { PageCard } from '@/components/shell/PageCard'
 import { type AgentTaskSupport, api } from '@/lib/api'
 
+const CHOICE_BUTTON =
+  'min-h-11 min-w-0 basis-full cursor-pointer rounded-xl border px-4 py-2 text-center text-sm leading-5 font-semibold whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-app motion-safe:transition-colors motion-safe:duration-100 sm:basis-auto'
+const SELECTED_CHOICE = 'border-ink-app bg-ink-app text-surface shadow-sm'
+const AVAILABLE_CHOICE = 'border-ink-app/15 bg-surface text-ink-app hover:bg-surface-hover'
+
 export function RegistryHire({ agentId }: { agentId: string }) {
   const [details, setDetails] = useState<{
     passport: ProjectedPassport
@@ -44,18 +49,31 @@ export function RegistryHire({ agentId }: { agentId: string }) {
       <>
         {guardian ? (
           <section className="mb-5 rounded-2xl border border-black/10 p-5">
-            <p className="text-sm">
+            <p className="text-body m-0 text-sm leading-relaxed">
               A report only reads a position. Automatic repayment requires a separate signed mandate
               and a ready mandate account.
             </p>
-            <div className="flex flex-wrap gap-3">
-              <button type="button" aria-pressed={!repayment} onClick={() => setRepayment(false)}>
+            <fieldset
+              aria-label="Guardian setup type"
+              className="m-0 mt-4 flex min-w-0 flex-wrap gap-2 border-0 p-0"
+            >
+              <button
+                type="button"
+                aria-pressed={!repayment}
+                onClick={() => setRepayment(false)}
+                className={`${CHOICE_BUTTON} ${repayment ? AVAILABLE_CHOICE : SELECTED_CHOICE}`}
+              >
                 Request a report
               </button>
-              <button type="button" aria-pressed={repayment} onClick={() => setRepayment(true)}>
+              <button
+                type="button"
+                aria-pressed={repayment}
+                onClick={() => setRepayment(true)}
+                className={`${CHOICE_BUTTON} ${repayment ? SELECTED_CHOICE : AVAILABLE_CHOICE}`}
+              >
                 Set up automatic repayment
               </button>
-            </div>
+            </fieldset>
           </section>
         ) : null}
         {guardian && repayment ? (

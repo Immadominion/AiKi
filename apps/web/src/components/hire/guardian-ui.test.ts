@@ -213,6 +213,47 @@ test('real Guardian registry hire preserves reports and explicitly opts into rep
   )
 })
 
+test('Guardian choices have visible exclusive selection, native keyboard controls and wrapping touch targets', async () => {
+  registryMocks()
+  await act(async () => {
+    renderer = create(registry())
+  })
+  const report = button('Request a report')
+  const repayment = button('Set up automatic repayment')
+  assert.ok(report)
+  assert.ok(repayment)
+  const group = renderer?.root.findByProps({ 'aria-label': 'Guardian setup type' })
+  assert.equal(group?.type, 'fieldset')
+  assert.match(group?.props.className, /flex-wrap/)
+  for (const choice of [report, repayment]) {
+    assert.equal(choice.type, 'button')
+    assert.equal(choice.props.type, 'button')
+    assert.equal(choice.props.tabIndex, undefined)
+    assert.equal(choice.props.disabled, undefined)
+    for (const token of [
+      'min-h-11',
+      'basis-full',
+      'sm:basis-auto',
+      'whitespace-normal',
+      'focus-visible:outline-2',
+      'focus-visible:outline-orange-app',
+    ])
+      assert.ok(choice.props.className.split(' ').includes(token), token)
+  }
+  assert.equal(report.props['aria-pressed'], true)
+  assert.equal(repayment.props['aria-pressed'], false)
+  assert.match(report.props.className, /bg-ink-app text-surface/)
+  assert.match(repayment.props.className, /bg-surface text-ink-app/)
+  await act(async () => repayment.props.onClick())
+  assert.equal(report.props['aria-pressed'], false)
+  assert.equal(repayment.props['aria-pressed'], true)
+  assert.match(report.props.className, /bg-surface text-ink-app/)
+  assert.match(repayment.props.className, /bg-ink-app text-surface/)
+  await act(async () => report.props.onClick())
+  assert.equal(report.props['aria-pressed'], true)
+  assert.match(report.props.className, /bg-ink-app text-surface/)
+})
+
 test('a similarly named agent keeps report hiring and cannot acquire Guardian activation', async () => {
   const paths = registryMocks({
     ...passport,
