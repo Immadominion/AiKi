@@ -1,302 +1,280 @@
 'use client'
 
-import type { ProjectedPassport } from '@aiki/contracts'
+import { Search } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
-import { paletteFor } from '@/components/home/live-shards'
-import { CoverageBlock } from '@/components/shell/CoverageBlock'
-import { AgentCell, Cell, DataTable, RowActions } from '@/components/shell/DataTable'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { CatalogCard, CatalogSkeleton } from '@/components/catalog/CatalogCard'
+import {
+  CATALOG_CATEGORIES,
+  catalogFilterHref,
+  catalogFilters,
+} from '@/components/catalog/catalog-state'
 import { PageCard } from '@/components/shell/PageCard'
-import { useSaved } from '@/components/shell/prefs'
-import { EvidenceBars } from '@/components/ui/EvidenceBars'
-import { useToast } from '@/components/ui/Toast'
-import { AGENT_BG, AGENTS } from '@/lib/agents'
-import { api } from '@/lib/api'
-import { DETAILS } from '@/lib/detail'
-import { EXAMPLE_EVIDENCE_COLUMN, EXAMPLE_FOOTNOTE, exampleBanner } from '@/lib/examples'
-import { useRegistryCoverage } from '@/lib/live'
-import { agentHref, registryHref, route } from '@/lib/routes'
-import { TASKS } from '@/lib/tasks'
+import { type CatalogAgent, type CatalogPage, catalogApi } from '@/lib/catalog-api'
+import { route } from '@/lib/routes'
 
-/**
- * One row, one line of meaning.
- *
- * Registration descriptions run to paragraphs, and one agent's ran long enough
- * to make its row four hundred pixels tall and push every other agent off the
- * screen. The first sentence is taken whole rather than cut mid-word, so what
- * is shown is still the operator's own wording and not our paraphrase of it.
- */
-function summarise(description: string | null): string {
-  const text = (description ?? '').trim()
-  if (!text) return 'Declares no description'
-  const first = text.split(/(?<=\.)\s/)[0] ?? text
-  return first.length > 150 ? `${first.slice(0, 147).trimEnd()}...` : first
-}
+const FOCUS =
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-app'
 
 export function ExploreView() {
   const params = useSearchParams()
-  const q = params.get('q') ?? ''
-  const say = useToast()
   const router = useRouter()
-  const { toggle, isSaved } = useSaved()
+  const key = params.toString()
+  const [search, setSearch] = useState(params.get('q') ?? '')
+  const [page, setPage] = useState<CatalogPage | null>(null)
+  const [problem, setProblem] = useState<string | null>(null)
+  const [retry, setRetry] = useState(0)
+  const [connectors, setConnectors] = useState<CatalogAgent[]>([])
+  const scroll = useRef<HTMLDivElement>(null)
+  const hasFilters = Boolean(
+    params.get('q') || params.get('protocol') || params.get('category') || params.get('cursor'),
+  )
 
-  const registry = useRegistryCoverage()
-  const searching = q.trim().length > 0
-
-  /*
-   * A search here now asks the marketplace, not the example set.
-   *
-   * The banner on this page has always said these six are examples, which was
-   * honest and was also the whole problem: the reason given was that "almost no
-   * registry entry publishes what an agent can do". Registrations do carry a
-   * description and service names, and /v1/search now ranks agents on them, so
-   * the reason has stopped being true and the page can answer for real.
-   *
-   * Browsing with no query still shows the examples, still labelled, because
-   * there is no measured way to rank agents for somebody who has not said what
-   * they want.
-   */
-  const [live, setLive] = useState<ProjectedPassport[] | null>(null)
-  const [failed, setFailed] = useState(false)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: retry intentionally repeats the same source query.
   useEffect(() => {
-    if (!searching) return
-    let cancelled = false
-    setLive(null)
-    setFailed(false)
-    api
-      .search({ query: q, limit: 25 })
-      .then((answer) => {
-        if (!cancelled) setLive(answer.results)
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true)
-      })
-    return () => {
-      cancelled = true
+    const controller = new AbortController()
+    setPage(null)
+    setProblem(null)
+    setSearch(new URLSearchParams(key).get('q') ?? '')
+    scroll.current?.scrollTo({ top: 0 })
+    try {
+      const query = catalogFilters(new URLSearchParams(key))
+      catalogApi
+        .list(query, controller.signal)
+        .then((result) => {
+          if (!controller.signal.aborted) setPage(result)
+        })
+        .catch((error: unknown) => {
+          if (!controller.signal.aborted)
+            setProblem(
+              error instanceof Error
+                ? error.message
+                : 'The catalog could not load. Try again shortly.',
+            )
+        })
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : 'Choose a different filter.')
     }
-  }, [q, searching])
+    return () => controller.abort()
+  }, [key, retry])
 
-  const nothing = searching && live !== null && live.length === 0
-
-  // What you actually hold, so "Suggested" means something rather than being a
-  // relabelled default sort.
-  const suggested = useMemo(() => AGENTS.filter((a) => /venus|pancake/i.test(a.works)), [])
-  const testedMost = useMemo(
-    () =>
-      [...AGENTS].sort(
-        (a, b) => (DETAILS[b.key]?.checks[1] ?? 0) - (DETAILS[a.key]?.checks[1] ?? 0),
-      ),
-    [],
-  )
-
-  // Said on every view of this page, not tucked into a footnote. The wording
-  // lives in lib/examples so the four surfaces showing this dataset cannot drift
-  // apart again, which is exactly how three of them ended up claiming the
-  // opposite.
-  const banner = exampleBanner(() => router.push(route('/registry')))
-
-  const table = (rows: typeof AGENTS) => (
-    <DataTable
-      cols="minmax(200px,1.5fr) minmax(150px,1.1fr) minmax(180px,1.3fr) 100px 152px"
-      minWidth="790px"
-      columns={[
-        { label: 'Agent', glyph: '◍' },
-        { label: 'What it does', glyph: '⌬' },
-        { label: EXAMPLE_EVIDENCE_COLUMN, glyph: '⊞', sortable: true },
-        { label: 'Price', glyph: '⌁', sortable: true },
-        { label: '', glyph: '', align: 'end' },
-      ]}
-      rows={rows.map((a) => ({
-        id: a.key,
-        cells: [
-          <AgentCell
-            key="a"
-            initial={a.initial}
-            name={a.name}
-            sub={a.works}
-            bg={AGENT_BG[a.key] ?? '#171715'}
-          />,
-          <Cell key="b" color="var(--color-body)">
-            {a.does}
-          </Cell>,
-          <EvidenceBars key="c" filled={a.bars} label={a.evidence} tone={a.evidenceTone} />,
-          <Cell key="d" weight={700} color="var(--color-ink-app)">
-            {a.price}
-          </Cell>,
-          <RowActions
-            key="e"
-            actions={[
-              {
-                label: isSaved(a.key) ? 'Saved' : 'Save',
-                onClick: () => {
-                  toggle(a.key)
-                  say(isSaved(a.key) ? `${a.name} removed from saved.` : `${a.name} saved.`)
-                },
-              },
-              { label: 'View', primary: true, onClick: () => router.push(agentHref(a.key)) },
-            ]}
-          />,
-        ],
-      }))}
-      footnote={EXAMPLE_FOOTNOTE}
-    />
-  )
-
-  /**
-   * Real agents, with the evidence AiKi actually holds.
-   *
-   * No price column: almost nothing in the registry publishes one, and a blank
-   * that reads as free is worse than a column that is not there. The evidence
-   * cell says the trial count out loud, because a score over three probes and a
-   * score over three hundred are different claims.
-   */
-  const liveTable = (rows: ProjectedPassport[]) => (
-    <DataTable
-      cols="minmax(200px,1.5fr) minmax(220px,1.6fr) minmax(170px,1.2fr) 152px"
-      minWidth="760px"
-      columns={[
-        { label: 'Agent', glyph: '◍' },
-        { label: 'What it says it does', glyph: '⌬' },
-        { label: 'What we measured', glyph: '⊞' },
-        { label: '', glyph: '', align: 'end' },
-      ]}
-      rows={rows.map((p) => {
-        const trials = p.checks?.trials ?? 0
-        const answering = p.liveness === 'LIVE'
-        return {
-          id: p.agentId,
-          cells: [
-            <AgentCell
-              key="a"
-              initial={(p.name ?? p.agentId)
-                .replace(/^AiKi\s+/i, '')
-                .charAt(0)
-                .toUpperCase()}
-              name={(p.name ?? `Agent ${p.agentId}`).replace(/^AiKi\s+/i, '')}
-              sub={`token ${p.agentId}`}
-              bg={paletteFor(p.agentId).bg}
-            />,
-            <Cell key="b" color="var(--color-body)">
-              {summarise(p.description)}
-            </Cell>,
-            <EvidenceBars
-              key="c"
-              filled={answering ? Math.min(5, Math.max(1, Math.round(trials / 6))) : 1}
-              label={
-                answering
-                  ? `Answering · ${trials} ${trials === 1 ? 'check' : 'checks'}`
-                  : `${p.liveness.replace(/_/g, ' ').toLowerCase()} · ${trials} ${trials === 1 ? 'check' : 'checks'}`
-              }
-              tone={answering ? (trials >= 20 ? 'strong' : 'fair') : 'thin'}
-            />,
-            <RowActions
-              key="d"
-              actions={[
-                {
-                  label: 'View',
-                  primary: true,
-                  onClick: () => router.push(registryHref(p.agentId)),
-                },
-              ]}
-            />,
-          ],
-        }
-      })}
-      footnote="Ranked on what each agent's own registration says it does, and filtered to the ones that answered a probe. The count beside each is how many probes it has answered."
-    />
-  )
-
-  const noMatch = (
-    <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-5">
-      <div className="flex items-start gap-[11px]">
-        <span className="bg-warn-hi mt-px flex size-[22px] flex-none items-center justify-center rounded-[8px] text-[12px] font-extrabold">
-          ?
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="text-[14.5px] font-bold">No agent here can do that yet.</div>
-          <p className="text-muted mt-[5px] mb-0 max-w-[620px] text-[13px] leading-[1.55] text-pretty">
-            AiKi claims four kinds of work today. We would rather tell you that than show you agents
-            that cannot do this. The ask is logged, because unmet asks are how we know what to add
-            next.
-          </p>
-          <div className="mt-[14px] flex flex-wrap gap-[8px]">
-            {TASKS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => router.push(route(`/explore?q=${encodeURIComponent(t.intent)}`))}
-                className="flex items-center gap-[9px] rounded-[13px] border border-[rgb(26_26_25_/_0.08)] px-[11px] py-[9px] text-left hover:bg-[rgb(26_26_25_/_0.035)]"
-              >
-                <span
-                  className="flex size-[26px] flex-none items-center justify-center rounded-[9px] text-[11px] font-extrabold text-white"
-                  style={{ background: t.bg }}
-                >
-                  {t.glyph}
-                </span>
-                <span className="text-[13px] font-semibold">{t.title}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-
-  return (
-    <PageCard
-      title={searching ? 'Results' : 'Explore'}
-      count={
-        searching
-          ? `for “${q}”${live ? ` · ${live.length} from the registry` : ''}`
-          : `${AGENTS.length} agents · 4 kinds of work`
-      }
-      primary="Compare"
-      /*
-       * Compare what is actually on screen. This always opened the same two
-       * example agents, so the button offered to compare a pair the visitor had
-       * not searched for and could not see.
-       */
-      onPrimary={() =>
-        router.push(
-          route(
-            live && live.length >= 2
-              ? `/compare?agents=${live[0]?.agentId},${live[1]?.agentId}`
-              : '/compare?agents=guardian,sentinel',
+  useEffect(() => {
+    const controller = new AbortController()
+    Promise.allSettled(
+      ['43129', '45650'].map((id) => catalogApi.detail(id, controller.signal)),
+    ).then((results) => {
+      if (!controller.signal.aborted)
+        setConnectors(
+          results.flatMap((result) =>
+            result.status === 'fulfilled' && result.value.connector === 'read_only_candidate'
+              ? [result.value]
+              : [],
           ),
         )
-      }
-      tabs={searching ? [] : ['Suggested', 'All', 'Tested most']}
-      tabHint={
-        searching
-          ? ''
-          : [
-              'Matched against the positions you hold',
-              'Every example in the set',
-              'Most illustrative checks first',
-            ]
-      }
-      banner={searching ? undefined : banner}
-      panels={searching ? undefined : [table(suggested), table(AGENTS), table(testedMost)]}
-    >
-      {searching ? (
-        <>
-          <div className="mb-[18px]">
-            <CoverageBlock shown={live?.length ?? 0} coverage={registry} />
-          </div>
-          {failed ? (
-            <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-5 text-[13.5px]">
-              The registry could not be reached, so this page is showing nothing rather than
-              guessing. Try again in a moment.
+    })
+    return () => controller.abort()
+  }, [])
+
+  const filter = (patch: Record<string, string>) =>
+    router.replace(route(catalogFilterHref(new URLSearchParams(key), patch)), { scroll: false })
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    filter({ q: search.trim() })
+  }
+
+  return (
+    <PageCard title="Explore agents" count="BNB Chain" tabs={[]} tabHint="" contentRef={scroll}>
+      <div className="space-y-6 pb-2">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <p className="m-0 max-w-xl text-sm leading-relaxed text-body">Find your next agent.</p>
+          <Link
+            href="/market"
+            className={`inline-flex min-h-11 items-center gap-2 rounded-xl bg-surface-sunk px-3 text-sm font-semibold ${FOCUS}`}
+          >
+            Ready in AiKi <span aria-hidden="true">↗</span>
+          </Link>
+        </div>
+        <form
+          onSubmit={submit}
+          className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]"
+        >
+          <div className="col-span-2 md:col-span-1">
+            <label htmlFor="catalog-search" className="mb-2 block text-xs font-semibold text-body">
+              Search agents
+            </label>
+            <div className="relative">
+              <Search
+                size={18}
+                className="pointer-events-none absolute top-3.5 left-3 text-body"
+                aria-hidden="true"
+              />
+              <input
+                id="catalog-search"
+                type="search"
+                autoComplete="off"
+                maxLength={160}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Venus, portfolio, yield…"
+                className={`min-h-11 w-full rounded-xl border border-ink-app/15 bg-surface py-3 pr-3 pl-10 text-base sm:text-sm ${FOCUS}`}
+              />
             </div>
-          ) : live === null ? (
-            <div className="text-muted px-[18px] py-5 text-[13.5px]">Asking the registry…</div>
-          ) : nothing ? (
-            noMatch
+          </div>
+          <div>
+            <label
+              htmlFor="catalog-protocol"
+              className="mb-2 block text-xs font-semibold text-body"
+            >
+              Connection
+            </label>
+            <select
+              id="catalog-protocol"
+              value={params.get('protocol') ?? ''}
+              onChange={(event) => filter({ protocol: event.target.value })}
+              className={`min-h-11 w-full rounded-xl border border-ink-app/15 bg-surface px-3 text-base sm:text-sm ${FOCUS}`}
+            >
+              <option value="">All protocols</option>
+              <option value="MCP">MCP</option>
+              <option value="A2A">A2A</option>
+            </select>
+          </div>
+          <button
+            type="submit"
+            className={`min-h-11 self-end rounded-xl bg-ink-app px-5 text-sm font-bold text-surface ${FOCUS}`}
+          >
+            Search
+          </button>
+        </form>
+        <fieldset className="m-0 flex flex-wrap gap-2 border-0 p-0">
+          <legend className="sr-only">Filter by kind of work</legend>
+          {CATALOG_CATEGORIES.map((category) => (
+            <button
+              key={category.value}
+              type="button"
+              aria-pressed={(params.get('category') ?? '') === category.value}
+              onClick={() => filter({ category: category.value })}
+              className={`min-h-11 rounded-xl px-3 text-sm font-semibold ${FOCUS} ${(params.get('category') ?? '') === category.value ? 'bg-ink-app text-surface' : 'bg-surface-sunk text-body hover:text-ink-app'}`}
+            >
+              {category.label}
+            </button>
+          ))}
+        </fieldset>
+        {!hasFilters && connectors.length ? (
+          <section aria-labelledby="catalog-connectors">
+            <div className="mb-3">
+              <h2 id="catalog-connectors" className="m-0 text-base font-bold">
+                Read with an external agent
+              </h2>
+              <p className="mt-1 mb-0 text-sm text-body">Read-only connections. No AiKi points.</p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {connectors.map((agent) => (
+                <CatalogCard key={agent.sourceId} agent={agent} compact />
+              ))}
+            </div>
+          </section>
+        ) : null}
+        <section aria-labelledby="catalog-listings">
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="catalog-listings" className="m-0 text-base font-bold">
+              {hasFilters ? 'Matching registrations' : 'Registered agents'}
+            </h2>
+            <span className="text-xs text-body" aria-live="polite">
+              {page ? `${page.items.length} registrations shown` : 'From 8004scan'}
+            </span>
+          </div>
+          {problem ? (
+            <div role="alert" className="rounded-2xl border border-ink-app/15 p-6">
+              <h3 className="m-0 text-base font-bold">We couldn’t load these agents</h3>
+              <p className="mt-2 text-sm text-body">{problem}</p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRetry((value) => value + 1)}
+                  className={`min-h-11 rounded-xl bg-ink-app px-4 text-sm font-semibold text-surface ${FOCUS}`}
+                >
+                  Try again
+                </button>
+                <Link
+                  href="/explore"
+                  className={`inline-flex min-h-11 items-center rounded-xl bg-surface-sunk px-4 text-sm font-semibold ${FOCUS}`}
+                >
+                  Clear filters
+                </Link>
+              </div>
+            </div>
+          ) : !page ? (
+            <CatalogSkeleton />
+          ) : page.items.length === 0 ? (
+            <div className="rounded-2xl border border-ink-app/10 px-6 py-10 text-center">
+              <h3 className="m-0 text-base font-bold">No registrations on this page</h3>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-body">
+                Try a broader search or another connection type. A missing result doesn’t mean the
+                agent cannot do the work.
+              </p>
+              <Link
+                href="/explore"
+                className={`mt-3 inline-flex min-h-11 items-center rounded-xl bg-surface-sunk px-4 text-sm font-semibold ${FOCUS}`}
+              >
+                Browse all agents
+              </Link>
+            </div>
           ) : (
-            liveTable(live)
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {page.items.map((agent) => (
+                <CatalogCard key={agent.sourceId} agent={agent} />
+              ))}
+            </div>
           )}
-        </>
-      ) : null}
+          {page ? (
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+              <p className="m-0 max-w-2xl text-xs leading-relaxed text-body">
+                Publisher listings and artwork from{' '}
+                <a
+                  href="https://8004scan.io"
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`underline underline-offset-2 ${FOCUS}`}
+                >
+                  8004scan
+                </a>
+                . Open an agent to check supported actions.{' '}
+                {page.categoryMatch ? 'Categories match publisher text.' : ''}
+              </p>
+              <div className="flex gap-2">
+                {params.get('cursor') ? (
+                  <button
+                    type="button"
+                    onClick={() => filter({})}
+                    className={`min-h-11 rounded-xl bg-surface-sunk px-4 text-sm font-semibold ${FOCUS}`}
+                  >
+                    First page
+                  </button>
+                ) : null}
+                {page.hasMore && page.nextCursor ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      router.push(
+                        route(
+                          catalogFilterHref(new URLSearchParams(key), {
+                            cursor: page.nextCursor ?? '',
+                          }),
+                        ),
+                        { scroll: false },
+                      )
+                    }
+                    className={`min-h-11 rounded-xl bg-ink-app px-4 text-sm font-semibold text-surface ${FOCUS}`}
+                  >
+                    Next page →
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </div>
     </PageCard>
   )
 }

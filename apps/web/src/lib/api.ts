@@ -73,6 +73,8 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return body
 }
 
+export { req as apiRequest }
+
 /**
  * What the API says a single limit is actually worth.
  *
@@ -202,6 +204,8 @@ export interface Seller {
 }
 
 export interface AssistantTurn {
+  turnId?: string
+  conversationId?: string
   reply: string
   steps: AssistantStep[]
   truncated: boolean
@@ -212,7 +216,37 @@ export interface AssistantTurn {
    * cost. The difference went straight back, which is why the balance below is
    * read after the return rather than after the charge.
    */
-  cost: { points: number; balance: number; held: number; explanation: string }
+  cost: {
+    points: number
+    balance: number
+    held: number
+    explanation: string
+    pendingPoints?: number
+  }
+}
+
+export interface FastConversationMessage {
+  id: string
+  turnId: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt: string
+  status?: 'completed' | 'failed'
+  steps?: AssistantStep[]
+  cost?: AssistantTurn['cost']
+}
+
+export interface FastConversationSummary {
+  id: string
+  title: string
+  createdAt: string
+  updatedAt: string
+  messageCount: number
+  lastMessage: string | null
+}
+
+export interface FastConversation extends FastConversationSummary {
+  messages: FastConversationMessage[]
 }
 
 export interface CreditBalance {
@@ -221,6 +255,19 @@ export interface CreditBalance {
   pointsPerUsdt: number
   minimumToAsk: number
   model: string
+  redeemable?: false
+  redeemableNote?: string
+  limits?: {
+    walletPerMinute: number
+    walletConcurrent: number
+    walletDailyPoints: number
+    globalDailyPoints: number
+    globalConcurrent: number
+    maximumTurnPoints: number
+    leaseSeconds: number
+    welcomePoints: number
+    welcomeGrantsPerDay: number
+  }
   history: { id: string; delta: number; reason: string; createdAt: string }[]
 }
 
@@ -387,6 +434,7 @@ export const api = {
       token?: string
       treasury?: string
       pointsPerUsdt?: number
+      confirmations?: number
     }>('/v1/credits/treasury'),
   /** Hands over a payment's transaction hash. Everything else is read from the chain. */
   depositCredits: (transactionHash: string) =>
@@ -394,15 +442,29 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ transactionHash }),
     }),
-  /**
-   * One turn of Fast mode. The whole conversation goes up each time, because the
-   * server holds no session state for it - a turn is priced from the tokens it
-   * actually reads, so what is sent is what is paid for and both sides can see it.
-   */
-  assistant: (messages: { role: 'user' | 'assistant'; content: string }[]) =>
+  conversations: (before?: string) =>
+    req<{ conversations: FastConversationSummary[]; nextCursor: string | null }>(
+      `/v1/assistant/conversations${before ? `?before=${encodeURIComponent(before)}` : ''}`,
+    ),
+  conversation: (id: string) =>
+    req<FastConversation>(`/v1/assistant/conversations/${encodeURIComponent(id)}`),
+  createConversation: (id: string) =>
+    req<FastConversation>('/v1/assistant/conversations', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }),
+  /** A retry carries the original key and body so it cannot buy another turn. */
+  assistant: (
+    messages: { role: 'user' | 'assistant'; content: string }[],
+    options?: { conversationId: string; idempotencyKey: string },
+  ) =>
     req<AssistantTurn>('/v1/assistant/messages', {
       method: 'POST',
-      body: JSON.stringify({ messages }),
+      ...(options ? { headers: { 'idempotency-key': options.idempotencyKey } } : {}),
+      body: JSON.stringify({
+        messages,
+        ...(options ? { conversationId: options.conversationId } : {}),
+      }),
     }),
   authorize: (constraints: unknown[]) =>
     req<AuthorizationResponse>('/v1/authorizations', {
@@ -474,7 +536,13 @@ export const api = {
       body: JSON.stringify({ because }),
     }),
   /** People listed as available for work, with what each has actually delivered. */
-  sellers: () => req<{ kinds: Record<string, string>; sellers: Seller[] }>('/v1/sellers'),
+  sellers: () =>
+    req<{
+      kinds: Record<string, string>
+      sellers: Seller[]
+      minimumPricePoints: number
+      feeBasisPoints: number
+    }>('/v1/sellers'),
   seller: (address: string) => req<Seller>(`/v1/sellers/${address}`),
   /** Create or change your own listing. Keyed on your session, never anybody else's. */
   putSeller: (listing: {

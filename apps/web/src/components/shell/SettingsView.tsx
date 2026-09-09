@@ -131,6 +131,19 @@ export function SettingsView() {
           />
         </Section>
 
+        <Section
+          id="points"
+          title="Points and Fast mode"
+          note="Your balance, usage, and the current limits. Mainnet point purchases are not available."
+        >
+          <Row
+            title="Your points"
+            body="See recent point activity and verify a supported testnet deposit. Points are used inside AiKi and cannot currently be withdrawn."
+            action="View points"
+            onAction={() => router.push(route('/credits'))}
+          />
+        </Section>
+
         {/*
          * Rewritten to describe what exists.
          *

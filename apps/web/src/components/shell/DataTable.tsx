@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { AgentAvatar } from '@/components/ui/Avatar'
 import { route } from '@/lib/routes'
 
 export interface Column {
@@ -151,21 +152,19 @@ export function AgentCell({
   initial,
   name,
   sub,
-  bg,
+  image,
+  identity,
 }: {
   initial: string
   name: string
   sub: string
   bg: string
+  image?: string | null | undefined
+  identity?: string | undefined
 }) {
   return (
     <>
-      <span
-        className="flex size-9 flex-none items-center justify-center rounded-xl text-[14px] font-extrabold text-white"
-        style={{ background: bg }}
-      >
-        {initial}
-      </span>
+      <AgentAvatar identity={identity ?? name} name={name || initial} src={image} size={36} />
       <span className="min-w-0">
         <span className="block text-[14px] font-bold tracking-[-0.01em]">{name}</span>
         <span className="text-muted mt-px block text-[12px]">{sub}</span>

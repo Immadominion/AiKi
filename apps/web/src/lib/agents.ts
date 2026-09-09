@@ -24,6 +24,7 @@ export interface AgentRow {
   key: AgentKey
   initial: string
   name: string
+  image?: string | null | undefined
   works: string
   does: string
   blurb: string

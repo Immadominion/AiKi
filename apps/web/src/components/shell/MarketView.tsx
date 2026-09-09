@@ -1,6 +1,7 @@
 'use client'
 
 import type { ProjectedPassport } from '@aiki/contracts'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { MarketGrid } from '@/components/shell/MarketCard'
@@ -8,6 +9,7 @@ import { PageCard } from '@/components/shell/PageCard'
 import { useLayoutPref } from '@/components/shell/prefs'
 import type { AgentRow } from '@/lib/agents'
 import { api } from '@/lib/api'
+import { briefText } from '@/lib/identity'
 import { FAST_HOME } from '@/lib/routes'
 
 /**
@@ -46,9 +48,10 @@ function toRow(p: ProjectedPassport): AgentRow {
     key: p.agentId as AgentRow['key'],
     initial: (display.charAt(0) || '?').toUpperCase(),
     name: display,
+    image: p.image,
     works: `token ${p.agentId}`,
     does: sentence || 'Declares no description',
-    blurb: sentence || 'This agent publishes no description of what it does.',
+    blurb: briefText(sentence || 'No description published.', 150),
     // One bar per batch of checks, capped, so the bars mean the same thing they
     // mean everywhere else: how much we have actually watched it.
     bars: answering ? Math.min(5, Math.max(1, Math.round(trials / 6))) : 1,
@@ -95,16 +98,26 @@ export function MarketView() {
     >
       {failed ? (
         <p className="max-w-[620px] text-[13.5px]">
-          The registry could not be reached, so there is nothing to browse yet. This page will not
-          fill itself with examples in the meantime.
+          Agents could not be loaded. Refresh to try again.
         </p>
       ) : rows === null ? (
         <p className="text-muted text-[13.5px]">Reading the registry…</p>
       ) : (
-        <MarketGrid
-          agents={rows}
-          footnote="Every agent here answered a probe AiKi ran itself. The count on each card is how many it has answered, and the description is the operator's own wording from their registration."
-        />
+        <>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-muted m-0 text-[13px]">Choose an agent, then give it a job.</p>
+            <Link
+              href="/explore"
+              className="inline-flex min-h-10 items-center rounded-xl bg-surface-sunk px-4 text-[12px] font-semibold"
+            >
+              Explore all agents ↗
+            </Link>
+          </div>
+          <MarketGrid
+            agents={rows}
+            footnote="Recent agent checks. Open an agent to see its services and hiring options."
+          />
+        </>
       )}
     </PageCard>
   )

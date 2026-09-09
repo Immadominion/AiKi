@@ -5,8 +5,10 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { OwnerListing } from '@/components/registry/OwnerListing'
 import { PageCard } from '@/components/shell/PageCard'
+import { AgentAvatar } from '@/components/ui/Avatar'
 import { LIVENESS_DETAIL, LivenessBadge } from '@/components/ui/LivenessBadge'
 import { api } from '@/lib/api'
+import { briefText } from '@/lib/identity'
 import { route } from '@/lib/routes'
 
 type State =
@@ -114,6 +116,20 @@ export function RegistryPassport({ agentId }: { agentId: string }) {
         : {})}
       back={{ href: '/registry', label: 'Registry' }}
     >
+      <div className="mb-4 flex items-center gap-3 rounded-2xl bg-surface-sunk p-4">
+        <AgentAvatar
+          identity={`${p.chainId}:${p.agentId}`}
+          name={p.name ?? `Agent ${p.agentId}`}
+          src={p.image}
+          size={56}
+        />
+        <div className="min-w-0">
+          <p className="m-0 text-[14px] font-bold">{p.name ?? `Agent ${p.agentId}`}</p>
+          <p className="text-muted mt-1 mb-0 text-[12.5px] leading-relaxed">
+            {briefText(p.description ?? 'No description published.', 180)}
+          </p>
+        </div>
+      </div>
       <OwnerListing agentId={p.agentId} owner={p.identity?.owner ?? null} />
 
       <div className="grid gap-[14px] md:grid-cols-2">

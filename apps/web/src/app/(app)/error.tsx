@@ -16,8 +16,8 @@ export default function ErrorBoundary({
   reset: () => void
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] bg-white shadow-[0_1px_2px_rgb(26_26_25_/_0.06)]">
-      <div className="flex min-h-0 flex-1 items-center justify-center px-4 py-10">
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-[22px] bg-white shadow-[0_1px_2px_rgb(26_26_25_/_0.06)]">
+      <div className="flex min-h-full items-center justify-center px-4 py-10">
         <div className="max-w-[520px]">
           <div className="flex items-center gap-[10px]">
             <span className="bg-warn flex size-[24px] flex-none items-center justify-center rounded-[8px] text-[13px] font-extrabold text-white">

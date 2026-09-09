@@ -1,11 +1,9 @@
 'use client'
 
-import { CalendarIcon, ChevronDownIcon, LayersIcon } from '@animateicons/react/lucide'
-import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { useHoverIcon } from '@/components/ui/AnimatedIcon'
+import { UserAvatar } from '@/components/ui/Avatar'
 import { useToast } from '@/components/ui/Toast'
 import { AGENT_BG, agentRow } from '@/lib/agents'
 import { hiredRows } from '@/lib/present'
@@ -13,41 +11,6 @@ import { route } from '@/lib/routes'
 import { CONNECT_TOAST, shortAddress } from '@/lib/wallet'
 import { useMock } from '@/mock/store'
 import { type MockState, usd } from '@/mock/types'
-
-const CHIPS = [
-  { label: 'Last 7 days', icon: CalendarIcon, msg: 'Date range picker is wired in the build.' },
-  { label: 'All protocols', icon: LayersIcon, msg: 'Protocol filter is wired in the build.' },
-]
-
-/** A filter chip. Owns its icon ref, because the chip is the hover target. */
-function Chip({
-  label,
-  icon: Icon,
-  onClick,
-}: {
-  label: string
-  icon: typeof CalendarIcon
-  onClick: () => void
-}) {
-  const { ref, hoverProps } = useHoverIcon()
-  return (
-    <button
-      type="button"
-      title={label}
-      onClick={onClick}
-      className="hidden h-11 flex-none items-center gap-[9px] rounded-[15px] border-0 bg-[rgb(26_26_25_/_0.055)] px-3 text-[14px] font-semibold whitespace-nowrap hover:bg-[rgb(26_26_25_/_0.09)] sm:flex lg:px-[15px]"
-      {...hoverProps}
-    >
-      <span className="flex flex-none items-center justify-center text-[#57574F] [&_svg]:stroke-[2.25]">
-        <Icon ref={ref} size={17} color="currentColor" />
-      </span>
-      <span className="hidden whitespace-nowrap lg:inline">{label}</span>
-      <span className="text-muted hidden flex-none lg:inline [&_svg]:stroke-[2.5]">
-        <ChevronDownIcon size={13} color="currentColor" />
-      </span>
-    </button>
-  )
-}
 
 /**
  * What is waiting for you.
@@ -152,13 +115,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           title={state.address}
           className="hidden h-11 flex-none items-center gap-2 rounded-[15px] bg-white px-2 shadow-[0_1px_2px_rgb(26_26_25_/_0.06)] sm:flex"
         >
-          <Image
-            src="/aiki-logo.png"
-            alt=""
-            width={56}
-            height={56}
-            className="size-7 object-contain"
-          />
+          <UserAvatar address={state.address} size={28} />
           <span className="hidden text-[14px] font-bold whitespace-nowrap lg:block">
             {shortAddress(state.address)}
             {state.walletKind === 'simulated' ? (
@@ -188,9 +145,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
         </button>
       ) : null}
 
-      {CHIPS.map((c) => (
-        <Chip key={c.label} label={c.label} icon={c.icon} onClick={() => say(c.msg)} />
-      ))}
+      {/* Filters belong to the page whose data they actually change. */}
 
       {/* No freshness badge. It used to render LIVE at a hardcoded 42 seconds to
           every signed-in visitor, which is a measurement of nothing presented as

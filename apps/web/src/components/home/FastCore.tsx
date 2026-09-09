@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { useAccount } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
 import { api } from '@/lib/api'
 import { agentHref, registryHref } from '@/lib/routes'
@@ -11,7 +12,7 @@ import { FastChat } from './FastChat'
 import { HistoryRail } from './HistoryRail'
 import { liveShards } from './live-shards'
 import { ShardField } from './ShardField'
-import { type Frame, SHARDS_RETURNING, type ShardSpec } from './shards'
+import type { Frame, ShardSpec } from './shards'
 
 /**
  * Fast mode's actual content, independent of the box it sits in.
@@ -24,7 +25,7 @@ import { type Frame, SHARDS_RETURNING, type ShardSpec } from './shards'
 export function FastCore({
   frame,
   connected,
-  userName = 'Dominion',
+  userName,
   footer,
   landmark = false,
 }: {
@@ -42,7 +43,7 @@ export function FastCore({
    */
   landmark?: boolean
 }) {
-  const [resumed, setResumed] = useState(0)
+  const account = useAccount()
   /*
    * The question that opened Fast mode, if one has. Asking used to redirect to
    * a search results page, which made "Fast" a differently-shaped search box
@@ -50,9 +51,29 @@ export function FastCore({
    * create a mandate, or put an agent on duty, and those are the things people
    * come here to do.
    */
-  const [asking, setAsking] = useState<string | null>(null)
+  const [chat, setChat] = useState<{ id: string; opening?: string; create?: boolean } | null>(null)
   const say = useToast()
   const router = useRouter()
+  useEffect(() => {
+    const restore = () => {
+      const id = new URL(window.location.href).searchParams.get('conversation')
+      setChat(
+        account.authenticated && account.address && id && /^[0-9a-f-]{36}$/i.test(id)
+          ? { id }
+          : null,
+      )
+    }
+    restore()
+    window.addEventListener('popstate', restore)
+    return () => window.removeEventListener('popstate', restore)
+  }, [account.authenticated, account.address])
+  const openChat = (next: { id: string; opening?: string; create?: boolean } | null) => {
+    const url = new URL(window.location.href)
+    if (next) url.searchParams.set('conversation', next.id)
+    else url.searchParams.delete('conversation')
+    window.history.replaceState(null, '', url)
+    setChat(next)
+  }
 
   /*
    * The cards are the registry, not a picture of one.
@@ -87,35 +108,48 @@ export function FastCore({
   }, [])
 
   const first = !connected
-  const shards = live ?? (first ? [] : SHARDS_RETURNING)
+  const shards = live ?? []
 
   const submit = (q: string) => {
     if (!q) {
       say('Say what you need, or press Tab for the suggestion.')
       return
     }
-    // Recorded so History shows itself only to someone who has actually asked
-    // something, rather than greeting a first-time visitor with five asks they
-    // never made.
-    try {
-      localStorage.setItem('aiki.asked.v1', 'yes')
-    } catch {
-      /* a private window can refuse; the rail simply stays empty */
+    if (!account.authenticated) {
+      say('Sign in with your wallet, then send your message.')
+      void account.connect().catch((error: Error) => say(error.message))
+      return
     }
-    setAsking(q)
+    openChat({ id: crypto.randomUUID(), opening: q, create: true })
   }
 
-  if (asking !== null)
+  if (chat !== null && account.authenticated)
     return (
       <div className="absolute inset-0 z-30 flex min-h-0 flex-col px-[18px] pt-[18px] pb-[108px] md:pb-[54px]">
-        <button
-          type="button"
-          onClick={() => setAsking(null)}
-          className="text-faint mb-[10px] shrink-0 self-start border-0 bg-none p-0 text-[12.5px] font-semibold hover:text-[#141414]"
-        >
-          ← Back
-        </button>
-        <FastChat opening={asking} onClose={() => setAsking(null)} />
+        <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => openChat(null)}
+            className="text-muted min-h-10 shrink-0 border-0 bg-none text-[12.5px] font-semibold hover:text-ink-app focus-visible:outline-2 focus-visible:outline-orange-app"
+          >
+            ← Back
+          </button>
+          <HistoryRail
+            inline
+            authenticated={account.authenticated}
+            activeId={chat.id}
+            onResume={(id) => openChat({ id })}
+            onNew={() => openChat({ id: crypto.randomUUID(), create: true })}
+          />
+        </div>
+        <FastChat
+          key={chat.id}
+          id={chat.id}
+          owner={account.address}
+          {...(chat.opening ? { opening: chat.opening } : {})}
+          create={chat.create ?? false}
+          onClose={() => openChat(null)}
+        />
       </div>
     )
 
@@ -149,10 +183,9 @@ export function FastCore({
       />
 
       <HistoryRail
-        onResume={(ask) => {
-          setResumed((n) => n + 1)
-          say(`Reopening “${ask}”.`)
-        }}
+        authenticated={account.authenticated}
+        onResume={(id) => openChat({ id })}
+        onNew={() => openChat({ id: crypto.randomUUID(), create: true })}
       />
 
       <Hero landmark={landmark} className={frame.heroClass}>
@@ -168,7 +201,11 @@ export function FastCore({
           wrapped one.
         */}
         <div className={`leading-[1.4] font-semibold text-[#8A8A8A] ${frame.greetClass}`}>
-          {first ? 'An agent marketplace on BNB Chain' : `Good morning, ${userName}`}
+          {first
+            ? 'An agent marketplace on BNB Chain'
+            : userName
+              ? `Welcome back, ${userName}`
+              : 'Welcome back'}
         </div>
         <h1
           className={`mt-[9px] max-w-full text-center leading-[1.02] font-extrabold tracking-[-0.036em] text-balance ${frame.titleClass}`}
@@ -177,7 +214,6 @@ export function FastCore({
         </h1>
 
         <AskField
-          key={resumed}
           onSubmit={submit}
           onPick={(t: Task) => say(`Finding agents for “${t.intent}”.`)}
         />

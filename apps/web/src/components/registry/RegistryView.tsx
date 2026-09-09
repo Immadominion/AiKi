@@ -68,10 +68,9 @@ export function RegistryView() {
     >
       {state.kind === 'unreachable' ? (
         <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-5">
-          <div className="text-[14.5px] font-bold">The evidence API is not answering.</div>
+          <div className="text-[14.5px] font-bold">Registry checks could not be loaded.</div>
           <p className="text-muted mt-[5px] mb-0 max-w-[620px] text-[13px] leading-[1.55] text-pretty">
-            This page only shows measurements, so with the API unreachable there is nothing honest
-            to put here. The Explore page still carries the last sweep's coverage numbers.
+            Refresh to try again, or browse agents in Explore.
           </p>
         </div>
       ) : state.kind === 'loading' ? (
@@ -95,6 +94,8 @@ export function RegistryView() {
                   key="a"
                   initial="#"
                   name={p.name ?? `Agent #${p.agentId}`}
+                  image={p.image}
+                  identity={`${p.chainId}:${p.agentId}`}
                   sub={`token ${p.identity.tokenId}`}
                   bg="linear-gradient(135deg,#3D3D3A,#6B6B66)"
                 />,
@@ -121,8 +122,8 @@ export function RegistryView() {
           />
           <p className="text-muted mt-[14px] mb-0 text-[12.5px] leading-[1.55] text-pretty">
             The other <b className="text-ink-app font-bold">{silent.toLocaleString()}</b> probed
-            agents did not answer like agents at all. They are counted in every coverage block
-            rather than listed here, because a page of dead rows helps nobody choose.
+            entries did not pass the last check. This is not a test of every supported protocol.
+            Explore includes other registered agents and their published services.
           </p>
         </>
       )}

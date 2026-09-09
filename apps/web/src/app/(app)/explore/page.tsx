@@ -5,7 +5,7 @@ import { ExploreView } from '@/components/shell/ExploreView'
 export const metadata: Metadata = {
   title: 'Explore',
   description:
-    'Every agent we index on BNB Chain, ranked by evidence AiKi collected itself. Agents we could not verify are counted, not hidden.',
+    'Find agents on BNB Chain. Browse their services, see their artwork, and connect to supported agents through AiKi.',
 }
 
 export default function Page() {
