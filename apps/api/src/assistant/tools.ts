@@ -3,6 +3,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 import { CATALOG_TOOLS, runCatalogTool } from '../catalog/assistant-tools.js'
 import { settlementForPoints } from '../credits/pricing.js'
 import { SETTLEMENT } from '../settlement/pricing.js'
+import { type MandateContinuation, mandateContinuation } from './continuation.js'
 
 /**
  * What Fast mode can actually do, and the one rule that makes it safe.
@@ -36,6 +37,7 @@ export interface ToolContext {
 export interface ToolCallResult {
   ok: boolean
   body: unknown
+  action?: MandateContinuation
 }
 
 const refused = (code: string, message: string): ToolCallResult => ({
@@ -181,8 +183,8 @@ export const TOOLS: Anthropic.Tool[] = [
     description:
       'Create the limits an agent will work under. Deploys the account the value is spent from if ' +
       'there is not one. IMPORTANT: this does NOT sign the mandate - signing needs the person’s ' +
-      'wallet, which you do not have. Tell them to sign it, and say plainly that until they do, ' +
-      'the limits are counted by AiKi rather than held by the chain.',
+      'wallet, which you do not have. Tell them to use the Review and sign control in this chat. ' +
+      'Do not create another mandate to complete signing. No job or watch is started by signing.',
     input_schema: {
       type: 'object',
       properties: {
@@ -572,12 +574,28 @@ export async function runTool(
       if (!account.ok) return account
       const held = mandateAccount(account.body, chainId)
       if (!held) return unverifiedAccount()
-      if (held.address === null) {
+      let accountAddress = held.address
+      if (accountAddress === null) {
         const deployment = await accountRequest(true)
         if (!deployment.ok) return deployment
-        if (!mandateAccount(deployment.body, chainId)?.address) return unverifiedAccount()
+        accountAddress = mandateAccount(deployment.body, chainId)?.address ?? null
+        if (!accountAddress) return unverifiedAccount()
       }
-      return post('/v1/authorizations', { constraints })
+      const created = await post('/v1/authorizations', { constraints })
+      const authorization = created.body as { id?: unknown; owner?: unknown } | null
+      const action =
+        created.ok &&
+        typeof authorization?.owner === 'string' &&
+        authorization.owner.toLowerCase() === ctx.sessionAddress?.toLowerCase()
+          ? mandateContinuation({
+              kind: 'sign_mandate',
+              authorizationId: authorization.id,
+              chainId,
+              account: accountAddress,
+              manager: execution.network.manager,
+            })
+          : undefined
+      return { ...created, ...(action ? { action } : {}) }
     }
     case 'my_account':
       return call('/v1/account')

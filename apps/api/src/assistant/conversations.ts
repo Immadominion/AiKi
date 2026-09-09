@@ -1,5 +1,6 @@
 import postgres from 'postgres'
 import { ClientError } from '../http/errors.js'
+import type { AssistantStep } from './run.js'
 
 export interface ConversationMessage {
   id: string
@@ -8,7 +9,7 @@ export interface ConversationMessage {
   content: string
   createdAt: string
   status?: 'completed' | 'failed'
-  steps?: Array<{ tool: string; input: Record<string, unknown>; ok: boolean; mutating: boolean }>
+  steps?: AssistantStep[]
   cost?: {
     points: number
     balance: number

@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import Fastify from 'fastify'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { InMemoryCreditStore, RESERVE_ACCOUNT } from '../credits/store.js'
+import { InMemoryCreditStore, RESERVE_ACCOUNT, REVENUE_ACCOUNT } from '../credits/store.js'
 import { ClientError } from '../http/errors.js'
 import { InMemoryConversationStore } from './conversations.js'
 import { registerConversationRoutes } from './conversations-routes.js'
 import { registerAssistantRoutes } from './routes.js'
+import type { AssistantStep } from './run.js'
 import { AssistantRunFailure } from './usage.js'
 
 vi.mock('./run.js', () => ({ runAssistant: vi.fn() }))
@@ -20,6 +21,19 @@ const completed = {
   points: 49,
   model: 'claude-sonnet-5',
   truncated: false,
+}
+const mandateStep: AssistantStep = {
+  tool: 'create_mandate',
+  input: { intent: 'Review these execution limits.' },
+  ok: true,
+  mutating: true,
+  action: {
+    kind: 'sign_mandate',
+    authorizationId: '12345678-1234-4123-8123-123456789012',
+    chainId: 97,
+    account: `0x${'56'.repeat(20)}`,
+    manager: `0x${'78'.repeat(20)}`,
+  },
 }
 const apps: ReturnType<typeof Fastify>[] = []
 beforeEach(() => {
@@ -146,3 +160,126 @@ it('uncertain provider outcomes keep their original hold and cannot be restarted
   expect(await h.credits.balance(RESERVE_ACCOUNT)).toBe(1951)
   expect(run).toHaveBeenCalledTimes(1)
 })
+
+it.each(['completed', 'budget stopped', 'known failed', 'uncertain failed'] as const)(
+  '%s turns preserve mandate continuations in saved history and idempotent replay',
+  async (outcome) => {
+    const failed = outcome === 'known failed' || outcome === 'uncertain failed'
+    const uncertain = outcome === 'uncertain failed'
+    const turn = {
+      ...completed,
+      reply: 'Your mandate is ready. Review and sign it.',
+      steps: [mandateStep],
+      truncated: outcome !== 'completed',
+      ...(outcome === 'budget stopped' ? { stoppedBy: 'budget' as const } : {}),
+    }
+    if (failed) run.mockRejectedValue(new AssistantRunFailure(turn, uncertain))
+    else run.mockResolvedValue(turn)
+    const h = await harness()
+    const transfer = vi.spyOn(h.credits, 'transfer')
+
+    const first = await h.ask('mandate-continuation')
+    expect(first.statusCode).toBe(failed ? 503 : 200)
+    expect(first.json()).toMatchObject({
+      reply: turn.reply,
+      steps: [mandateStep],
+      truncated: turn.truncated,
+      cost: { points: 49, held: 2000 },
+    })
+    if (outcome === 'budget stopped') expect(first.json().stoppedBy).toBe('budget')
+    if (failed)
+      expect(first.json().error.code).toBe(
+        uncertain ? 'ASSISTANT_USAGE_UNCONFIRMED' : 'ASSISTANT_TURN_FAILED',
+      )
+    const saved = (await h.load()).json()
+    expect(saved.messages).toHaveLength(2)
+    expect(saved.messages[1]).toMatchObject({
+      turnId: first.json().turnId,
+      role: 'assistant',
+      content: turn.reply,
+      status: failed ? 'failed' : 'completed',
+      steps: [mandateStep],
+      cost: first.json().cost,
+    })
+    expect(saved.messages[1].steps).toEqual(first.json().steps)
+    expect(transfer).toHaveBeenCalledTimes(uncertain ? 2 : 3)
+
+    const replay = await h.ask('mandate-continuation')
+    expect(replay.statusCode).toBe(first.statusCode)
+    expect(replay.headers['idempotency-replayed']).toBe('true')
+    expect(replay.json()).toEqual(first.json())
+    expect((await h.load()).json().messages).toEqual(saved.messages)
+    expect(await h.credits.balance(owner)).toBe(uncertain ? 3000 : 4951)
+    expect(await h.credits.balance(RESERVE_ACCOUNT)).toBe(uncertain ? 1951 : 0)
+    expect(transfer).toHaveBeenCalledTimes(uncertain ? 2 : 3)
+    expect(run).toHaveBeenCalledTimes(1)
+  },
+)
+
+it.each(['spend', 'release'] as const)(
+  'an unconfirmed %s after a successful run preserves the mandate in failed history and cached replay',
+  async (failedMovement) => {
+    const turn = {
+      ...completed,
+      reply: 'Your mandate is ready. Review and sign it.',
+      steps: [mandateStep],
+    }
+    run.mockResolvedValue(turn)
+    const h = await harness()
+    const originalTransfer = h.credits.transfer.bind(h.credits)
+    const transfer = vi.spyOn(h.credits, 'transfer').mockImplementation(async (movement) => {
+      if (
+        (failedMovement === 'spend' && movement.reason === 'fast_mode') ||
+        (failedMovement === 'release' &&
+          movement.reason === 'fast_mode_hold' &&
+          movement.reference.endsWith(':release'))
+      )
+        throw new Error('Local settlement failure')
+      return originalTransfer(movement)
+    })
+
+    const first = await h.ask('settlement-continuation')
+    expect(first.statusCode).toBe(503)
+    expect(first.json()).toMatchObject({
+      conversationId: h.id,
+      reply: turn.reply,
+      steps: [mandateStep],
+      truncated: true,
+      cost: { points: 49, balance: 3000, held: 2000 },
+      error: { code: 'ASSISTANT_SETTLEMENT_UNCONFIRMED', retryable: false },
+    })
+    expect(transfer).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        from: owner,
+        to: RESERVE_ACCOUNT,
+        points: 2000,
+        reason: 'fast_mode_hold',
+        reference: `turn:${first.json().turnId}:hold`,
+      }),
+    )
+    const saved = (await h.load()).json()
+    expect(saved.messages).toHaveLength(2)
+    expect(saved.messages[1]).toMatchObject({
+      turnId: first.json().turnId,
+      role: 'assistant',
+      content: turn.reply,
+      status: 'failed',
+      steps: [mandateStep],
+      cost: first.json().cost,
+    })
+    expect(saved.messages[1].steps).toEqual(first.json().steps)
+
+    const replay = await h.ask('settlement-continuation')
+    expect(replay.statusCode).toBe(503)
+    expect(replay.headers['idempotency-replayed']).toBe('true')
+    expect(replay.json()).toEqual(first.json())
+    expect((await h.load()).json().messages).toEqual(saved.messages)
+    expect((await h.ask('new-settlement-key')).json().error.code).toBe('ASSISTANT_WALLET_BUSY')
+    expect(await h.credits.balance(owner)).toBe(3000)
+    expect(await h.credits.balance(RESERVE_ACCOUNT)).toBe(failedMovement === 'spend' ? 2000 : 1951)
+    expect(await h.credits.balance(REVENUE_ACCOUNT)).toBe(failedMovement === 'spend' ? 0 : 49)
+    expect(transfer).toHaveBeenCalledTimes(failedMovement === 'spend' ? 2 : 3)
+    expect(run).toHaveBeenCalledTimes(1)
+  },
+)

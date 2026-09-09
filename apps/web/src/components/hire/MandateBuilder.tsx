@@ -1,14 +1,17 @@
 'use client'
 
 import type { CapPeriod } from '@aiki/contracts'
+import type { ExecutionNetwork } from '@aiki/contracts/guardian'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { PageCard } from '@/components/shell/PageCard'
 import { useToast } from '@/components/ui/Toast'
 import { jobHref } from '@/lib/routes'
+import { subscribeWalletSession, walletSession } from '@/lib/wallet-session'
 import { useMock } from '@/mock/store'
+import { loadExecutionNetwork } from './guardian-activation'
 import { mandateConstraints } from './mandate'
-import { type HireSubject, isAgentId } from './subject'
+import { type HireSubject, isAgentId, withGuardianNetwork } from './subject'
 import { enforcementNote, limitFor, tierWording, useMandatePreview } from './useMandatePreview'
 
 const PER_ACTION = [40, 80, 150] as const
@@ -141,15 +144,83 @@ function Choice<T extends string | number>({
 }
 
 export function MandateBuilder({ subject }: { subject: HireSubject }) {
+  if (subject.guardianActivation)
+    return (
+      <GuardianNetworkGate subject={subject}>
+        {(verified) => <MandateForm subject={verified} />}
+      </GuardianNetworkGate>
+    )
+  return <MandateForm subject={subject} />
+}
+
+/** No fallback network or writable form while runtime configuration cannot be verified. */
+export function GuardianNetworkGate({
+  subject,
+  children,
+}: {
+  subject: HireSubject
+  children: (subject: HireSubject) => React.ReactNode
+}) {
+  const session = useSyncExternalStore(
+    subscribeWalletSession,
+    () => `${walletSession().revision}:${walletSession().address ?? ''}`,
+    () => '',
+  )
+  const [attempt, setAttempt] = useState(0)
+  const [loaded, setLoaded] = useState<{
+    key: string
+    network?: ExecutionNetwork
+    error?: string
+  } | null>(null)
+  const key = `${subject.key}:${session}:${attempt}`
+  useEffect(() => {
+    let current = true
+    loadExecutionNetwork().then(
+      (network) => current && setLoaded({ key, network }),
+      () =>
+        current &&
+        setLoaded({
+          key,
+          error: 'The execution network could not be verified. Repayment setup is unavailable.',
+        }),
+    )
+    return () => {
+      current = false
+    }
+  }, [key])
+  if (loaded?.key === key && loaded.network)
+    return <div key={key}>{children(withGuardianNetwork(subject, loaded.network))}</div>
+  return (
+    <section className="rounded-2xl border border-black/10 p-6" aria-live="polite">
+      <p>
+        {loaded?.key === key && loaded.error
+          ? loaded.error
+          : 'Checking the repayment execution network…'}
+      </p>
+      {loaded?.key === key && loaded.error ? (
+        <button type="button" onClick={() => setAttempt((value) => value + 1)}>
+          Try again
+        </button>
+      ) : null}
+    </section>
+  )
+}
+
+function MandateForm({ subject }: { subject: HireSubject }) {
   const row = subject
   const d = subject
   const say = useToast()
   const router = useRouter()
-  const { hire } = useMock()
+  const { hire, authenticated, connect } = useMock()
+  const [busy, setBusy] = useState(false)
+  const pending = useRef(false)
+  const [problem, setProblem] = useState<string | null>(null)
 
   const [perAction, setPerAction] = useState<number>(80)
   const [budget, setBudget] = useState<number>(250)
-  const [period, setPeriod] = useState<CapPeriod>('per_month')
+  const [period, setPeriod] = useState<CapPeriod>(
+    subject.guardianActivation ? 'total' : 'per_month',
+  )
   const [days, setDays] = useState<number>(90)
   /*
    * Acts inside the limits, by default.
@@ -337,7 +408,11 @@ export function MandateBuilder({ subject }: { subject: HireSubject }) {
                 />
                 <div className="mt-[9px]">
                   <Choice
-                    options={['per_month', 'per_year', 'total'] as const}
+                    options={
+                      subject.guardianActivation
+                        ? (['total'] as const)
+                        : (['per_month', 'per_year', 'total'] as const)
+                    }
                     value={period}
                     onChange={setPeriod}
                     format={(v) =>
@@ -496,6 +571,14 @@ export function MandateBuilder({ subject }: { subject: HireSubject }) {
             <button
               type="button"
               onClick={() => {
+                if (pending.current) return
+                if (subject.guardianActivation && !authenticated) {
+                  void connect()
+                  return
+                }
+                pending.current = true
+                setBusy(true)
+                setProblem(null)
                 // The limits you just set are the ones the job runs under, so
                 // the refusal you are about to see happens at YOUR number.
                 void hire({
@@ -506,6 +589,7 @@ export function MandateBuilder({ subject }: { subject: HireSubject }) {
                   bg: subject.bg,
                   spends: subject.spends,
                   callScope: subject.callScope,
+                  ...(subject.execution ? { execution: subject.execution } : {}),
                   perActionCents: spends ? perAction * 100 : 0,
                   capCents: budget * 100,
                   period,
@@ -518,26 +602,58 @@ export function MandateBuilder({ subject }: { subject: HireSubject }) {
                     // limit a contract refuses to exceed and one AiKi counts, so
                     // it is said rather than assumed.
                     say(
-                      mandate === 'signed'
-                        ? `${row.name} is hired. The chain holds your limits.`
-                        : `${row.name} is hired. AiKi holds your limits.`,
+                      subject.guardianActivation
+                        ? 'Repayment mandate signed. Start the watch after the account readiness checks.'
+                        : mandate === 'signed'
+                          ? `${row.name} is hired. The chain holds your limits.`
+                          : `${row.name} is hired. AiKi holds your limits.`,
                     )
                     router.push(jobHref(jobId))
                   })
-                  .catch(() => {
+                  .catch((error: unknown) => {
                     // Recording the mandate is what makes it a mandate. If that
                     // failed, saying "hired" would be the lie the whole product
                     // exists to avoid.
-                    say('Could not record that mandate, so nothing was hired. Try again.')
+                    const message =
+                      error instanceof Error
+                        ? error.message
+                        : 'The mandate could not be confirmed. No watch was started.'
+                    setProblem(message)
+                    say(message)
+                  })
+                  .finally(() => {
+                    pending.current = false
+                    setBusy(false)
                   })
               }}
+              disabled={
+                busy ||
+                (subject.guardianActivation && (preview.status !== 'ready' || perAction > budget))
+              }
               className="bg-ink-app hover:bg-orange-app mt-[16px] h-[42px] w-full rounded-xl border-0 text-[13.5px] font-bold text-white transition-colors"
             >
-              Sign and hire {row.name}
+              {busy
+                ? 'Confirming mandate…'
+                : subject.guardianActivation
+                  ? authenticated
+                    ? 'Sign repayment mandate'
+                    : 'Connect wallet to continue'
+                  : `Sign and hire ${row.name}`}
             </button>
+            {problem ? (
+              <p role="alert" className="mt-3 text-sm">
+                {problem}
+              </p>
+            ) : null}
+            {subject.guardianActivation && perAction > budget ? (
+              <p role="alert" className="mt-3 text-sm">
+                The per-action cap cannot exceed the total cap.
+              </p>
+            ) : null}
             <p className="text-faint mt-[10px] mb-0 text-[11.5px] leading-[1.45] text-pretty">
-              One signature. Pausing afterwards is instant and free; revoking sends a transaction
-              and costs gas.
+              {subject.execution
+                ? `BNB ${subject.execution.network} (${subject.execution.chainId}). This signs authority only; no watch starts here. The Venus USDT debt must belong to your mandate account, with repayment funds and allowance ready. Your connected wallet’s separate loan is not protected. Start watching from the job after readiness checks. Revocation costs gas.`
+                : 'One signature. Pausing afterwards is instant and free; revoking sends a transaction and costs gas.'}
             </p>
           </div>
         </div>

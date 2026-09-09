@@ -1,8 +1,8 @@
 import type { ProjectedPassport } from '@aiki/contracts'
+import { type ExecutionNetwork, parseExecutionNetwork } from '@aiki/contracts/guardian'
 import { paletteFor } from '@/components/home/live-shards'
 import { AGENT_BG, AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
 import { DETAILS } from '@/lib/detail'
-import { VENUS_GUARDIAN } from '@/lib/venus'
 
 /**
  * What the mandate builder needs to know about the thing being hired.
@@ -23,6 +23,9 @@ export interface HireSubject {
   price: string
   priceModel: string
   capabilities: { name: string; does: string; permissions: string[] }[]
+  /** Explicit first-party activation, never inferred from an agent's name or category. */
+  guardianActivation?: boolean
+  execution?: ExecutionNetwork
   /** Assets this agent may move. Empty means it only reads. */
   spends: { asset: `0x${string}`; symbol: string; decimals: number }[]
   /** Contracts and functions the agent may call while doing its work. */
@@ -38,12 +41,12 @@ export interface HireSubject {
 export const isAgentId = (key: string) => /^\d+$/.test(key)
 
 /** One of the six examples, so existing links keep working. */
-export function hireSubjectFromFixture(key: AgentKey): HireSubject {
+export function hireSubjectFromFixture(key: AgentKey, execution?: ExecutionNetwork): HireSubject {
   const row = AGENT_BY_KEY[key]
   const detail = DETAILS[key]
   // Only ever called with one of the six example keys.
   if (!row || !detail) throw new Error(`No example agent called ${key}.`)
-  return {
+  const subject: HireSubject = {
     key,
     name: row.name,
     initial: row.initial,
@@ -52,6 +55,61 @@ export function hireSubjectFromFixture(key: AgentKey): HireSubject {
     priceModel: detail.priceModel,
     capabilities: detail.capabilities,
     spends: detail.spends,
+    ...(key === 'guardian' ? { guardianActivation: true } : {}),
+  }
+  return key === 'guardian' && execution ? withGuardianNetwork(subject, execution) : subject
+}
+
+/** This exact BSC registration is the first-party Guardian, not any similarly named agent. */
+export function isGuardianPassport(passport: ProjectedPassport): boolean {
+  return (
+    passport.agentId === '315943' &&
+    passport.chainId === 56 &&
+    passport.registry?.toLowerCase() === '0x8004a169fb4a3325136eb29fa0ceb6d2e539a432' &&
+    passport.identity?.tokenId === passport.agentId &&
+    passport.identity.registrationFile.resolved === true &&
+    passport.identity.registrationFile.reciprocalProofVerified === true &&
+    passport.liveness === 'LIVE'
+  )
+}
+
+export function guardianSubjectFromPassport(passport: ProjectedPassport): HireSubject {
+  if (!isGuardianPassport(passport))
+    throw new Error('This registration is not the verified Guardian.')
+  return {
+    key: passport.agentId,
+    name: 'Venus Guardian',
+    initial: 'V',
+    bg: paletteFor(passport.agentId).bg,
+    price: 'No report purchased',
+    priceModel: 'Separate repayment authority; network gas still applies',
+    capabilities: [],
+    spends: [],
+    guardianActivation: true,
+  }
+}
+
+export function withGuardianNetwork(subject: HireSubject, value: ExecutionNetwork): HireSubject {
+  if (!subject.guardianActivation || !['guardian', '315943'].includes(subject.key))
+    throw new Error('This agent does not provide Guardian activation.')
+  const execution = parseExecutionNetwork(value)
+  const { guardian } = execution
+  return {
+    ...subject,
+    execution,
+    capabilities: [
+      {
+        name: 'Automatic Venus repayment',
+        does: 'Repays USDT debt held by your mandate account, within your signed limits.',
+        permissions: ['repay_borrow', 'spend_usdt'],
+      },
+    ],
+    spends: [{ asset: guardian.asset, symbol: 'USDT', decimals: guardian.decimals }],
+    callScope: {
+      contracts: [guardian.market],
+      selectors: [guardian.repayBorrowSelector],
+      label: `the Venus USDT market on BNB ${execution.network}`,
+    },
   }
 }
 
@@ -87,10 +145,7 @@ export function hireSubjectFromPassport(
         does: passport.description ?? 'This agent publishes no description of what it does.',
         // Named as a permission the mandate can cap, because that is the point
         // of the screen this feeds.
-        permissions:
-          passport.agentId === VENUS_GUARDIAN.agentId
-            ? ['repay_borrow', 'spend_settlement_asset']
-            : ['spend_settlement_asset'],
+        permissions: ['spend_settlement_asset'],
       },
     ],
     spends: [
@@ -102,14 +157,5 @@ export function hireSubjectFromPassport(
         decimals: settlementAsset.decimals,
       },
     ],
-    ...(passport.agentId === VENUS_GUARDIAN.agentId
-      ? {
-          callScope: {
-            contracts: [VENUS_GUARDIAN.market],
-            selectors: [VENUS_GUARDIAN.repayBorrowSelector],
-            label: 'the Venus USDT market',
-          },
-        }
-      : {}),
   }
 }

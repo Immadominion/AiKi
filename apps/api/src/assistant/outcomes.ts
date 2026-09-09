@@ -113,7 +113,7 @@ function describe(outcome: ToolOutcome): string {
     return id ? `Created work budget \`${id}\`.` : 'Work budget request returned without an ID.'
   if (outcome.tool === 'create_mandate')
     return id
-      ? `Created mandate \`${id}\`. This chat has not signed it in your wallet.`
+      ? `Created mandate \`${id}\`. Use Review and sign in this chat to inspect it and sign with your wallet. No job or watch was started by creating it.`
       : 'Mandate request returned without an ID.'
   if (outcome.tool === 'hire')
     return id ? `Created job [${id}](/jobs/${id}).` : 'Job request returned without an ID.'
@@ -173,11 +173,18 @@ export function stoppedReply(reason: 'budget' | 'rounds', outcomes: ToolOutcome[
     details,
     ...(omitted > 0 ? [`${omitted} other tool results are omitted from this summary.`] : []),
     ...(outcomes.some(
-      (outcome) => outcome.mutating || TASK_TOOLS.has(outcome.tool) || outcome.tool === 'my_tasks',
+      (outcome) =>
+        TASK_TOOLS.has(outcome.tool) ||
+        outcome.tool === 'my_tasks' ||
+        outcome.tool === 'create_spending_mandate',
     )
       ? [
           '[Open your work](/work) to review existing tasks before creating another. A stopped reply does not cancel work already created.',
         ]
-      : ['These were read-only requests. No task was created in this turn.']),
+      : [
+          outcomes.some((outcome) => outcome.mutating)
+            ? 'Review the recorded actions above before continuing. This reply does not authorize another action.'
+            : 'These were read-only requests. No task was created in this turn.',
+        ]),
   ].join('\n\n')
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import type { ApprovalMode, CapPeriod } from '@aiki/contracts'
+import type { ExecutionNetwork } from '@aiki/contracts/guardian'
 import {
   createContext,
   Fragment,
@@ -11,6 +12,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { activateGuardianMandate } from '@/components/hire/guardian-activation'
 import { mandateConstraints } from '@/components/hire/mandate'
 import { WalletPicker } from '@/components/shell/WalletPicker'
 import { api as backend } from '@/lib/api'
@@ -73,6 +75,7 @@ interface MockApi {
      * table was impossible: there was no row to read the permission from.
      */
     spends: { asset: `0x${string}`; symbol: string; decimals: number }[]
+    execution?: ExecutionNetwork
     callScope?:
       | {
           contracts: `0x${string}`[]
@@ -343,7 +346,23 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
           // No silent fallback to a local mandate: a limit the server never
           // heard of is not a limit, and pretending otherwise is the one thing
           // this product cannot do.
-          const authorization = await backend.authorize(constraints)
+          if (input.key === 'guardian' && !input.execution)
+            throw new Error('Verify the execution network before signing a Guardian mandate.')
+          const activated = input.execution
+            ? await activateGuardianMandate(
+                {
+                  capCents: input.capCents,
+                  perActionCents: input.perActionCents,
+                  days: input.days,
+                  spends: input.spends,
+                  callScope: input.callScope,
+                  approval: { mode: input.approval, thresholdCents: input.askAboveCents },
+                },
+                input.execution,
+                stateRef.current.address ?? '',
+              )
+            : null
+          const authorization = activated?.authorization ?? (await backend.authorize(constraints))
           authorizationId = authorization.id
 
           /*
@@ -355,19 +374,23 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
            * for it. Throwing here keeps the job list aligned with what the agent
            * can actually do.
            */
-          const existing = await backend.account()
-          const account = existing.address ?? (await backend.createAccount()).address
-          const prep = await backend.prepareDelegation(authorization.id, account)
-          const signature = await signMandate(stateRef.current.address ?? '', {
-            domain: prep.domain,
-            types: prep.types,
-            primaryType: prep.primaryType,
-            message: prep.message,
-          })
-          if (signature === 'declined') throw new Error('The mandate signature was declined.')
-          await backend.fileDelegation(authorization.id, { ...prep.unsigned, signature })
+          if (!activated) {
+            const existing = await backend.account()
+            const account = existing.address ?? (await backend.createAccount()).address
+            const prep = await backend.prepareDelegation(authorization.id, account)
+            const signature = await signMandate(stateRef.current.address ?? '', {
+              domain: prep.domain,
+              types: prep.types,
+              primaryType: prep.primaryType,
+              message: prep.message,
+            })
+            if (signature === 'declined') throw new Error('The mandate signature was declined.')
+            await backend.fileDelegation(authorization.id, { ...prep.unsigned, signature })
+          }
 
-          const job = await backend.createJob(authorization.id, `hire:${authorization.id}`)
+          const job =
+            activated?.job ??
+            (await backend.createJob(authorization.id, `hire:${authorization.id}`))
           const hire: Hire = {
             key: input.key,
             name: input.name,

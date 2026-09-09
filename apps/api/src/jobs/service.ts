@@ -14,6 +14,7 @@ import {
   normalizeExecutionSender,
 } from '../execution/attempts.js'
 import { ClientError } from '../http/errors.js'
+import { authorizationOperationId } from './authorization-retry.js'
 import {
   type AuthorizationRecord,
   InMemoryJobStore,
@@ -89,16 +90,23 @@ export class JobService {
     return this.store.finishExecution(id, state, release)
   }
 
-  async authorize(constraints: Constraint[], owner: string | null): Promise<AuthorizationRecord> {
+  async authorize(
+    constraints: Constraint[],
+    owner: string | null,
+    idempotencyKey?: string,
+  ): Promise<AuthorizationRecord> {
     const record: AuthorizationRecord = {
-      id: randomUUID(),
+      id:
+        idempotencyKey === undefined
+          ? randomUUID()
+          : authorizationOperationId(owner, idempotencyKey),
       policy: compilePolicy(constraints),
       status: 'active',
       spent: 0n,
       createdAt: new Date().toISOString(),
       owner: owner ? owner.toLowerCase() : null,
     }
-    return this.store.createAuthorization(record)
+    return this.store.createAuthorization(record, idempotencyKey !== undefined)
   }
 
   /**

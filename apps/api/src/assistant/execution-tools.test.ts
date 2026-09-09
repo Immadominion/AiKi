@@ -4,6 +4,7 @@ import { MUTATING, runTool, TOOLS } from './tools.js'
 const owner = `0x${'12'.repeat(20)}`
 const accountAddress = `0x${'34'.repeat(20)}`
 const manager = `0x${'56'.repeat(20)}`
+const authorizationId = '12345678-1234-4123-8123-123456789012'
 const ctx = {
   baseUrl: 'https://api.example',
   cookie: 'local-test-session',
@@ -91,7 +92,11 @@ function harness(
     if (path === '/v1/mandates/preview' && method === 'POST')
       return respond({ network: metadata.network, limits: requests.at(-1)?.body?.constraints })
     if (path === '/v1/authorizations' && method === 'POST')
-      return respond({ id: 'mandate-local-test', constraints: requests.at(-1)?.body?.constraints })
+      return respond({
+        id: authorizationId,
+        owner,
+        constraints: requests.at(-1)?.body?.constraints,
+      })
     if (path === '/v1/jobs/job-local-test/watch' && method === 'POST')
       return respond({ status: 'active', ...requests.at(-1)?.body })
     throw new Error(`Unexpected mocked request: ${method} ${path}`)
@@ -137,6 +142,13 @@ it.each(rails)(
     const h = harness({ chainId: rail.chainId, account: { address: null, chainId: rail.chainId } })
     const result = await runTool(ctx, 'create_mandate', limits)
     expect(result.ok).toBe(true)
+    expect(result.action).toEqual({
+      kind: 'sign_mandate',
+      authorizationId,
+      chainId: rail.chainId,
+      account: accountAddress,
+      manager,
+    })
     expect(h.requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       'GET /v1/execution/network',
       'GET /v1/account',

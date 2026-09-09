@@ -804,9 +804,13 @@ export function createApiServer(input: {
        * against them and the claim is overwritten.
        */
       const enforcement = describeEnforcement(request.body.constraints, input.enforcers)
+      const operationKey = request.headers['idempotency-key']
+      if (operationKey !== undefined && typeof operationKey !== 'string')
+        throw new ClientError('Use one idempotency key for this mandate request.')
       const authorization = await jobs.authorize(
         withDerivedTiers(enforcement.outcomes),
         session.address,
+        operationKey,
       )
       return {
         ...authorization,
@@ -908,6 +912,7 @@ export function createApiServer(input: {
   app.get<{ Params: { id: string }; Querystring: { delegator?: string } }>(
     '/v1/authorizations/:id/delegation',
     async (request, reply) => {
+      reply.header('cache-control', 'no-store')
       const session = requireSession(request, reply)
       if (!session) return reply
       if (!input.enforcers || !input.agentSessionKey)
@@ -936,6 +941,22 @@ export function createApiServer(input: {
         input.enforcers,
       )
       return {
+        authorization: {
+          id: authorization.id,
+          owner: authorization.owner,
+          status:
+            authorization.status === 'revoked'
+              ? 'revoked'
+              : authorization.policy.expiresAt &&
+                  Date.parse(authorization.policy.expiresAt) <= Date.now()
+                ? 'expired'
+                : authorization.status,
+          policyHash: authorization.policy.hash,
+          constraints: authorization.policy.constraints,
+          delegator: authorization.delegator ?? null,
+          delegationChainId: authorization.delegationChainId ?? null,
+          signedAt: authorization.delegationSignedAt ?? null,
+        },
         domain: delegationDomain(input.enforcers.chainId, input.enforcers.manager as `0x${string}`),
         types: DELEGATION_TYPES,
         primaryType: 'Delegation',

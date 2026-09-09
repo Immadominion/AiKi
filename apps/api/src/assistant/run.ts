@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { pointsFor, type Usage } from '../credits/pricing.js'
 import { PLATFORM_FEE_BPS } from '../settlement/pricing.js'
+import { type MandateContinuation, mandateContinuation } from './continuation.js'
 import { stoppedReply, type ToolOutcome } from './outcomes.js'
 import { MUTATING, runTool, TOOLS, type ToolContext } from './tools.js'
 import { AssistantRunFailure } from './usage.js'
@@ -57,6 +58,7 @@ export interface AssistantStep {
   input: Record<string, unknown>
   ok: boolean
   mutating: boolean
+  action?: MandateContinuation
 }
 
 export interface AssistantTurn {
@@ -123,6 +125,9 @@ Costs and permission:
   signature. It is distinct from a mandate for on-chain actions. You cannot sign in the wallet.
   An on-chain mandate is not contract-authorized until its delegation is accepted. Explain what the
   API says enforces a limit; never call an unsigned or ledger-only cap chain-enforced.
+- After create_mandate, direct the person to the chat's Review and sign control. This uses their
+  wallet and signs the existing mandate. Never invent a signing link, recreate the mandate to sign,
+  or claim a job or watch started from signing alone. Wait for the person's next instruction.
 - Posting holds the task total. Accepting work releases payment and cannot be undone, so read the
   submission and obtain acceptance before using accept_task. Declining disputes the work and leaves
   funds held; it does not refund, and AiKi does not currently arbitrate those disputes.
@@ -318,7 +323,15 @@ export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
       for (const call of calls) {
         const args = (call.input ?? {}) as Record<string, unknown>
         const out = await runTool({ ...input.ctx, toolCallId: call.id }, call.name, args)
-        steps.push({ tool: call.name, input: args, ok: out.ok, mutating: MUTATING.has(call.name) })
+        const action =
+          call.name === 'create_mandate' && out.ok ? mandateContinuation(out.action) : undefined
+        steps.push({
+          tool: call.name,
+          input: args,
+          ok: out.ok,
+          mutating: MUTATING.has(call.name),
+          ...(action ? { action } : {}),
+        })
         outcomes.push({ tool: call.name, mutating: MUTATING.has(call.name), ...out })
         results.push({
           type: 'tool_result',

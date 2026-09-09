@@ -88,6 +88,34 @@ test('a fresh explicit ask persists actual replies, while restored History never
   assert.equal(restored.getSnapshot().messages[1]?.content, 'Found an agent.')
 })
 
+test('a signing continuation survives History reload without opening a wallet or sending a new turn', async () => {
+  const action = {
+    kind: 'sign_mandate' as const,
+    authorizationId: id,
+    chainId: 56 as const,
+    account: `0x${'12'.repeat(20)}`,
+    manager: `0x${'34'.repeat(20)}`,
+  }
+  const h = harness()
+  h.transport.load = async () => ({
+    ...empty(),
+    messages: [
+      {
+        id: 'saved:a',
+        turnId: 'saved',
+        role: 'assistant',
+        content: 'Review and sign.',
+        createdAt: '',
+        steps: [{ tool: 'create_mandate', input: {}, ok: true, mutating: true, action }],
+      },
+    ],
+  })
+  const controller = h.controller()
+  await controller.initialize()
+  assert.deepEqual(controller.getSnapshot().messages[0]?.steps?.[0]?.action, action)
+  assert.equal(h.calls.length, 0)
+})
+
 test('a lost response preserves the exact request key and body across reload, without automatic retries', async () => {
   const h = harness()
   const send = h.transport.ask
@@ -311,13 +339,18 @@ test('reinitializing without browser storage keeps the in-memory request key', a
 
 function savedFailure(
   h: ReturnType<typeof harness>,
-  code: 'ASSISTANT_USAGE_UNCONFIRMED' | 'ASSISTANT_BUDGET_TOO_SMALL' | 'ASSISTANT_TURN_FAILED',
+  code:
+    | 'ASSISTANT_USAGE_UNCONFIRMED'
+    | 'ASSISTANT_SETTLEMENT_UNCONFIRMED'
+    | 'ASSISTANT_BUDGET_TOO_SMALL'
+    | 'ASSISTANT_TURN_FAILED',
 ) {
   const persist = h.transport.ask
   const load = h.transport.load
   const requests: Array<{ messages: unknown; options: unknown }> = []
   let saved = false
-  const uncertain = code === 'ASSISTANT_USAGE_UNCONFIRMED'
+  const uncertain =
+    code === 'ASSISTANT_USAGE_UNCONFIRMED' || code === 'ASSISTANT_SETTLEMENT_UNCONFIRMED'
   const content = uncertain
     ? 'Your task was created. Later usage needs confirmation.'
     : 'Shorten this request before asking again.'
@@ -400,8 +433,41 @@ test('a saved budget refusal is visible and becomes context before a fresh corre
   })
 })
 
+test('settlement uncertainty still reveals a saved signing continuation without unlocking the paid turn', async () => {
+  const h = harness()
+  savedFailure(h, 'ASSISTANT_SETTLEMENT_UNCONFIRMED')
+  const load = h.transport.load
+  const action = {
+    kind: 'sign_mandate' as const,
+    authorizationId: id,
+    chainId: 56 as const,
+    account: `0x${'12'.repeat(20)}`,
+    manager: `0x${'34'.repeat(20)}`,
+  }
+  h.transport.load = async (conversationId) => {
+    const saved = await load(conversationId)
+    return {
+      ...saved,
+      messages: saved.messages.map((message) =>
+        message.role === 'assistant'
+          ? {
+              ...message,
+              steps: [{ tool: 'create_mandate', input: {}, ok: true, mutating: true, action }],
+            }
+          : message,
+      ),
+    }
+  }
+  const controller = h.controller()
+  await controller.initialize(true, 'Create these limits once')
+  assert.deepEqual(controller.getSnapshot().messages[1]?.steps?.[0]?.action, action)
+  assert.equal(controller.getSnapshot().pending?.idempotencyKey, 'key-1')
+  assert.equal(h.calls.length, 1)
+})
+
 for (const code of [
   'ASSISTANT_USAGE_UNCONFIRMED',
+  'ASSISTANT_SETTLEMENT_UNCONFIRMED',
   'ASSISTANT_BUDGET_TOO_SMALL',
   'ASSISTANT_TURN_FAILED',
 ] as const)
@@ -424,6 +490,8 @@ for (const code of [
     assert.equal(controller.getSnapshot().messages.length, 2)
     assert.equal(
       controller.getSnapshot().pending?.idempotencyKey ?? null,
-      code === 'ASSISTANT_USAGE_UNCONFIRMED' ? 'key-1' : null,
+      code === 'ASSISTANT_USAGE_UNCONFIRMED' || code === 'ASSISTANT_SETTLEMENT_UNCONFIRMED'
+        ? 'key-1'
+        : null,
     )
   })

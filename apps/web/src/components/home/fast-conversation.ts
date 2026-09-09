@@ -206,6 +206,7 @@ export class FastConversationController {
         [
           'ASSISTANT_TURN_FAILED',
           'ASSISTANT_USAGE_UNCONFIRMED',
+          'ASSISTANT_SETTLEMENT_UNCONFIRMED',
           'ASSISTANT_BUDGET_TOO_SMALL',
         ].includes(failure.code ?? '')
       ) {
@@ -214,7 +215,9 @@ export class FastConversationController {
           if (generation !== this.generation) return
           // An uncertain turn can already have saved work and usage. Show it,
           // but keep its exact request locked until settlement is confirmed.
-          const uncertain = failure.code === 'ASSISTANT_USAGE_UNCONFIRMED'
+          const uncertain =
+            failure.code === 'ASSISTANT_USAGE_UNCONFIRMED' ||
+            failure.code === 'ASSISTANT_SETTLEMENT_UNCONFIRMED'
           this.update({
             messages: conversation.messages,
             busy: false,

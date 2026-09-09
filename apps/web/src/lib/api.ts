@@ -136,6 +136,26 @@ export interface AssistantStep {
   ok: boolean
   /** Did it change something, or only look? */
   mutating: boolean
+  action?: MandateContinuation
+}
+
+export interface MandateContinuation {
+  kind: 'sign_mandate'
+  authorizationId: string
+  chainId: 56 | 97
+  account: string
+  manager: string
+}
+
+export interface DelegationReview {
+  id: string
+  owner: string | null
+  status: 'active' | 'pending' | 'revoked' | 'expired'
+  policyHash: string
+  constraints: { kind: string; value: unknown; label: string; tier: string }[]
+  delegator: string | null
+  delegationChainId: number | null
+  signedAt: string | null
 }
 
 export interface TaskSummary {
@@ -376,12 +396,20 @@ export const api = {
       primaryType: string
       message: unknown
       unsigned: Record<string, unknown>
+      authorization?: DelegationReview
+      limits?: Omit<EnforcedLimit, 'why'>[]
     }>(`/v1/authorizations/${id}/delegation?delegator=${delegator}`),
   fileDelegation: (id: string, delegation: Record<string, unknown>) =>
-    req<{ id: string; delegator: string | null; delegationChainId: number | null }>(
-      `/v1/authorizations/${id}/delegation`,
-      { method: 'POST', body: JSON.stringify({ delegation }) },
-    ),
+    req<{
+      id: string
+      delegator: string | null
+      delegationChainId: number | null
+      signedAt?: string | null
+      status?: string
+    }>(`/v1/authorizations/${id}/delegation`, {
+      method: 'POST',
+      body: JSON.stringify({ delegation }),
+    }),
   /** The job as the API has it, including every verdict recorded against it. */
   job: (id: string) =>
     req<{
@@ -473,9 +501,10 @@ export const api = {
         ...(options ? { conversationId: options.conversationId } : {}),
       }),
     }),
-  authorize: (constraints: unknown[]) =>
+  authorize: (constraints: unknown[], idempotencyKey?: string) =>
     req<AuthorizationResponse>('/v1/authorizations', {
       method: 'POST',
+      ...(idempotencyKey ? { headers: { 'idempotency-key': idempotencyKey } } : {}),
       body: JSON.stringify({ constraints }),
     }),
   revokeAuthorization: (id: string) =>

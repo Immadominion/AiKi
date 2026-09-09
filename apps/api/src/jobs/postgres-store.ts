@@ -4,6 +4,7 @@ import postgres from 'postgres'
 import type { CompiledPolicy } from '../authority/policy.js'
 import type { ExecutionAttempt, ExecutionState } from '../execution/attempts.js'
 import { ClientError } from '../http/errors.js'
+import { authorizationReplay } from './authorization-retry.js'
 import type {
   ApprovalRequest,
   AuthorizationRecord,
@@ -221,8 +222,8 @@ export class PostgresJobStore implements JobStore {
     })
   }
 
-  async createAuthorization(record: AuthorizationRecord) {
-    await this.sql`
+  async createAuthorization(record: AuthorizationRecord, allowReplay = false) {
+    const inserted = await this.sql<{ id: string }[]>`
       INSERT INTO authorizations (id, policy_hash, policy, weakest_tier, status, spent, expires_at, created_at, owner)
       VALUES (
         ${record.id},
@@ -235,7 +236,16 @@ export class PostgresJobStore implements JobStore {
         ${record.createdAt},
         ${record.owner}
       )
+      ON CONFLICT (id) DO NOTHING
+      RETURNING id
     `
+    if (!inserted.length) {
+      if (!allowReplay)
+        throw new ClientError('This authorization already exists.', { statusCode: 409 })
+      // INSERT waits for the competing transaction. A separate READ COMMITTED
+      // statement sees that committed row, including any newer revoke/sign state.
+      return authorizationReplay(record, await this.getAuthorization(record.id))
+    }
     return record
   }
 

@@ -8,6 +8,7 @@ import {
   executionSenderConflicts,
 } from '../execution/attempts.js'
 import { ClientError } from '../http/errors.js'
+import { authorizationReplay } from './authorization-retry.js'
 
 export type AuthorizationStatus = 'pending' | 'active' | 'revoked' | 'expired'
 export type JobStatus =
@@ -182,7 +183,10 @@ export interface JobStore {
     from: ApprovalRequest['status'][],
     to: ApprovalRequest['status'],
   ): Promise<ApprovalRequest | null>
-  createAuthorization(record: AuthorizationRecord): Promise<AuthorizationRecord>
+  createAuthorization(
+    record: AuthorizationRecord,
+    allowReplay?: boolean,
+  ): Promise<AuthorizationRecord>
   getAuthorization(id: string): Promise<AuthorizationRecord | null>
   revokeAuthorization(id: string, at: string): Promise<AuthorizationRecord | null>
   /**
@@ -368,7 +372,13 @@ export class InMemoryJobStore implements JobStore {
     return { ...held }
   }
 
-  async createAuthorization(record: AuthorizationRecord) {
+  async createAuthorization(record: AuthorizationRecord, allowReplay = false) {
+    const existing = this.authorizations.get(record.id)
+    if (existing) {
+      if (!allowReplay)
+        throw new ClientError('This authorization already exists.', { statusCode: 409 })
+      return { ...authorizationReplay(record, existing) }
+    }
     this.authorizations.set(record.id, { ...record })
     return record
   }

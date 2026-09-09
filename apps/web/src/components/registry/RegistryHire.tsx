@@ -4,6 +4,8 @@ import type { ProjectedPassport } from '@aiki/contracts'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { AgentTaskForm } from '@/components/hire/AgentTaskForm'
+import { MandateBuilder } from '@/components/hire/MandateBuilder'
+import { guardianSubjectFromPassport, isGuardianPassport } from '@/components/hire/subject'
 import { PageCard } from '@/components/shell/PageCard'
 import { type AgentTaskSupport, api } from '@/lib/api'
 
@@ -14,12 +16,14 @@ export function RegistryHire({ agentId }: { agentId: string }) {
   } | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
+  const [repayment, setRepayment] = useState(false)
 
   // Retrying intentionally repeats the same support request.
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt is an explicit retry trigger.
   useEffect(() => {
     let cancelled = false
     setDetails(null)
+    setRepayment(false)
     setProblem(null)
     Promise.all([api.passport(agentId), api.taskSupport(agentId)])
       .then(([passport, support]) => {
@@ -34,8 +38,33 @@ export function RegistryHire({ agentId }: { agentId: string }) {
     }
   }, [agentId, attempt])
 
-  if (details?.support.available) {
-    return <AgentTaskForm passport={details.passport} support={details.support} />
+  if (details?.support.available && details.passport.agentId === agentId) {
+    const guardian = isGuardianPassport(details.passport)
+    return (
+      <>
+        {guardian ? (
+          <section className="mb-5 rounded-2xl border border-black/10 p-5">
+            <p className="text-sm">
+              A report only reads a position. Automatic repayment requires a separate signed mandate
+              and a ready mandate account.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" aria-pressed={!repayment} onClick={() => setRepayment(false)}>
+                Request a report
+              </button>
+              <button type="button" aria-pressed={repayment} onClick={() => setRepayment(true)}>
+                Set up automatic repayment
+              </button>
+            </div>
+          </section>
+        ) : null}
+        {guardian && repayment ? (
+          <MandateBuilder subject={guardianSubjectFromPassport(details.passport)} />
+        ) : (
+          <AgentTaskForm passport={details.passport} support={details.support} />
+        )}
+      </>
+    )
   }
 
   return (

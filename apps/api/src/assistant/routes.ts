@@ -439,6 +439,20 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
           503,
           {
             turnId,
+            ...(conversationId ? { conversationId } : {}),
+            reply:
+              turn?.reply ??
+              'This turn needs reconciliation. Review any recorded actions before continuing.',
+            steps: turn?.steps ?? [],
+            truncated: true,
+            cost: {
+              points: turn?.points ?? 0,
+              balance: await config.credits.balance(session.address),
+              held: hold,
+              pendingPoints: Math.max(0, hold - (turn?.points ?? 0)),
+              explanation:
+                'Model usage is recorded, but points settlement needs confirmation. Do not repeat this turn.',
+            },
             error: {
               code: 'ASSISTANT_SETTLEMENT_UNCONFIRMED',
               message:

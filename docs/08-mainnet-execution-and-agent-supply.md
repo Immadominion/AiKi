@@ -33,7 +33,7 @@ The mainnet suite was deployed on 9 September 2026. All eight creation receipts 
 
 A local chain56 fork simulation preceded the actual deployment. It estimated 0.00038138645 BNB at 0.05 gwei; the actual eight creations cost 0.0002933743 BNB. Only deployment gas was spent. The wallet was recovered from the existing Git-ignored, owner-only deployment environment file. The server's executor and account-funding keys remain separate operational roles.
 
-Points purchases are configured separately from execution. Changing the executor network does not move billing or historical balances. Mainnet billing support is implemented as described below; the production billing configuration has not been switched in this repair.
+Points purchases are configured separately from execution. Changing the executor network does not move billing or historical balances. Production API and worker were switched to the reviewed chain56 deployment in release `34bb0a7`. New points purchases now use mainnet USDT; the old testnet rail remains an explicitly separate reconciliation input. Railway API, worker and web, and Vercel all deployed the same commit successfully. Public execution metadata reports56 and all ten production ledger checks pass.
 
 ## Fast mode and MCP execution inputs
 
@@ -43,7 +43,13 @@ Fast mode's Guardian preview, mandate and watch actions fetch this configuration
 
 The local MCP integration uses the same helpers. It binds sign-in to the current execution chain and checks the account and prepared delegation's chain, manager and delegator before signing. Wallet balance labels follow the actual checked RPC network. A saved watch's remaining allowance uses its own stored chain's decimals, not the latest deployment configuration. Failed watch-status requests are not presented as evidence that no watch exists. The website's existing watch controls also use the shared canonical market definition.
 
-These repairs do not add a hosted MCP transport, fund mandate accounts or implement the missing Manual activation flow for all categories. The legacy example-agent builder is not the normal registry task-hiring flow; its presence is not proof of a complete mainnet wallet journey. Public wallet-connected activation remains a release gate.
+Fast now persists a server-created signing continuation with the saved conversation. Review and sign rechecks the current owner, account, network, stored limits and six on-chain enforcers. A wallet signature requires an explicit click and files only that existing authorization; it does not create a job, start a watch, move funds or spend another Fast turn. Declined, expired, revoked and uncertain requests retain explicit recovery states. A lost filing response is checked against the same authorization before another signature is offered.
+
+The verified Guardian registration now offers automatic repayment setup separately from report hiring. Its builder uses runtime network metadata, canonical Venus repayment scope and a lifetime cap. Stored limits, account and wallet identity are checked around EIP-712 signing; watch activation still requires the normal account readiness checks. Other registrations never inherit Guardian authority from a matching name or category.
+
+Manual setup persists an owner/network-scoped operation key before any deployment or authorization request. Authorization creation is idempotent per wallet and key, with changed terms rejected and signatures, revocation and spent limits preserved on replay. Retries retain the original absolute expiry and authorization and reuse the job key after an uncertain response. Unavailable browser storage fails closed. A pending setup must currently resume with its original limits; automatic cancellation and replacement are not implemented.
+
+These repairs do not add a hosted MCP transport, fund mandate accounts or implement automated activation for the other three categories. They do not establish that a real lending position was funded, approved and protected through the public wallet journey. That remains a release gate.
 
 ## Mainnet points purchases
 
@@ -66,7 +72,7 @@ Existing lowercase transaction-hash uniqueness remains global, including across 
 
 Before production cutover, inventory all existing deposits and pending verification requests. The read-only `credits/recovery-cli.ts` verifies an explicitly supplied historical payment and reports credited, uncredited or conflicting status without writing points. The production inventory found one old 50,000-point payment, correctly credited and backed by its original five testnet USDT. No recovery credit was needed. Configure its historical chain, treasury and RPC explicitly through `CREDITS_HISTORICAL_CHAIN_ID`, `CREDITS_HISTORICAL_TREASURY_ADDRESS` and `CREDITS_HISTORICAL_RPC_URL`. Do not switch back to old six-decimal verifier code after accepting mainnet deposits.
 
-Local tests cover mainnet and testnet conversion, finality stalls and RPC failures, receipt branch changes, retries, mixed-rail accounting, stale wallet responses and network-specific payment instructions. A read-only mainnet RPC check confirmed USDT's eighteen decimals and support for the finalized block tag. No real payment or production billing cutover was performed. Wallet-connected purchase and verification remain release gates.
+Local tests cover mainnet and testnet conversion, finality stalls and RPC failures, receipt branch changes, retries, mixed-rail accounting, stale wallet responses and network-specific payment instructions. A read-only mainnet RPC check confirmed USDT's eighteen decimals and support for the finalized block tag. The production billing cutover is complete: the public treasury response reports chain56, USDT18 and finalized verification. No real mainnet payment was made. Wallet-connected purchase and verification remain release gates.
 
 ## Transactions awaiting confirmation
 
@@ -123,8 +129,12 @@ The 8004scan Pro key was verified against current source quota headers. API-only
 
 ## Remaining release gates
 
-1. Deploy and verify the mainnet mandate suite, then configure the same reviewed deployment for API and runner.
+1. Fund the separate mainnet executor and account-deployment wallets. Both were checked at zero BNB; deploying the enforcement suite did not fund these roles. Never substitute the deployment key to bypass role separation.
 2. Provide wallet onboarding, funding, allowances, revocation and visible runner health for an actual lending position. A watch must not guarantee protection against all market moves or RPC failures.
 3. Complete the normal buyer flow for the other three categories. Reports are useful, but must not be renamed as trading or allocation execution.
 4. Integrate external providers' real authentication, prices, signed actions and task lifecycle. Never expose arbitrary discovered tools as approved financial actions.
 5. Verify mainnet billing and all four activation flows in the normal wallet browser before claiming production completion.
+
+## Customer checks after cutover
+
+The existing wallet session and conversation survived a reload without another Fast charge. Native Chrome report hiring for Yield315946, Grid315945 and LP315944 returned live BSC results, then reached Paid only after explicit customer review and acceptance. Each used a ten-point offer. A Grid request missing required inputs reached Cancelled; refund and ledger verification are recorded in the release QA report. These were report purchases with internal points, not mainnet financial transactions.

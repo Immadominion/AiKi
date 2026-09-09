@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { type AssistantStep, api, type CreditBalance } from '@/lib/api'
+import { FastMandateAction } from './FastMandateAction'
 import { FastMessage } from './FastMessage'
 import { FastConversationController } from './fast-conversation'
 import { fastToolAgentHref } from './fast-links'
+import { mandateContinuations } from './fast-mandate'
 
 /**
  * Fast mode: asking for the thing instead of finding the screen for it.
@@ -192,6 +194,9 @@ export function FastChat({
                 <div className="max-w-[620px]">
                   {m.steps?.length ? <Steps steps={m.steps} /> : null}
                   <FastMessage text={m.content} />
+                  {mandateContinuations(m.steps).map((action) => (
+                    <FastMandateAction key={action.authorizationId} action={action} owner={owner} />
+                  ))}
                   {m.steps?.some(
                     (step) =>
                       step.ok && ['hire_agent', 'post_task', 'my_tasks'].includes(step.tool),
