@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { api, type Watch } from '@/lib/api'
-import { VENUS_GUARDIAN } from '@/lib/venus'
+import { venusGuardianFor } from '@/lib/venus'
 
 /**
  * Putting an agent on duty, and seeing that it stayed there.
@@ -79,16 +79,17 @@ export function WatchPanel({ jobId }: { jobId: string }) {
         say('You need a mandate account before an agent can watch a position.')
         return
       }
+      const guardian = venusGuardianFor(account.chainId)
       setWatch(
         await api.startWatch(jobId, {
           account: account.address,
-          chainId: VENUS_GUARDIAN.chainId,
+          chainId: guardian.chainId,
           minimumHealthFactor: line,
-          asset: VENUS_GUARDIAN.asset,
-          market: VENUS_GUARDIAN.market,
+          asset: guardian.asset,
+          market: guardian.market,
         }),
       )
-      say(`On duty. It will keep your health factor at or above ${line}.`)
+      say(`Watch started. Repayment trigger: health factor ${line}.`)
     } catch (error) {
       // The API's refusals say why in a sentence - an unsigned mandate, no
       // spending limit - and those are the sentences worth showing.
@@ -127,8 +128,8 @@ export function WatchPanel({ jobId }: { jobId: string }) {
           </div>
           <p className="text-muted mt-[4px] mb-0 max-w-[560px] text-[12.5px] leading-[1.5] text-pretty">
             {onDuty
-              ? `Checking your ${VENUS_GUARDIAN.label} position on its own, and repaying under this mandate’s limits if the health factor falls below ${watch?.minimumHealthFactor}.`
-              : `It will check your ${VENUS_GUARDIAN.label} position on a timer and repay under this mandate’s limits, without waiting for you.`}
+              ? `Watching your Venus USDT position on ${watch?.chainId === 56 ? 'BNB Chain' : 'BNB testnet'}. Repayment is attempted below ${watch?.minimumHealthFactor}, within your limits.`
+              : 'Watch your Venus USDT position and allow repayments within your signed limits. Uses your mandate account’s network.'}
           </p>
         </div>
         {onDuty ? (

@@ -17,8 +17,8 @@ interface VmScript {
 }
 
 /// @title Deploy
-/// @notice Deploys the mandate suite. THIS SCRIPT HAS NEVER BEEN RUN. No key exists for it in
-///         this repository and nothing here has been deployed to any network.
+/// @notice Deploys the mandate suite to an explicitly selected network. The existing pinned
+///         suite is on chain97; a mainnet deployment must be separately verified and recorded.
 ///
 /// @dev Deployment ORDER is load-bearing and the constructor arguments encode a cycle that has
 ///      to be broken in exactly this direction:
@@ -47,6 +47,10 @@ contract Deploy {
     VmScript internal constant vm = VmScript(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     function run() external {
+        // Refuse the wrong RPC before accessing a signing key or creating a transaction.
+        uint256 expectedChainId = vm.envUint("EXPECTED_CHAIN_ID");
+        require(expectedChainId == 56 || expectedChainId == 97, "Unsupported deployment network");
+        require(block.chainid == expectedChainId, "Deployment RPC network mismatch");
         // No default. If PRIVATE_KEY is unset this reverts, which is the correct behaviour:
         // a deploy script that falls back to a hardcoded key is how test keys reach mainnet.
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");

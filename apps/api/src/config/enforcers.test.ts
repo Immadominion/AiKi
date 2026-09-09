@@ -110,6 +110,36 @@ it('accepts the set when chain, code hash and registry all agree', async () => {
   )
 })
 
+it('requires mainnet pins for the manager and registry as well as the enforcers', async () => {
+  const deployment: EnforcerDeployment = {
+    ...pinnedToFake(),
+    chainId: 56,
+    network: 'mainnet',
+  }
+  await expect(assertEnforcerDeployment(fakeChain({ chainId: 56 }), deployment)).rejects.toThrow(
+    'manager and registry code hashes',
+  )
+  const pinned = {
+    ...deployment,
+    managerCodeHash: keccak256(FAKE_CODE),
+    registryCodeHash: keccak256(FAKE_CODE),
+  }
+  const code = { [deployment.manager]: FAKE_CODE, [deployment.registry]: FAKE_CODE }
+  expect(await assertEnforcerDeployment(fakeChain({ chainId: 56, code }), pinned)).toHaveLength(6)
+  await expect(
+    assertEnforcerDeployment(
+      fakeChain({ chainId: 56, code: { ...code, [deployment.manager]: '0xdead' } }),
+      pinned,
+    ),
+  ).rejects.toThrow('AiKiDelegationManager')
+  await expect(
+    assertEnforcerDeployment(
+      fakeChain({ chainId: 56, code: { ...code, [deployment.registry]: '0x' } }),
+      pinned,
+    ),
+  ).rejects.toThrow('AiKiEnforcerRegistry')
+})
+
 it('will not let a testnet deployment claim T0 without saying so', () => {
   // The whole point of the rule that started this: T0 means the chain refuses
   // the transaction, and a reader assumes that sentence is about their money.

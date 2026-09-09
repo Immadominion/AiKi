@@ -1,11 +1,12 @@
 import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
 import { createApiServer } from '../http/server.js'
 import { JobService } from '../jobs/service.js'
 import { InMemoryJobStore } from '../jobs/store.js'
+import type { WatchActivationReader } from './routes.js'
 import { InMemoryWatchStore } from './store.js'
 
 const SECRET = 'watch-routes-secret-long-enough-here'
@@ -38,7 +39,37 @@ const START = {
   market: MARKET,
 }
 
-async function harness(options: { signed?: boolean; capped?: boolean } = {}) {
+const activation = (): WatchActivationReader => ({
+  chainId: 97,
+  snapshot: vi.fn(async (account) => ({
+    account,
+    observedAt: new Date().toISOString(),
+    controllerLiquidity: 0n,
+    controllerShortfall: 0n,
+    markets: [
+      {
+        vToken: MARKET as `0x${string}`,
+        collateralFactor: 0n,
+        liquidationThreshold: 0n,
+        vTokenBalance: 0n,
+        borrowBalance: 1n,
+        exchangeRate: 10n ** 18n,
+        underlyingPrice: 10n ** 18n,
+      },
+    ],
+  })),
+  underlying: vi.fn(async () => TOKEN as `0x${string}`),
+})
+
+async function harness(
+  options: {
+    signed?: boolean
+    capped?: boolean
+    delegator?: string
+    delegationChainId?: number
+    activation?: WatchActivationReader | null
+  } = {},
+) {
   const jobs = new JobService(new InMemoryJobStore())
   const watches = new InMemoryWatchStore()
   const app = createApiServer({
@@ -46,6 +77,7 @@ async function harness(options: { signed?: boolean; capped?: boolean } = {}) {
     observations: () => [],
     jobs,
     watches,
+    ...(options.activation === null ? {} : { watchActivation: options.activation ?? activation() }),
     auth: {
       signer,
       nonces: new InMemoryNonceStore(),
@@ -73,14 +105,14 @@ async function harness(options: { signed?: boolean; capped?: boolean } = {}) {
     await jobs.attachDelegation(authorization.id, {
       delegation: {
         delegate: `0x${'44'.repeat(20)}`,
-        delegator: `0x${'55'.repeat(20)}`,
+        delegator: options.delegator ?? ACCOUNT,
         authority: `0x${'ff'.repeat(32)}`,
         caveats: [],
         salt: '1',
         epoch: '0',
         signature: `0x${'66'.repeat(65)}`,
       } as never,
-      chainId: 97,
+      chainId: options.delegationChainId ?? 97,
     })
   const job = await jobs.createJob(authorization.id, `k-${Math.random()}`)
   return { app, jobs, watches, job }
@@ -97,6 +129,19 @@ it('starts a watch on a signed, capped mandate', async () => {
   expect(response.statusCode).toBe(201)
   expect(response.json().minimumHealthFactor).toBe('1.4')
   expect((await watches.get(job.id))?.status).toBe('active')
+})
+
+it('starts a mainnet watch when the reader and signed mandate both use chain56', async () => {
+  const reader = { ...activation(), chainId: 56 }
+  const { app, job, watches } = await harness({ activation: reader, delegationChainId: 56 })
+  const response = await app.inject({
+    method: 'POST',
+    url: `/v1/jobs/${job.id}/watch`,
+    headers: cookie,
+    payload: { ...START, chainId: 56 },
+  })
+  expect(response.statusCode).toBe(201)
+  expect((await watches.get(job.id))?.chainId).toBe(56)
 })
 
 it('refuses to watch under a mandate nobody signed', async () => {
@@ -192,7 +237,7 @@ it('refuses a mandate that does not permit repaying', async () => {
   await jobs.attachDelegation(authorization.id, {
     delegation: {
       delegate: `0x${'44'.repeat(20)}`,
-      delegator: `0x${'55'.repeat(20)}`,
+      delegator: ACCOUNT,
       authority: `0x${'ff'.repeat(32)}`,
       caveats: [],
       salt: '1',
@@ -262,4 +307,106 @@ it('stops a watch when the owner asks', async () => {
   })
   expect(response.statusCode).toBe(200)
   expect((await watches.get(job.id))?.status).toBe('stopped')
+})
+
+it('does not accept mainnet watches when only testnet execution exists', async () => {
+  const reader = activation()
+  const { app, job, watches } = await harness({ activation: reader })
+  const response = await app.inject({
+    method: 'POST',
+    url: `/v1/jobs/${job.id}/watch`,
+    headers: cookie,
+    payload: { ...START, chainId: 56 },
+  })
+  expect(response.statusCode).toBe(400)
+  expect(response.json().error.code).toBe('WATCH_UNSUPPORTED_CHAIN')
+  expect(reader.snapshot).not.toHaveBeenCalled()
+  expect(await watches.get(job.id)).toBeNull()
+})
+
+it('requires the same account and chain as the signed delegation before reading or creating a watch', async () => {
+  for (const options of [
+    { delegator: STRANGER, code: 'WATCH_ACCOUNT_MISMATCH' },
+    { delegationChainId: 56, code: 'WATCH_CHAIN_MISMATCH' },
+  ]) {
+    const reader = activation()
+    const { app, job, watches } = await harness({ ...options, activation: reader })
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/jobs/${job.id}/watch`,
+      headers: cookie,
+      payload: START,
+    })
+    expect(response.statusCode).toBe(409)
+    expect(response.json().error.code).toBe(options.code)
+    expect(reader.snapshot).not.toHaveBeenCalled()
+    expect(await watches.get(job.id)).toBeNull()
+  }
+})
+
+it('refuses activation without a configured reader or when chain reads fail', async () => {
+  const failed = activation()
+  vi.mocked(failed.snapshot).mockRejectedValue(new Error('private RPC credentials must not leak'))
+  for (const reader of [null, failed]) {
+    const { app, job, watches } = await harness({ activation: reader })
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/jobs/${job.id}/watch`,
+      headers: cookie,
+      payload: START,
+    })
+    expect(response.statusCode).toBe(503)
+    expect(response.json().error.code).toBe(
+      reader ? 'WATCH_POSITION_UNAVAILABLE' : 'WATCH_UNAVAILABLE',
+    )
+    expect(response.body).not.toContain('private RPC')
+    expect(await watches.get(job.id)).toBeNull()
+  }
+})
+
+it('requires actual debt in the selected Venus market, not another account or market', async () => {
+  for (const change of ['absent', 'no-debt', 'wrong-account'] as const) {
+    const reader = activation()
+    const snapshot = await reader.snapshot(ACCOUNT as `0x${string}`)
+    if (change === 'absent') snapshot.markets = []
+    if (change === 'no-debt')
+      snapshot.markets = snapshot.markets.map((position) => ({ ...position, borrowBalance: 0n }))
+    if (change === 'wrong-account') snapshot.account = STRANGER as `0x${string}`
+    vi.mocked(reader.snapshot).mockResolvedValue(snapshot)
+    const { app, job, watches } = await harness({ activation: reader })
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/jobs/${job.id}/watch`,
+      headers: cookie,
+      payload: START,
+    })
+    expect(response.statusCode).toBe(409)
+    expect(response.json().error.code).toBe(
+      change === 'wrong-account' ? 'WATCH_ACCOUNT_MISMATCH' : 'WATCH_NO_DEBT',
+    )
+    expect(reader.underlying).not.toHaveBeenCalled()
+    expect(await watches.get(job.id)).toBeNull()
+  }
+})
+
+it('binds the repayment asset to the selected market underlying and fails closed on unavailable token reads', async () => {
+  for (const failure of ['mismatch', 'unavailable'] as const) {
+    const reader = activation()
+    if (failure === 'mismatch')
+      vi.mocked(reader.underlying).mockResolvedValue(STRANGER as `0x${string}`)
+    else vi.mocked(reader.underlying).mockRejectedValue(new Error('upstream internals'))
+    const { app, job, watches } = await harness({ activation: reader })
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/jobs/${job.id}/watch`,
+      headers: cookie,
+      payload: START,
+    })
+    expect(response.statusCode).toBe(failure === 'mismatch' ? 409 : 503)
+    expect(response.json().error.code).toBe(
+      failure === 'mismatch' ? 'WATCH_ASSET_MISMATCH' : 'WATCH_POSITION_UNAVAILABLE',
+    )
+    expect(reader.underlying).toHaveBeenCalledWith(MARKET)
+    expect(await watches.get(job.id)).toBeNull()
+  }
 })

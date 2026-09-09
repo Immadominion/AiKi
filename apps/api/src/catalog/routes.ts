@@ -5,7 +5,14 @@ import { CatalogService, validateId, validateQuery } from './service.js'
 import { CatalogError, object } from './types.js'
 
 /** Register after the existing session hook. Never supply a separate cookie parser. */
-export function registerCatalogRoutes(app: FastifyInstance, service = new CatalogService()): void {
+export function registerCatalogRoutes(
+  app: FastifyInstance,
+  service = new CatalogService({
+    apiKey: process.env.EIGHT004SCAN_API_KEY ?? '',
+    sourceRequestsPerMinute: process.env.CATALOG_SOURCE_REQUESTS_PER_MINUTE ?? '',
+    sourceRequestsPerDay: process.env.CATALOG_SOURCE_REQUESTS_PER_DAY ?? '',
+  }),
+): void {
   const publicBudget = new WindowBudget(40, 60_000)
   const discoveryBudget = new WindowBudget(6, 60_000)
   const readBudget = new WindowBudget(6, 60_000)

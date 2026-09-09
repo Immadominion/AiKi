@@ -9,7 +9,7 @@ import { PostgresConversationStore } from './assistant/conversations.js'
 import { PostgresNonceStore } from './auth/nonce-store.js'
 import { describeCookieMismatch, SessionSigner } from './auth/session.js'
 import { viemChainReader } from './authority/chain-reader.js'
-import { AIKI_ENFORCERS_BSC_TESTNET } from './config/enforcers.js'
+import { executionNetwork, verifyExecutionNetwork } from './config/execution-network.js'
 import { checkLedger } from './credits/reconcile.js'
 import { PostgresCreditStore } from './credits/store.js'
 import { treasuryBackingPoints } from './credits/treasury.js'
@@ -30,6 +30,7 @@ import { VenusClient } from './reference/venus/client.js'
 import { createVenusReferenceServer } from './reference/venus/server.js'
 import { VenusYieldClient } from './reference/yield/client.js'
 import { createYieldServer } from './reference/yield/server.js'
+import { createWatchActivationReader } from './runner/routes.js'
 import { PostgresWatchStore } from './runner/store.js'
 import { PostgresSellerStore } from './tasks/sellers.js'
 import { PostgresTaskStore } from './tasks/store.js'
@@ -110,8 +111,10 @@ const treasury = process.env.CREDITS_TREASURY_ADDRESS as `0x${string}` | undefin
 const creditsToken =
   (process.env.CREDITS_TOKEN_ADDRESS as `0x${string}` | undefined) ??
   '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c'
-const enforcerRpcUrl =
-  process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
+const execution = await executionNetwork(process.env)
+await verifyExecutionNetwork(execution)
+const deployment = execution.deployment
+const enforcerRpcUrl = execution.rpcUrl
 /*
  * Named once and used twice: the route that credits a payment, and the check
  * that asks whether the payments are still there. Two copies of this would be
@@ -126,7 +129,16 @@ const publicApiUrl =
   process.env.PUBLIC_API_URL ??
   (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined)
 const deposits = treasury
-  ? { rpcUrl: enforcerRpcUrl, chainId: 97, token: creditsToken, treasury }
+  ? {
+      rpcUrl:
+        process.env.CREDITS_RPC_URL ??
+        (deployment.chainId === 97
+          ? enforcerRpcUrl
+          : 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'),
+      chainId: 97,
+      token: creditsToken,
+      treasury,
+    }
   : undefined
 const base = process.env.REFERENCE_AGENT_BASE_URL
 const venusId = process.env.VENUS_GUARDIAN_AGENT_ID
@@ -156,14 +168,12 @@ const app = createApiServer({
       ok,
     })),
   appendObservation: (observation) => store.append(observation),
-  enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+  enforcers: deployment,
   ...(agentSessionKey ? { agentSessionKey } : {}),
   ...(agentKey ? { agentKey } : {}),
   enforcerRpcUrl,
-  // Reads the chain the enforcers are on, which is not the one the rest of this
-  // process talks to: the registry and the reference agents are on mainnet and
-  // the mandate suite is on testnet. Sharing one client would check a signature
-  // against an account that does not exist there.
+  // Account ownership, signature verification and execution use one selected
+  // deployment. Never read a mainnet mandate against the testnet account.
   chain: viemChainReader(enforcerRpcUrl),
   ...(accountFunderKey
     ? {
@@ -171,8 +181,8 @@ const app = createApiServer({
           store: accountStore,
           deployer: viemAccountDeployer({
             rpcUrl: enforcerRpcUrl,
-            chainId: AIKI_ENFORCERS_BSC_TESTNET.chainId,
-            manager: AIKI_ENFORCERS_BSC_TESTNET.manager as `0x${string}`,
+            chainId: deployment.chainId,
+            manager: deployment.manager as `0x${string}`,
             funderKey: accountFunderKey,
           }),
         },
@@ -180,6 +190,11 @@ const app = createApiServer({
     : {}),
   jobs: new JobService(jobStore),
   watches: watchStore,
+  ...(agentKey
+    ? {
+        watchActivation: createWatchActivationReader(enforcerRpcUrl, undefined, deployment.chainId),
+      }
+    : {}),
   assistant: {
     credits: creditStore,
     conversations: conversationStore,

@@ -34,7 +34,7 @@ export interface SweepDeps {
   jobs: JobService
   watches: WatchStore
   /** How to read a position on a given chain. Absent means this deployment cannot see that chain. */
-  reader(chainId: number): VenusReader | null
+  reader(chainId: number): (VenusReader & { underlying(market: Address): Promise<Address> }) | null
   /** How to send on a given chain. Absent means this deployment cannot act there. */
   chain(chainId: number): SweepChainConfig | null
   now?: () => number
@@ -135,6 +135,10 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
    */
   const delegation = authorization.delegation as SignedDelegation | undefined
   if (!delegation) return halt('the mandate was never signed, so nothing on chain limits it')
+  if (authorization.delegationChainId !== watch.chainId)
+    return halt('the watch and signed mandate belong to different networks')
+  if (delegation.delegator.toLowerCase() !== watch.account.toLowerCase())
+    return halt('the watched account is not covered by the signed mandate')
 
   const left = headroom(authorization)
   if (left === null) return halt('the mandate has no lifetime cap to spend against')
@@ -146,8 +150,12 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
     // tomorrow, and stopping the watch would lose the user's instruction over
     // what is probably a missing environment variable.
     return note(deps, watch, at, `AiKi cannot reach chain ${watch.chainId} at the moment.`)
+  if (chain.chainId !== watch.chainId)
+    return halt('the executor is configured for a different network')
 
   const snapshot = await reader.snapshot(watch.account as Address)
+  if (snapshot.account.toLowerCase() !== watch.account.toLowerCase())
+    return halt('the position read belongs to a different account')
   const assessment = assessVenusSnapshot(snapshot, watch.minimumHealthFactor)
 
   /*
@@ -163,6 +171,12 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
     // Not a halt: entering a market is something the owner can still do, and
     // throwing the instruction away because it is not true yet would be rude.
     return note(deps, watch, at, 'That account holds no position in the market being watched.')
+  if (position.borrowBalance <= 0n)
+    return note(deps, watch, at, 'There is no debt in this market to repay.')
+  if (
+    (await reader.underlying(watch.market as Address)).toLowerCase() !== watch.asset.toLowerCase()
+  )
+    return halt('the repayment asset does not match the Venus market')
 
   const result = await tick({
     jobs: deps.jobs,

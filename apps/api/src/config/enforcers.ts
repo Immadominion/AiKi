@@ -26,6 +26,9 @@ export interface EnforcerDeployment {
   audited: boolean
   registry: string
   manager: string
+  /** Required for mainnet: reviewed manager and registry runtime code hashes. */
+  managerCodeHash?: string
+  registryCodeHash?: string
   /** Name as registered on chain, exactly as `addressOf(string)` expects it. */
   enforcers: { name: string; address: string; codeHash: string }[]
 }
@@ -119,6 +122,21 @@ export async function assertEnforcerDeployment(
     )
 
   const checked: EnforcerAssertion[] = []
+  if (deployment.chainId === 56 && (!deployment.managerCodeHash || !deployment.registryCodeHash))
+    throw new Error('Mainnet execution requires pinned manager and registry code hashes.')
+  for (const [name, address, expected] of [
+    ['AiKiDelegationManager', deployment.manager, deployment.managerCodeHash],
+    ['AiKiEnforcerRegistry', deployment.registry, deployment.registryCodeHash],
+  ]) {
+    if (!expected) continue
+    const code = await client.request<string>('eth_getCode', [address, 'latest'])
+    if (
+      !code ||
+      code.length <= 2 ||
+      keccak256(code as `0x${string}`).toLowerCase() !== expected.toLowerCase()
+    )
+      throw new Error(`${name} does not match its reviewed deployment code hash.`)
+  }
   for (const enforcer of deployment.enforcers) {
     const code = await client.request<string>('eth_getCode', [enforcer.address, 'latest'])
     if (!code || code.length <= 2)

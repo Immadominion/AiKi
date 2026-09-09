@@ -1,7 +1,7 @@
-import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
+import { executionNetwork, verifyExecutionNetwork } from '../config/execution-network.js'
 import { PostgresJobStore } from '../jobs/postgres-store.js'
 import { JobService } from '../jobs/service.js'
-import { VenusClient } from '../reference/venus/client.js'
+import { createWatchActivationReader } from './routes.js'
 import { PostgresWatchStore } from './store.js'
 import { type SweepChainConfig, sweep } from './sweep.js'
 
@@ -26,12 +26,11 @@ if (!databaseUrl) throw new Error('DATABASE_URL is required.')
  * the caveats refusing the repayment are on the same chain. Watching a position
  * on one chain while the limit lives on another would be theatre.
  */
-const deployment = AIKI_ENFORCERS_BSC_TESTNET
+const network = await executionNetwork(process.env)
+await verifyExecutionNetwork(network)
+const deployment = network.deployment
 const chainId = deployment.chainId
-const rpcUrl =
-  process.env.RUNNER_RPC_URL ??
-  process.env.ENFORCER_RPC_URL ??
-  'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
+const rpcUrl = network.rpcUrl
 /*
  * The manager comes from the pinned deployment, not from the environment. The
  * caveats in every stored delegation were compiled against this exact address
@@ -63,7 +62,7 @@ try {
     ? { rpcUrl, chainId, delegationManager: manager, relayerKey }
     : null
 
-  const reader = new VenusClient(rpcUrl, undefined, chainId)
+  const reader = createWatchActivationReader(rpcUrl, undefined, chainId)
 
   const report = await sweep({
     jobs: new JobService(jobStore),

@@ -1,4 +1,5 @@
 import { BoundedCache, WindowBudget } from './bounds.js'
+import { matchesCategoryText } from './category.js'
 import { connectMcp } from './mcp.js'
 import { allowedReadTools, readPolicy, validateRead } from './read-policy.js'
 import { boundedText, type CatalogFetch, publicFetch, safeEndpoint } from './transport.js'
@@ -156,6 +157,36 @@ export function normalizeAgent(input: unknown, now = Date.now()): CatalogAgent {
 export interface CatalogServiceOptions {
   fetcher?: CatalogFetch
   now?: () => number
+  /** Server-only 8004scan credential. Never passed to registered providers. */
+  apiKey?: string
+  /** Trusted server config only. Positive whole numbers, per API process. */
+  sourceRequestsPerMinute?: number | string
+  sourceRequestsPerDay?: number | string
+}
+
+export function catalogSourceLimits(options: CatalogServiceOptions) {
+  const authenticated = Boolean(options.apiKey?.trim())
+  const configured = (value: number | string | undefined, fallback: number, maximum: number) => {
+    const parsed =
+      typeof value === 'string'
+        ? /^\d+$/.test(value.trim())
+          ? Number(value.trim())
+          : Number.NaN
+        : value
+    if (
+      typeof parsed !== 'number' ||
+      !Number.isSafeInteger(parsed) ||
+      parsed < 1 ||
+      parsed > maximum ||
+      (!authenticated && parsed > fallback)
+    )
+      return fallback
+    return parsed
+  }
+  return {
+    perMinute: configured(options.sourceRequestsPerMinute, 24, 3000),
+    perDay: configured(options.sourceRequestsPerDay, 900, 3_000_000),
+  }
 }
 
 interface SourceSnapshot {
@@ -166,6 +197,7 @@ interface SourceSnapshot {
 export class CatalogService {
   private readonly fetcher: CatalogFetch
   private readonly now: () => number
+  private readonly apiKey: string | undefined
   private readonly sourceCache: BoundedCache<SourceSnapshot>
   private readonly capabilityCache: BoundedCache<CatalogCapabilities>
   private readonly upstreamMinute: WindowBudget
@@ -176,6 +208,7 @@ export class CatalogService {
   constructor(options: CatalogServiceOptions = {}) {
     this.fetcher = options.fetcher ?? publicFetch
     this.now = options.now ?? Date.now
+    this.apiKey = options.apiKey?.trim() || undefined
     const size = (value: unknown) => JSON.stringify(value).length * 2
     this.sourceCache = new BoundedCache<SourceSnapshot>(
       256,
@@ -191,8 +224,9 @@ export class CatalogService {
       size,
       8 * 1024 * 1024,
     )
-    this.upstreamMinute = new WindowBudget(24, 60_000, 1, this.now)
-    this.upstreamDay = new WindowBudget(900, 86_400_000, 1, this.now)
+    const limits = catalogSourceLimits(options)
+    this.upstreamMinute = new WindowBudget(limits.perMinute, 60_000, 1, this.now)
+    this.upstreamDay = new WindowBudget(limits.perDay, 86_400_000, 1, this.now)
     this.providerBudget = new WindowBudget(30, 60_000, 1, this.now)
   }
 
@@ -208,7 +242,10 @@ export class CatalogService {
       this.upstreamMinute.take('source')
       this.upstreamDay.take('source')
       const response = await this.fetcher(new URL(`${BASE}${path}`), {
-        headers: { accept: 'application/json' },
+        headers: {
+          accept: 'application/json',
+          ...(this.apiKey ? { 'X-API-Key': this.apiKey } : {}),
+        },
         signal: AbortSignal.timeout(12_000),
       })
       if (!response.ok) {
@@ -261,7 +298,12 @@ export class CatalogService {
       is_registered: 'true',
       is_active: 'true',
     })
-    if (query.protocol) params.set('supported_protocol', query.protocol)
+    if (query.protocol) {
+      params.set('supported_protocol', query.protocol)
+      // A protocol tag alone can exist on an identity with no callable service.
+      // This is an endpoint-presence filter, never a claim of successful work.
+      params.set(query.protocol === 'MCP' ? 'has_mcp' : 'has_a2a', 'true')
+    }
     const search = [query.query, query.category ? CATEGORY_SEARCH[query.category] : '']
       .filter(Boolean)
       .join(' ')
@@ -287,17 +329,13 @@ export class CatalogService {
         /* Reject malformed identities without manufacturing a substitute. */
       }
     }
-    // The source list does not include category metadata. Other is a source-text
-    // filter on this page, not a claim that the publisher declared no category.
-    const filtered =
-      query.category === 'other'
-        ? items.filter(
-            (agent) =>
-              !/health\s*factor|liquidat|lending|rebalanc|grid|yield/i.test(
-                `${agent.name} ${agent.description}`,
-              ),
-          )
-        : items
+    // The source list omits category metadata. Financial context removes matches
+    // such as energy grids and crop yields, without implying verified skills.
+    // Preserve the source cursor even if every row on this page is filtered out.
+    const category = query.category
+    const filtered = category
+      ? items.filter((agent) => matchesCategoryText(category, `${agent.name} ${agent.description}`))
+      : items
     const cursor = string(data.next_cursor, 1025)
     return {
       items: filtered,

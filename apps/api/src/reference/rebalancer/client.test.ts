@@ -27,14 +27,25 @@ describe('assessPancakePosition', () => {
   it('recommends directional range relocation only when range is exited', () => {
     expect(assessPancakePosition({ ...base, currentTick: -120 })).toMatchObject({
       state: 'BELOW_RANGE',
-      recommendation: 'REBALANCE_UPWARD',
+      recommendation: 'REBALANCE_DOWNWARD',
       distanceToRangeTicks: 20,
     })
     expect(assessPancakePosition({ ...base, currentTick: 100 })).toMatchObject({
       state: 'ABOVE_RANGE',
-      recommendation: 'REBALANCE_DOWNWARD',
+      recommendation: 'REBALANCE_UPWARD',
       distanceToRangeTicks: 1,
     })
+  })
+  it('relocates the range toward the current tick rather than predicting a price reversal', () => {
+    for (const currentTick of [-120, 100, 140]) {
+      const result = assessPancakePosition({ ...base, currentTick })
+      const shift =
+        result.recommendation === 'REBALANCE_UPWARD'
+          ? result.distanceToRangeTicks
+          : -result.distanceToRangeTicks
+      expect(base.tickLower + shift).toBeLessThanOrEqual(currentTick)
+      expect(base.tickUpper + shift).toBeGreaterThan(currentTick)
+    }
   })
   it('does not recommend rebalancing an empty position', () =>
     expect(assessPancakePosition({ ...base, liquidity: '0' })).toMatchObject({

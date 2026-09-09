@@ -37,7 +37,7 @@ const SNAPSHOT: VenusAccountSnapshot = {
       collateralFactor: 8n * 10n ** 17n,
       liquidationThreshold: 8n * 10n ** 17n,
       vTokenBalance: 0n,
-      borrowBalance: 0n,
+      borrowBalance: 1n,
       exchangeRate: 10n ** 18n,
       underlyingPrice: 10n ** 18n,
     },
@@ -70,7 +70,7 @@ async function setup(options: { signed?: boolean; cap?: string; revoked?: boolea
     await jobs.attachDelegation(authorization.id, {
       delegation: {
         delegate: `0x${'44'.repeat(20)}`,
-        delegator: `0x${'55'.repeat(20)}`,
+        delegator: ACCOUNT,
         authority: `0x${'ff'.repeat(32)}`,
         caveats: [],
         salt: '1',
@@ -100,7 +100,7 @@ async function setup(options: { signed?: boolean; cap?: string; revoked?: boolea
   const deps: SweepDeps = {
     jobs,
     watches,
-    reader: () => ({ snapshot: async () => SNAPSHOT }),
+    reader: () => ({ snapshot: async () => SNAPSHOT, underlying: async () => TOKEN }),
     chain: () => CHAIN,
   }
   return { jobs, watches, deps, job, authorizationId: authorization.id }
@@ -178,6 +178,7 @@ it('one broken watch does not end the sweep', async () => {
     jobs: first.jobs,
     watches: first.watches,
     reader: () => ({
+      underlying: async () => TOKEN,
       snapshot: async () => {
         throw new Error('RPC unreachable')
       },
@@ -187,6 +188,37 @@ it('one broken watch does not end the sweep', async () => {
   expect(report.looked).toBe(1)
   expect(report.passes[0]?.reason).toMatch(/RPC unreachable/)
   expect(second.job.id).toBeTruthy()
+})
+
+it('stops an existing watch if its stored account does not match the signed delegation', async () => {
+  tickMock.mockReset()
+  const h = await setup({ cap: '100' })
+  const original = await h.watches.get(h.job.id)
+  if (!original) throw new Error('Missing watch fixture')
+  const mismatched = { ...original, account: OWNER }
+  h.deps.watches.claimDue = async () => [mismatched]
+  const report = await sweep(h.deps)
+  expect(report.stopped).toBe(1)
+  expect(report.passes[0]?.reason).toContain('not covered')
+  expect(tickMock).not.toHaveBeenCalled()
+})
+
+it('stops an existing watch if the repayment asset no longer matches the market', async () => {
+  tickMock.mockReset()
+  const h = await setup({ cap: '100' })
+  h.deps.reader = () => ({ snapshot: async () => SNAPSHOT, underlying: async () => OWNER })
+  const report = await sweep(h.deps)
+  expect(report.stopped).toBe(1)
+  expect(report.passes[0]?.reason).toContain('asset does not match')
+  expect(tickMock).not.toHaveBeenCalled()
+})
+
+it('never dispatches through an executor on another chain', async () => {
+  tickMock.mockReset()
+  const h = await setup({ cap: '100' })
+  h.deps.chain = () => ({ ...CHAIN, chainId: 56 })
+  expect((await sweep(h.deps)).stopped).toBe(1)
+  expect(tickMock).not.toHaveBeenCalled()
 })
 
 it('does not look at the same watch twice in one interval', async () => {
