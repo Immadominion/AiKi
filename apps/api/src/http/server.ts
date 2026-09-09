@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
-import { DELEGATION_TYPES, delegationDomain, ROOT_AUTHORITY } from '@aiki/contracts'
+import {
+  DELEGATION_TYPES,
+  delegationDomain,
+  guardianFor,
+  parseExecutionNetwork,
+  ROOT_AUTHORITY,
+} from '@aiki/contracts'
 import Fastify from 'fastify'
 import type { AccountDeployer } from '../accounts/deploy.js'
 import type { AccountStore } from '../accounts/store.js'
@@ -30,7 +36,7 @@ import type { MarketplaceStore } from '../marketplace/store.js'
 import { comparePassports, projectPassport } from '../projections/passport.js'
 import { assembleStats, projectStats, type StatsAggregate } from '../projections/stats.js'
 import { ReceiptService } from '../receipts/service.js'
-import { registerWatchRoutes } from '../runner/routes.js'
+import { registerWatchRoutes, type WatchActivationReader } from '../runner/routes.js'
 import type { WatchStore } from '../runner/store.js'
 import { buildSearchQuery } from '../search/query.js'
 import { fundJob, InsufficientPoints, refundJob, settleJob } from '../settlement/ledger.js'
@@ -131,6 +137,8 @@ export function createApiServer(input: {
    * run agents on demand but nothing on a timer.
    */
   watches?: WatchStore
+  /** Read-only readiness checks for the configured unattended execution network. */
+  watchActivation?: WatchActivationReader
   /**
    * Fast mode and the points that pay for it. Absent means the deployment
    * serves Manual mode only, and says so rather than failing oddly.
@@ -217,7 +225,12 @@ export function createApiServer(input: {
   if (input.auth) registerAuthRoutes(app, input.auth)
   registerCatalogRoutes(app)
   if (input.marketplace) registerMarketplaceRoutes(app, input.marketplace)
-  if (input.watches) registerWatchRoutes(app, { jobs, watches: input.watches })
+  if (input.watches)
+    registerWatchRoutes(app, {
+      jobs,
+      watches: input.watches,
+      ...(input.watchActivation ? { activation: input.watchActivation } : {}),
+    })
   if (input.assistant) registerAssistantRoutes(app, input.assistant)
   if (input.assistant?.conversations) registerConversationRoutes(app, input.assistant.conversations)
   /*
@@ -402,6 +415,27 @@ export function createApiServer(input: {
       return reply
         .code(503)
         .send({ status: 'unknown', detail: 'The ledger could not be read just now.' })
+    }
+  })
+
+  /** Public configuration for clients to construct inputs, not a promise of action readiness. */
+  app.get('/v1/execution/network', async (_request, reply) => {
+    reply.header('cache-control', 'no-store')
+    try {
+      if (!input.enforcers) throw new Error('Execution is not configured.')
+      return parseExecutionNetwork({
+        configured: true,
+        chainId: input.enforcers.chainId,
+        network: input.enforcers.network,
+        audited: input.enforcers.audited,
+        manager: input.enforcers.manager,
+        guardian: guardianFor(input.enforcers.chainId),
+      })
+    } catch {
+      throw new ClientError('This deployment cannot provide verified execution network details.', {
+        code: 'EXECUTION_NETWORK_UNAVAILABLE',
+        statusCode: 503,
+      })
     }
   })
 

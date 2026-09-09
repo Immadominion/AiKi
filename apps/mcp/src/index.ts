@@ -24,7 +24,7 @@ import { registerWorkTools } from './tools/work.js'
  */
 
 const API_URL = process.env.AIKI_API_URL ?? 'https://api-production-02ce.up.railway.app'
-const RPC_URL = process.env.AIKI_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
+const RPC_URL = process.env.AIKI_RPC_URL
 /*
  * The domain a sign-in message names. It must match what the API expects or the
  * signature is for another site, which is the point of it being in the message.
@@ -49,7 +49,8 @@ const server = new McpServer(
       '',
       'Reading works with no wallet. Anything that spends needs a key; create_wallet makes one and',
       'tells you the address. Ask before creating a key - it is a real key on a real chain.',
-      'Everything here is BNB testnet, against enforcer contracts that have not been audited.',
+      'Execution network and audit status come from current API metadata; never infer them from registry discovery.',
+      'Wallet balances name the verified RPC network. Check each action and funding destination on its stated network.',
     ].join('\n'),
   },
 )

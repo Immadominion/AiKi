@@ -11,6 +11,12 @@ import { registerCatalogRoutes } from '../catalog/routes.js'
 registerCatalogRoutes(app)
 ```
 
+The API server reads optional `EIGHT004SCAN_API_KEY` when it creates the catalog service. The key is sent as `X-API-Key` only on source requests to `https://api.8004scan.io/api/v1`, never to registered MCP/A2A providers or the browser. Configure it on the API service, not only an indexing worker. Missing or blank keys use anonymous source access. Configuring a key alone does not raise limits.
+
+Trusted server variables `CATALOG_SOURCE_REQUESTS_PER_MINUTE` and `CATALOG_SOURCE_REQUESTS_PER_DAY` can set per-process source budgets. Defaults remain24/minute and900/day. Values must be positive whole numbers, at most3000/minute and3000000/day; missing, invalid or out-of-range values fall back to the respective default. An increase above an anonymous default requires a nonblank server API key. Lower limits work with or without a key. These settings do not change public per-IP limits, provider limits, caching or upstream Retry-After handling.
+
+The production API target is120requests/minute and20000/day. The verified key currently reports Pro limits of3000/minute and3000000/day, but it is shared, so the API deliberately takes only a small portion of that allowance. These are per-process limits, not a distributed shared-key quota: keep one API replica or divide the deployment allowance across replicas, and account for other consumers before raising it.
+
 The browser uses `catalogApi` from `apps/web/src/lib/catalog-api.ts`. It delegates to the existing accepted-wallet `apiRequest` wrapper, including stale-session cancellation. `/explore` lists registrations and `/catalog/[id]` presents the available read action.
 
 Fast uses the same HTTP routes through `catalog_agents`, `catalog_agent`, `catalog_capabilities` and `read_external_agent`. The last tool accepts only the two reviewed registration IDs and an optional Venus pool. It cannot supply an endpoint, method, tool name or wallet address. The route's accepted session address is forwarded in `x-aiki-wallet-address` and supplies the Venus read address. Provider authentication, payment and error states are refusals, not successful hires. The external connector costs zero AiKi points, while Fast model usage remains separately billed.
@@ -23,6 +29,10 @@ Fast uses the same HTTP routes through `catalog_agents`, `catalog_agent`, `catal
 | `POST /v1/catalog/agents/:id/read` | `{tool, arguments}` | Signed-session read result; matching `x-aiki-wallet-address` is required |
 
 Category IDs match the marketplace: `health_factor`, `rebalancing`, `grid_trading`, `yield_optimisation`, `other`. The first four search source text using `lending`, `rebalancing`, `grid`, `yield`. They are search aids, not independently verified performance classifications. `declaredCategories` contains only categories actually returned by the publisher source. The source list omits category metadata, so `other` filters the current page for descriptions/names outside those work keywords. Its source total is not an uncategorized total.
+
+Category results also require financial context in publisher text. This removes unrelated matches such as energy grids, crop yields and spiritual rebalancing. These English-language relevance rules are not capability verification and can miss underspecified listings. Unfiltered discovery remains available. Filtered pages retain source pagination, including when no row on the current page matches.
+
+Connection filters use the source's `has_mcp` or `has_a2a` endpoint-presence field alongside its protocol filter. List summaries can omit service addresses even when that filter matched; do not discard those rows or label them endpoint-less. Fetch detail before checking the endpoint. A published endpoint is not a successful connection, and a successful connection is not completed work.
 
 `totalRegistered` is the source's registration count, never a count of working agents. `taskAvailability` remains `not_verified`; MCP discovery alone does not establish compatibility with AiKi paid jobs. `capabilities.status=available` means MCP discovery answered, while `readTools` controls executable actions. No numeric source reputation/health scores are relabelled as AiKi ratings.
 
@@ -44,7 +54,7 @@ These reads charge zero AiKi points. Provider pricing is not inferred from a suc
 - HTTPS443 only, no credentials, fragments or redirects. All DNS answers must be public; the checked IP is pinned into the actual TLS connection, with certificate verification against the original hostname. IPv6 private, reserved and transition forms are rejected.
 - Source request deadline12s; complete MCP session deadline18s; source JSON maximum2MiB, each MCP response512KiB, each schema16KiB, at most100 discovered tools, request body4KiB. Server sampling/elicitation/roots requests are ignored, not executed.
 - Source cache5minutes,256 entries and16MiB serialized-weight ceiling; capability cache2minutes,128 entries and8MiB ceiling. Each cache coalesces identical loads and bounds new concurrent loads to8.
-- Anonymous source budget24requests/minute and900/day, below the documented30/minute and1000/day. Upstream429 pauses further source requests according to bounded Retry-After. No API key is required or exposed.
+- Default source budget24requests/minute and900/day, below the documented anonymous30/minute and1000/day. Explicit authenticated overrides are described above. Upstream429 pauses further source requests according to bounded Retry-After. A server-only API key is optional and is never exposed.
 - Public catalog40requests/IP/minute; capability checks6/IP/minute; reads6/signed-wallet/minute, one concurrent read per wallet, maximum4reads total. Total fresh provider sessions30/minute. Active rate-limit identities are not evicted to reset their quota.
 - Budgets/caches are process-local. Coordinate source quota and abuse limits across replicas before scaling to multiple API processes; do not assume this in-memory budget is distributed enforcement.
 

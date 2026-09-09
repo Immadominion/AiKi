@@ -1,4 +1,7 @@
 import type { Address } from 'viem'
+import type { WatchMandateVerifier } from '../authority/watch-readiness.js'
+import { executorAddress } from '../config/executor-identity.js'
+import { unresolvedExecutionMessage } from '../execution/attempts.js'
 import type { SignedDelegation } from '../execution/executor.js'
 import type { JobService } from '../jobs/service.js'
 import type { AuthorizationRecord } from '../jobs/store.js'
@@ -34,9 +37,11 @@ export interface SweepDeps {
   jobs: JobService
   watches: WatchStore
   /** How to read a position on a given chain. Absent means this deployment cannot see that chain. */
-  reader(chainId: number): VenusReader | null
+  reader(chainId: number): (VenusReader & { underlying(market: Address): Promise<Address> }) | null
   /** How to send on a given chain. Absent means this deployment cannot act there. */
   chain(chainId: number): SweepChainConfig | null
+  /** Confirm the stored signature and account still match this deployment. */
+  verifyMandate?: WatchMandateVerifier
   now?: () => number
   /** How stale a look has to be before it is taken again. */
   intervalMs?: number
@@ -127,6 +132,14 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
   if (authorization.policy.expiresAt && Date.parse(authorization.policy.expiresAt) <= now)
     return halt('the mandate has expired')
 
+  // Stopping a revoked or expired watch above does not resolve its transaction
+  // or release any held limit. A live mandate may wait for an in-flight action.
+  const pending = await deps.jobs.pendingExecution(watch.authorizationId)
+  if (pending)
+    return pending.state === 'UNCONFIRMED'
+      ? halt(unresolvedExecutionMessage(pending))
+      : note(deps, watch, at, unresolvedExecutionMessage(pending))
+
   /*
    * No signature, no unattended action. An unsigned mandate is a real mandate
    * and AiKi will honour it for an action a person asked for, but nothing here
@@ -135,6 +148,10 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
    */
   const delegation = authorization.delegation as SignedDelegation | undefined
   if (!delegation) return halt('the mandate was never signed, so nothing on chain limits it')
+  if (authorization.delegationChainId !== watch.chainId)
+    return halt('the watch and signed mandate belong to different networks')
+  if (delegation.delegator.toLowerCase() !== watch.account.toLowerCase())
+    return halt('the watched account is not covered by the signed mandate')
 
   const left = headroom(authorization)
   if (left === null) return halt('the mandate has no lifetime cap to spend against')
@@ -146,8 +163,26 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
     // tomorrow, and stopping the watch would lose the user's instruction over
     // what is probably a missing environment variable.
     return note(deps, watch, at, `AiKi cannot reach chain ${watch.chainId} at the moment.`)
+  if (chain.chainId !== watch.chainId)
+    return halt('the executor is configured for a different network')
+  if (delegation.delegate.toLowerCase() !== executorAddress(chain.relayerKey).toLowerCase())
+    return halt(
+      'the signed mandate names a different executor; sign a new mandate before restarting',
+    )
+
+  if (!deps.verifyMandate)
+    return note(deps, watch, at, 'Signed mandate verification is unavailable. No action was taken.')
+  try {
+    const readiness = await deps.verifyMandate(authorization)
+    if (!readiness.ready)
+      return readiness.retryable ? note(deps, watch, at, readiness.reason) : halt(readiness.reason)
+  } catch {
+    return note(deps, watch, at, 'The signed mandate could not be verified. No action was taken.')
+  }
 
   const snapshot = await reader.snapshot(watch.account as Address)
+  if (snapshot.account.toLowerCase() !== watch.account.toLowerCase())
+    return halt('the position read belongs to a different account')
   const assessment = assessVenusSnapshot(snapshot, watch.minimumHealthFactor)
 
   /*
@@ -163,6 +198,12 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
     // Not a halt: entering a market is something the owner can still do, and
     // throwing the instruction away because it is not true yet would be rude.
     return note(deps, watch, at, 'That account holds no position in the market being watched.')
+  if (position.borrowBalance <= 0n)
+    return note(deps, watch, at, 'There is no debt in this market to repay.')
+  if (
+    (await reader.underlying(watch.market as Address)).toLowerCase() !== watch.asset.toLowerCase()
+  )
+    return halt('the repayment asset does not match the Venus market')
 
   const result = await tick({
     jobs: deps.jobs,
@@ -179,6 +220,15 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
     delegation,
     now: () => now,
   })
+  if (result.needsReview) {
+    const stopped = await halt(
+      `${result.reason}${result.transactionHash ? ` Transaction: ${result.transactionHash}.` : ''}`,
+    )
+    return {
+      ...stopped,
+      ...(result.transactionHash ? { transactionHash: result.transactionHash } : {}),
+    }
+  }
 
   await deps.watches.noteChecked(
     watch.jobId,

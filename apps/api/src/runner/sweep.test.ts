@@ -1,4 +1,6 @@
 import { expect, it, vi } from 'vitest'
+import { executorAddress } from '../config/executor-identity.js'
+import { executeJobAction } from '../execution/job-execution.js'
 import { JobService } from '../jobs/service.js'
 import { InMemoryJobStore } from '../jobs/store.js'
 import type { VenusAccountSnapshot } from '../reference/venus/types.js'
@@ -37,14 +39,23 @@ const SNAPSHOT: VenusAccountSnapshot = {
       collateralFactor: 8n * 10n ** 17n,
       liquidationThreshold: 8n * 10n ** 17n,
       vTokenBalance: 0n,
-      borrowBalance: 0n,
+      borrowBalance: 1n,
       exchangeRate: 10n ** 18n,
       underlyingPrice: 10n ** 18n,
     },
   ],
 }
 
-async function setup(options: { signed?: boolean; cap?: string; revoked?: boolean } = {}) {
+async function setup(
+  options: {
+    signed?: boolean
+    cap?: string
+    revoked?: boolean
+    chainId?: number
+    expiresAt?: string
+  } = {},
+) {
+  const chainId = options.chainId ?? 97
   const jobs = new JobService(new InMemoryJobStore())
   const watches = new InMemoryWatchStore()
   const constraints = options.cap
@@ -64,20 +75,35 @@ async function setup(options: { signed?: boolean; cap?: string; revoked?: boolea
           label: 'expiry',
         },
       ]
-  const authorization = await jobs.authorize(constraints, OWNER)
+  const authorization = await jobs.authorize(
+    [
+      ...constraints,
+      ...(options.expiresAt
+        ? [
+            {
+              kind: 'expiry' as const,
+              value: options.expiresAt,
+              tier: 'T2' as const,
+              label: 'expiry',
+            },
+          ]
+        : []),
+    ],
+    OWNER,
+  )
 
   if (options.signed !== false)
     await jobs.attachDelegation(authorization.id, {
       delegation: {
-        delegate: `0x${'44'.repeat(20)}`,
-        delegator: `0x${'55'.repeat(20)}`,
+        delegate: executorAddress(CHAIN.relayerKey),
+        delegator: ACCOUNT,
         authority: `0x${'ff'.repeat(32)}`,
         caveats: [],
         salt: '1',
         epoch: '0',
         signature: `0x${'66'.repeat(65)}`,
       } as never,
-      chainId: 97,
+      chainId,
     })
   const job = await jobs.createJob(authorization.id, `k-${Math.random()}`)
   // Revoked after the watch exists, which is the order it happens in: somebody
@@ -87,7 +113,7 @@ async function setup(options: { signed?: boolean; cap?: string; revoked?: boolea
     jobId: job.id,
     authorizationId: authorization.id,
     account: ACCOUNT,
-    chainId: 97,
+    chainId,
     protocol: 'venus',
     minimumHealthFactor: '1.25',
     asset: TOKEN,
@@ -100,8 +126,9 @@ async function setup(options: { signed?: boolean; cap?: string; revoked?: boolea
   const deps: SweepDeps = {
     jobs,
     watches,
-    reader: () => ({ snapshot: async () => SNAPSHOT }),
-    chain: () => CHAIN,
+    reader: () => ({ snapshot: async () => SNAPSHOT, underlying: async () => TOKEN }),
+    chain: () => ({ ...CHAIN, chainId }),
+    verifyMandate: async () => ({ ready: true }),
   }
   return { jobs, watches, deps, job, authorizationId: authorization.id }
 }
@@ -119,6 +146,78 @@ it('will not act unattended under a mandate nobody signed', async () => {
   expect((await watches.get(job.id))?.status).toBe('stopped')
 })
 
+it('stops stale mandates after executor-key rotation before reads, spending or execution', async () => {
+  tickMock.mockReset()
+  const { deps, watches, jobs, job, authorizationId } = await setup({ cap: '100' })
+  const snapshot = vi.fn(async () => SNAPSHOT)
+  deps.reader = () => ({ snapshot, underlying: async () => TOKEN })
+  deps.chain = () => ({ ...CHAIN, relayerKey: `0x${'44'.repeat(32)}` })
+  const report = await sweep(deps)
+  expect(report.stopped).toBe(1)
+  expect(report.passes[0]?.reason).toMatch(/different executor/)
+  expect((await watches.get(job.id))?.status).toBe('stopped')
+  expect((await jobs.getAuthorization(authorizationId)).spent).toBe(0n)
+  expect(snapshot).not.toHaveBeenCalled()
+  expect(tickMock).not.toHaveBeenCalled()
+})
+
+it.each([56, 97])('keeps matching executor mandates runnable on chain%d', async (chainId) => {
+  tickMock.mockReset()
+  tickMock.mockResolvedValue({ acted: false, reason: 'Position is healthy.' })
+  const { deps, watches, job } = await setup({ cap: '100', chainId })
+  const report = await sweep(deps)
+  expect(report.stopped).toBe(0)
+  expect((await watches.get(job.id))?.status).toBe('active')
+  expect(tickMock).toHaveBeenCalledTimes(1)
+  expect(tickMock).toHaveBeenCalledWith(
+    expect.objectContaining({ chain: expect.objectContaining({ chainId }) }),
+  )
+})
+
+it.each([false, true])('does not execute an unready mandate (retryable: %s)', async (retryable) => {
+  tickMock.mockReset()
+  const { deps, watches, jobs, job, authorizationId } = await setup({ cap: '100' })
+  const snapshot = vi.fn(async () => SNAPSHOT)
+  deps.reader = () => ({ snapshot, underlying: async () => TOKEN })
+  const reason = retryable
+    ? 'Mandate verification is temporarily unavailable.'
+    : 'Sign a new mandate for this manager.'
+  deps.verifyMandate = vi.fn(async () => ({ ready: false as const, retryable, reason }))
+  const report = await sweep(deps)
+  expect(report.stopped).toBe(retryable ? 0 : 1)
+  expect(report.passes[0]?.reason).toBe(reason)
+  expect((await watches.get(job.id))?.status).toBe(retryable ? 'active' : 'stopped')
+  expect((await watches.get(job.id))?.lastReason).toBe(reason)
+  expect(deps.verifyMandate).toHaveBeenCalledWith(await jobs.getAuthorization(authorizationId))
+  expect((await jobs.getAuthorization(authorizationId)).spent).toBe(0n)
+  expect(snapshot).not.toHaveBeenCalled()
+  expect(tickMock).not.toHaveBeenCalled()
+})
+
+it.each(['missing', 'throws'] as const)(
+  'does not execute if mandate verification %s',
+  async (mode) => {
+    tickMock.mockReset()
+    const { deps, watches, jobs, job, authorizationId } = await setup({ cap: '100' })
+    const snapshot = vi.fn(async () => SNAPSHOT)
+    deps.reader = () => ({ snapshot, underlying: async () => TOKEN })
+    if (mode === 'missing') delete deps.verifyMandate
+    else
+      deps.verifyMandate = async () => {
+        throw new Error('private-rpc-credential-fixture')
+      }
+    const report = await sweep(deps)
+    expect(report.stopped).toBe(0)
+    expect(report.acted).toBe(0)
+    expect(report.passes[0]?.reason).toMatch(/No action was taken/)
+    expect(JSON.stringify(report)).not.toContain('private-rpc-credential-fixture')
+    expect((await watches.get(job.id))?.status).toBe('active')
+    expect((await jobs.getAuthorization(authorizationId)).spent).toBe(0n)
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(tickMock).not.toHaveBeenCalled()
+  },
+)
+
 it('stops watching when the mandate is revoked', async () => {
   tickMock.mockReset()
   const { deps, watches, job } = await setup({ revoked: true, cap: '100' })
@@ -126,6 +225,150 @@ it('stops watching when the mandate is revoked', async () => {
   expect(report.passes[0]?.reason).toMatch(/revoked/i)
   expect((await watches.get(job.id))?.status).toBe('stopped')
   expect(tickMock).not.toHaveBeenCalled()
+})
+
+it.each(['revoked', 'expired'] as const)(
+  'stops a %s mandate with a live execution while retaining its lock and held cap',
+  async (status) => {
+    tickMock.mockReset()
+    const expiresAt = new Date(Date.now() + 3_600_000).toISOString()
+    const { deps, watches, jobs, job, authorizationId } = await setup({ cap: '100', expiresAt })
+    await jobs.attempt(job.id, {
+      target: TOKEN,
+      selector: '0xa9059cbb',
+      asset: TOKEN,
+      amount: 30n,
+      at: new Date().toISOString(),
+    })
+    const claim = await jobs.beginExecution(job.id, 97)
+    if (status === 'revoked') await jobs.revoke(authorizationId)
+    else {
+      await jobs.recordExecutionHash(claim.attempt.id, `0x${'ab'.repeat(32)}`)
+      deps.now = () => Date.parse(expiresAt) + 1
+    }
+    const snapshot = vi.fn(async () => SNAPSHOT)
+    deps.reader = () => ({ snapshot, underlying: async () => TOKEN })
+    const before = await jobs.pendingExecution(authorizationId)
+    expect((await sweep(deps)).stopped).toBe(1)
+    expect((await watches.get(job.id))?.status).toBe('stopped')
+    expect((await watches.get(job.id))?.lastReason).toContain(status)
+    expect(await jobs.pendingExecution(authorizationId)).toEqual(before)
+    expect((await jobs.getAuthorization(authorizationId)).spent).toBe(30n)
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(tickMock).not.toHaveBeenCalled()
+  },
+)
+
+it('durably stops a watch when its repayment confirmation is unresolved', async () => {
+  tickMock.mockReset()
+  const hash = `0x${'ab'.repeat(32)}`
+  tickMock.mockResolvedValue({
+    acted: false,
+    needsReview: true,
+    reason: 'Execution needs review.',
+    transactionHash: hash,
+  })
+  const { deps, watches, job } = await setup({ cap: '100' })
+  expect((await sweep(deps)).stopped).toBe(1)
+  const saved = await watches.get(job.id)
+  expect(saved?.status).toBe('stopped')
+  expect(saved?.lastReason).toContain(hash)
+  expect((await sweep(deps)).looked).toBe(0)
+  expect(tickMock).toHaveBeenCalledOnce()
+})
+
+it('stops after a restart with an unresolved execution before reading or sending again', async () => {
+  tickMock.mockReset()
+  const { deps, watches, jobs, job } = await setup({ cap: '100' })
+  const claim = await jobs.beginExecution(job.id, 97)
+  const hash = `0x${'ab'.repeat(32)}` as const
+  await jobs.recordExecutionHash(claim.attempt.id, hash)
+  await jobs.finishExecution(claim.attempt.id, 'UNCONFIRMED')
+  const snapshot = vi.fn(async () => SNAPSHOT)
+  deps.reader = () => ({ snapshot, underlying: async () => TOKEN })
+  expect((await sweep(deps)).stopped).toBe(1)
+  expect((await watches.get(job.id))?.lastReason).toContain(hash)
+  expect(snapshot).not.toHaveBeenCalled()
+  expect(tickMock).not.toHaveBeenCalled()
+})
+
+it.each(['PREPARING', 'SUBMITTED'] as const)(
+  'defers a %s claim without stopping its watch or expiring the execution lock',
+  async (state) => {
+    tickMock.mockReset()
+    const { deps, watches, jobs, job, authorizationId } = await setup({ cap: '100' })
+    const claim = await jobs.beginExecution(job.id, 97)
+    if (state === 'SUBMITTED')
+      await jobs.recordExecutionHash(claim.attempt.id, `0x${'ab'.repeat(32)}`)
+    deps.now = () => Date.now() + 30 * 86_400_000
+    expect((await sweep(deps)).stopped).toBe(0)
+    expect((await watches.get(job.id))?.status).toBe('active')
+    expect((await watches.get(job.id))?.lastReason).toMatch(/still in progress/)
+    expect((await jobs.pendingExecution(authorizationId))?.id).toBe(claim.attempt.id)
+    expect(tickMock).not.toHaveBeenCalled()
+  },
+)
+
+it('keeps a watch scheduled when an overlapping manual action is later refused over its cap', async () => {
+  tickMock.mockReset().mockResolvedValue({ acted: false, reason: 'Position is healthy.' })
+  const { deps, watches, jobs, job, authorizationId } = await setup({ cap: '100' })
+  let release = () => {}
+  let claimed = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const started = new Promise<void>((resolve) => {
+    claimed = resolve
+  })
+  const attempt = jobs.attempt.bind(jobs)
+  vi.spyOn(jobs, 'attempt').mockImplementationOnce(async (...args) => {
+    claimed()
+    await gate
+    return attempt(...args)
+  })
+  const manual = executeJobAction({
+    jobs,
+    jobId: job.id,
+    request: {
+      ...CHAIN,
+      delegation: {} as never,
+      callData: '0x',
+      action: {
+        target: TOKEN,
+        selector: '0xa9059cbb',
+        asset: TOKEN,
+        amount: 101n,
+        at: new Date().toISOString(),
+      },
+    },
+  })
+  await started
+  const now = Date.now()
+  deps.now = () => now
+  expect((await sweep(deps)).stopped).toBe(0)
+  expect((await watches.get(job.id))?.status).toBe('active')
+  expect(tickMock).not.toHaveBeenCalled()
+  release()
+  expect((await manual).policy.allow).toBe(false)
+  expect(await jobs.pendingExecution(authorizationId)).toBeNull()
+  expect((await jobs.getAuthorization(authorizationId)).spent).toBe(0n)
+  deps.now = () => now + 6 * 60_000
+  expect((await sweep(deps)).stopped).toBe(0)
+  expect((await watches.get(job.id))?.status).toBe('active')
+  expect(tickMock).toHaveBeenCalledOnce()
+})
+
+it('does not stop a watch when a competing execution begins after the sweep precheck', async () => {
+  tickMock.mockReset().mockResolvedValue({
+    acted: false,
+    needsReview: false,
+    deniedBy: 'execution_pending',
+    reason: 'Another execution is still in progress.',
+  })
+  const { deps, watches, job } = await setup({ cap: '100' })
+  expect((await sweep(deps)).stopped).toBe(0)
+  expect((await watches.get(job.id))?.status).toBe('active')
+  expect(tickMock).toHaveBeenCalledOnce()
 })
 
 it('refuses to run against a mandate with no lifetime cap', async () => {
@@ -178,6 +421,7 @@ it('one broken watch does not end the sweep', async () => {
     jobs: first.jobs,
     watches: first.watches,
     reader: () => ({
+      underlying: async () => TOKEN,
       snapshot: async () => {
         throw new Error('RPC unreachable')
       },
@@ -187,6 +431,37 @@ it('one broken watch does not end the sweep', async () => {
   expect(report.looked).toBe(1)
   expect(report.passes[0]?.reason).toMatch(/RPC unreachable/)
   expect(second.job.id).toBeTruthy()
+})
+
+it('stops an existing watch if its stored account does not match the signed delegation', async () => {
+  tickMock.mockReset()
+  const h = await setup({ cap: '100' })
+  const original = await h.watches.get(h.job.id)
+  if (!original) throw new Error('Missing watch fixture')
+  const mismatched = { ...original, account: OWNER }
+  h.deps.watches.claimDue = async () => [mismatched]
+  const report = await sweep(h.deps)
+  expect(report.stopped).toBe(1)
+  expect(report.passes[0]?.reason).toContain('not covered')
+  expect(tickMock).not.toHaveBeenCalled()
+})
+
+it('stops an existing watch if the repayment asset no longer matches the market', async () => {
+  tickMock.mockReset()
+  const h = await setup({ cap: '100' })
+  h.deps.reader = () => ({ snapshot: async () => SNAPSHOT, underlying: async () => OWNER })
+  const report = await sweep(h.deps)
+  expect(report.stopped).toBe(1)
+  expect(report.passes[0]?.reason).toContain('asset does not match')
+  expect(tickMock).not.toHaveBeenCalled()
+})
+
+it('never dispatches through an executor on another chain', async () => {
+  tickMock.mockReset()
+  const h = await setup({ cap: '100' })
+  h.deps.chain = () => ({ ...CHAIN, chainId: 56 })
+  expect((await sweep(h.deps)).stopped).toBe(1)
+  expect(tickMock).not.toHaveBeenCalled()
 })
 
 it('does not look at the same watch twice in one interval', async () => {

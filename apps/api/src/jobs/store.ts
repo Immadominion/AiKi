@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
 import type { CompiledPolicy } from '../authority/policy.js'
+import {
+  type ExecutionAttempt,
+  type ExecutionState,
+  executionPending,
+} from '../execution/attempts.js'
 import { ClientError } from '../http/errors.js'
 
 export type AuthorizationStatus = 'pending' | 'active' | 'revoked' | 'expired'
@@ -49,6 +54,8 @@ export interface JobRecord {
   events: JobEvent[]
   idempotencyKey: string
   createdAt: string
+  /** Present while this mandate has a transaction that must not be repeated. */
+  execution?: ExecutionAttempt
   /**
    * The terms of the sale, fixed when the buyer paid.
    *
@@ -101,6 +108,14 @@ export interface ApprovalRequest {
 }
 
 export interface JobStore {
+  beginExecution(attempt: ExecutionAttempt): Promise<boolean>
+  pendingExecution(authorizationId: string): Promise<ExecutionAttempt | null>
+  recordExecutionHash(id: string, hash: `0x${string}`): Promise<void>
+  finishExecution(
+    id: string,
+    state: Exclude<ExecutionState, 'PREPARING' | 'SUBMITTED'>,
+    release: bigint,
+  ): Promise<void>
   /**
    * Move a job from one of `from` to `to`, and say whether this caller did it.
    *
@@ -216,6 +231,67 @@ export class InMemoryJobStore implements JobStore {
   private readonly jobs = new Map<string, JobRecord>()
   private readonly byKey = new Map<string, string>()
   private readonly pendingApprovals: ApprovalRequest[] = []
+  private readonly executions = new Map<string, ExecutionAttempt>()
+
+  async beginExecution(attempt: ExecutionAttempt) {
+    if (this.jobs.get(attempt.jobId)?.authorizationId !== attempt.authorizationId)
+      throw new Error('Execution job does not belong to the mandate.')
+    if (
+      [...this.executions.values()].some(
+        (entry) =>
+          entry.authorizationId === attempt.authorizationId && executionPending(entry.state),
+      )
+    )
+      return false
+    this.executions.set(attempt.id, { ...attempt })
+    return true
+  }
+
+  async pendingExecution(authorizationId: string) {
+    const found = [...this.executions.values()].find(
+      (entry) => entry.authorizationId === authorizationId && executionPending(entry.state),
+    )
+    return found ? { ...found } : null
+  }
+
+  async recordExecutionHash(id: string, hash: `0x${string}`) {
+    const entry = this.executions.get(id)
+    if (
+      !entry ||
+      !executionPending(entry.state) ||
+      (entry.transactionHash && entry.transactionHash !== hash)
+    )
+      throw new Error('Execution hash cannot be changed.')
+    if (entry.transactionHash) return
+    entry.transactionHash = hash
+    entry.state = 'SUBMITTED'
+    this.jobs.get(entry.jobId)?.events.push({
+      type: 'status',
+      at: new Date().toISOString(),
+      detail: `Execution prepared on chain ${entry.chainId}: ${hash}. Confirmation is pending; do not repeat it.`,
+    })
+  }
+
+  async finishExecution(
+    id: string,
+    state: Exclude<ExecutionState, 'PREPARING' | 'SUBMITTED'>,
+    release: bigint,
+  ) {
+    const entry = this.executions.get(id)
+    if (!entry || !executionPending(entry.state)) return
+    if (state === 'UNCONFIRMED' && release !== 0n)
+      throw new Error('Unconfirmed execution cannot release a spending limit.')
+    entry.state = state
+    if (release > 0n) {
+      const auth = this.authorizations.get(entry.authorizationId)
+      if (auth) auth.spent = auth.spent > release ? auth.spent - release : 0n
+    }
+    this.jobs.get(entry.jobId)?.events.push({
+      type: 'status',
+      at: new Date().toISOString(),
+      detail: `Execution ${state.toLowerCase()} on chain ${entry.chainId}${entry.transactionHash ? `: ${entry.transactionHash}` : ''}.${state === 'UNCONFIRMED' ? ' Spending limit held. Review required; no automatic retry.' : ''}`,
+    })
+  }
 
   /** The action, as a key. Two requests match when the action matches. */
   private static actionKey(a: {

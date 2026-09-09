@@ -18,6 +18,7 @@ import { PostgresConversationStore } from '../assistant/conversations.js'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
 import { viemChainReader } from '../authority/chain-reader.js'
+import { creditsNetwork } from '../config/credits-network.js'
 import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
 import { PostgresCreditStore } from '../credits/store.js'
 import { materializeObservation } from '../evidence/store.js'
@@ -58,6 +59,7 @@ const agents = new Set(observations.map((o) => o.subject.agentId)).size
 // mandate made here is a row you can go and look at. Without one it stays in
 // memory and dies with the process.
 const databaseUrl = process.env.DATABASE_URL
+const deposits = creditsNetwork(process.env)
 const conversationStore = databaseUrl ? new PostgresConversationStore(databaseUrl) : undefined
 const creditStore = databaseUrl ? new PostgresCreditStore(databaseUrl) : undefined
 const taskStore = databaseUrl ? new PostgresTaskStore(databaseUrl) : undefined
@@ -77,23 +79,12 @@ const persistence =
         // is how a screen ends up calling a route nobody registered.
         assistant: {
           credits: creditStore,
+          executionChainId: AIKI_ENFORCERS_BSC_TESTNET.chainId,
           conversations: conversationStore,
           ...(process.env.ANTHROPIC_API_KEY ? { apiKey: process.env.ANTHROPIC_API_KEY } : {}),
           ...(process.env.ASSISTANT_MODEL ? { model: process.env.ASSISTANT_MODEL } : {}),
           selfUrl: `http://127.0.0.1:${Number(process.env.PORT ?? '4748')}`,
-          ...(process.env.CREDITS_TREASURY_ADDRESS
-            ? {
-                deposits: {
-                  rpcUrl:
-                    process.env.ENFORCER_RPC_URL ??
-                    'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
-                  chainId: 97,
-                  token: (process.env.CREDITS_TOKEN_ADDRESS ??
-                    '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c') as `0x${string}`,
-                  treasury: process.env.CREDITS_TREASURY_ADDRESS as `0x${string}`,
-                },
-              }
-            : {}),
+          ...(deposits ? { deposits } : {}),
         },
         // The same deployed suite production reads, so what a limit is worth here
         // is what it is worth there. A dev API that reported everything as counted

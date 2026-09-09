@@ -1,4 +1,5 @@
 import type { AikiClient } from './client.js'
+import { executionNetwork } from './execution.js'
 import { type Identity, keyLocation, loadIdentity, signIn } from './identity.js'
 
 /**
@@ -24,6 +25,7 @@ export class NeedsIdentity extends Error {
 
 export class Session {
   private identity: Identity | null = null
+  private chainId: 56 | 97 | null = null
 
   constructor(
     private readonly client: AikiClient,
@@ -31,18 +33,33 @@ export class Session {
   ) {}
 
   /** The identity, signing in first if this is the first time it is needed. */
-  async require(): Promise<Identity> {
-    if (this.identity && this.client.signedIn) return this.identity
+  async require(expectedChainId?: 56 | 97): Promise<Identity> {
+    // Stopping existing work must remain possible through an authenticated
+    // session when public network discovery is unavailable. New execution
+    // operations pass an explicit expected chain and always refresh below.
+    if (expectedChainId === undefined && this.identity && this.client.signedIn) return this.identity
+    const network = await executionNetwork(this.client)
+    if (expectedChainId !== undefined && network.chainId !== expectedChainId)
+      throw new Error(
+        'The execution network changed during this operation. Retry before signing or starting work.',
+      )
+    if (this.identity && this.client.signedIn && this.chainId === network.chainId)
+      return this.identity
+    this.client.forget()
+    this.identity = null
+    this.chainId = null
     const identity = loadIdentity()
     if (!identity) throw new NeedsIdentity()
-    await signIn(this.client, identity, this.domain)
+    await signIn(this.client, identity, this.domain, network.chainId)
     this.identity = identity
+    this.chainId = network.chainId
     return identity
   }
 
   /** Forces a fresh sign-in, for when a key has just been created. */
   reset() {
     this.identity = null
+    this.chainId = null
     this.client.forget()
   }
 }

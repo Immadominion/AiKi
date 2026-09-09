@@ -3,7 +3,6 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { type Address, createPublicClient, formatEther, type Hex, http } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { bscTestnet } from 'viem/chains'
 import { createSiweMessage } from 'viem/siwe'
 import type { AikiClient } from './client.js'
 
@@ -23,7 +22,7 @@ import type { AikiClient } from './client.js'
  * Option 2 is the one worth explaining. Requiring a browser extension before a
  * model can do anything at all would put a wallet in the way of every first
  * conversation. Instead the model can make a key, tell the person the address,
- * and ask them to send it some testnet BNB - which is a sentence a person can
+ * and help them check the selected network before funding - a step a person can
  * act on without knowing what a delegation is.
  *
  * The key is written 0600 and never leaves the machine. It is worth being blunt
@@ -73,9 +72,25 @@ export function createIdentity(): Identity {
 
 export const keyLocation = KEY_PATH
 
-export async function balanceOf(rpcUrl: string, address: Address): Promise<string> {
-  const client = createPublicClient({ chain: bscTestnet, transport: http(rpcUrl) })
-  return formatEther(await client.getBalance({ address }))
+export async function balanceOf(
+  rpcUrl: string,
+  address: Address,
+): Promise<{
+  amount: string
+  chainId: 56 | 97
+  network: 'mainnet' | 'testnet'
+  symbol: 'BNB' | 'tBNB'
+}> {
+  const client = createPublicClient({ transport: http(rpcUrl, { timeout: 5_000, retryCount: 0 }) })
+  const chainId = await client.getChainId()
+  if (chainId !== 56 && chainId !== 97)
+    throw new Error('The wallet RPC is not a supported BNB network.')
+  return {
+    amount: formatEther(await client.getBalance({ address })),
+    chainId,
+    network: chainId === 56 ? 'mainnet' : 'testnet',
+    symbol: chainId === 56 ? 'BNB' : 'tBNB',
+  }
 }
 
 /**
@@ -86,11 +101,16 @@ export async function balanceOf(rpcUrl: string, address: Address): Promise<strin
  * the product already has one that is proven: the account proves itself by
  * signing, exactly once, and everything after that is a session.
  */
-export async function signIn(client: AikiClient, identity: Identity, domain: string) {
+export async function signIn(
+  client: AikiClient,
+  identity: Identity,
+  domain: string,
+  chainId: 56 | 97,
+) {
   const { nonce } = await client.post<{ nonce: string }>('/v1/auth/nonce')
   const message = createSiweMessage({
     address: identity.account.address,
-    chainId: 97,
+    chainId,
     domain,
     nonce,
     uri: `https://${domain}`,
@@ -98,8 +118,18 @@ export async function signIn(client: AikiClient, identity: Identity, domain: str
     statement: 'Sign in to AiKi.',
   })
   const signature = await identity.account.signMessage({ message })
-  return client.post<{ address: string; chainId: number }>('/v1/auth/verify', {
+  const verified = await client.post<{ address: string; chainId: number }>('/v1/auth/verify', {
     message,
     signature,
   })
+  if (
+    verified.chainId !== chainId ||
+    verified.address?.toLowerCase() !== identity.account.address.toLowerCase()
+  ) {
+    client.forget()
+    throw new Error(
+      'The sign-in response does not match the selected wallet and execution network.',
+    )
+  }
+  return verified
 }

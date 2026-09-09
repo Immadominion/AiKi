@@ -6,6 +6,7 @@ import {
   encodeFunctionData,
   type Hex,
   http,
+  keccak256,
   parseAbi,
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -20,11 +21,9 @@ import type { Action } from '../authority/policy.js'
  * engine already allowed, and its job is to put that on chain and report what
  * came back.
  *
- * The relayer key pays gas and nothing else. It is not an owner, not a delegate,
- * and holds no authority over the account: if it were compromised the worst it
- * could do is submit a redemption the user had already signed and the caveats
- * already permit. That is the whole reason the signing and the sending are
- * separate keys.
+ * The executor key pays gas and is the named delegate. It may redeem the user's
+ * signed delegation within its on-chain caveats, but it is not the account
+ * owner. Protect it as a spending credential, not merely a gas-paying key.
  */
 export interface Caveat {
   enforcer: Address
@@ -88,31 +87,27 @@ export interface ExecutionRequest {
   rpcUrl: string
   chainId: number
   delegationManager: Address
-  /** Pays gas. Holds no authority over the account. */
+  /** Pays gas and redeems permissions as the delegation's named delegate. */
   relayerKey: Hex
   delegation: SignedDelegation
   action: Action
   callData: Hex
+  /** Persist the signed transaction hash before broadcasting. Never persist the signed bytes. */
+  onPrepared?: (transactionHash: Hex) => Promise<void>
 }
 
 export interface ExecutionOutcome {
   /**
-   * Three outcomes, not two.
-   *
-   * `landed` and `reverted` both describe a transaction that exists: it is in a
-   * block, it cost gas, and it can be linked to. `refused` is the node declining
-   * to accept it in the first place, usually because simulation showed it would
-   * revert. Nothing was submitted and nothing was spent.
-   *
-   * Collapsing the last two into `reverted` meant reporting a transaction hash
-   * of `0x` for something that never happened, which is a receipt citing
-   * evidence that does not exist.
+   * `landed` and `reverted` have a receipt for this exact signed transaction.
+   * `refused` is a known failure before broadcasting, with no transfer or gas
+   * spent. `unconfirmed` means submission or its result is uncertain. Its hash
+   * and reserved spending limit must survive; it must not be sent again.
    */
-  status: 'landed' | 'reverted' | 'refused'
-  /** Absent when nothing was ever submitted. */
+  status: 'landed' | 'reverted' | 'refused' | 'unconfirmed'
+  /** The prepared transaction's hash, including uncertain submissions. */
   transactionHash?: Hex
   gasUsed: bigint
-  /** Present when the chain refused, carrying whatever it said. */
+  /** A safe refusal or uncertainty explanation. Never includes credentials. */
   revertReason?: string
 }
 
@@ -151,23 +146,46 @@ export async function execute(request: ExecutionRequest): Promise<ExecutionOutco
     ],
   })
 
+  let signed: Hex
+  let hash: Hex
   try {
-    const hash = await wallet.sendTransaction({ to: request.delegationManager, data })
-    const receipt = await publicClient.waitForTransactionReceipt({ hash })
+    const prepared = await wallet.prepareTransactionRequest({ to: request.delegationManager, data })
+    signed = await wallet.signTransaction(prepared)
+    hash = keccak256(signed)
+    await request.onPrepared?.(hash)
+  } catch {
+    return {
+      status: 'refused',
+      gasUsed: 0n,
+      revertReason: 'The transaction could not be prepared safely. Nothing was broadcast.',
+    }
+  }
+
+  try {
+    // Any exception from here is ambiguous: the RPC may accept a transaction
+    // before its acknowledgement is lost. The pre-recorded hash survives it.
+    await publicClient.sendRawTransaction({ serializedTransaction: signed })
+    const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 })
+    if (receipt.transactionHash?.toLowerCase() !== hash.toLowerCase())
+      return {
+        status: 'unconfirmed',
+        transactionHash: hash,
+        gasUsed: 0n,
+        revertReason:
+          'A different transaction used this nonce. Review the original hash before any further action.',
+      }
     return {
       status: receipt.status === 'success' ? 'landed' : 'reverted',
       transactionHash: hash,
       gasUsed: receipt.gasUsed,
     }
-  } catch (error) {
-    // The node would not take it, so there is no transaction and no hash to
-    // give. Saying `reverted` with an empty hash would invite a caller to link
-    // to something that was never on chain.
+  } catch {
     return {
-      status: 'refused',
+      status: 'unconfirmed',
+      transactionHash: hash,
       gasUsed: 0n,
       revertReason:
-        error instanceof Error ? (error.message.split('\n')[0] ?? error.message) : String(error),
+        'Transaction confirmation is unavailable. Do not send it again; the spending limit remains reserved for review.',
     }
   }
 }

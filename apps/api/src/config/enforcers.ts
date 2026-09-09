@@ -26,6 +26,9 @@ export interface EnforcerDeployment {
   audited: boolean
   registry: string
   manager: string
+  /** Required for mainnet: reviewed manager and registry runtime code hashes. */
+  managerCodeHash?: string
+  registryCodeHash?: string
   /** Name as registered on chain, exactly as `addressOf(string)` expects it. */
   enforcers: { name: string; address: string; codeHash: string }[]
 }
@@ -98,6 +101,22 @@ function encodeAddressOf(name: string): string {
 
 const addressFromWord = (word: string): string => `0x${word.slice(-40)}`.toLowerCase()
 
+/** Constructor wiring matters as well as each contract's individual bytecode. */
+async function assertLinkedAddress(
+  client: JsonRpcClient,
+  contract: string,
+  getter: string,
+  expected: string,
+) {
+  const data = keccak256(new TextEncoder().encode(`${getter}()`)).slice(0, 10)
+  const answer = await client.request<string>('eth_call', [{ to: contract, data }, 'latest'])
+  if (
+    !/^0x0{24}[0-9a-fA-F]{40}$/.test(answer) ||
+    addressFromWord(answer) !== expected.toLowerCase()
+  )
+    throw new Error(`Deployment ${getter} does not match the reviewed contract wiring.`)
+}
+
 /**
  * Refuse to start against a mandate suite that is not the one we deployed.
  *
@@ -119,6 +138,21 @@ export async function assertEnforcerDeployment(
     )
 
   const checked: EnforcerAssertion[] = []
+  if (deployment.chainId === 56 && (!deployment.managerCodeHash || !deployment.registryCodeHash))
+    throw new Error('Mainnet execution requires pinned manager and registry code hashes.')
+  for (const [name, address, expected] of [
+    ['AiKiDelegationManager', deployment.manager, deployment.managerCodeHash],
+    ['AiKiEnforcerRegistry', deployment.registry, deployment.registryCodeHash],
+  ]) {
+    if (!expected) continue
+    const code = await client.request<string>('eth_getCode', [address, 'latest'])
+    if (
+      !code ||
+      code.length <= 2 ||
+      keccak256(code as `0x${string}`).toLowerCase() !== expected.toLowerCase()
+    )
+      throw new Error(`${name} does not match its reviewed deployment code hash.`)
+  }
   for (const enforcer of deployment.enforcers) {
     const code = await client.request<string>('eth_getCode', [enforcer.address, 'latest'])
     if (!code || code.length <= 2)
@@ -140,6 +174,17 @@ export async function assertEnforcerDeployment(
       )
 
     checked.push({ name: enforcer.name, address: enforcer.address, codeHash: hash })
+  }
+  if (deployment.chainId === 56) {
+    const expiry = deployment.enforcers.find((entry) => entry.name === 'ExpiryEnforcer')
+    if (!expiry) throw new Error('The deployment is missing its required expiry enforcer.')
+    await assertLinkedAddress(client, deployment.manager, 'EXPIRY_ENFORCER', expiry.address)
+    await assertLinkedAddress(client, deployment.registry, 'DELEGATION_MANAGER', deployment.manager)
+    for (const name of ['PerActionCapEnforcer', 'SessionTotalCapEnforcer']) {
+      const enforcer = deployment.enforcers.find((entry) => entry.name === name)
+      if (!enforcer) throw new Error(`The deployment is missing ${name}.`)
+      await assertLinkedAddress(client, enforcer.address, 'DELEGATION_MANAGER', deployment.manager)
+    }
   }
   return checked
 }

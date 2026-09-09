@@ -1,7 +1,9 @@
-import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
+import { createWatchMandateVerifier } from '../authority/watch-readiness.js'
+import { executionNetwork, verifyExecutionNetwork } from '../config/execution-network.js'
+import { executorIdentity } from '../config/executor-identity.js'
 import { PostgresJobStore } from '../jobs/postgres-store.js'
 import { JobService } from '../jobs/service.js'
-import { VenusClient } from '../reference/venus/client.js'
+import { createWatchActivationReader } from './routes.js'
 import { PostgresWatchStore } from './store.js'
 import { type SweepChainConfig, sweep } from './sweep.js'
 
@@ -19,6 +21,7 @@ import { type SweepChainConfig, sweep } from './sweep.js'
 
 const databaseUrl = process.env.DATABASE_URL
 if (!databaseUrl) throw new Error('DATABASE_URL is required.')
+const { agentKey: relayerKey, agentSessionKey } = executorIdentity(process.env)
 
 /*
  * The chain the mandates are enforced on. Venus has a deployment there too,
@@ -26,12 +29,11 @@ if (!databaseUrl) throw new Error('DATABASE_URL is required.')
  * the caveats refusing the repayment are on the same chain. Watching a position
  * on one chain while the limit lives on another would be theatre.
  */
-const deployment = AIKI_ENFORCERS_BSC_TESTNET
+const network = await executionNetwork(process.env)
+await verifyExecutionNetwork(network)
+const deployment = network.deployment
 const chainId = deployment.chainId
-const rpcUrl =
-  process.env.RUNNER_RPC_URL ??
-  process.env.ENFORCER_RPC_URL ??
-  'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
+const rpcUrl = network.rpcUrl
 /*
  * The manager comes from the pinned deployment, not from the environment. The
  * caveats in every stored delegation were compiled against this exact address
@@ -40,7 +42,6 @@ const rpcUrl =
  * it against. It is the one address that must not be a knob.
  */
 const manager = deployment.manager as `0x${string}`
-const relayerKey = process.env.AGENT_PRIVATE_KEY as `0x${string}` | undefined
 
 const intervalMs = Number(process.env.RUNNER_INTERVAL_MS ?? String(5 * 60_000))
 const limit = Number(process.env.RUNNER_LIMIT ?? '50')
@@ -63,13 +64,21 @@ try {
     ? { rpcUrl, chainId, delegationManager: manager, relayerKey }
     : null
 
-  const reader = new VenusClient(rpcUrl, undefined, chainId)
+  const verifyMandate = createWatchMandateVerifier({ rpcUrl, deployment })
+  const reader = createWatchActivationReader(
+    rpcUrl,
+    undefined,
+    chainId,
+    agentSessionKey,
+    verifyMandate,
+  )
 
   const report = await sweep({
     jobs: new JobService(jobStore),
     watches: watchStore,
     reader: (id) => (id === chainId ? reader : null),
     chain: (id) => (id === chainId ? chain : null),
+    verifyMandate,
     intervalMs,
     limit,
   })

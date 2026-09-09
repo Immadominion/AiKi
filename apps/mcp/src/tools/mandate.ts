@@ -1,5 +1,12 @@
+import {
+  DELEGATION_DOMAIN_NAME,
+  DELEGATION_DOMAIN_VERSION,
+  DELEGATION_TYPES,
+  guardianConstraints,
+} from '@aiki/contracts'
 import { z } from 'zod'
 import type { AikiClient } from '../client.js'
+import { executionAccount, executionNetwork } from '../execution.js'
 import { text } from '../format.js'
 import type { Registrar } from '../register.js'
 import type { Session } from '../session.js'
@@ -13,49 +20,6 @@ import type { Session } from '../session.js'
  * a signed one is held by a contract instead of by us, and the difference is
  * stated everywhere it comes up rather than buried in a tier letter.
  */
-
-/** Venus on BSC testnet, the one thing a guardian can currently be pointed at. */
-const VENUS = {
-  asset: '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c',
-  market: '0xb7526572FFE56AB9D7489838Bf2E18e3323b441A',
-}
-const REPAY_BORROW = '0x0e752702'
-
-/** USDT has six decimals. A cap said in dollars has to arrive in base units. */
-const toBaseUnits = (usdt: number) => Math.round(usdt * 1_000_000).toString()
-
-const guardianConstraints = (input: {
-  perActionUsdt: number
-  totalUsdt: number
-  expiresInDays: number
-}) => [
-  {
-    kind: 'expiry',
-    value: new Date(Date.now() + input.expiresInDays * 86_400_000).toISOString(),
-    tier: 'T0',
-    label: `expires in ${input.expiresInDays} days`,
-  },
-  {
-    kind: 'contract_allowlist',
-    value: [VENUS.market],
-    tier: 'T0',
-    label: 'only the Venus USDT market',
-  },
-  { kind: 'selector_allowlist', value: [REPAY_BORROW], tier: 'T0', label: 'only repaying a loan' },
-  { kind: 'asset_scope', value: [VENUS.asset], tier: 'T0', label: 'only USDT' },
-  {
-    kind: 'per_action_cap',
-    value: toBaseUnits(input.perActionUsdt),
-    tier: 'T0',
-    label: `${input.perActionUsdt} USDT per action`,
-  },
-  {
-    kind: 'session_total_cap',
-    value: toBaseUnits(input.totalUsdt),
-    tier: 'T0',
-    label: `${input.totalUsdt} USDT in total`,
-  },
-]
 
 interface Enforcement {
   tier: string
@@ -91,12 +55,18 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
       },
     },
     async ({ per_action_usdt, total_usdt, expires_in_days }) => {
+      const network = await executionNetwork(client)
       const constraints = guardianConstraints({
+        chainId: network.chainId,
         perActionUsdt: per_action_usdt,
         totalUsdt: total_usdt,
         expiresInDays: expires_in_days,
       })
       const out = await client.post<Enforcement>('/v1/mandates/preview', { constraints })
+      if (out.network !== network.network || out.audited !== network.audited)
+        throw new Error(
+          'The preview does not match the verified execution deployment. Retry before creating a mandate.',
+        )
       return text(
         [
           `Taken together these limits are ${describeTier(out.tier)}.`,
@@ -132,24 +102,32 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
       },
     },
     async ({ per_action_usdt, total_usdt, expires_in_days }) => {
-      const identity = await session.require()
-
-      // The account first: a delegation names the account it spends from, so
-      // there is nothing to sign until one exists.
-      let account = await client.get<{ address: string | null }>('/v1/account')
-      let deployed = false
-      if (!account.address) {
-        const made = await client.post<{ address: string }>('/v1/account')
-        account = { address: made.address }
-        deployed = true
-      }
-
+      const network = await executionNetwork(client)
+      // Reject caps that cannot be represented on this token before deploying
+      // an account or asking the local identity to sign anything.
       const constraints = guardianConstraints({
+        chainId: network.chainId,
         perActionUsdt: per_action_usdt,
         totalUsdt: total_usdt,
         expiresInDays: expires_in_days,
       })
+      const identity = await session.require(network.chainId)
+
+      // The account first: a delegation names the account it spends from, so
+      // there is nothing to sign until one exists.
+      let account = executionAccount(await client.get<unknown>('/v1/account'), network)
+      let deployed = false
+      if (!account.address) {
+        account = executionAccount(await client.post<unknown>('/v1/account'), network, true)
+        deployed = true
+      }
+
       const authorization = await client.post<{ id: string }>('/v1/authorizations', { constraints })
+      if (typeof authorization.id !== 'string' || !authorization.id)
+        throw new Error(
+          'AiKi did not return a valid mandate identifier. No signature was submitted.',
+        )
+      const authorizationPath = `/v1/authorizations/${encodeURIComponent(authorization.id)}/delegation`
 
       /*
        * Signing is attempted, never assumed. If it fails the mandate still
@@ -166,22 +144,34 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
           primaryType: string
           message: Record<string, unknown>
           unsigned: Record<string, unknown>
-        }>(`/v1/authorizations/${authorization.id}/delegation?delegator=${account.address}`)
+        }>(`${authorizationPath}?delegator=${account.address}`)
         /*
-         * The bytes to sign are computed by the side that will verify them and
-         * signed here unexamined, which is the only arrangement where a
-         * disagreement about what a mandate says is impossible. Cast in one
-         * place rather than field by field: viem's typed-data types are far
-         * more specific than "whatever the API sent", and spreading `as never`
-         * across four fields hides that this is one deliberate boundary.
+         * The API compiles caveats, but its returned signing domain and account
+         * must still match the selected deployment and the account just read.
          */
+        if (
+          prep.domain?.chainId !== network.chainId ||
+          typeof prep.domain.verifyingContract !== 'string' ||
+          prep.domain.verifyingContract.toLowerCase() !== network.manager.toLowerCase() ||
+          prep.domain.name !== DELEGATION_DOMAIN_NAME ||
+          prep.domain.version !== DELEGATION_DOMAIN_VERSION ||
+          prep.primaryType !== 'Delegation' ||
+          JSON.stringify(prep.types) !== JSON.stringify(DELEGATION_TYPES) ||
+          typeof prep.message?.delegator !== 'string' ||
+          prep.message.delegator.toLowerCase() !== account.address?.toLowerCase() ||
+          typeof prep.unsigned?.delegator !== 'string' ||
+          prep.unsigned.delegator.toLowerCase() !== account.address?.toLowerCase()
+        )
+          throw new Error(
+            'The signing request does not match the verified execution network, manager and mandate account.',
+          )
         const signature = await identity.account.signTypedData({
           domain: prep.domain,
           types: prep.types,
           primaryType: prep.primaryType,
           message: prep.message,
         } as Parameters<typeof identity.account.signTypedData>[0])
-        await client.post(`/v1/authorizations/${authorization.id}/delegation`, {
+        await client.post(authorizationPath, {
           delegation: { ...prep.unsigned, signature },
         })
         signed = true
@@ -196,7 +186,7 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
           `  spending from ${account.address}${deployed ? ' (just deployed for you; AiKi paid the gas)' : ''}`,
           '',
           signed
-            ? 'Signed. The limits are now held by a contract on BNB testnet, which will refuse anything outside them whatever AiKi does.'
+            ? `Signed for BNB ${network.network} (${network.chainId}). AiKi accepted the delegation for this account${network.audited ? '.' : '; the enforcer deployment is not audited.'}`
             : `NOT signed${signingError ? `: ${signingError}` : ''}. The limits are real and AiKi will enforce them, but nothing on chain is holding them, so an agent cannot be put on duty under this mandate until it is signed.`,
           '',
           'The total cap does not refill.',
@@ -210,13 +200,15 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
     {
       title: 'Revoke a mandate',
       description:
-        'Stop a mandate. Nothing can act under it afterwards. Free, and takes effect at once.',
+        'Stop a mandate inside AiKi. A signed on-chain delegation requires separate on-chain revocation.',
       inputSchema: { mandate_id: z.string() },
     },
     async ({ mandate_id }) => {
       await session.require()
       await client.post(`/v1/authorizations/${mandate_id}/revoke`)
-      return text(`Mandate ${mandate_id} is revoked. Nothing acts under it from here.`)
+      return text(
+        `Mandate ${mandate_id} is stopped inside AiKi. If it was signed, revoking the on-chain delegation requires a separate on-chain action.`,
+      )
     },
   )
 }

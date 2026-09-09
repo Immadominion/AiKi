@@ -388,6 +388,11 @@ export const api = {
       id: string
       status: string
       events: { type: string; at: string; detail: string }[]
+      execution?: {
+        state: 'PREPARING' | 'SUBMITTED' | 'UNCONFIRMED'
+        chainId: number
+        transactionHash?: string
+      }
     }>(`/v1/jobs/${id}`),
   /**
    * Attempt one action. Returns what the mandate said, what the chain said when
@@ -400,7 +405,7 @@ export const api = {
     req<{
       policy: { allow: boolean; rule: string; reason: string }
       chain?: {
-        status: 'landed' | 'reverted' | 'refused'
+        status: 'landed' | 'reverted' | 'refused' | 'unconfirmed'
         transactionHash?: string
         revertReason?: string
       }
@@ -431,6 +436,8 @@ export const api = {
     req<{
       available?: false
       chainId?: number
+      decimals?: number
+      finality?: 'finalized' | 'confirmations'
       token?: string
       treasury?: string
       pointsPerUsdt?: number

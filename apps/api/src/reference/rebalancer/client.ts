@@ -35,9 +35,9 @@ export function assessPancakePosition(
     state === 'IN_RANGE'
       ? 'HOLD'
       : state === 'BELOW_RANGE'
-        ? 'REBALANCE_UPWARD'
+        ? 'REBALANCE_DOWNWARD'
         : state === 'ABOVE_RANGE'
-          ? 'REBALANCE_DOWNWARD'
+          ? 'REBALANCE_UPWARD'
           : 'NO_ACTION'
   return {
     ...snapshot,
@@ -47,7 +47,7 @@ export function assessPancakePosition(
     recommendation,
     distanceToRangeTicks,
     methodology:
-      'PancakeSwap v3 position NFT ticks are compared directly with the pool slot0 current tick. The direction names describe the required range relocation, not a trade recommendation.',
+      'PancakeSwap v3 position NFT ticks are compared directly with the pool slot0 current tick. Direction describes moving the range toward the current tick: downward below the range and upward above it. This is not a trade recommendation.',
     caveats: [
       'Read-only assessment: no collect, decreaseLiquidity, swap, or mint transaction is initiated.',
       'tokensOwed values are uncollected amounts reported by the position manager; they are not an APR or realised-fee estimate.',

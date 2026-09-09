@@ -24,6 +24,13 @@ export interface LedgerFinding {
   detail: string
 }
 
+export interface LedgerRail {
+  chainId: number
+  token: string
+  /** Identifies the treasury whose balance was read, when configured. */
+  treasury?: string
+}
+
 const n = (value: unknown) => Number(value ?? 0)
 
 export async function checkLedger(
@@ -37,6 +44,8 @@ export async function checkLedger(
    * solvency claim and a verified one must not look the same.
    */
   backingPoints?: number | null,
+  /** The chain and token that the supplied treasury backing actually covers. */
+  rail?: LedgerRail,
 ): Promise<LedgerFinding[]> {
   const findings: LedgerFinding[] = []
 
@@ -210,6 +219,90 @@ export async function checkLedger(
   `
   const sold = n(issued?.sold)
   const granted = n(issued?.granted)
+  if (rail) {
+    // Only the positive payer leg carries payment metadata. Its issuance
+    // counterpart records issuedTo, so classifying issuance would make every
+    // deposit look unknown. The points were fixed when credited: do not
+    // reinterpret historical baseUnits using today's token decimals.
+    const deposits = await sql<
+      { chain_id: string | null; token: string | null; points: string; entries: string }[]
+    >`
+      SELECT detail->>'chainId' AS chain_id, detail->>'token' AS token,
+             sum(delta) AS points, count(*) AS entries
+        FROM credit_entries
+       WHERE reason = 'deposit' AND owner <> ${ISSUANCE_ACCOUNT} AND delta > 0
+       GROUP BY detail->>'chainId', detail->>'token'
+    `
+    let currentSold = 0
+    let unknownSold = 0
+    let unknownEntries = 0
+    let payerTotal = 0
+    const other = new Map<string, { points: number; entries: number }>()
+    for (const deposit of deposits) {
+      const points = n(deposit.points)
+      const entries = n(deposit.entries)
+      payerTotal += points
+      const chainId = /^\d+$/.test(deposit.chain_id ?? '') ? Number(deposit.chain_id) : 0
+      const token = deposit.token?.toLowerCase()
+      if (!Number.isSafeInteger(chainId) || chainId <= 0 || !/^0x[0-9a-f]{40}$/.test(token ?? '')) {
+        unknownSold += points
+        unknownEntries += entries
+      } else if (chainId === rail.chainId && token === rail.token.toLowerCase()) {
+        currentSold += points
+      } else {
+        const key = `chain ${chainId}, token ${token}`
+        const prior = other.get(key)
+        other.set(key, {
+          points: (prior?.points ?? 0) + points,
+          entries: (prior?.entries ?? 0) + entries,
+        })
+      }
+    }
+    const otherSold = [...other.values()].reduce((sum, entry) => sum + entry.points, 0)
+    const backingAvailable = typeof backingPoints === 'number' && Number.isFinite(backingPoints)
+    const validRail =
+      Number.isSafeInteger(rail.chainId) && rail.chainId > 0 && /^0x[0-9a-f]{40}$/i.test(rail.token)
+    const currentBacked =
+      validRail &&
+      Number.isSafeInteger(currentSold) &&
+      backingAvailable &&
+      backingPoints >= currentSold
+    const historyVerified = other.size === 0 && unknownEntries === 0
+    const issuanceMatches =
+      Number.isSafeInteger(sold) && Number.isSafeInteger(payerTotal) && payerTotal === sold
+    const allBacked = currentBacked && historyVerified && issuanceMatches
+    findings.push({
+      check: 'paid points on the current payment rail are backed',
+      ok: currentBacked,
+      detail: `${currentSold} points sold on chain ${rail.chainId}, token ${rail.token.toLowerCase()}${rail.treasury ? `; treasury ${rail.treasury.toLowerCase()}` : ''}; ${backingAvailable ? `${backingPoints} points of backing held` : 'the treasury could not be read, so backing is unverified'}${validRail ? '' : '; the configured payment rail is invalid'}`,
+    })
+    findings.push({
+      check: 'paid points on other or unknown payment rails are verified',
+      ok: historyVerified,
+      detail: historyVerified
+        ? 'no paid points recorded on another or unknown payment rail'
+        : `${[
+            ...[...other.entries()]
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(
+                ([key, entry]) => `${entry.points} points in ${entry.entries} deposits on ${key}`,
+              ),
+            ...(unknownEntries
+              ? [
+                  `${unknownSold} points in ${unknownEntries} deposits with unknown chain/token metadata`,
+                ]
+              : []),
+          ].join(
+            '; ',
+          )}; backing is unverified for these liabilities by the current treasury observation`,
+    })
+    findings.push({
+      check: 'every point somebody paid for is still backed',
+      ok: allBacked,
+      detail: `${sold} points sold: ${currentSold} on the current rail, ${otherSold} on other rails, ${unknownSold} with unknown metadata; ${granted} more were granted, which AiKi carries. ${issuanceMatches ? '' : `Issuance records ${sold} sold points but positive payer deposits total ${payerTotal}; this mismatch is unverified. `}${allBacked ? 'All paid points have verified backing on the current rail.' : 'Not all paid points have verified backing.'}`,
+    })
+    return findings
+  }
   findings.push({
     check: 'every point somebody paid for is still backed',
     ok: typeof backingPoints === 'number' && backingPoints >= sold,

@@ -47,9 +47,11 @@ describe.skipIf(!databaseUrl)('durable Fast billing against PostgreSQL', () => {
     admin = postgres(databaseUrl as string, { max: 1, onnotice: () => {} })
     await admin`CREATE SCHEMA ${admin(schema)}`
     const url = new URL(databaseUrl as string)
-    url.searchParams.set('search_path', `${schema},public`)
+    // Do not fall back to public's migration ledger or shared fixture tables.
+    url.searchParams.set('search_path', schema)
     scopedUrl = url.toString()
     sql = postgres(scopedUrl, { max: 4, onnotice: () => {} })
+    expect((await sql`SELECT current_schema() AS schema`)[0]?.schema).toBe(schema)
     await applyMigrations(
       sql,
       await readMigrations(new URL('../db/migrations/', import.meta.url)),

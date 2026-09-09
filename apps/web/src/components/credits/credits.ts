@@ -1,7 +1,9 @@
 import type { CreditBalance } from '../../lib/api'
 
 export interface CreditRail {
-  chainId: 97
+  chainId: 56 | 97
+  decimals: 6 | 18
+  finality: 'finalized' | 'confirmations'
   token: string
   treasury: string
   pointsPerUsdt: number
@@ -11,14 +13,18 @@ export interface CreditRail {
 const address = (value: unknown): value is string =>
   typeof value === 'string' && /^0x[0-9a-fA-F]{40}$/.test(value) && !/^0x0{40}$/i.test(value)
 
-/** Match the only payment chain the current deposit verifier supports. */
+/** Offer only a complete rail whose chain and token units match the verifier. */
 export function creditRail(value: unknown): CreditRail | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const config = value as Record<string, unknown>
   if (
     config.available === false ||
-    config.chainId !== 97 ||
+    (config.chainId !== 56 && config.chainId !== 97) ||
+    config.decimals !== (config.chainId === 56 ? 18 : 6) ||
+    config.finality !== (config.chainId === 56 ? 'finalized' : 'confirmations') ||
     !address(config.token) ||
+    (config.chainId === 56 &&
+      config.token.toLowerCase() !== '0x55d398326f99059ff775485246999027b3197955') ||
     !address(config.treasury) ||
     typeof config.pointsPerUsdt !== 'number' ||
     !Number.isSafeInteger(config.pointsPerUsdt) ||
@@ -29,12 +35,22 @@ export function creditRail(value: unknown): CreditRail | null {
   )
     return null
   return {
-    chainId: 97,
+    chainId: config.chainId,
+    decimals: config.decimals as 6 | 18,
+    finality: config.finality as 'finalized' | 'confirmations',
     token: config.token,
     treasury: config.treasury,
     pointsPerUsdt: config.pointsPerUsdt,
     confirmations: config.confirmations,
   }
+}
+
+export function creditNetworkLabel(rail: CreditRail): string {
+  return rail.chainId === 56 ? 'BNB Smart Chain Mainnet' : 'BNB Smart Chain Testnet'
+}
+
+export function creditExplorer(rail: CreditRail): string {
+  return rail.chainId === 56 ? 'https://bscscan.com' : 'https://testnet.bscscan.com'
 }
 
 export function canVerifyDeposit(rail: CreditRail | null, wallet: string): boolean {

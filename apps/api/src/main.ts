@@ -9,7 +9,10 @@ import { PostgresConversationStore } from './assistant/conversations.js'
 import { PostgresNonceStore } from './auth/nonce-store.js'
 import { describeCookieMismatch, SessionSigner } from './auth/session.js'
 import { viemChainReader } from './authority/chain-reader.js'
-import { AIKI_ENFORCERS_BSC_TESTNET } from './config/enforcers.js'
+import { createWatchMandateVerifier } from './authority/watch-readiness.js'
+import { creditsNetwork } from './config/credits-network.js'
+import { executionNetwork, verifyExecutionNetwork } from './config/execution-network.js'
+import { executorIdentity } from './config/executor-identity.js'
 import { checkLedger } from './credits/reconcile.js'
 import { PostgresCreditStore } from './credits/store.js'
 import { treasuryBackingPoints } from './credits/treasury.js'
@@ -30,6 +33,7 @@ import { VenusClient } from './reference/venus/client.js'
 import { createVenusReferenceServer } from './reference/venus/server.js'
 import { VenusYieldClient } from './reference/yield/client.js'
 import { createYieldServer } from './reference/yield/server.js'
+import { createWatchActivationReader } from './runner/routes.js'
 import { PostgresWatchStore } from './runner/store.js'
 import { PostgresSellerStore } from './tasks/sellers.js'
 import { PostgresTaskStore } from './tasks/store.js'
@@ -62,17 +66,11 @@ const cookieMismatch = describeCookieMismatch(authDomain, webOrigin)
 if (cookieMismatch) throw new Error(cookieMismatch)
 const nonceStore = new PostgresNonceStore(databaseUrl)
 /**
- * The agent's session key address. Absent means this deployment cannot prepare
- * a delegation to sign, which is a real state and not an error: everything else
- * still works and the limits are counted by AiKi.
+ * Derive the executor we control and reject an explicit session-address mismatch.
+ * An address without a private key remains signing-only; it cannot activate a
+ * watch. The execution key redeems signed mandates and pays its own gas.
  */
-const agentSessionKey = process.env.AGENT_SESSION_ADDRESS as `0x${string}` | undefined
-/**
- * Signs redemptions and pays their gas. Its address must be AGENT_SESSION_ADDRESS,
- * because the manager accepts a redemption only from the delegate a mandate
- * names. Absent means actions are decided off chain and submitted nowhere.
- */
-const agentKey = process.env.AGENT_PRIVATE_KEY as `0x${string}` | undefined
+const { agentSessionKey, agentKey } = executorIdentity(process.env)
 /**
  * Pays gas to put a person's mandate account on chain, and nothing else. It is
  * not an owner and not an executor: the worst it can do if it leaks is waste gas
@@ -106,17 +104,12 @@ const marketplaceStore = new PostgresMarketplaceStore(databaseUrl)
  * and nothing else.
  */
 const assistantKey = process.env.ANTHROPIC_API_KEY
-const treasury = process.env.CREDITS_TREASURY_ADDRESS as `0x${string}` | undefined
-const creditsToken =
-  (process.env.CREDITS_TOKEN_ADDRESS as `0x${string}` | undefined) ??
-  '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c'
-const enforcerRpcUrl =
-  process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
-/*
- * Named once and used twice: the route that credits a payment, and the check
- * that asks whether the payments are still there. Two copies of this would be
- * two opinions about which treasury is AiKi's.
- */
+const deposits = creditsNetwork(process.env)
+const treasury = deposits?.treasury
+const execution = await executionNetwork(process.env)
+await verifyExecutionNetwork(execution)
+const deployment = execution.deployment
+const enforcerRpcUrl = execution.rpcUrl
 /*
  * Where a hired agent sends work back to: this API, as the outside world sees
  * it. Railway names the deployment's own domain, so a deployment that forgot to
@@ -125,9 +118,6 @@ const enforcerRpcUrl =
 const publicApiUrl =
   process.env.PUBLIC_API_URL ??
   (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined)
-const deposits = treasury
-  ? { rpcUrl: enforcerRpcUrl, chainId: 97, token: creditsToken, treasury }
-  : undefined
 const base = process.env.REFERENCE_AGENT_BASE_URL
 const venusId = process.env.VENUS_GUARDIAN_AGENT_ID
 const rebalancerId = process.env.PANCAKE_REBALANCER_AGENT_ID
@@ -151,19 +141,19 @@ const app = createApiServer({
   deliverySecret: receiptSeed,
   // Names and verdicts only. The route is public and the amounts are not.
   ledgerHealth: async () =>
-    (await checkLedger(ledgerSql, await treasuryBackingPoints(deposits))).map(({ check, ok }) => ({
-      check,
-      ok,
-    })),
+    (await checkLedger(ledgerSql, await treasuryBackingPoints(deposits), deposits)).map(
+      ({ check, ok }) => ({
+        check,
+        ok,
+      }),
+    ),
   appendObservation: (observation) => store.append(observation),
-  enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+  enforcers: deployment,
   ...(agentSessionKey ? { agentSessionKey } : {}),
   ...(agentKey ? { agentKey } : {}),
   enforcerRpcUrl,
-  // Reads the chain the enforcers are on, which is not the one the rest of this
-  // process talks to: the registry and the reference agents are on mainnet and
-  // the mandate suite is on testnet. Sharing one client would check a signature
-  // against an account that does not exist there.
+  // Account ownership, signature verification and execution use one selected
+  // deployment. Never read a mainnet mandate against the testnet account.
   chain: viemChainReader(enforcerRpcUrl),
   ...(accountFunderKey
     ? {
@@ -171,8 +161,8 @@ const app = createApiServer({
           store: accountStore,
           deployer: viemAccountDeployer({
             rpcUrl: enforcerRpcUrl,
-            chainId: AIKI_ENFORCERS_BSC_TESTNET.chainId,
-            manager: AIKI_ENFORCERS_BSC_TESTNET.manager as `0x${string}`,
+            chainId: deployment.chainId,
+            manager: deployment.manager as `0x${string}`,
             funderKey: accountFunderKey,
           }),
         },
@@ -180,8 +170,20 @@ const app = createApiServer({
     : {}),
   jobs: new JobService(jobStore),
   watches: watchStore,
+  ...(agentKey
+    ? {
+        watchActivation: createWatchActivationReader(
+          enforcerRpcUrl,
+          undefined,
+          deployment.chainId,
+          agentSessionKey,
+          createWatchMandateVerifier({ rpcUrl: enforcerRpcUrl, deployment }),
+        ),
+      }
+    : {}),
   assistant: {
     credits: creditStore,
+    executionChainId: deployment.chainId as 56 | 97,
     conversations: conversationStore,
     ...(assistantKey ? { apiKey: assistantKey } : {}),
     ...(process.env.ASSISTANT_MODEL ? { model: process.env.ASSISTANT_MODEL } : {}),

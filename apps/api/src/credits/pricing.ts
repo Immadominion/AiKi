@@ -130,9 +130,15 @@ export const WELCOME_GRANT_POINTS = 5_000
  */
 export const WELCOME_GRANTS_PER_DAY = 200
 
-/** 1 USDT (six decimals) becomes this many points. */
-export function pointsForUsdt(baseUnits: bigint): number {
-  return Number((baseUnits * BigInt(POINTS_PER_USD)) / 1_000_000n)
+/** Whole points, using the accepted token's decimals. Six remains the legacy default. */
+export function pointsForUsdt(baseUnits: bigint, decimals = 6): number {
+  if (baseUnits < 0n) throw new Error('A payment cannot be negative.')
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255)
+    throw new Error('Token decimals must be an integer from 0 to 255.')
+  const points = (baseUnits * BigInt(POINTS_PER_USD)) / 10n ** BigInt(decimals)
+  if (points > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new Error('The payment exceeds the supported points range.')
+  return Number(points)
 }
 
 /**

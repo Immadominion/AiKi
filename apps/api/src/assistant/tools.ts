@@ -1,3 +1,4 @@
+import { type ExecutionNetwork, guardianConstraints, parseExecutionNetwork } from '@aiki/contracts'
 import type Anthropic from '@anthropic-ai/sdk'
 import { CATALOG_TOOLS, runCatalogTool } from '../catalog/assistant-tools.js'
 import { settlementForPoints } from '../credits/pricing.js'
@@ -37,41 +38,31 @@ export interface ToolCallResult {
   body: unknown
 }
 
-const VENUS = {
-  asset: '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c',
-  market: '0xb7526572FFE56AB9D7489838Bf2E18e3323b441A',
-}
-const REPAY_BORROW = '0x0e752702'
-const toBaseUnits = (usdt: number) => Math.round(usdt * 1_000_000).toString()
+const refused = (code: string, message: string): ToolCallResult => ({
+  ok: false,
+  body: { error: { code, message } },
+})
 
-const guardianConstraints = (perActionUsdt: number, totalUsdt: number, days: number) => [
-  {
-    kind: 'expiry',
-    value: new Date(Date.now() + days * 86_400_000).toISOString(),
-    tier: 'T0',
-    label: `expires in ${days} days`,
-  },
-  {
-    kind: 'contract_allowlist',
-    value: [VENUS.market],
-    tier: 'T0',
-    label: 'only the Venus USDT market',
-  },
-  { kind: 'selector_allowlist', value: [REPAY_BORROW], tier: 'T0', label: 'only repaying a loan' },
-  { kind: 'asset_scope', value: [VENUS.asset], tier: 'T0', label: 'only USDT' },
-  {
-    kind: 'per_action_cap',
-    value: toBaseUnits(perActionUsdt),
-    tier: 'T0',
-    label: `${perActionUsdt} USDT per action`,
-  },
-  {
-    kind: 'session_total_cap',
-    value: toBaseUnits(totalUsdt),
-    tier: 'T0',
-    label: `${totalUsdt} USDT in total`,
-  },
-]
+/** Null means malformed; an explicit null address means no account exists yet. */
+function mandateAccount(value: unknown, chainId: number): { address: string | null } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const account = value as Record<string, unknown>
+  if (account.chainId !== chainId) return null
+  if (account.address === null) return { address: null }
+  if (
+    typeof account.address !== 'string' ||
+    !/^0x[0-9a-fA-F]{40}$/.test(account.address) ||
+    /^0x0{40}$/.test(account.address)
+  )
+    return null
+  return { address: account.address }
+}
+
+const unverifiedAccount = () =>
+  refused(
+    'EXECUTION_ACCOUNT_UNVERIFIED',
+    'The mandate account could not be verified on the configured execution network. No mandate or watch was started.',
+  )
 
 /**
  * A mandate for buying things through AiKi, rather than for acting on chain.
@@ -500,6 +491,37 @@ export async function runTool(
       ...(headers ? { headers } : {}),
     })
 
+  const executionNetwork = async (): Promise<
+    { network: ExecutionNetwork } | { error: ToolCallResult }
+  > => {
+    // Configuration is read afresh, never inferred from the wallet, billing
+    // rail, prompt, or tool arguments. Action readiness remains the API's job.
+    try {
+      const result = await call('/v1/execution/network', { cache: 'no-store' })
+      if (!result.ok) return { error: result }
+      return { network: parseExecutionNetwork(result.body) }
+    } catch {
+      return {
+        error: refused(
+          'EXECUTION_NETWORK_UNVERIFIED',
+          'The configured execution network could not be verified. No action was started. Try again later.',
+        ),
+      }
+    }
+  }
+  const accountRequest = async (deploy = false): Promise<ToolCallResult> => {
+    try {
+      return await (deploy ? post('/v1/account') : call('/v1/account'))
+    } catch {
+      // A deployment request may have reached the API before its response was
+      // lost. Do not claim nothing was created or continue to authorize.
+      return refused(
+        'EXECUTION_ACCOUNT_UNVERIFIED',
+        'The mandate account could not be confirmed. No mandate or watch was started. Check your account before trying again.',
+      )
+    }
+  }
+
   const catalog = await runCatalogTool(name, args, ctx.sessionAddress, (path, body) =>
     body === undefined ? call(path) : post(path, body),
   )
@@ -518,27 +540,47 @@ export async function runTool(
     case 'ecosystem_stats':
       return call('/v1/stats')
     case 'preview_limits':
-      return post('/v1/mandates/preview', {
-        constraints: guardianConstraints(
-          Number(args.per_action_usdt),
-          Number(args.total_usdt),
-          Number(args.expires_in_days ?? 30),
-        ),
-      })
+    case 'create_mandate': {
+      const execution = await executionNetwork()
+      if ('error' in execution) return execution.error
+      const { chainId } = execution.network
+      let constraints: ReturnType<typeof guardianConstraints>
+      try {
+        constraints = guardianConstraints({
+          chainId,
+          perActionUsdt:
+            typeof args.per_action_usdt === 'number' ? args.per_action_usdt : Number.NaN,
+          totalUsdt: typeof args.total_usdt === 'number' ? args.total_usdt : Number.NaN,
+          expiresInDays:
+            args.expires_in_days === undefined
+              ? 30
+              : typeof args.expires_in_days === 'number'
+                ? args.expires_in_days
+                : Number.NaN,
+        })
+      } catch (error) {
+        // The shared parser's errors contain only fixed validation guidance.
+        return refused(
+          'GUARDIAN_LIMITS_INVALID',
+          error instanceof Error ? error.message : 'Choose valid USDT limits and an expiry.',
+        )
+      }
+      if (name === 'preview_limits') return post('/v1/mandates/preview', { constraints })
+
+      // Validate limits before even requesting an account deployment.
+      const account = await accountRequest()
+      if (!account.ok) return account
+      const held = mandateAccount(account.body, chainId)
+      if (!held) return unverifiedAccount()
+      if (held.address === null) {
+        const deployment = await accountRequest(true)
+        if (!deployment.ok) return deployment
+        if (!mandateAccount(deployment.body, chainId)?.address) return unverifiedAccount()
+      }
+      return post('/v1/authorizations', { constraints })
+    }
     case 'my_account':
       return call('/v1/account')
-    case 'create_mandate': {
-      const account = await call('/v1/account')
-      const held = (account.body as { address?: string } | null)?.address
-      if (!held) await post('/v1/account')
-      return post('/v1/authorizations', {
-        constraints: guardianConstraints(
-          Number(args.per_action_usdt),
-          Number(args.total_usdt),
-          Number(args.expires_in_days ?? 30),
-        ),
-      })
-    }
     case 'hire':
       return post(
         '/v1/jobs',
@@ -546,8 +588,14 @@ export async function runTool(
         { 'idempotency-key': operationKey },
       )
     case 'watch_position': {
-      const account = await call('/v1/account')
-      const address = (account.body as { address?: string } | null)?.address
+      const execution = await executionNetwork()
+      if ('error' in execution) return execution.error
+      const { chainId, guardian } = execution.network
+      const account = await accountRequest()
+      if (!account.ok) return account
+      const held = mandateAccount(account.body, chainId)
+      if (!held) return unverifiedAccount()
+      const { address } = held
       if (!address)
         return {
           ok: false,
@@ -555,10 +603,10 @@ export async function runTool(
         }
       return post(`/v1/jobs/${args.job_id}/watch`, {
         account: address,
-        chainId: 97,
+        chainId,
         minimumHealthFactor: String(args.minimum_health_factor ?? '1.25'),
-        asset: VENUS.asset,
-        market: VENUS.market,
+        asset: guardian.asset,
+        market: guardian.market,
       })
     }
     case 'create_spending_mandate':

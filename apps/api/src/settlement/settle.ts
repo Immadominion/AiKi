@@ -81,6 +81,7 @@ export async function settle(request: SettlementRequest): Promise<SettlementOutc
   // platform fee for work that was never settled would be the worst possible
   // ordering.
   const feePaid = pricePaid ? await leg('fee', request.treasury, priced.platformFee) : false
+  const unconfirmed = transactions.some((transaction) => transaction.status === 'unconfirmed')
 
   return {
     priced,
@@ -88,10 +89,12 @@ export async function settle(request: SettlementRequest): Promise<SettlementOutc
     feePaid,
     settled: pricePaid && feePaid,
     transactions,
-    detail: pricePaid
-      ? feePaid
-        ? 'Agent paid and platform fee taken.'
-        : 'Agent was paid, but the platform fee was refused. The job is settled from the agent side and AiKi is unpaid.'
-      : 'Nothing was paid; the mandate refused the agent payment.',
+    detail: unconfirmed
+      ? 'A payment may have been submitted but is not confirmed. Review the recorded transaction hash before any further payment; do not retry settlement.'
+      : pricePaid
+        ? feePaid
+          ? 'Agent paid and platform fee taken.'
+          : 'Agent was paid, but the platform fee was refused. The job is settled from the agent side and AiKi is unpaid.'
+        : 'Nothing was paid; the mandate refused the agent payment.',
   }
 }

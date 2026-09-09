@@ -99,7 +99,7 @@ Discovery needs no key. For authenticated operations, explicitly authorize
 | --- | --- |
 | `AIKI_API_URL` | `https://api-production-02ce.up.railway.app`; override for the API you intend to use |
 | `AIKI_PRIVATE_KEY` | none; falls back to `~/.aiki/key` |
-| `AIKI_RPC_URL` | a public BNB testnet endpoint |
+| `AIKI_RPC_URL` | a public endpoint for the API's current execution chain; an explicit override is checked and its native balance is labeled with its actual chain |
 | `AIKI_AUTH_DOMAIN` | the host parsed from `AIKI_API_URL`; override to match the API's actual `AUTH_DOMAIN` |
 
 ## About the key
@@ -116,7 +116,7 @@ Do not use this setup to store unrelated funds.
 
 When the API's account deployer is configured and funded, it pays account
 deployment gas. The configured runner pays transaction gas for its actions. The
-spending account still needs the correct testnet asset and protocol setup for
+spending account still needs the correct asset and protocol setup on its execution network for
 the authorized action. Creating a mandate or job does not fund that account.
 
 ## Access and spending boundaries
@@ -138,9 +138,23 @@ button is clicked. See [on-chain integration boundaries](../../onchain/README.md
 
 ## Scope
 
-Discovery can return BNB mainnet registry identities. This package's mandate and
-watch tools are configured for Venus USDT on BNB testnet, chain 97, using
-unaudited enforcer contracts. Watches need a signed mandate, a total cap and an
+Discovery can return BNB mainnet registry identities. Mandate and watch tools
+read the API's current execution configuration from `/v1/execution/network`.
+They use the corresponding Venus USDT market and exact eighteen-decimal mainnet
+or six-decimal testnet limits. There is no fallback to testnet when metadata is
+missing, malformed or unsupported. Update the API before updating this local MCP
+package; older APIs without this endpoint cannot provide execution configuration.
+
+Configuration is not readiness. Account, signature and watch checks still run
+on the API. Sign-in, account creation and the delegation's chain and manager must
+agree before this package signs anything. Discovery, execution and points
+purchases are separate networks; one does not choose the others. Historical
+watch amounts use the network stored with that watch, not today's configuration.
+
+Mainnet support in the code does not mean the production deployment has been
+switched. The current contracts are unaudited. See the
+[mainnet release gates](../../docs/08-mainnet-execution-and-agent-supply.md).
+Watches need a signed mandate, a total cap and an
 operating backend runner. A successful watch setup is not a promise that every
 future action will execute.
 

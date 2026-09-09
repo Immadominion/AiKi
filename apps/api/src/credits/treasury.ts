@@ -1,5 +1,4 @@
-import { createPublicClient, http } from 'viem'
-import { bscTestnet } from 'viem/chains'
+import { creditNetworkClient, verifyCreditNetwork } from '../config/credits-network.js'
 import type { DepositConfig } from './deposit.js'
 import { pointsForUsdt } from './pricing.js'
 
@@ -20,7 +19,8 @@ export async function treasuryBackingPoints(
 ): Promise<number | null> {
   if (!config) return null
   try {
-    const client = createPublicClient({ chain: bscTestnet, transport: http(config.rpcUrl) })
+    await verifyCreditNetwork(config)
+    const client = creditNetworkClient(config)
     const held = await client.readContract({
       address: config.token,
       abi: [
@@ -37,7 +37,7 @@ export async function treasuryBackingPoints(
     })
     // Through the same conversion a deposit uses, so what a payment bought and
     // what it is worth here cannot disagree.
-    return pointsForUsdt(held)
+    return pointsForUsdt(held, config.decimals)
   } catch {
     return null
   }

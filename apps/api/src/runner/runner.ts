@@ -1,6 +1,7 @@
 import type { Address, Hex } from 'viem'
 import type { Action } from '../authority/policy.js'
-import { type ExecutionRequest, execute, venusRepayCall } from '../execution/executor.js'
+import { type ExecutionRequest, venusRepayCall } from '../execution/executor.js'
+import { executeJobAction } from '../execution/job-execution.js'
 import type { JobService } from '../jobs/service.js'
 import { type Assessment, decide, type TriggerState } from './trigger.js'
 
@@ -25,6 +26,7 @@ export interface TickResult {
   repay?: bigint
   transactionHash?: Hex
   deniedBy?: string
+  needsReview?: boolean
 }
 
 export interface TickInput {
@@ -61,7 +63,32 @@ export async function tick(input: TickInput): Promise<TickResult> {
   // agent's bug a refused action rather than a loss. The agent's own reason for
   // acting goes with it, because a mandate that asks a person first has to be
   // able to tell them what they are being asked about.
-  const verdict = await input.jobs.attempt(input.jobId, action, decision.reason)
+  const {
+    policy: verdict,
+    outcome,
+    inFlight,
+  } = await executeJobAction({
+    jobs: input.jobs,
+    jobId: input.jobId,
+    why: decision.reason,
+    request: {
+      ...input.chain,
+      delegation: input.delegation,
+      action,
+      callData: venusRepayCall(decision.repay),
+    },
+  })
+  if (outcome?.status === 'unconfirmed')
+    return {
+      acted: false,
+      needsReview: !inFlight,
+      reason: inFlight
+        ? 'Another execution is still in progress. This repayment will wait; no new transaction was sent.'
+        : 'A repayment needs review. The spending limit is held and no new transaction will be sent.',
+      deniedBy: inFlight ? 'execution_pending' : 'execution_unconfirmed',
+      repay: decision.repay,
+      ...(outcome.transactionHash ? { transactionHash: outcome.transactionHash } : {}),
+    }
   if (!verdict.allow)
     return {
       acted: false,
@@ -78,13 +105,7 @@ export async function tick(input: TickInput): Promise<TickResult> {
       deniedBy: verdict.rule,
     }
 
-  const outcome = await execute({
-    ...input.chain,
-    delegation: input.delegation,
-    action,
-    callData: venusRepayCall(decision.repay),
-  })
-
+  if (!outcome) throw new Error('Execution result is missing.')
   if (outcome.status !== 'landed') {
     /*
      * Give the cap back. `attempt` charged it before the chain had spoken,
@@ -96,8 +117,6 @@ export async function tick(input: TickInput): Promise<TickResult> {
      * left, so the agent stops protecting the position for a reason that never
      * happened. Looked up rather than passed in, so a caller cannot forget it.
      */
-    const { authorizationId } = await input.jobs.getJob(input.jobId)
-    await input.jobs.releaseSpend(authorizationId, decision.repay)
     await input.jobs.record(input.jobId, {
       type: 'policy',
       detail: `chain refused it: ${outcome.revertReason ?? 'reverted'}`,
