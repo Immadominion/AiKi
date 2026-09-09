@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto'
+import { guardianFor } from '@aiki/contracts'
+import { formatUnits } from 'viem'
 import { z } from 'zod'
-import type { AikiClient } from '../client.js'
+import { type AikiClient, AikiError } from '../client.js'
+import { executionAccount, executionNetwork } from '../execution.js'
 import { text } from '../format.js'
 import type { Registrar } from '../register.js'
 import type { Session } from '../session.js'
@@ -13,11 +16,6 @@ import type { Session } from '../session.js'
  * reason to hire one rather than do it yourself.
  */
 
-const VENUS = {
-  asset: '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c',
-  market: '0xb7526572FFE56AB9D7489838Bf2E18e3323b441A',
-}
-
 interface Job {
   id: string
   status: string
@@ -25,6 +23,8 @@ interface Job {
 }
 
 interface Watch {
+  chainId: number
+  asset?: string
   status: string
   minimumHealthFactor: string
   lastCheckedAt?: string
@@ -76,20 +76,21 @@ export function registerWorkTools(server: Registrar, client: AikiClient, session
       },
     },
     async ({ job_id, minimum_health_factor }) => {
-      await session.require()
-      const account = await client.get<{ address: string | null }>('/v1/account')
+      const network = await executionNetwork(client)
+      await session.require(network.chainId)
+      const account = executionAccount(await client.get<unknown>('/v1/account'), network)
       if (!account.address)
         return text('You have no account for a mandate to spend from yet. Create a mandate first.')
 
       const watch = await client.post<Watch>(`/v1/jobs/${job_id}/watch`, {
         account: account.address,
-        chainId: 97,
+        chainId: account.chainId,
         minimumHealthFactor: minimum_health_factor,
-        asset: VENUS.asset,
-        market: VENUS.market,
+        asset: network.guardian.asset,
+        market: network.guardian.market,
       })
       return text(
-        `On duty. It will check ${account.address} on its own and repay if the health factor ` +
+        `On duty on BNB ${network.network} (${account.chainId}). It will check ${account.address} on its own and repay if the health factor ` +
           `falls below ${watch.minimumHealthFactor}, up to what the mandate allows. ` +
           'Ask for its status any time; a pass where it does nothing is the normal case and is recorded too.',
       )
@@ -108,19 +109,28 @@ export function registerWorkTools(server: Registrar, client: AikiClient, session
       await session.require()
       try {
         const w = await client.get<Watch>(`/v1/jobs/${job_id}/watch`)
+        const guardian = guardianFor(w.chainId)
+        if (w.asset !== undefined && w.asset.toLowerCase() !== guardian.asset.toLowerCase())
+          throw new Error(
+            'The watch asset does not match the recorded network. Its remaining amount could not be verified.',
+          )
         return text(
           [
-            `Watch is ${w.status}, defending a health factor of ${w.minimumHealthFactor}.`,
+            `Watch is ${w.status} on BNB ${guardian.network} (${w.chainId}), defending a health factor of ${w.minimumHealthFactor}.`,
             `  last looked: ${w.lastCheckedAt ?? 'not yet'}`,
             `  last acted:  ${w.lastActedAt ?? 'has not needed to'}`,
             w.lastReason ? `  last pass:   ${w.lastReason}` : '',
-            w.remaining ? `  still allowed to spend: ${Number(w.remaining) / 1e6} USDT` : '',
+            w.remaining !== undefined && w.remaining !== null
+              ? `  still allowed to spend: ${formatUnits(BigInt(w.remaining), guardian.decimals)} USDT`
+              : '',
           ]
             .filter(Boolean)
             .join('\n'),
         )
-      } catch {
-        return text('Nothing is watching that job. Use watch_position to put an agent on duty.')
+      } catch (error) {
+        if (error instanceof AikiError && error.status === 404)
+          return text('Nothing is watching that job. Use watch_position to put an agent on duty.')
+        throw error
       }
     },
   )

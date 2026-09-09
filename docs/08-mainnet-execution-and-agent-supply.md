@@ -35,6 +35,16 @@ A local chain56 fork simulation completed without broadcasting, using the verifi
 
 Points purchases are configured separately from execution. Changing the executor network does not move billing or historical balances. Mainnet billing support is implemented as described below; the production billing configuration has not been switched in this repair.
 
+## Fast mode and MCP execution inputs
+
+The public, uncached `/v1/execution/network` endpoint exposes the API's selected execution configuration and canonical Venus token, market and decimals. It does not promise account deployment, available funds, a valid signature or an operating runner. Missing or inconsistent configuration is unavailable, never implicitly testnet.
+
+Fast mode's Guardian preview, mandate and watch actions fetch this configuration rather than accepting a network from the model, registry or payment rail. Shared `@aiki/contracts` helpers build exact USDT caps. Invalid amounts, a per-action cap above the total, unsupported decimals and invalid expiry are rejected before account deployment. Failed account reads or deployments and mismatched account chains stop the operation before an authorization or watch is created.
+
+The local MCP integration uses the same helpers. It binds sign-in to the current execution chain and checks the account and prepared delegation's chain, manager and delegator before signing. Wallet balance labels follow the actual checked RPC network. A saved watch's remaining allowance uses its own stored chain's decimals, not the latest deployment configuration. Failed watch-status requests are not presented as evidence that no watch exists. The website's existing watch controls also use the shared canonical market definition.
+
+These repairs do not add a hosted MCP transport, fund mandate accounts or implement the missing Manual activation flow for all categories. The legacy example-agent builder is not the normal registry task-hiring flow; its presence is not proof of a complete mainnet wallet journey. Public wallet-connected activation remains a release gate.
+
 ## Mainnet points purchases
 
 `config/credits-network.ts` is shared by the production API, development API and ledger reconciliation command. A missing treasury disables purchases. Existing deployments default to chain97 until an operator explicitly selects chain56.

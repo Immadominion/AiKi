@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { AikiClient } from '../client.js'
+import { executionAccount, executionNetwork, executionRpc } from '../execution.js'
 import { text } from '../format.js'
 import { balanceOf, createIdentity, keyLocation, loadIdentity } from '../identity.js'
 import type { Registrar } from '../register.js'
@@ -11,7 +12,7 @@ import type { Session } from '../session.js'
  * The usual answer to "you need a key" is "install an extension, write down
  * twelve words, find a faucet" - which ends most conversations before a person
  * has seen what the thing does. So the model can make a key here, say the
- * address out loud, and ask for some testnet BNB. That is a sentence somebody
+ * address out loud, and verify its network before discussing funding. Somebody
  * can act on without having learned anything about delegations first.
  *
  * What is NOT hidden: this is a real key on a real chain, and the person is told
@@ -24,7 +25,7 @@ export function registerWalletTools(
   server: Registrar,
   client: AikiClient,
   session: Session,
-  rpcUrl: string,
+  rpcUrl?: string,
 ) {
   server.registerTool(
     'whoami',
@@ -47,34 +48,34 @@ export function registerWalletTools(
           ].join('\n'),
         )
 
-      const balance = await balanceOf(rpcUrl, identity.account.address).catch(() => null)
       const lines = [
         `Acting as ${identity.account.address}`,
         `  key source: ${identity.source === 'environment' ? 'AIKI_PRIVATE_KEY' : keyLocation}`,
-        `  balance: ${balance === null ? 'could not read' : `${balance} tBNB on BNB testnet`}`,
       ]
 
       try {
-        await session.require()
-        const account = await client.get<{ address: string | null; network: string | null }>(
-          '/v1/account',
+        const network = await executionNetwork(client)
+        const balance = await balanceOf(
+          rpcUrl ?? executionRpc(network.chainId),
+          identity.account.address,
+        ).catch(() => null)
+        lines.push(
+          `  balance: ${balance === null ? 'could not verify the wallet RPC balance' : `${balance.amount} ${balance.symbol} on BNB ${balance.network} (${balance.chainId})`}`,
         )
+        if (balance && balance.chainId !== network.chainId)
+          lines.push(
+            `  mandate execution is on BNB ${network.network} (${network.chainId}); the wallet RPC reports a different network.`,
+          )
+        await session.require(network.chainId)
+        const account = executionAccount(await client.get<unknown>('/v1/account'), network)
         lines.push(
           account.address
-            ? `  mandates spend from: ${account.address} (${account.network ?? 'testnet'})`
+            ? `  mandates spend from: ${account.address} (BNB ${network.network}, chain ${account.chainId})`
             : '  no mandate account yet; one is deployed the first time you create a mandate, and AiKi pays that gas',
         )
       } catch (error) {
-        lines.push(`  not signed in to AiKi: ${(error as Error).message}`)
+        lines.push(`  AiKi account or network could not be verified: ${(error as Error).message}`)
       }
-
-      if (balance !== null && Number(balance) === 0)
-        lines.push(
-          '',
-          'This address holds no tBNB. It does not need any to create or sign a mandate - AiKi pays ' +
-            'the gas to deploy the account, and the agent pays its own gas to act. It does need USDT ' +
-            'in the mandate account before there is anything for an agent to spend.',
-        )
       return text(lines.join('\n'))
     },
   )
@@ -114,11 +115,11 @@ export function registerWalletTools(
           '',
           'It does not need funding to create or sign a mandate: AiKi pays the gas to deploy the ' +
             'account your mandates spend from, and an agent pays its own gas when it acts.',
-          'What it does need is something to spend. Send BNB testnet USDT to the mandate account, ' +
-            'which whoami will show once a mandate exists.',
+          'Use whoami to verify the current execution network and mandate account before funding it. ' +
+            'Funding a mandate account and buying internal AiKi points are separate payments.',
           '',
           'Back it up if you intend to keep using it. Losing this key means losing control of the ' +
-            'account it owns - though anything held there can only ever be spent inside a mandate.',
+            'account it owns.',
         ].join('\n'),
       )
     },

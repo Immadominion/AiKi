@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
-import { DELEGATION_TYPES, delegationDomain, ROOT_AUTHORITY } from '@aiki/contracts'
+import {
+  DELEGATION_TYPES,
+  delegationDomain,
+  guardianFor,
+  parseExecutionNetwork,
+  ROOT_AUTHORITY,
+} from '@aiki/contracts'
 import Fastify from 'fastify'
 import type { AccountDeployer } from '../accounts/deploy.js'
 import type { AccountStore } from '../accounts/store.js'
@@ -409,6 +415,27 @@ export function createApiServer(input: {
       return reply
         .code(503)
         .send({ status: 'unknown', detail: 'The ledger could not be read just now.' })
+    }
+  })
+
+  /** Public configuration for clients to construct inputs, not a promise of action readiness. */
+  app.get('/v1/execution/network', async (_request, reply) => {
+    reply.header('cache-control', 'no-store')
+    try {
+      if (!input.enforcers) throw new Error('Execution is not configured.')
+      return parseExecutionNetwork({
+        configured: true,
+        chainId: input.enforcers.chainId,
+        network: input.enforcers.network,
+        audited: input.enforcers.audited,
+        manager: input.enforcers.manager,
+        guardian: guardianFor(input.enforcers.chainId),
+      })
+    } catch {
+      throw new ClientError('This deployment cannot provide verified execution network details.', {
+        code: 'EXECUTION_NETWORK_UNAVAILABLE',
+        statusCode: 503,
+      })
     }
   })
 
