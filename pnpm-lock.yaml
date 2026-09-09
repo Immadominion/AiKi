@@ -188,10 +188,6 @@ importers:
         version: 6.0.3
 
   packages/sdk:
-    dependencies:
-      '@aiki/sdk':
-        specifier: workspace:*
-        version: 'link:'
     devDependencies:
       '@types/node':
         specifier: ^24.13.3

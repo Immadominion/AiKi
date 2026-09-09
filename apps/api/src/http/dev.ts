@@ -14,6 +14,7 @@ import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
 import { viemAccountDeployer } from '../accounts/deploy.js'
 import { PostgresAccountStore } from '../accounts/store.js'
+import { PostgresConversationStore } from '../assistant/conversations.js'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
 import { viemChainReader } from '../authority/chain-reader.js'
@@ -29,6 +30,8 @@ import { sweepObservations } from '../prober/sweep-observations.js'
 import { PostgresReceiptStore } from '../receipts/postgres-store.js'
 import { ReceiptService } from '../receipts/service.js'
 import { PostgresWatchStore } from '../runner/store.js'
+import { PostgresSellerStore } from '../tasks/sellers.js'
+import { PostgresTaskStore } from '../tasks/store.js'
 import { createApiServer } from './server.js'
 
 /** Absent means this deployment cannot prepare a delegation to sign. */
@@ -55,69 +58,78 @@ const agents = new Set(observations.map((o) => o.subject.agentId)).size
 // mandate made here is a row you can go and look at. Without one it stays in
 // memory and dies with the process.
 const databaseUrl = process.env.DATABASE_URL
+const conversationStore = databaseUrl ? new PostgresConversationStore(databaseUrl) : undefined
+const creditStore = databaseUrl ? new PostgresCreditStore(databaseUrl) : undefined
+const taskStore = databaseUrl ? new PostgresTaskStore(databaseUrl) : undefined
+const sellerStore = databaseUrl ? new PostgresSellerStore(databaseUrl) : undefined
 const marketplace = databaseUrl
   ? new PostgresMarketplaceStore(databaseUrl)
   : new InMemoryMarketplaceStore()
-const persistence = databaseUrl
-  ? {
-      jobs: new JobService(new PostgresJobStore(databaseUrl)),
-      // Watches too, or the one part of the product that works without a person
-      // present is missing from the server a developer actually runs - which is
-      // how it goes unnoticed that a screen calls a route nobody registered.
-      watches: new PostgresWatchStore(databaseUrl),
-      // Fast mode too, or it is missing from the server a developer runs - which
-      // is how a screen ends up calling a route nobody registered.
-      assistant: {
-        credits: new PostgresCreditStore(databaseUrl),
-        ...(process.env.ANTHROPIC_API_KEY ? { apiKey: process.env.ANTHROPIC_API_KEY } : {}),
-        ...(process.env.ASSISTANT_MODEL ? { model: process.env.ASSISTANT_MODEL } : {}),
-        selfUrl: `http://127.0.0.1:${Number(process.env.PORT ?? '4748')}`,
-        ...(process.env.CREDITS_TREASURY_ADDRESS
+const persistence =
+  databaseUrl && creditStore && conversationStore
+    ? {
+        jobs: new JobService(new PostgresJobStore(databaseUrl)),
+        // Watches too, or the one part of the product that works without a person
+        // present is missing from the server a developer actually runs - which is
+        // how it goes unnoticed that a screen calls a route nobody registered.
+        watches: new PostgresWatchStore(databaseUrl),
+        // Fast mode too, or it is missing from the server a developer runs - which
+        // is how a screen ends up calling a route nobody registered.
+        assistant: {
+          credits: creditStore,
+          conversations: conversationStore,
+          ...(process.env.ANTHROPIC_API_KEY ? { apiKey: process.env.ANTHROPIC_API_KEY } : {}),
+          ...(process.env.ASSISTANT_MODEL ? { model: process.env.ASSISTANT_MODEL } : {}),
+          selfUrl: `http://127.0.0.1:${Number(process.env.PORT ?? '4748')}`,
+          ...(process.env.CREDITS_TREASURY_ADDRESS
+            ? {
+                deposits: {
+                  rpcUrl:
+                    process.env.ENFORCER_RPC_URL ??
+                    'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
+                  chainId: 97,
+                  token: (process.env.CREDITS_TOKEN_ADDRESS ??
+                    '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c') as `0x${string}`,
+                  treasury: process.env.CREDITS_TREASURY_ADDRESS as `0x${string}`,
+                },
+              }
+            : {}),
+        },
+        // The same deployed suite production reads, so what a limit is worth here
+        // is what it is worth there. A dev API that reported everything as counted
+        // by AiKi would make the builder's badges a local fiction.
+        enforcers: AIKI_ENFORCERS_BSC_TESTNET,
+        ...(agentSessionKey ? { agentSessionKey } : {}),
+        ...(agentKey ? { agentKey } : {}),
+        enforcerRpcUrl: enforcerRpc,
+        // Accounts too, so the browser walk is the same walk production does. A
+        // dev API that could not deploy one would make the hire flow fall back to
+        // "AiKi counts your limits" and look like a bug in the web.
+        ...(accountFunderKey
           ? {
-              deposits: {
-                rpcUrl:
-                  process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
-                chainId: 97,
-                token: (process.env.CREDITS_TOKEN_ADDRESS ??
-                  '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c') as `0x${string}`,
-                treasury: process.env.CREDITS_TREASURY_ADDRESS as `0x${string}`,
+              accounts: {
+                store: new PostgresAccountStore(databaseUrl),
+                deployer: viemAccountDeployer({
+                  rpcUrl: enforcerRpc,
+                  chainId: AIKI_ENFORCERS_BSC_TESTNET.chainId,
+                  manager: AIKI_ENFORCERS_BSC_TESTNET.manager as `0x${string}`,
+                  funderKey: accountFunderKey,
+                }),
               },
             }
           : {}),
-      },
-      // The same deployed suite production reads, so what a limit is worth here
-      // is what it is worth there. A dev API that reported everything as counted
-      // by AiKi would make the builder's badges a local fiction.
-      enforcers: AIKI_ENFORCERS_BSC_TESTNET,
-      ...(agentSessionKey ? { agentSessionKey } : {}),
-      ...(agentKey ? { agentKey } : {}),
-      enforcerRpcUrl: enforcerRpc,
-      // Accounts too, so the browser walk is the same walk production does. A
-      // dev API that could not deploy one would make the hire flow fall back to
-      // "AiKi counts your limits" and look like a bug in the web.
-      ...(accountFunderKey
-        ? {
-            accounts: {
-              store: new PostgresAccountStore(databaseUrl),
-              deployer: viemAccountDeployer({
-                rpcUrl: enforcerRpc,
-                chainId: AIKI_ENFORCERS_BSC_TESTNET.chainId,
-                manager: AIKI_ENFORCERS_BSC_TESTNET.manager as `0x${string}`,
-                funderKey: accountFunderKey,
-              }),
-            },
-          }
-        : {}),
-      chain: viemChainReader(enforcerRpc),
-      receipts: new ReceiptService(
-        process.env.RECEIPT_SIGNING_KEY ?? 'ab'.repeat(32),
-        new PostgresReceiptStore(databaseUrl),
-      ),
-    }
-  : {}
+        chain: viemChainReader(enforcerRpc),
+        receipts: new ReceiptService(
+          process.env.RECEIPT_SIGNING_KEY ?? 'ab'.repeat(32),
+          new PostgresReceiptStore(databaseUrl),
+        ),
+      }
+    : {}
 
 const app = createApiServer({
   observations: () => observations,
+  ...(taskStore ? { tasks: taskStore } : {}),
+  ...(sellerStore ? { sellers: sellerStore } : {}),
   marketplace,
   ...persistence,
   auth: {
@@ -134,6 +146,14 @@ const app = createApiServer({
 
 if (marketplace instanceof PostgresMarketplaceStore)
   app.addHook('onClose', async () => marketplace.close())
+app.addHook('onClose', async () => {
+  await Promise.all([
+    conversationStore?.close(),
+    creditStore?.close(),
+    taskStore?.close(),
+    sellerStore?.close(),
+  ])
+})
 
 // The web app runs on another loopback port; production CORS policy is the
 // deployment's decision, not this harness's. Keep this on 127.0.0.1 so local
@@ -145,7 +165,10 @@ app.addHook('onRequest', async (request, reply) => {
   reply.header('Access-Control-Allow-Origin', WEB_ORIGIN)
   reply.header('Access-Control-Allow-Credentials', 'true')
   reply.header('Vary', 'Origin')
-  reply.header('Access-Control-Allow-Headers', 'content-type, idempotency-key')
+  reply.header(
+    'Access-Control-Allow-Headers',
+    'content-type, idempotency-key, x-aiki-wallet-address',
+  )
   reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS')
   if (request.method === 'OPTIONS') return reply.code(204).send()
 })

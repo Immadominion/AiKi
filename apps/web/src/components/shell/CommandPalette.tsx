@@ -2,9 +2,8 @@
 
 import { useRouter } from 'next/navigation'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { AGENT_BG, AGENTS } from '@/lib/agents'
 import { useEscapeLayer } from '@/lib/escape'
-import { agentHref, FAST_HOME, route } from '@/lib/routes'
+import { FAST_HOME, route } from '@/lib/routes'
 import { rankTask, TASKS } from '@/lib/tasks'
 import { useModeNavigation } from './prefs'
 
@@ -28,7 +27,7 @@ const DESTINATIONS = [
   },
   {
     label: 'Explore',
-    sub: 'Every agent we index',
+    sub: 'Browse agents on BNB Chain',
     href: '/explore',
     glyph: '⌕',
     keys: ['explore', 'browse', 'find', 'search', 'agents'],
@@ -63,8 +62,8 @@ const DESTINATIONS = [
   },
   {
     label: 'Compare',
-    sub: 'Two agents, side by side',
-    href: '/compare?agents=guardian,sentinel',
+    sub: 'Choose agents from the registry',
+    href: '/registry',
     glyph: '⇄',
     keys: ['compare', 'versus', 'vs'],
   },
@@ -158,20 +157,6 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    for (const a of AGENTS) {
-      if (score([a.key, a.does.toLowerCase()], a.name, q) > 0) {
-        out.push({
-          id: `agent:${a.key}`,
-          group: 'Agents',
-          label: a.name,
-          sub: a.does,
-          glyph: a.initial,
-          bg: AGENT_BG[a.key] ?? '#171715',
-          run: () => router.push(agentHref(a.key)),
-        })
-      }
-    }
-
     for (const t of TASKS) {
       if (q && rankTask(t, q) > 0) {
         out.push({
@@ -191,7 +176,7 @@ export function PaletteProvider({ children }: { children: React.ReactNode }) {
         id: 'ask',
         group: 'Ask',
         label: `Ask AiKi for “${q.trim()}”`,
-        sub: 'Searches agents, and logs it if nothing can do it',
+        sub: 'Search agent descriptions and services',
         glyph: '→',
         run: () => router.push(route(`/explore?q=${encodeURIComponent(q.trim())}`)),
       })

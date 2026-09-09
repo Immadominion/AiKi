@@ -2,9 +2,10 @@
 
 import { useRouter } from 'next/navigation'
 import { useSaved } from '@/components/shell/prefs'
+import { AgentAvatar } from '@/components/ui/Avatar'
 import { EvidenceBars } from '@/components/ui/EvidenceBars'
 import { useToast } from '@/components/ui/Toast'
-import { AGENT_BG, type AgentRow } from '@/lib/agents'
+import type { AgentRow } from '@/lib/agents'
 import { agentHref, registryHref } from '@/lib/routes'
 
 export function MarketGrid({ agents, footnote }: { agents: AgentRow[]; footnote: string }) {
@@ -14,7 +15,7 @@ export function MarketGrid({ agents, footnote }: { agents: AgentRow[]; footnote:
 
   return (
     <>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(268px,1fr))] gap-[14px]">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,268px),1fr))] gap-[14px]">
         {agents.map((m, i) => (
           <div
             key={m.key}
@@ -22,12 +23,7 @@ export function MarketGrid({ agents, footnote }: { agents: AgentRow[]; footnote:
             className="flex flex-col rounded-[18px] border border-[rgb(26_26_25_/_0.08)] p-4 transition-[box-shadow,border-color] hover:border-[rgb(26_26_25_/_0.16)] hover:shadow-[0_12px_30px_-14px_rgb(26_26_25_/_0.2)]"
           >
             <div className="flex items-start gap-[11px]">
-              <span
-                className="flex size-[42px] flex-none items-center justify-center rounded-[13px] text-base font-extrabold text-white"
-                style={{ background: AGENT_BG[m.key] }}
-              >
-                {m.initial}
-              </span>
+              <AgentAvatar identity={m.key} name={m.name} src={m.image} size={42} />
               <span className="min-w-0 flex-1">
                 <span className="block text-[15.5px] font-bold tracking-[-0.012em]">{m.name}</span>
                 <span className="text-muted mt-[2px] block text-[12.5px]">{m.works}</span>

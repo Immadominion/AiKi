@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { useToast } from '@/components/ui/Toast'
 import { route } from '@/lib/routes'
 
 export interface Banner {
@@ -30,6 +29,7 @@ export function PageCard({
   tabHint,
   banner,
   panels,
+  contentRef,
   children,
 }: {
   title: string
@@ -45,10 +45,10 @@ export function PageCard({
   banner?: Banner | undefined
   /** One node per tab. When given, tabs switch panels instead of announcing. */
   panels?: React.ReactNode[] | undefined
+  contentRef?: React.Ref<HTMLDivElement> | undefined
   children?: React.ReactNode
 }) {
   const [tab, setTab] = useState(0)
-  const say = useToast()
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] bg-white shadow-[0_1px_2px_rgb(26_26_25_/_0.06)]">
@@ -56,22 +56,21 @@ export function PageCard({
         {back ? (
           <Link
             href={route(back.href)}
-            className="text-muted hover:text-ink-app mb-[10px] inline-flex items-center gap-[6px] text-[12.5px] font-semibold transition-colors"
+            className="text-muted hover:text-ink-app mb-[10px] inline-flex min-h-10 items-center gap-[6px] text-[12.5px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-orange-app"
           >
             <span aria-hidden>←</span> {back.label}
           </Link>
         ) : null}
         {headerSlot ?? (
           <div className="flex flex-wrap items-baseline gap-x-[9px] gap-y-2">
-            <span className="text-[19px] font-extrabold tracking-[-0.02em]">{title}</span>
-            <span className="text-faint-2 text-[13px] font-semibold">·</span>
-            <span className="text-muted text-[13.5px] font-semibold">{count}</span>
+            <h1 className="m-0 text-[19px] font-extrabold tracking-[-0.02em]">{title}</h1>
+            {count ? <span className="text-muted text-[13.5px] font-semibold">{count}</span> : null}
             <div className="flex-1" />
-            {primary ? (
+            {primary && onPrimary ? (
               <button
                 type="button"
-                onClick={onPrimary ?? (() => say(`“${primary}” is wired in the build.`))}
-                className="bg-ink-app hover:bg-orange-app h-[38px] rounded-xl border-0 px-4 text-[13.5px] font-bold text-white transition-colors"
+                onClick={onPrimary}
+                className="bg-ink-app hover:bg-orange-app min-h-10 rounded-xl border-0 px-4 text-[13.5px] font-bold text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-app"
               >
                 {primary}
               </button>
@@ -81,7 +80,7 @@ export function PageCard({
         <div className="-mx-4 mt-4 h-px bg-[rgb(26_26_25_/_0.07)] md:-mx-[22px]" />
       </div>
 
-      {tabs.length > 0 ? (
+      {tabs.length > 0 && panels ? (
         <div className="flex-none px-4 pt-4 md:px-[22px]">
           <div className="flex items-center gap-[14px]">
             {/* The tab strip scrolls on its own. The hint used to live inside
@@ -93,14 +92,9 @@ export function PageCard({
                   <button
                     key={t}
                     type="button"
-                    onClick={() => {
-                      setTab(i)
-                      if (!panels && i > 0)
-                        say(
-                          `“${t}” filtering is wired in the build. This pass shows the default view.`,
-                        )
-                    }}
-                    className="h-9 rounded-[11px] border-0 px-3 text-[13.5px] whitespace-nowrap md:px-[18px] md:text-[14px]"
+                    aria-pressed={tab === i}
+                    onClick={() => setTab(i)}
+                    className="min-h-10 rounded-[11px] border-0 px-3 text-[13.5px] whitespace-nowrap focus-visible:outline-2 focus-visible:outline-orange-app md:px-[18px] md:text-[14px]"
                     style={
                       tab === i
                         ? {
@@ -139,21 +133,24 @@ export function PageCard({
             <span className="text-body-2 min-w-0 flex-1 text-[13.5px] leading-[1.45]">
               <b className="text-ink-app font-bold">{banner.title}</b> {banner.body}
             </span>
-            <button
-              type="button"
-              onClick={
-                banner.onAction ??
-                (() => say('Opens the reasoning behind this: evidence, positions, and limits.'))
-              }
-              className="h-8 flex-none rounded-[10px] border-0 bg-[rgb(26_26_25_/_0.055)] px-[13px] text-[12.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)]"
-            >
-              {banner.cta}
-            </button>
+            {banner.onAction ? (
+              <button
+                type="button"
+                onClick={banner.onAction}
+                className="min-h-10 flex-none rounded-[10px] border-0 bg-[rgb(26_26_25_/_0.055)] px-[13px] text-[12.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)] focus-visible:outline-2 focus-visible:outline-orange-app"
+              >
+                {banner.cta}
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-[22px] md:px-[22px]">
+      <div
+        ref={contentRef}
+        data-page-scroll
+        className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-[22px] md:px-[22px]"
+      >
         {panels ? panels[tab] : children}
       </div>
     </div>

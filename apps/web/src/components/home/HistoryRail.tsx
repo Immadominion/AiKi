@@ -1,268 +1,215 @@
 'use client'
 
-import { XIcon } from '@animateicons/react/lucide'
-import { useEffect, useState } from 'react'
-import { IconButton, TraceBorder } from '@/components/ui/AnimatedIcon'
-import { useEscapeLayer } from '@/lib/escape'
+import { History, Plus, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { api, type FastConversationSummary } from '@/lib/api'
 
-interface Ask {
-  id: string
-  text: string
-  outcome: string
-  tone: 'good' | 'work' | 'idle' | 'warn'
-  when: string
-  agent?: { initial: string; bg: string }
-}
-
-interface Group {
-  label: string
-  asks: Ask[]
-}
-
-/**
- * Everything you have ever asked, and what came of it.
- *
- * Not a transcript of chat turns - an ask is a unit of work, so each row carries
- * the outcome next to the words. That is the difference between a history you
- * scroll and a history you can act on: every row here is resumable.
- */
-const HISTORY: Group[] = [
-  {
-    label: 'Today',
-    asks: [
-      {
-        id: 'a1',
-        text: 'Protect me from liquidation on Venus',
-        outcome: 'Guardian repaid 72 USDT · health 1.22 → 1.47',
-        tone: 'good',
-        when: '02:39',
-        agent: { initial: 'G', bg: 'linear-gradient(135deg,#FF4D00,#FF8A3D)' },
-      },
-      {
-        id: 'a2',
-        text: 'Keep my BNB / USDT position in range',
-        outcome: 'Gridly is rebalancing now',
-        tone: 'work',
-        when: '05:12',
-        agent: { initial: 'G', bg: 'linear-gradient(135deg,#7C5CFF,#C05CFF)' },
-      },
-      {
-        id: 'a3',
-        text: 'Find better yield for 2 BNB',
-        outcome: 'YieldMax found 11.8% APY · waiting on you',
-        tone: 'warn',
-        when: '09:03',
-        agent: { initial: 'Y', bg: 'linear-gradient(135deg,#3B82F6,#8B5CF6)' },
-      },
-    ],
-  },
-  {
-    label: 'Yesterday',
-    asks: [
-      {
-        id: 'b1',
-        text: 'Is my Venus position safe overnight?',
-        outcome: 'Checked 14 times · no action needed',
-        tone: 'idle',
-        when: '23:10',
-        agent: { initial: 'G', bg: 'linear-gradient(135deg,#FF4D00,#FF8A3D)' },
-      },
-      {
-        id: 'b2',
-        text: 'Move my idle USDT somewhere better',
-        outcome: 'Blocked · over your $80 per-action limit',
-        tone: 'warn',
-        when: '18:44',
-        agent: { initial: 'H', bg: 'linear-gradient(135deg,#0EA5E9,#3B82F6)' },
-      },
-    ],
-  },
-  {
-    label: 'Earlier',
-    asks: [
-      {
-        id: 'c1',
-        text: 'Run a grid strategy on BNB',
-        outcome: 'Gridly placed 4 orders · $580 to $640',
-        tone: 'good',
-        when: 'Tue',
-        agent: { initial: 'G', bg: 'linear-gradient(135deg,#7C5CFF,#C05CFF)' },
-      },
-      {
-        id: 'c2',
-        text: 'Who can watch a Pancake v3 position?',
-        outcome: 'No agent claimed it · logged as unmet',
-        tone: 'idle',
-        when: 'Mon',
-      },
-    ],
-  },
-]
-
-const DOT: Record<Ask['tone'], string> = {
-  good: '#00A092',
-  work: '#FF4D00',
-  idle: '#C9C9C9',
-  warn: '#FFD400',
-}
-
-export function HistoryRail({ onResume }: { onResume: (ask: string) => void }) {
+export function HistoryRail({
+  onResume,
+  onNew,
+  authenticated,
+  activeId,
+  inline = false,
+}: {
+  onResume: (id: string) => void
+  onNew: () => void
+  authenticated: boolean
+  activeId?: string
+  inline?: boolean
+}) {
   const [open, setOpen] = useState(false)
-  // Shown only where it is true. These are example asks, and a first-time
-  // visitor was being shown five things they had supposedly asked, complete
-  // with outcomes and timestamps. A history of things you did not do is not a
-  // history.
-  const [seen, setSeen] = useState(false)
-  useEffect(() => {
+  const [items, setItems] = useState<FastConversationSummary[]>([])
+  const [cursor, setCursor] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const dialog = useRef<HTMLDialogElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const generation = useRef(0)
+
+  const load = useCallback(async (before?: string) => {
+    const current = ++generation.current
+    setLoading(true)
+    setError(null)
     try {
-      setSeen(localStorage.getItem('aiki.asked.v1') === 'yes')
-    } catch {
-      setSeen(false)
+      const result = await api.conversations(before)
+      if (current !== generation.current) return
+      setItems((previous) =>
+        before
+          ? [
+              ...previous,
+              ...result.conversations.filter((item) => !previous.some((old) => old.id === item.id)),
+            ]
+          : result.conversations,
+      )
+      setCursor(result.nextCursor)
+    } catch (failure) {
+      if (current === generation.current) setError((failure as Error).message)
+    } finally {
+      if (current === generation.current) setLoading(false)
     }
   }, [])
 
-  // ⌘/ opens it from anywhere, because reaching for history should never mean
-  // hunting for a control on a page whose whole point is a single input.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === '/' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        setOpen((o) => !o)
+    if (open) {
+      dialog.current?.showModal()
+      if (authenticated) void load()
+    } else dialog.current?.close()
+    return () => {
+      generation.current += 1
+    }
+  }, [open, authenticated, load])
+  useEffect(() => {
+    if (!authenticated) {
+      setItems([])
+      setCursor(null)
+      setOpen(false)
+    }
+  }, [authenticated])
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === '/') {
+        event.preventDefault()
+        setOpen((value) => !value)
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
   }, [])
 
-  // Escape is layered: closing History must not also drop you out of full
-  // screen in the same keystroke.
-  useEscapeLayer(open, () => setOpen(false))
-
+  const close = () => {
+    setOpen(false)
+    trigger.current?.focus()
+  }
   return (
     <>
-      {/* Phones have no room beside the field, so the trigger joins the bottom
-          row instead of sitting where the input goes. */}
       <button
+        ref={trigger}
         type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
         onClick={() => setOpen(true)}
-        className={`absolute bottom-4 left-4 z-40 flex h-[34px] items-center gap-[8px] rounded-full border border-[rgb(20_20_20_/_0.06)] bg-white/80 px-[13px] backdrop-blur md:hidden ${
-          open ? 'pointer-events-none opacity-0' : 'opacity-100'
-        }`}
+        title="History (⌘ /)"
+        className={`${inline ? '' : 'absolute bottom-4 left-4 z-40'} flex min-h-10 items-center gap-2 rounded-full border border-[rgb(26_26_25_/_0.12)] bg-white px-4 text-[12px] font-semibold text-ink-app hover:bg-surface-sunk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-app`}
       >
-        <span className="flex flex-col gap-[2px]" aria-hidden>
-          {[0, 1, 2].map((i) => (
-            <span key={i} className="block h-[2px] w-[11px] rounded-full bg-[#B4B4B0]" />
-          ))}
-        </span>
-        <span className="text-[12px] font-semibold text-[#767676]">History</span>
+        <History size={16} strokeWidth={1.8} aria-hidden="true" /> History
       </button>
-
-      {/* Collapsed: an edge tab, on the same pattern as the MOCK control -
-          flush to the side rather than floating with a margin, and parked low
-          rather than centred, since centred is exactly where the shard cards
-          sit. A rail hovering mid-screen was landing on top of them. */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        data-tour="history"
-        title="History (⌘/)"
-        className={`absolute bottom-[15%] left-0 z-40 hidden h-[84px] w-[27px] flex-col items-center justify-center gap-[6px] rounded-r-[12px] border border-l-0 border-[rgb(20_20_20_/_0.07)] bg-white/85 backdrop-blur transition-all hover:bg-white md:flex ${
-          open ? 'pointer-events-none opacity-0' : 'opacity-100'
-        }`}
+      <dialog
+        ref={dialog}
+        aria-labelledby="fast-history-title"
+        onCancel={close}
+        onClose={() => setOpen(false)}
+        className="fixed inset-y-4 right-4 left-4 m-0 max-h-none max-w-none rounded-[26px] border-0 bg-white p-0 text-ink-app shadow-xl backdrop:bg-black/15 sm:right-auto sm:left-[88px] sm:w-[320px]"
       >
-        <span className="flex flex-col gap-[3px]" aria-hidden>
-          {[0, 1, 2].map((i) => (
-            <span key={i} className="block h-[2px] w-[10px] rounded-full bg-[#B4B4B0]" />
-          ))}
-        </span>
-        <span
-          className="text-[10px] font-bold tracking-[0.08em] text-[#8A8A8A]"
-          style={{ writingMode: 'vertical-rl' }}
-        >
-          HISTORY
-        </span>
-      </button>
-
-      {open && (
-        <div className="animate-rise absolute inset-x-3 top-3 bottom-3 z-46 flex flex-col overflow-hidden rounded-[26px] border border-[rgb(20_20_20_/_0.07)] bg-white shadow-[0_34px_84px_-32px_rgb(20_20_20_/_0.4)] sm:inset-x-auto sm:top-4 sm:bottom-4 sm:left-4 sm:w-[316px]">
-          <TraceBorder radius={26} />
-          <div className="flex flex-none items-center justify-between px-[18px] pt-[17px] pb-3">
-            <span className="text-[14.5px] font-bold">History</span>
-            <IconButton
-              icon={XIcon}
-              label="Close history"
-              tone="warm"
-              size={14}
-              className="size-[28px]"
-              onClick={() => setOpen(false)}
-            />
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-[10px] pb-3">
-            {seen ? null : (
-              <div className="px-2 py-[18px]">
-                <div className="text-[13.5px] font-bold">You have not asked anything yet.</div>
-                <p className="mt-[6px] mb-0 text-[12.5px] leading-[1.5] text-pretty text-[#8A8A8A]">
-                  Every ask is kept here once you make one, including the ones no agent could take.
-                  Those are how we know what to build next.
+        <div className="flex h-full min-h-0 flex-col">
+          <header className="flex shrink-0 items-center justify-between gap-4 px-5 pt-4 pb-3">
+            <div>
+              <h2 id="fast-history-title" className="m-0 text-[18px] font-bold tracking-tight">
+                History
+              </h2>
+              <p className="mt-1 mb-0 text-[12px] text-muted">
+                Your conversations, saved to your wallet.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={close}
+              aria-label="Close history"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-surface-sunk focus-visible:outline-2 focus-visible:outline-orange-app"
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
+          </header>
+          <button
+            type="button"
+            disabled={!authenticated}
+            onClick={() => {
+              close()
+              onNew()
+            }}
+            className="mx-5 mb-3 flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-[14px] bg-ink-app px-4 text-[13px] font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-app disabled:opacity-40"
+          >
+            <Plus size={16} aria-hidden="true" /> New conversation
+          </button>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
+            {!authenticated ? (
+              <p className="px-2 text-[13px] leading-relaxed text-muted">
+                Sign in with your wallet to see your conversations.
+              </p>
+            ) : null}
+            {loading && items.length === 0 ? (
+              <p role="status" className="px-2 text-[13px] text-muted">
+                Loading conversations…
+              </p>
+            ) : null}
+            {error ? (
+              <div role="alert" className="px-2 text-[13px]">
+                <p>{error}</p>
+                <button
+                  type="button"
+                  onClick={() => void load()}
+                  className="min-h-10 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-orange-app"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : null}
+            {authenticated && !loading && !error && items.length === 0 ? (
+              <div className="px-2 py-8">
+                <History
+                  size={24}
+                  strokeWidth={1.5}
+                  className="mb-3 text-muted"
+                  aria-hidden="true"
+                />
+                <p className="mb-1 text-[14px] font-semibold">
+                  Your first conversation starts here.
+                </p>
+                <p className="m-0 text-[13px] leading-relaxed text-muted">
+                  Ask for what you need. You can come back to the conversation on any device.
                 </p>
               </div>
-            )}
-            {(seen ? HISTORY : []).map((g) => (
-              <div key={g.label} className="mb-[14px]">
-                <div className="px-2 pb-[6px] text-[11.5px] font-semibold text-[#9C9C98]">
-                  {g.label}
-                </div>
-                <div className="flex flex-col gap-[2px]">
-                  {g.asks.map((a) => (
-                    <button
-                      key={a.id}
-                      type="button"
-                      onClick={() => onResume(a.text)}
-                      className="flex w-full items-start gap-[10px] rounded-[14px] border-0 bg-none px-2 py-[10px] text-left transition-colors hover:bg-[#F8F8F6]"
-                    >
-                      {a.agent ? (
-                        <span
-                          className="mt-[2px] flex size-[26px] flex-none items-center justify-center rounded-full text-[11px] font-extrabold text-white"
-                          style={{ background: a.agent.bg }}
-                        >
-                          {a.agent.initial}
-                        </span>
-                      ) : (
-                        <span className="mt-[2px] flex size-[26px] flex-none items-center justify-center rounded-full bg-[#F3F3F1] text-[11px] font-extrabold text-[#B4B4B0]">
-                          ?
-                        </span>
-                      )}
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[13px] leading-[1.35] font-semibold text-pretty">
-                          {a.text}
-                        </span>
-                        <span className="mt-[5px] flex items-start gap-[6px]">
-                          <span
-                            className="mt-[5px] size-[5px] flex-none rounded-full"
-                            style={{ background: DOT[a.tone] }}
-                          />
-                          <span className="text-[11.5px] leading-[1.35] text-pretty text-[#8A8A8A]">
-                            {a.outcome}
-                          </span>
-                        </span>
-                      </span>
-                      <span className="mt-[3px] flex-none text-[11px] font-medium text-[#B4B4B0] tabular-nums">
-                        {a.when}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex-none border-t border-[rgb(20_20_20_/_0.06)] px-[18px] py-[13px] text-[11.5px] leading-[1.45] text-[#767676]">
-            Every ask is kept, including the ones no agent could take. Those are how we know what to
-            build next.
+            ) : null}
+            <ul className="m-0 list-none space-y-1 p-0">
+              {items.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    aria-current={item.id === activeId ? 'page' : undefined}
+                    onClick={() => {
+                      close()
+                      onResume(item.id)
+                    }}
+                    className={`w-full rounded-[16px] px-3 py-3 text-left focus-visible:outline-2 focus-visible:outline-orange-app ${item.id === activeId ? 'bg-surface-sunk' : 'hover:bg-surface-sunk'}`}
+                  >
+                    <span className="block line-clamp-2 text-[13px] leading-[1.45] font-semibold [overflow-wrap:anywhere]">
+                      {item.title}
+                    </span>
+                    <span className="mt-1.5 flex items-center justify-between gap-2 text-[12px] text-muted">
+                      <span>{item.messageCount} messages</span>
+                      <time dateTime={item.updatedAt}>
+                        {new Date(item.updatedAt).toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </time>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {cursor ? (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => void load(cursor)}
+                className="mt-3 min-h-11 w-full rounded-[14px] text-[13px] font-semibold focus-visible:outline-2 focus-visible:outline-orange-app disabled:opacity-40"
+              >
+                {loading ? 'Loading…' : 'Older conversations'}
+              </button>
+            ) : null}
           </div>
         </div>
-      )}
+      </dialog>
     </>
   )
 }

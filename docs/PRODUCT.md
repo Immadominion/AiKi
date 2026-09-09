@@ -1,6 +1,6 @@
 # AiKi product definition
 
-Updated 8 September 2026 from the founder's marketplace positioning. This is the current reference for what AiKi is, who it serves and how the product is described. API references define implemented behavior; dated research and design proposals retain their own historical scope.
+Updated 9 September 2026 from the founder's marketplace positioning. This is the current reference for what AiKi is, who it serves and how the product is described. API references define implemented behavior; dated research and design proposals retain their own historical scope.
 
 ## What AiKi is
 
@@ -129,6 +129,8 @@ Technical terms and API identifiers remain precise in engineering documents. Thi
 Write with confidence and simple verbs. Lead with what someone can do. Explain the relevant limit beside the decision that needs it. Avoid making every introduction a lesson about unreliable registries or a list of protocols. Use the founder's direct, conversational tone without generic superlatives or em dashes.
 
 ## Documentation authority
+
+Current availability: Explore browses real BNB Chain registrations and published services. A small, reviewed set of external MCP tools supports public-chain reads. Registered does not mean hireable, and a free read is not a completed paid job. Direct paid task delivery still requires an explicit compatible provider. Points deposits are testnet-only, and points are not withdrawable. Saved Fast conversations, task review and People listings belong to the signed-in wallet. These boundaries must remain clear while provider coverage grows.
 
 - This document owns the current product definition and positioning.
 - [API v1](01-api-contract.md), [marketplace API v2](03-marketplace-api-v2.md), [MCP](../apps/mcp/README.md), and [on-chain docs](../onchain/README.md) describe their respective implementation surfaces and constraints.

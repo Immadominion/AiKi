@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useToast } from '@/components/ui/Toast'
-import { type AssistantStep, type AssistantTurn, api, type CreditBalance } from '@/lib/api'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { type AssistantStep, api, type CreditBalance } from '@/lib/api'
 import { FastMessage } from './FastMessage'
+import { FastConversationController } from './fast-conversation'
+import { fastToolAgentHref } from './fast-links'
 
 /**
  * Fast mode: asking for the thing instead of finding the screen for it.
@@ -21,23 +22,14 @@ import { FastMessage } from './FastMessage'
  * surprises them.
  */
 
-interface Message {
-  /** Stable across re-renders: keying on array position re-keys every message
-   *  whenever one is inserted, which throws away scroll and selection state. */
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  steps?: AssistantStep[]
-  cost?: AssistantTurn['cost']
-}
-
-let counter = 0
-const nextId = () => `m${++counter}`
-
 /** Plain words for the tools, since the model's names are for the model. */
 const TOOL_LABEL: Record<string, string> = {
   search_agents: 'searched the registry',
-  agent_passport: 'read an agent’s evidence',
+  catalog_agents: 'searched agent listings',
+  catalog_agent: 'opened an agent profile',
+  catalog_capabilities: 'checked the available services',
+  read_external_agent: 'asked the external agent',
+  agent_passport: 'opened an agent profile',
   agent_task_support: 'checked whether the agent accepts tasks',
   ecosystem_stats: 'checked what has been measured',
   preview_limits: 'priced your limits',
@@ -63,13 +55,45 @@ const TOOL_LABEL: Record<string, string> = {
   revoke_mandate: 'revoked a mandate',
 }
 
-export function FastChat({ opening, onClose }: { opening?: string; onClose?: () => void }) {
-  const say = useToast()
-  const [messages, setMessages] = useState<Message[]>([])
-  const [draft, setDraft] = useState('')
-  const [busy, setBusy] = useState(false)
+export function FastChat({
+  id,
+  owner,
+  opening,
+  create = false,
+  onClose,
+  onChanged,
+}: {
+  id: string
+  owner: string
+  opening?: string
+  create?: boolean
+  onClose?: () => void
+  onChanged?: () => void
+}) {
+  const controller = useMemo(() => {
+    let storage: Storage | undefined
+    try {
+      storage = window.sessionStorage
+    } catch {
+      /* server render or blocked storage */
+    }
+    return new FastConversationController(
+      id,
+      owner,
+      {
+        create: api.createConversation,
+        load: api.conversation,
+        ask: api.assistant,
+      },
+      storage,
+    )
+  }, [id, owner])
+  const { messages, draft, busy, loading, error, pending } = useSyncExternalStore(
+    controller.subscribe,
+    controller.getSnapshot,
+    controller.getSnapshot,
+  )
   const [credits, setCredits] = useState<CreditBalance | null>(null)
-  const [unavailable, setUnavailable] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const loadCredits = useCallback(async () => {
@@ -83,63 +107,15 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
   }, [])
 
   useEffect(() => {
-    void loadCredits()
-  }, [loadCredits])
-
-  const ask = useCallback(
-    async (question: string) => {
-      if (!question || busy) return
-      setDraft('')
-      const asked: Message[] = [...messages, { id: nextId(), role: 'user', content: question }]
-      setMessages(asked)
-      setBusy(true)
-      setUnavailable(null)
-      try {
-        const turn = await api.assistant(asked.map((m) => ({ role: m.role, content: m.content })))
-        setMessages([
-          ...asked,
-          {
-            id: nextId(),
-            role: 'assistant',
-            content: turn.reply,
-            steps: turn.steps,
-            cost: turn.cost,
-          },
-        ])
-        await loadCredits()
-      } catch (error) {
-        const message = (error as Error).message
-        // The API's refusals are written to be acted on - "Fast mode needs at
-        // least 200 points and you have 0" - so they are shown, not replaced.
-        if (/points|configured/i.test(message)) setUnavailable(message)
-        else say(message)
-        setMessages(messages)
-        setDraft(question)
-      } finally {
-        setBusy(false)
-        requestAnimationFrame(() => {
-          const scroller = scrollRef.current
-          if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
-        })
-      }
-    },
-    [busy, messages, say, loadCredits],
-  )
-
-  /*
-   * The question that opened this is asked once, on mount. Seeding the box and
-   * making somebody press Ask again would be asking them to say it twice.
-   *
-   * The ref guard rather than an effect dependency on `ask`: `ask` closes over
-   * the message list and so changes every turn, and depending on it would
-   * re-ask the opening question after every answer.
-   */
-  const opened = useRef(false)
+    void controller.initialize(create, opening)
+    return controller.dispose
+  }, [controller, create, opening])
   useEffect(() => {
-    if (!opening || opened.current) return
-    opened.current = true
-    void ask(opening)
-  }, [opening, ask])
+    if (messages.length) onChanged?.()
+    void loadCredits()
+    const scroller = scrollRef.current
+    if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'instant' })
+  }, [messages, onChanged, loadCredits])
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -156,16 +132,37 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
             <div className="text-[13px] font-bold tabular-nums">
               {credits.balance.toLocaleString()} points
             </div>
-            <div className="text-faint text-[11.5px]">
-              ${credits.worthUsd.toFixed(2)} · {credits.model}
-            </div>
+            <div className="text-faint text-[11.5px]">{credits.model}</div>
+            <a
+              href="/credits"
+              className="inline-flex min-h-10 items-center text-[11.5px] text-muted underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-orange-app"
+            >
+              Points and limits
+            </a>
           </div>
         ) : null}
       </header>
 
-      {unavailable ? (
-        <div className="mx-[4px] mb-[12px] rounded-[14px] border border-[rgb(26_26_25_/_0.12)] px-[14px] py-[11px] text-[12.5px] leading-[1.5]">
-          {unavailable}
+      {error ? (
+        <div
+          role="alert"
+          id="fast-chat-error"
+          className="mx-[4px] mb-[12px] rounded-[14px] border border-[rgb(26_26_25_/_0.12)] px-[14px] py-[11px] text-[12.5px] leading-[1.5]"
+        >
+          <p className="m-0">{error}</p>
+          {pending ? (
+            <p className="mt-1 mb-0 text-muted">
+              Check reply retrieves this same request. It does not submit a new one.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void controller.initialize(create)}
+              className="mt-1 min-h-10 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-orange-app"
+            >
+              Reload conversation
+            </button>
+          )}
         </div>
       ) : null}
 
@@ -173,10 +170,14 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[4px] pb-2"
       >
-        {messages.length === 0 ? (
+        {loading ? (
+          <p role="status" className="text-muted text-[13px]">
+            Loading your conversation…
+          </p>
+        ) : null}
+        {!loading && messages.length === 0 && !pending ? (
           <p className="text-faint mt-[8px] mb-0 text-[13px] leading-[1.6] text-pretty">
-            Try: “which agents have actually been verified?”, “what would a 50 USDT per action limit
-            be worth?”, or “protect my Venus loan and keep the health factor above 1.25”.
+            Say what you need done. Find an agent, compare options, or follow your work here.
           </p>
         ) : null}
 
@@ -208,9 +209,11 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
                       title={m.cost.explanation}
                     >
                       {m.cost.points} points · {m.cost.balance.toLocaleString()} left
-                      {m.cost.held > m.cost.points
-                        ? ` · ${(m.cost.held - m.cost.points).toLocaleString()} of the ${m.cost.held.toLocaleString()} held went back`
-                        : ''}
+                      {m.cost.pendingPoints
+                        ? ` · ${m.cost.pendingPoints.toLocaleString()} points still held pending reconciliation`
+                        : m.cost.held > m.cost.points
+                          ? ` · ${(m.cost.held - m.cost.points).toLocaleString()} of the ${m.cost.held.toLocaleString()} held went back`
+                          : ''}
                     </p>
                   ) : null}
                 </div>
@@ -218,34 +221,58 @@ export function FastChat({ opening, onClose }: { opening?: string; onClose?: () 
             </li>
           ))}
         </ol>
-        {busy ? <p className="text-faint mt-[14px] mb-0 text-[12.5px]">Working…</p> : null}
+        {pending ? (
+          <div className="mt-4 flex flex-col items-end gap-2">
+            <p className="m-0 max-w-[520px] rounded-[16px] bg-[rgb(26_26_25_/_0.055)] px-[14px] py-[10px] text-[13px] leading-[1.55] whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {pending.messages.at(-1)?.content}
+            </p>
+            <p role="status" className="text-muted m-0 text-[12px]">
+              {busy ? 'Working…' : 'Waiting for the reply'}
+            </p>
+          </div>
+        ) : null}
       </div>
 
-      <div className="flex shrink-0 items-end gap-[8px] px-[4px] pt-[12px]">
-        <textarea
-          aria-label="Message Fast mode"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              void ask(draft.trim())
-            }
-            if (e.key === 'Escape' && onClose) onClose()
-          }}
-          rows={1}
-          placeholder="Ask for what you need…"
-          className="text-ink-app min-h-[44px] min-w-0 flex-1 resize-none rounded-[14px] border border-[rgb(26_26_25_/_0.14)] bg-transparent px-[14px] py-[12px] text-[13.5px] leading-[1.45] outline-none focus:border-[rgb(26_26_25_/_0.4)]"
-        />
-        <button
-          type="button"
-          disabled={busy || !draft.trim()}
-          onClick={() => void ask(draft.trim())}
-          className="bg-ink-app hover:bg-orange-app h-[44px] flex-none rounded-[14px] border-0 px-[16px] text-[13.5px] font-bold text-white transition-colors disabled:opacity-40"
-        >
-          Ask
-        </button>
-      </div>
+      <form
+        aria-busy={busy}
+        onSubmit={(event) => {
+          event.preventDefault()
+          void controller.send()
+        }}
+        className="shrink-0 px-[4px] pt-[12px]"
+      >
+        <label htmlFor={`fast-message-${id}`} className="mb-2 block text-[12px] font-semibold">
+          Your message
+        </label>
+        <div className="flex items-end gap-[8px]">
+          <textarea
+            id={`fast-message-${id}`}
+            aria-describedby={error ? 'fast-chat-error' : undefined}
+            value={draft}
+            readOnly={Boolean(pending)}
+            disabled={loading}
+            onChange={(e) => controller.setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                void controller.send()
+              }
+              if (e.key === 'Escape' && onClose) onClose()
+            }}
+            rows={1}
+            placeholder="Ask for what you need…"
+            maxLength={6000}
+            className="text-ink-app min-h-[44px] min-w-0 flex-1 resize-none rounded-[14px] border border-[rgb(26_26_25_/_0.14)] bg-transparent px-[14px] py-[12px] text-[13.5px] leading-[1.45] focus-visible:outline-2 focus-visible:outline-orange-app"
+          />
+          <button
+            type="submit"
+            disabled={loading || busy || (!pending && !draft.trim())}
+            className="bg-ink-app hover:bg-orange-app h-[44px] flex-none rounded-[14px] border-0 px-[16px] text-[13.5px] font-bold text-white transition-colors duration-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-app disabled:opacity-40 motion-reduce:transition-none"
+          >
+            {busy ? 'Working…' : pending ? 'Check reply' : 'Ask'}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }
@@ -284,8 +311,11 @@ function Steps({ steps }: { steps: AssistantStep[] }) {
             {TOOL_LABEL[s.tool] ?? s.tool}
             {s.ok ? '' : ' (refused)'}
           </span>
-          {s.ok && typeof s.input.agent_id === 'string' && /^\d+$/.test(s.input.agent_id) ? (
-            <a href={`/registry/${s.input.agent_id}`} className="underline underline-offset-2">
+          {s.ok && fastToolAgentHref(s.tool, s.input.agent_id) ? (
+            <a
+              href={fastToolAgentHref(s.tool, s.input.agent_id)}
+              className="underline underline-offset-2"
+            >
               View agent
             </a>
           ) : null}

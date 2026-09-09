@@ -38,6 +38,9 @@ const TRANSFER = parseAbiItem(
 /** Computed rather than pasted, so it cannot be subtly wrong. */
 const TRANSFER_TOPIC = toEventSelector(TRANSFER)
 
+/** Receipt depth policy, not a claim that a block count proves BSC finality. */
+export const DEPOSIT_CONFIRMATIONS = 3
+
 export interface DepositConfig {
   rpcUrl: string
   chainId: number
@@ -55,7 +58,36 @@ export async function creditDeposit(input: {
   if (!/^0x[0-9a-fA-F]{64}$/.test(input.transactionHash))
     throw new ClientError('That is not a transaction hash.', { code: 'DEPOSIT_MALFORMED' })
 
+  if (input.owner.toLowerCase() === input.config.treasury.toLowerCase())
+    throw new ClientError(
+      'A transfer from the receiving treasury to itself cannot buy points. Use a different paying wallet.',
+      {
+        code: 'DEPOSIT_SELF_TRANSFER',
+      },
+    )
+
   const client = createPublicClient({ chain: bscTestnet, transport: http(input.config.rpcUrl) })
+
+  let network: number
+  try {
+    network = await client.getChainId()
+  } catch {
+    throw new ClientError(
+      'The payment network could not be checked. Retry the same transaction hash later; do not send another payment.',
+      {
+        code: 'DEPOSIT_NETWORK_UNAVAILABLE',
+        statusCode: 503,
+      },
+    )
+  }
+  if (network !== input.config.chainId)
+    throw new ClientError(
+      'The payment network does not match this deployment. No points were added. Contact AiKi before sending funds.',
+      {
+        code: 'DEPOSIT_NETWORK_MISMATCH',
+        statusCode: 503,
+      },
+    )
 
   let receipt: Awaited<ReturnType<typeof client.getTransactionReceipt>>
   try {
@@ -70,6 +102,31 @@ export async function creditDeposit(input: {
     throw new ClientError('That transaction failed, so nothing was paid.', {
       code: 'DEPOSIT_REVERTED',
     })
+
+  let latestBlock: bigint
+  try {
+    latestBlock = await client.getBlockNumber({ cacheTime: 0 })
+  } catch {
+    throw new ClientError(
+      'Payment confirmations could not be checked. Retry the same transaction hash later; do not send another payment.',
+      {
+        code: 'DEPOSIT_CONFIRMATIONS_UNAVAILABLE',
+        statusCode: 503,
+      },
+    )
+  }
+  if (
+    typeof receipt.blockNumber !== 'bigint' ||
+    receipt.blockNumber < 0n ||
+    latestBlock - receipt.blockNumber + 1n < BigInt(DEPOSIT_CONFIRMATIONS)
+  )
+    throw new ClientError(
+      `This payment needs ${DEPOSIT_CONFIRMATIONS} block confirmations before points can be added. Wait a moment, then retry the same transaction hash. Do not send another payment.`,
+      {
+        code: 'DEPOSIT_CONFIRMING',
+        statusCode: 409,
+      },
+    )
 
   const wanted = {
     token: input.config.token.toLowerCase(),

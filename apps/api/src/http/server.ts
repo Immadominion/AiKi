@@ -4,6 +4,7 @@ import { DELEGATION_TYPES, delegationDomain, ROOT_AUTHORITY } from '@aiki/contra
 import Fastify from 'fastify'
 import type { AccountDeployer } from '../accounts/deploy.js'
 import type { AccountStore } from '../accounts/store.js'
+import { registerConversationRoutes } from '../assistant/conversations-routes.js'
 import { type AssistantConfig, registerAssistantRoutes } from '../assistant/routes.js'
 import { requireOwner, requireSession } from '../auth/guard.js'
 import { requireIngestToken } from '../auth/ingest.js'
@@ -15,6 +16,7 @@ import { compileCaveats, describeEnforcement, withDerivedTiers } from '../author
 import type { ChainReader } from '../authority/chain-reader.js'
 import type { Constraint } from '../authority/policy.js'
 import { type BenchmarkRun, BenchmarkService, benchmarkEvidence } from '../benchmarks/service.js'
+import { registerCatalogRoutes } from '../catalog/routes.js'
 import type { EnforcerDeployment } from '../config/enforcers.js'
 import { pointsForSettlement } from '../credits/pricing.js'
 import { DuplicateCharge } from '../credits/store.js'
@@ -213,9 +215,11 @@ export function createApiServer(input: {
         input.auth.signer.verify(readCookie(request.headers.cookie, SESSION_COOKIE)) ?? undefined
   })
   if (input.auth) registerAuthRoutes(app, input.auth)
+  registerCatalogRoutes(app)
   if (input.marketplace) registerMarketplaceRoutes(app, input.marketplace)
   if (input.watches) registerWatchRoutes(app, { jobs, watches: input.watches })
   if (input.assistant) registerAssistantRoutes(app, input.assistant)
+  if (input.assistant?.conversations) registerConversationRoutes(app, input.assistant.conversations)
   /*
    * The other shape of trade. A hire picks a listed agent and pays its published
    * price; a task is work nobody has listed, funded before it is visible, that

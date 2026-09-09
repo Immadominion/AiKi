@@ -21,6 +21,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { usePalette } from '@/components/shell/CommandPalette'
 import { useHoverIcon } from '@/components/ui/AnimatedIcon'
+import { UserAvatar } from '@/components/ui/Avatar'
 import { useToast } from '@/components/ui/Toast'
 import { FAST_HOME, route } from '@/lib/routes'
 import { CONNECT_TOAST, shortAddress } from '@/lib/wallet'
@@ -77,6 +78,7 @@ const GROUPS: { label: string; items: Item[] }[] = [
     items: [
       { label: 'Docs', icon: BookOpenIcon, href: '/docs/getting-started' },
       { label: 'Wallet', icon: WalletIcon, href: '/settings#wallet' },
+      { label: 'Points', icon: WalletIcon, href: '/credits' },
       { label: 'Notifications', icon: BellIcon, href: '/settings#notifications' },
       { label: 'Evidence API', icon: CodeIcon, href: '/settings#api', tag: 'Beta' },
     ],
@@ -99,7 +101,13 @@ function NavRow({
   onUnbuilt: (msg: string) => void
 }) {
   const { ref, hoverProps } = useHoverIcon()
-  const on = item.href?.split('#')[0] === path && !item.href.includes('#')
+  const on = Boolean(
+    item.href &&
+      !item.href.includes('#') &&
+      (item.href === path ||
+        (item.href === '/explore' && path.startsWith('/catalog/')) ||
+        (item.href === '/registry' && path.startsWith('/registry/'))),
+  )
   const Icon = item.icon
 
   const inner = (
@@ -171,7 +179,7 @@ function NavRow({
 }
 
 export function Sidebar({
-  userName = 'Dominion',
+  userName = 'Your account',
   collapsed: collapsedPref,
   onToggle,
   onNavigate,
@@ -428,12 +436,7 @@ export function Sidebar({
               collapsed ? 'justify-center px-0' : 'px-[10px]'
             }`}
           >
-            <span
-              className="flex size-9 flex-none items-center justify-center rounded-xl text-[14px] font-extrabold text-white"
-              style={{ background: 'var(--agent-account)' }}
-            >
-              D
-            </span>
+            <UserAvatar address={address} />
             {collapsed ? null : (
               <>
                 <span className="min-w-0 flex-1">

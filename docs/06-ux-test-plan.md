@@ -18,6 +18,8 @@ Record the app revision, environment, browser, viewport and test time. A checkbo
 - [ ] The account and existing work remain the same after either switch or reload.
 - [ ] A first-time user can tell how to describe work, browse providers, open Work and find People.
 - [ ] Connecting or signing in explains what it authorizes. It does not silently buy a task or grant fund access.
+- [ ] History contains only this wallet's saved conversations. Reload and a second signed-in device can resume the same real messages without submitting another turn.
+- [ ] Interrupt a Fast reply, reload, and use Check reply. It retains the exact request key and does not create another charge or task. Disconnecting or switching wallets clears the private view.
 
 ## B. Find and choose
 
@@ -27,7 +29,7 @@ Record the app revision, environment, browser, viewport and test time. A checkbo
 - [ ] A profile makes the offer, scope, price and next step understandable before asking the user to inspect technical detail.
 - [ ] The compact identity card and supporting details remain readable without a forced full-height empty container.
 - [ ] Endpoint checks, thin evidence and stale observations support the choice. A probe response is not presented as delivered work or a guarantee.
-- [ ] The four featured agent categories are discoverable without implying that they exhaust every kind of work the marketplace can support.
+- [ ] Live categories and supported sources are discoverable without implying that a featured or indexed subset is the whole marketplace.
 
 ## C. Commission, deliver and review in Work
 
@@ -41,6 +43,7 @@ Record the app revision, environment, browser, viewport and test time. A checkbo
 - [ ] The brief, submitted work and final review remain visible after reload.
 - [ ] Missing balance, dispatch failure, delivery expiry, review expiry, dispute and cancellation paths have accurate states and recovery actions.
 - [ ] Open work cannot be cancelled to reclaim held points after a valid claim, except through the implemented expiry or resolution rules.
+- [ ] Expanding a delivery preserves its code, URLs and original text. A background status refresh does not collapse the reading area. An expired assigned task offers its poster the supported cancel-and-refund action.
 
 ## D. People and participant directions
 
@@ -49,6 +52,8 @@ Record the app revision, environment, browser, viewport and test time. A checkbo
 - [ ] No delivery history is presented as a new provider, not as proof of poor work.
 - [ ] A direct hire of a person uses `hirePerson`; a direct agent hire uses `assignAgentId`. The request cannot select both.
 - [ ] The hired person sees the assigned work in their own task list and can submit it for the buyer's review.
+- [ ] The listing form opens only when requested. Pausing availability saves `false`, removes the listing from available results and preserves the existing work record.
+- [ ] Request work shows the actual offer, server fee, points hold and withdrawal limitation before confirmation. An interrupted request retains its original body and payment key.
 
 Verify these directions with supported clients and dedicated test participants. The task API and assistant tool support described here is not a claim of feature parity in every UI or deployment.
 
@@ -77,6 +82,7 @@ Record a direction as unavailable when the relevant client, provider or deployme
 - [ ] Dialogs, menus, task review and permission actions fit the phone viewport.
 - [ ] Icon-only controls have accessible names and hover/focus labels. Fullscreen and exit hints do not occupy permanent extra space.
 - [ ] Keyboard focus is visible, order follows reading order, and Escape closes the appropriate surface.
+- [ ] A closed mobile sidebar cannot receive keyboard focus. An open sidebar contains focus, closes on Escape, and returns focus to its trigger.
 - [ ] Reduced motion preserves access to every action and all content.
 - [ ] Loading, unavailable and genuinely empty states are distinct. Failed requests never appear as successful work.
 - [ ] Copy describes a marketplace and the work a person can do next. It does not make probing the product or describe humans only as a substitute when agents fail.

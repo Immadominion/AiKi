@@ -7,6 +7,7 @@ import {
   ESCROW_ACCOUNT,
   InsufficientBalance,
 } from '../credits/store.js'
+import { ClientError } from '../http/errors.js'
 import type { JobService } from '../jobs/service.js'
 import { hashCanonicalJson } from '../marketplace/canonical-json.js'
 import type { JsonValue } from '../marketplace/model.js'
@@ -169,10 +170,25 @@ export function registerTaskRoutes(
 
   app.get<{ Params: { id: string } }>('/v1/tasks/:id', async (request, reply) => {
     const task = await input.tasks.get(request.params.id)
-    if (!task)
+    const publiclyOpen =
+      task &&
+      !task.directHire &&
+      !task.assignedAgentId &&
+      (task.status === 'OPEN' ||
+        (task.status === 'CLAIMED' &&
+          task.claimExpiresAt &&
+          Date.parse(task.claimExpiresAt) < Date.now()))
+    const address = request.session?.address.toLowerCase()
+    const participant =
+      task &&
+      address &&
+      (task.poster.toLowerCase() === address || task.claimedBy?.toLowerCase() === address)
+    if (!task || (!publiclyOpen && !participant))
       return reply.code(404).send({
         error: { code: 'TASK_NOT_FOUND', message: 'No such task.', retryable: false },
       })
+    // For private work, also reject a stale cookie after another wallet was selected.
+    if (!publiclyOpen && !requireSession(request, reply)) return reply
     return { ...task, outlay: task.outlay.toString() }
   })
 
@@ -614,7 +630,12 @@ export function registerTaskRoutes(
           retryable: false,
         },
       })
-    return { kinds: TASK_KINDS, sellers: await input.sellers.list(50) }
+    return {
+      kinds: TASK_KINDS,
+      sellers: await input.sellers.list(50),
+      minimumPricePoints: MIN_PRICE_POINTS,
+      feeBasisPoints: PLATFORM_FEE_BPS,
+    }
   })
 
   app.get<{ Params: { address: string } }>('/v1/sellers/:address', async (request, reply) => {
@@ -655,7 +676,24 @@ export function registerTaskRoutes(
 
     const name = text(request.body?.name, 60)
     const blurb = text(request.body?.blurb, 400)
-    const kinds = (request.body?.kinds ?? []).filter(isTaskKind) as TaskKind[]
+    const requestedKinds = request.body?.kinds
+    if (!Array.isArray(requestedKinds) || requestedKinds.some((kind) => !isTaskKind(kind)))
+      throw new ClientError('Choose the types of work you offer from the available list.', {
+        code: 'LISTING_KINDS_INVALID',
+      })
+    const kinds = [...new Set(requestedKinds)] as TaskKind[]
+    const ratePoints = request.body?.ratePoints === undefined ? 0 : request.body.ratePoints
+    if (typeof ratePoints !== 'number' || !Number.isSafeInteger(ratePoints) || ratePoints < 0)
+      throw new ClientError(
+        'Enter your suggested offer as a whole, non-negative number of points.',
+        {
+          code: 'LISTING_RATE_INVALID',
+        },
+      )
+    if (request.body?.available !== undefined && typeof request.body.available !== 'boolean')
+      throw new ClientError('Availability must be on or off.', {
+        code: 'LISTING_AVAILABILITY_INVALID',
+      })
     if (!name || !blurb)
       return reply.code(400).send({
         error: {
@@ -680,7 +718,7 @@ export function registerTaskRoutes(
       name,
       blurb,
       kinds,
-      ratePoints: Math.max(0, Math.trunc(Number(request.body?.ratePoints ?? 0))),
+      ratePoints,
       available: request.body?.available !== false,
     })
   })

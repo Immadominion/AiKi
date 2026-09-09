@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
+import {
+  type AssistantRequestStore,
+  InMemoryAssistantRequestStore,
+  PostgresAssistantRequestStore,
+} from '../assistant/billing.js'
 
 /**
  * Points, and why they moved.
@@ -77,6 +82,12 @@ export interface CreditTransferReference {
 }
 
 export interface CreditStore {
+  readonly assistantRequests: AssistantRequestStore
+  grantWelcome(input: {
+    owner: string
+    points: number
+    dailyLimit: number
+  }): Promise<'granted' | 'already_granted' | 'daily_limit'>
   balance(owner: string): Promise<number>
   /** Adds points against a payment. Refuses to credit the same reference twice. */
   deposit(input: {
@@ -209,6 +220,28 @@ const lower = (owner: string) => owner.toLowerCase()
 
 export class InMemoryCreditStore implements CreditStore {
   private readonly entries: CreditEntry[] = []
+  readonly assistantRequests = new InMemoryAssistantRequestStore()
+
+  async grantWelcome(input: { owner: string; points: number; dailyLimit: number }) {
+    const reference = `welcome:${lower(input.owner)}`
+    if (this.entries.some((entry) => entry.reference === reference))
+      return 'already_granted' as const
+    const since = new Date(Date.now() - 86_400_000).toISOString()
+    if (
+      this.entries.filter(
+        (entry) => entry.reason === 'welcome' && entry.delta > 0 && entry.createdAt >= since,
+      ).length >= input.dailyLimit
+    )
+      return 'daily_limit' as const
+    // No await between the check and both writes in the local implementation.
+    this.write(input.owner, input.points, 'welcome', reference, {
+      note: 'One-time Fast mode allowance.',
+    })
+    this.write(ISSUANCE_ACCOUNT, -input.points, 'welcome', `${reference}:src`, {
+      issuedTo: lower(input.owner),
+    })
+    return 'granted' as const
+  }
 
   async balance(owner: string) {
     return this.entries
@@ -355,8 +388,33 @@ export class InMemoryCreditStore implements CreditStore {
 
 export class PostgresCreditStore implements CreditStore {
   private readonly sql: postgres.Sql
+  readonly assistantRequests: AssistantRequestStore
   constructor(databaseUrl: string) {
     this.sql = postgres(databaseUrl, { max: 4, idle_timeout: 20 })
+    this.assistantRequests = new PostgresAssistantRequestStore(this.sql)
+  }
+
+  async grantWelcome(input: { owner: string; points: number; dailyLimit: number }) {
+    return this.sql.begin(async (tx) => {
+      // The issuance row is shared by all grants. Count and issue under the
+      // same transaction lock, so new wallets cannot race the global ceiling.
+      await this.lock(tx, [input.owner, ISSUANCE_ACCOUNT])
+      const reference = `welcome:${lower(input.owner)}`
+      const existing = await tx`SELECT id FROM credit_entries WHERE reference = ${reference}`
+      if (existing.length) return 'already_granted' as const
+      const rows = await tx<{ count: string }[]>`
+        SELECT count(*) FROM credit_entries WHERE reason = 'welcome'
+          AND delta > 0 AND created_at >= now() - interval '1 day'
+      `
+      if (Number(rows[0]?.count ?? 0) >= input.dailyLimit) return 'daily_limit' as const
+      await this.post(tx, input.owner, input.points, 'welcome', reference, {
+        note: 'One-time Fast mode allowance.',
+      })
+      await this.post(tx, ISSUANCE_ACCOUNT, -input.points, 'welcome', `${reference}:src`, {
+        issuedTo: lower(input.owner),
+      })
+      return 'granted' as const
+    })
   }
 
   async balance(owner: string) {

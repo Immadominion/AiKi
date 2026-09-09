@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk'
+import { CATALOG_TOOLS, runCatalogTool } from '../catalog/assistant-tools.js'
 import { settlementForPoints } from '../credits/pricing.js'
 import { SETTLEMENT } from '../settlement/pricing.js'
 
@@ -25,6 +26,10 @@ export interface ToolContext {
   baseUrl: string
   /** The caller's session, forwarded verbatim. The assistant borrows it, never mints one. */
   cookie: string
+  /** Accepted SIWE address from the route, never model-supplied. */
+  sessionAddress?: string
+  turnId?: string
+  toolCallId?: string
 }
 
 export interface ToolCallResult {
@@ -116,6 +121,7 @@ const spendingConstraints = (totalPoints: number, perTaskPoints: number, days: n
 ]
 
 export const TOOLS: Anthropic.Tool[] = [
+  ...CATALOG_TOOLS,
   {
     name: 'agent_task_support',
     description:
@@ -129,13 +135,14 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'search_agents',
     description:
-      'Find agents on the registry with what AiKi measured about each. Note this searches the NAME ' +
-      'an agent registered, and names here rarely describe what an agent does, so a miss usually ' +
-      'means "nothing is named that" rather than "there are none".',
+      'Search names and descriptions in the part of the registry AiKi has indexed. Results include measured data, not a guarantee that an agent accepts work. A miss does not mean no such agent exists on BNB Chain.',
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Words to match against agent names.' },
+        query: {
+          type: 'string',
+          description: 'Words to match against indexed agent names and descriptions.',
+        },
         limit: { type: 'number' },
       },
     },
@@ -461,13 +468,19 @@ export async function runTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<ToolCallResult> {
+  const operationKey =
+    ctx.turnId && ctx.toolCallId
+      ? `fast:${ctx.turnId}:${ctx.toolCallId}`
+      : `fast:${crypto.randomUUID()}`
   const call = async (path: string, init: RequestInit = {}): Promise<ToolCallResult> => {
     const res = await fetch(`${ctx.baseUrl}${path}`, {
       ...init,
+      signal: AbortSignal.timeout(30_000),
       headers: {
         ...(init.body ? { 'content-type': 'application/json' } : {}),
         cookie: ctx.cookie,
         ...init.headers,
+        ...(ctx.sessionAddress ? { 'x-aiki-wallet-address': ctx.sessionAddress } : {}),
       },
     })
     const raw = await res.text()
@@ -486,6 +499,11 @@ export async function runTool(
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       ...(headers ? { headers } : {}),
     })
+
+  const catalog = await runCatalogTool(name, args, ctx.sessionAddress, (path, body) =>
+    body === undefined ? call(path) : post(path, body),
+  )
+  if (catalog) return catalog
 
   switch (name) {
     case 'agent_task_support':
@@ -525,7 +543,7 @@ export async function runTool(
       return post(
         '/v1/jobs',
         { authorizationId: args.mandate_id },
-        { 'idempotency-key': `fast-${crypto.randomUUID()}` },
+        { 'idempotency-key': operationKey },
       )
     case 'watch_position': {
       const account = await call('/v1/account')
@@ -556,36 +574,48 @@ export async function runTool(
     case 'my_tasks':
       return call('/v1/tasks/mine')
     case 'post_task':
-      return post('/v1/tasks', {
-        title: args.title,
-        brief: args.brief,
-        kind: args.kind,
-        pricePoints: Math.trunc(Number(args.price_points)),
-        ...(args.work_hours ? { workHours: Math.trunc(Number(args.work_hours)) } : {}),
-        authorizationId: args.mandate_id,
-      })
+      return post(
+        '/v1/tasks',
+        {
+          title: args.title,
+          brief: args.brief,
+          kind: args.kind,
+          pricePoints: Math.trunc(Number(args.price_points)),
+          ...(args.work_hours ? { workHours: Math.trunc(Number(args.work_hours)) } : {}),
+          authorizationId: args.mandate_id,
+        },
+        { 'idempotency-key': operationKey },
+      )
     case 'hire_agent':
-      return post('/v1/tasks', {
-        title: args.title,
-        brief: args.brief,
-        kind: args.kind,
-        pricePoints: Math.trunc(Number(args.price_points)),
-        ...(args.work_hours ? { workHours: Math.trunc(Number(args.work_hours)) } : {}),
-        authorizationId: args.mandate_id,
-        assignAgentId: args.agent_id,
-      })
+      return post(
+        '/v1/tasks',
+        {
+          title: args.title,
+          brief: args.brief,
+          kind: args.kind,
+          pricePoints: Math.trunc(Number(args.price_points)),
+          ...(args.work_hours ? { workHours: Math.trunc(Number(args.work_hours)) } : {}),
+          authorizationId: args.mandate_id,
+          assignAgentId: args.agent_id,
+        },
+        { 'idempotency-key': operationKey },
+      )
     case 'find_people':
       return call('/v1/sellers')
     case 'hire_person':
-      return post('/v1/tasks', {
-        title: args.title,
-        brief: args.brief,
-        kind: args.kind,
-        pricePoints: Math.trunc(Number(args.price_points)),
-        ...(args.work_hours ? { workHours: Math.trunc(Number(args.work_hours)) } : {}),
-        authorizationId: args.mandate_id,
-        hirePerson: args.address,
-      })
+      return post(
+        '/v1/tasks',
+        {
+          title: args.title,
+          brief: args.brief,
+          kind: args.kind,
+          pricePoints: Math.trunc(Number(args.price_points)),
+          ...(args.work_hours ? { workHours: Math.trunc(Number(args.work_hours)) } : {}),
+          authorizationId: args.mandate_id,
+          hirePerson: args.address,
+        },
+        { 'idempotency-key': operationKey },
+      )
     case 'claim_task':
       return post(`/v1/tasks/${args.task_id}/claim`)
     case 'submit_task':
