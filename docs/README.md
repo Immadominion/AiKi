@@ -18,6 +18,7 @@ Start with [PRODUCT.md](PRODUCT.md) for the product definition, participants, ex
 | [On-chain contracts](../onchain/README.md) | Contract behavior, deployment context and security boundaries. |
 | [UI plan](05-ui-plan.md) | Product surfaces and the historical UI plan, with current route guidance. |
 | [UX test plan](06-ux-test-plan.md) | Marketplace journeys, mode behavior and detailed interface checks. |
+| [Fast billing operations](07-fast-billing-operations.md) | Inspect unconfirmed turns and held points without unsafe retries or refunds. |
 | [Stack snapshot](03-stack.md) | August dependency research. Package manifests and lockfile describe installed versions. |
 | [8004scan notes](04-8004scan-api-notes.md) | Dated integration observations, not product positioning or current service guarantees. |
 | [Research guide](../research/README.md) | Protocol, ecosystem, measurement and architecture studies. |

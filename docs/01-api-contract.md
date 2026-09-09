@@ -19,6 +19,7 @@ In particular, mandate jobs and priced marketplace tasks are separate v1 flows.
 | --- | --- | --- |
 | `/v1/search`, agent passports and comparison | Find a provider and understand its capabilities and required access. | `apps/api/src/http/server.ts` |
 | `/v1/assistant/*` | Work through marketplace actions in Fast mode. | `apps/api/src/assistant/routes.ts` |
+| `/v1/assistant/conversations` | Save and resume conversations for the signed-in wallet. | `apps/api/src/assistant/conversations-routes.ts` |
 | `/v1/tasks/*`, `/v1/sellers/*` | Commission work, publish human-provider profiles, deliver and review tasks. | `apps/api/src/tasks/routes.ts` |
 | `/v1/authorizations/*`, `/v1/jobs/*` | Set action permissions, create mandate jobs and follow their activity. | `apps/api/src/http/server.ts`, `apps/api/src/runner/routes.ts` |
 | `/v2/providers`, `/v2/offers`, `/v2/jobs` | Versioned offers, agreements and the additive settlement workflow. | [Marketplace API v2](03-marketplace-api-v2.md) |
@@ -26,6 +27,45 @@ In particular, mandate jobs and priced marketplace tasks are separate v1 flows.
 Fast and Manual are ways to use the marketplace, not API versions. Existing v1
 tasks, mandate jobs and v2 jobs retain their own contracts; their identifiers and
 payment states are not interchangeable.
+
+### Saved Fast conversations and safe retries
+
+Create a conversation with `POST /v1/assistant/conversations` and a client-generated
+UUID in `{ "id": "..." }`. Repeating that ID for the same wallet returns the same
+conversation. List with `GET /v1/assistant/conversations`; use its `nextCursor` as
+`?before=...` for older results. Read the complete saved messages with
+`GET /v1/assistant/conversations/:id`. All three routes require a signed-in wallet.
+Another wallet cannot read or claim the conversation.
+
+Send `conversationId`, the recent saved messages, and a new user message to
+`POST /v1/assistant/messages`. Supply an `Idempotency-Key` for each new turn. If
+the connection is interrupted, retry the identical body with that same key to
+retrieve its result, not purchase another turn. The browser preserves the pending
+request for the current wallet and thread; opening History only reads it.
+Completed messages live in PostgreSQL and are available on another device after
+sign-in. Browser-only drafts and pending request recovery stay on the current device.
+
+Responses include the actual steps and points cost. `cost.pendingPoints`, when
+present, is still held for reconciliation, not refunded. Failed turns may have
+completed actions or known usage. Check the saved reply and Work before creating
+a different request. Registry and provider results remain data, not permission to
+spend or instructions to bypass the user's limits.
+
+### People offers
+
+`GET /v1/sellers` returns available profiles plus `minimumPricePoints` and
+`feeBasisPoints` for the offer review. `PUT /v1/sellers/me` updates only the signed-in
+wallet's listing, including `available: false` to pause it without losing its work
+record. Suggested offers must be non-negative whole points.
+
+The People UI sends an explicitly confirmed offer through `POST /v1/tasks` with
+`hirePerson` and a stable `Idempotency-Key`. It shows the buyer's offer, fee and total
+points hold first. The task appears in Work as `/work?task=<id>`. These internal
+points are not withdrawable cash, and this flow does not claim on-chain settlement.
+Direct-task details are private to the poster and assigned worker. Public task
+detail reads expose only genuinely open work, including expired public claims
+that can be taken again. Submitted and completed deliveries require participant
+authentication, even when the original task was posted publicly.
 
 ---
 
