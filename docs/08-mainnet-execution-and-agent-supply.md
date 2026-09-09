@@ -33,7 +33,30 @@ The mainnet deployment file has not been produced or enabled in this repair. Mai
 
 A local chain56 fork simulation completed without broadcasting, using the verified prior deployment wallet. It estimated 7,627,729 gas for the suite, or 0.00038138645 BNB at the observed 0.05 gwei gas price. The wallet was recovered from the existing Git-ignored, owner-only deployment environment file; its key derives to the recorded deployment address. The server's executor and account-funding keys remain separate operational roles. No real BNB was moved during this repair, and simulation addresses are not deployed contracts.
 
-Points purchases remain separately configured on testnet. Changing the execution network does not silently migrate billing. Mainnet billing needs its own treasury, asset, RPC and end-to-end deposit checks.
+Points purchases are configured separately from execution. Changing the executor network does not move billing or historical balances. Mainnet billing support is implemented as described below; the production billing configuration has not been switched in this repair.
+
+## Mainnet points purchases
+
+`config/credits-network.ts` is shared by the production API, development API and ledger reconciliation command. A missing treasury disables purchases. Existing deployments default to chain97 until an operator explicitly selects chain56.
+
+| Setting | Mainnet requirement |
+| --- | --- |
+| `CREDITS_CHAIN_ID` | `56` |
+| `CREDITS_TREASURY_ADDRESS` | Reviewed receiving wallet, not a signing key |
+| `CREDITS_TOKEN_ADDRESS` | Omit to use pinned BSC USDT, `0x55d398326f99059ff775485246999027b3197955`. Other mainnet tokens are rejected. |
+| `CREDITS_RPC_URL` | BSC mainnet endpoint that supports the finalized block tag. Falls back to `BSC_RPC_URL`, then the public mainnet endpoint. Never inherits the executor RPC. |
+
+Mainnet USDT has eighteen decimals; the previous testnet token has six. Points conversion uses exact integer arithmetic and the existing rate of 10,000 points per USDT. It rejects unsafe integer totals and never rescales historical entries. The transaction receipt supplies the amount, not a browser request. Prices for work and Fast mode are unchanged.
+
+Before showing payment addresses, the treasury endpoint checks the RPC chain, token decimals and, on mainnet, that a valid finalized block is readable. Its response is not cached. The Points screen validates the rail, shows the corresponding network and explorer, and hides unverified payment details. Fast mode receives the configured execution and payment networks separately and directs people to Points for current verified instructions. It does not embed payment addresses in its prompt.
+
+A deposit must be a successful transfer of the configured token from the signed-in wallet to the configured treasury. Self-transfers are refused. Receipt hash, block depth and canonical block identity are checked. Mainnet additionally requires BSC's finalized height to cover the payment block, then rechecks the canonical block hash. Unsupported or stalled finality never falls back to merely waiting three blocks. See the [official BSC finality API](https://docs.bnbchain.org/bnb-smart-chain/developers/json_rpc/bsc-api-list/#economic-finality-api). Retrying uses the same transaction hash, not a second payment.
+
+Existing lowercase transaction-hash uniqueness remains global, including across a network cutover. New records add network, token decimals, treasury and hash metadata. Reconciliation compares current-chain/token liabilities with the current treasury and reports other or unknown historical rails as unverified. It does not count old testnet payments as verified mainnet backing, delete balances, or silently convert them into grants.
+
+Before production cutover, inventory all existing deposits and pending verification requests. A payment on the old rail that has not been credited requires reviewed operator handling after the switch; the verifier deliberately accepts only its current rail. This repair does not implement a historical-rail recovery tool or change the economic terms of previously issued points. Run ledger checks for each historical rail and settle any unexplained liabilities before claiming all paid points are backed. Do not switch back to old six-decimal verifier code after accepting mainnet deposits.
+
+Local tests cover mainnet and testnet conversion, finality stalls and RPC failures, receipt branch changes, retries, mixed-rail accounting, stale wallet responses and network-specific payment instructions. A read-only mainnet RPC check confirmed USDT's eighteen decimals and support for the finalized block tag. No real payment or production billing cutover was performed. Wallet-connected purchase and verification remain release gates.
 
 ## Transactions awaiting confirmation
 

@@ -1,18 +1,28 @@
 'use client'
 
 import Link from 'next/link'
-import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { PageCard } from '@/components/shell/PageCard'
 import { useAccount } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
 import { ApiError, api, type CreditBalance } from '@/lib/api'
 import { route } from '@/lib/routes'
 import { CONNECT_TOAST } from '@/lib/wallet'
+import { subscribeWalletSession, walletSession } from '@/lib/wallet-session'
 import {
   type CreditRail,
   canVerifyDeposit,
   creditEntryLabel,
+  creditExplorer,
   creditLimitRows,
+  creditNetworkLabel,
   creditRail,
   paymentHash,
   points,
@@ -84,7 +94,16 @@ function Loading() {
   )
 }
 
-function ConnectedCredits({ address }: { address: string }) {
+export function ConnectedCredits({ address }: { address: string }) {
+  const session = useSyncExternalStore(
+    subscribeWalletSession,
+    () => `${walletSession().revision}:${walletSession().address ?? ''}`,
+    () => 'server',
+  )
+  return <CreditsAccount key={`${address.toLowerCase()}:${session}`} address={address} />
+}
+
+function CreditsAccount({ address }: { address: string }) {
   const [credits, setCredits] = useState<CreditBalance | null>(null)
   const [rail, setRail] = useState<CreditRail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -161,22 +180,28 @@ function ConnectedCredits({ address }: { address: string }) {
         <h2 id="credit-add-title" className="m-0 text-base font-bold">
           Add points
         </h2>
-        <p className="text-muted m-0 max-w-prose text-sm leading-relaxed">
-          Mainnet purchases are not available. This deployment accepts only its configured USDT
-          token on BNB Smart Chain Testnet.
-        </p>
         {rail ? (
           <>
+            <p className="text-muted m-0 max-w-prose text-sm leading-relaxed">
+              Pay with USDT on {creditNetworkLabel(rail)}. Use only the token and receiving address
+              shown below.
+            </p>
             <p className="text-sm">
-              <span className="font-mono tabular-nums">1</span> testnet USDT adds{' '}
+              <span className="font-mono tabular-nums">1</span>{' '}
+              {rail.chainId === 97 ? 'testnet USDT' : 'USDT'} adds{' '}
               <span className="font-mono tabular-nums">{points(rail.pointsPerUsdt)}</span> points.
             </p>
             {canVerifyDeposit(rail, address) ? (
-              <Payment rail={rail} onVerified={load} />
+              <Payment
+                key={`${rail.chainId}:${rail.token}:${rail.treasury}`}
+                rail={rail}
+                onVerified={load}
+                refreshing={loading}
+              />
             ) : (
               <p className="rounded-2xl bg-surface-sunk p-4 text-sm leading-relaxed">
                 This wallet is AiKi’s receiving treasury. A transfer to yourself cannot buy points.
-                Use a different paying wallet for the testnet deposit flow.
+                Use a different paying wallet to add points.
               </p>
             )}
           </>
@@ -281,7 +306,15 @@ function ConnectedCredits({ address }: { address: string }) {
   )
 }
 
-function Payment({ rail, onVerified }: { rail: CreditRail; onVerified: () => Promise<void> }) {
+function Payment({
+  rail,
+  onVerified,
+  refreshing,
+}: {
+  rail: CreditRail
+  onVerified: () => Promise<void>
+  refreshing: boolean
+}) {
   const say = useToast()
   const [hash, setHash] = useState('')
   const [busy, setBusy] = useState(false)
@@ -298,7 +331,7 @@ function Payment({ rail, onVerified }: { rail: CreditRail; onVerified: () => Pro
   }, [])
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (inFlight.current) return
+    if (inFlight.current || refreshing) return
     setError(null)
     setSuccess(null)
     let transactionHash: string
@@ -339,56 +372,65 @@ function Payment({ rail, onVerified }: { rail: CreditRail; onVerified: () => Pro
   return (
     <details className="rounded-2xl border border-ink-app/10 p-4">
       <summary className={`min-h-11 cursor-pointer py-3 text-sm font-bold ${FOCUS}`}>
-        Verify a testnet deposit
+        {rail.chainId === 97 ? 'Verify a testnet deposit' : 'Verify a USDT payment'}
       </summary>
       <div className="space-y-4 pt-3">
         <p className="m-0 text-sm leading-relaxed">
-          Use this exact token on BNB Smart Chain Testnet, chain{' '}
-          <span className="font-mono tabular-nums">97</span>. Confirm any transfer in your wallet.
-          This screen does not send funds.
+          Use this exact token on {creditNetworkLabel(rail)}, chain{' '}
+          <span className="font-mono tabular-nums">{rail.chainId}</span>. Confirm any transfer in
+          your wallet. This screen does not send funds.
         </p>
         <p className="text-work-ink m-0 text-sm font-semibold">
-          Do not send real BNB or mainnet USDT. Testnet BNB is only for network fees.
+          {rail.chainId === 97
+            ? 'Do not send real BNB or mainnet USDT. Testnet BNB is only for network fees.'
+            : 'Send only USDT on BNB Smart Chain. Do not send BNB or tokens from another network. BNB pays the network fee in your wallet.'}
         </p>
-        {(
-          [
-            ['Accepted token contract', rail.token],
-            ['Receiving treasury', rail.treasury],
-          ] as const
-        ).map(([label, value]) => (
-          <div key={label} className="rounded-xl bg-surface-sunk p-3">
-            <p className="text-muted m-0 text-xs">{label}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-3">
-              <code className="min-w-0 flex-1 break-all font-mono text-xs">{value}</code>
-              <button
-                type="button"
-                className={SECONDARY}
-                onClick={() => {
-                  if (!navigator.clipboard) {
-                    say('Select the address to copy it.')
-                    return
-                  }
-                  navigator.clipboard
-                    .writeText(value)
-                    .then(() => say(`${label} copied.`))
-                    .catch(() =>
-                      say('Your browser would not let us copy. Select the address to copy it.'),
-                    )
-                }}
+        {refreshing ? (
+          <p role="status" className="text-muted text-sm">
+            Checking payment details. Wait before sending funds.
+          </p>
+        ) : null}
+        <div hidden={refreshing} className="space-y-4">
+          {(
+            [
+              ['Accepted token contract', rail.token],
+              ['Receiving treasury', rail.treasury],
+            ] as const
+          ).map(([label, value]) => (
+            <div key={label} className="rounded-xl bg-surface-sunk p-3">
+              <p className="text-muted m-0 text-xs">{label}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-3">
+                <code className="min-w-0 flex-1 break-all font-mono text-xs">{value}</code>
+                <button
+                  type="button"
+                  className={SECONDARY}
+                  onClick={() => {
+                    if (!navigator.clipboard) {
+                      say('Select the address to copy it.')
+                      return
+                    }
+                    navigator.clipboard
+                      .writeText(value)
+                      .then(() => say(`${label} copied.`))
+                      .catch(() =>
+                        say('Your browser would not let us copy. Select the address to copy it.'),
+                      )
+                  }}
+                >
+                  Copy
+                </button>
+              </div>
+              <a
+                className={`inline-flex min-h-11 items-center text-xs font-semibold underline underline-offset-4 ${FOCUS}`}
+                href={`${creditExplorer(rail)}/address/${value}`}
+                target="_blank"
+                rel="noreferrer"
               >
-                Copy
-              </button>
+                {rail.chainId === 97 ? 'View on testnet explorer' : 'View on BscScan'}
+              </a>
             </div>
-            <a
-              className={`inline-flex min-h-11 items-center text-xs font-semibold underline underline-offset-4 ${FOCUS}`}
-              href={`https://testnet.bscscan.com/address/${value}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              View on testnet explorer
-            </a>
-          </div>
-        ))}
+          ))}
+        </div>
         <form onSubmit={submit} className="space-y-3" aria-busy={busy}>
           <label htmlFor="credit-payment-hash" className="block text-sm font-bold">
             Transaction hash
@@ -403,7 +445,7 @@ function Payment({ rail, onVerified }: { rail: CreditRail; onVerified: () => Pro
             onChange={(event) => setHash(event.target.value)}
             maxLength={68}
             required
-            disabled={busy}
+            disabled={busy || refreshing}
             aria-invalid={Boolean(error)}
             aria-describedby={error ? 'credit-payment-error' : 'credit-payment-hint'}
             className={`min-h-11 w-full rounded-xl border border-ink-app/20 bg-surface px-3 py-3 font-mono text-base sm:text-sm ${FOCUS}`}
@@ -411,9 +453,9 @@ function Payment({ rail, onVerified }: { rail: CreditRail; onVerified: () => Pro
           <p id="credit-payment-hint" className="text-muted m-0 text-xs leading-relaxed">
             Paste the hash after the transfer is mined. AiKi waits for{' '}
             <span className="font-mono tabular-nums">{points(rail.confirmations)}</span> block
-            confirmations. The payment must come from your signed-in wallet. AiKi checks the
-            network, token, sender, recipient, and amount. If it is still confirming, retry the same
-            hash.
+            confirmations{rail.finality === 'finalized' ? ' and network finality' : ''}. The payment
+            must come from your signed-in wallet. AiKi checks the network, token, sender, recipient,
+            and amount. If it is still confirming, retry the same hash.
           </p>
           {error ? (
             <p
@@ -429,7 +471,7 @@ function Payment({ rail, onVerified }: { rail: CreditRail; onVerified: () => Pro
               {success}
             </p>
           ) : null}
-          <button type="submit" className={BUTTON} disabled={busy}>
+          <button type="submit" className={BUTTON} disabled={busy || refreshing}>
             {busy ? 'Checking the payment...' : 'Verify payment and add points'}
           </button>
         </form>

@@ -436,6 +436,8 @@ export const api = {
     req<{
       available?: false
       chainId?: number
+      decimals?: number
+      finality?: 'finalized' | 'confirmations'
       token?: string
       treasury?: string
       pointsPerUsdt?: number

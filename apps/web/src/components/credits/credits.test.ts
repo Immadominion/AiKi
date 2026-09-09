@@ -3,7 +3,9 @@ import test from 'node:test'
 import {
   canVerifyDeposit,
   creditEntryLabel,
+  creditExplorer,
   creditLimitRows,
+  creditNetworkLabel,
   creditRail,
   paymentHash,
   points,
@@ -11,13 +13,15 @@ import {
 
 const config = {
   chainId: 97,
+  decimals: 6,
+  finality: 'confirmations',
   token: `0x${'12'.repeat(20)}`,
   treasury: `0x${'ab'.repeat(20)}`,
   pointsPerUsdt: 10000,
   confirmations: 3,
 }
 
-test('only a fully configured, supported testnet rail is offered', () => {
+test('only a fully configured rail with matching token units is offered', () => {
   assert.deepEqual(creditRail(config), config)
   for (const invalid of [
     null,
@@ -26,6 +30,11 @@ test('only a fully configured, supported testnet rail is offered', () => {
     { ...config, available: false },
     { ...config, chainId: 56 },
     { ...config, chainId: '97' },
+    { ...config, chainId: 1 },
+    { ...config, decimals: undefined },
+    { ...config, decimals: 18 },
+    { ...config, finality: undefined },
+    { ...config, finality: 'finalized' },
     { ...config, token: '' },
     { ...config, treasury: 'https://example.test' },
     { ...config, token: `0x${'0'.repeat(40)}` },
@@ -36,6 +45,27 @@ test('only a fully configured, supported testnet rail is offered', () => {
     { ...config, confirmations: 0 },
   ])
     assert.equal(creditRail(invalid), null)
+})
+
+test('mainnet USDT requires eighteen decimals and uses mainnet labels and links', () => {
+  const mainnet = {
+    ...config,
+    chainId: 56,
+    decimals: 18,
+    finality: 'finalized',
+    token: '0x55d398326f99059ff775485246999027b3197955',
+  }
+  const rail = creditRail(mainnet)
+  assert.ok(rail)
+  assert.deepEqual(rail, mainnet)
+  assert.equal(creditNetworkLabel(rail), 'BNB Smart Chain Mainnet')
+  assert.equal(creditExplorer(rail), 'https://bscscan.com')
+  assert.equal(creditRail({ ...mainnet, decimals: 6 }), null)
+  assert.equal(creditRail({ ...mainnet, token: config.token }), null)
+  const testnet = creditRail(config)
+  assert.ok(testnet)
+  assert.equal(creditNetworkLabel(testnet), 'BNB Smart Chain Testnet')
+  assert.equal(creditExplorer(testnet), 'https://testnet.bscscan.com')
 })
 
 test('disconnected, unconfigured, and treasury self-funding cannot verify purchases', () => {

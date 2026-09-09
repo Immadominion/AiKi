@@ -10,6 +10,7 @@ import { PostgresNonceStore } from './auth/nonce-store.js'
 import { describeCookieMismatch, SessionSigner } from './auth/session.js'
 import { viemChainReader } from './authority/chain-reader.js'
 import { createWatchMandateVerifier } from './authority/watch-readiness.js'
+import { creditsNetwork } from './config/credits-network.js'
 import { executionNetwork, verifyExecutionNetwork } from './config/execution-network.js'
 import { executorIdentity } from './config/executor-identity.js'
 import { checkLedger } from './credits/reconcile.js'
@@ -103,19 +104,12 @@ const marketplaceStore = new PostgresMarketplaceStore(databaseUrl)
  * and nothing else.
  */
 const assistantKey = process.env.ANTHROPIC_API_KEY
-const treasury = process.env.CREDITS_TREASURY_ADDRESS as `0x${string}` | undefined
-const creditsToken =
-  (process.env.CREDITS_TOKEN_ADDRESS as `0x${string}` | undefined) ??
-  '0xA11c8D9DC9b66E209Ef60F0C8D969D3CD988782c'
+const deposits = creditsNetwork(process.env)
+const treasury = deposits?.treasury
 const execution = await executionNetwork(process.env)
 await verifyExecutionNetwork(execution)
 const deployment = execution.deployment
 const enforcerRpcUrl = execution.rpcUrl
-/*
- * Named once and used twice: the route that credits a payment, and the check
- * that asks whether the payments are still there. Two copies of this would be
- * two opinions about which treasury is AiKi's.
- */
 /*
  * Where a hired agent sends work back to: this API, as the outside world sees
  * it. Railway names the deployment's own domain, so a deployment that forgot to
@@ -124,18 +118,6 @@ const enforcerRpcUrl = execution.rpcUrl
 const publicApiUrl =
   process.env.PUBLIC_API_URL ??
   (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined)
-const deposits = treasury
-  ? {
-      rpcUrl:
-        process.env.CREDITS_RPC_URL ??
-        (deployment.chainId === 97
-          ? enforcerRpcUrl
-          : 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'),
-      chainId: 97,
-      token: creditsToken,
-      treasury,
-    }
-  : undefined
 const base = process.env.REFERENCE_AGENT_BASE_URL
 const venusId = process.env.VENUS_GUARDIAN_AGENT_ID
 const rebalancerId = process.env.PANCAKE_REBALANCER_AGENT_ID
@@ -159,10 +141,12 @@ const app = createApiServer({
   deliverySecret: receiptSeed,
   // Names and verdicts only. The route is public and the amounts are not.
   ledgerHealth: async () =>
-    (await checkLedger(ledgerSql, await treasuryBackingPoints(deposits))).map(({ check, ok }) => ({
-      check,
-      ok,
-    })),
+    (await checkLedger(ledgerSql, await treasuryBackingPoints(deposits), deposits)).map(
+      ({ check, ok }) => ({
+        check,
+        ok,
+      }),
+    ),
   appendObservation: (observation) => store.append(observation),
   enforcers: deployment,
   ...(agentSessionKey ? { agentSessionKey } : {}),
@@ -199,6 +183,7 @@ const app = createApiServer({
     : {}),
   assistant: {
     credits: creditStore,
+    executionChainId: deployment.chainId as 56 | 97,
     conversations: conversationStore,
     ...(assistantKey ? { apiKey: assistantKey } : {}),
     ...(process.env.ASSISTANT_MODEL ? { model: process.env.ASSISTANT_MODEL } : {}),

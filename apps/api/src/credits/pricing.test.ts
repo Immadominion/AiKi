@@ -45,6 +45,22 @@ it('turns a USDT payment into points at the published rate', () => {
   expect(pointsForUsdt(50n)).toBe(0)
 })
 
+it('prices mainnet USDT using eighteen decimals without losing a point to floating arithmetic', () => {
+  expect(pointsForUsdt(10n ** 18n, 18)).toBe(POINTS_PER_USD)
+  expect(pointsForUsdt(25n * 10n ** 17n, 18)).toBe(25_000)
+  expect(pointsForUsdt(10n ** 14n - 1n, 18)).toBe(0)
+  expect(pointsForUsdt(10n ** 14n, 18)).toBe(1)
+})
+
+it('refuses negative, invalid-decimal, or unsafe point amounts', () => {
+  expect(() => pointsForUsdt(-1n, 18)).toThrow()
+  for (const decimals of [-1, 1.5, 256, Number.NaN])
+    expect(() => pointsForUsdt(1n, decimals)).toThrow()
+  const largestSafe = BigInt(Number.MAX_SAFE_INTEGER) * 10n ** 14n
+  expect(pointsForUsdt(largestSafe, 18)).toBe(Number.MAX_SAFE_INTEGER)
+  expect(() => pointsForUsdt(largestSafe + 10n ** 14n, 18)).toThrow()
+})
+
 it('explains a charge in the terms it was computed from', () => {
   // A person asking "why did that cost 780" gets the sum, not a shrug.
   const said = explainCost('claude-sonnet-5', { inputTokens: 10_000, outputTokens: 2_000 })

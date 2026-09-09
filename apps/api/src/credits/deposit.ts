@@ -1,12 +1,9 @@
+import { type Address, formatUnits, type Hex, parseAbiItem, toEventSelector } from 'viem'
 import {
-  type Address,
-  createPublicClient,
-  type Hex,
-  http,
-  parseAbiItem,
-  toEventSelector,
-} from 'viem'
-import { bscTestnet } from 'viem/chains'
+  creditNetworkClient,
+  readCreditFinalizedBlock,
+  verifyCreditNetwork,
+} from '../config/credits-network.js'
 import { ClientError } from '../http/errors.js'
 import { pointsForUsdt } from './pricing.js'
 import type { CreditStore } from './store.js'
@@ -38,12 +35,13 @@ const TRANSFER = parseAbiItem(
 /** Computed rather than pasted, so it cannot be subtly wrong. */
 const TRANSFER_TOPIC = toEventSelector(TRANSFER)
 
-/** Receipt depth policy, not a claim that a block count proves BSC finality. */
+/** Minimum receipt depth. Mainnet also requires the RPC's economically finalized head. */
 export const DEPOSIT_CONFIRMATIONS = 3
 
 export interface DepositConfig {
   rpcUrl: string
-  chainId: number
+  chainId: 56 | 97
+  decimals: 6 | 18
   /** The only token accepted, and the only address it may be sent to. */
   token: Address
   treasury: Address
@@ -66,28 +64,8 @@ export async function creditDeposit(input: {
       },
     )
 
-  const client = createPublicClient({ chain: bscTestnet, transport: http(input.config.rpcUrl) })
-
-  let network: number
-  try {
-    network = await client.getChainId()
-  } catch {
-    throw new ClientError(
-      'The payment network could not be checked. Retry the same transaction hash later; do not send another payment.',
-      {
-        code: 'DEPOSIT_NETWORK_UNAVAILABLE',
-        statusCode: 503,
-      },
-    )
-  }
-  if (network !== input.config.chainId)
-    throw new ClientError(
-      'The payment network does not match this deployment. No points were added. Contact AiKi before sending funds.',
-      {
-        code: 'DEPOSIT_NETWORK_MISMATCH',
-        statusCode: 503,
-      },
-    )
+  await verifyCreditNetwork(input.config)
+  const client = creditNetworkClient(input.config)
 
   let receipt: Awaited<ReturnType<typeof client.getTransactionReceipt>>
   try {
@@ -102,6 +80,17 @@ export async function creditDeposit(input: {
     throw new ClientError('That transaction failed, so nothing was paid.', {
       code: 'DEPOSIT_REVERTED',
     })
+  if (
+    receipt.transactionHash?.toLowerCase() !== input.transactionHash.toLowerCase() ||
+    !/^0x[0-9a-fA-F]{64}$/.test(receipt.blockHash ?? '')
+  )
+    throw new ClientError(
+      'The payment receipt could not be verified. Retry the same transaction hash later; do not send another payment.',
+      {
+        code: 'DEPOSIT_RECEIPT_INVALID',
+        statusCode: 503,
+      },
+    )
 
   let latestBlock: bigint
   try {
@@ -122,6 +111,43 @@ export async function creditDeposit(input: {
   )
     throw new ClientError(
       `This payment needs ${DEPOSIT_CONFIRMATIONS} block confirmations before points can be added. Wait a moment, then retry the same transaction hash. Do not send another payment.`,
+      {
+        code: 'DEPOSIT_CONFIRMING',
+        statusCode: 409,
+      },
+    )
+
+  if (input.config.chainId === 56) {
+    // BSC's economic-finality API exposes the finalized head via this tag.
+    // A newer latest block is not a substitute when validator finality stalls.
+    // https://docs.bnbchain.org/bnb-smart-chain/developers/json_rpc/bsc-api-list/#economic-finality-api
+    const finalized = await readCreditFinalizedBlock(input.config)
+    if (
+      finalized.number < receipt.blockNumber ||
+      (finalized.number === receipt.blockNumber &&
+        finalized.hash !== receipt.blockHash.toLowerCase())
+    )
+      throw new ClientError(
+        'This payment is waiting for BNB mainnet finality. Wait a moment, then retry the same transaction hash; do not send another payment.',
+        { code: 'DEPOSIT_CONFIRMING', statusCode: 409 },
+      )
+  }
+
+  let canonicalBlock: Awaited<ReturnType<typeof client.getBlock>>
+  try {
+    canonicalBlock = await client.getBlock({ blockNumber: receipt.blockNumber })
+  } catch {
+    throw new ClientError(
+      'The payment block could not be checked. Retry the same transaction hash later; do not send another payment.',
+      {
+        code: 'DEPOSIT_CONFIRMATIONS_UNAVAILABLE',
+        statusCode: 503,
+      },
+    )
+  }
+  if (canonicalBlock.hash?.toLowerCase() !== receipt.blockHash.toLowerCase())
+    throw new ClientError(
+      'The payment block changed. Wait a moment, then retry the same transaction hash; do not send another payment.',
       {
         code: 'DEPOSIT_CONFIRMING',
         statusCode: 409,
@@ -164,7 +190,7 @@ export async function creditDeposit(input: {
       { code: 'DEPOSIT_NOT_YOURS' },
     )
 
-  const points = pointsForUsdt(total)
+  const points = pointsForUsdt(total, input.config.decimals)
   if (points <= 0)
     throw new ClientError('That payment is too small to be worth any points.', {
       code: 'DEPOSIT_TOO_SMALL',
@@ -178,10 +204,13 @@ export async function creditDeposit(input: {
     detail: {
       chainId: input.config.chainId,
       token: input.config.token,
+      decimals: input.config.decimals,
+      treasury: input.config.treasury,
+      transactionHash: input.transactionHash.toLowerCase(),
       baseUnits: total.toString(),
       blockNumber: receipt.blockNumber.toString(),
     },
   })
 
-  return { points, balance, amount: `${Number(total) / 1e6} USDT` }
+  return { points, balance, amount: `${formatUnits(total, input.config.decimals)} USDT` }
 }

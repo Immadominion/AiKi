@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { requireSession } from '../auth/guard.js'
+import { readCreditFinalizedBlock, verifyCreditNetwork } from '../config/credits-network.js'
 import { creditDeposit, DEPOSIT_CONFIRMATIONS, type DepositConfig } from '../credits/deposit.js'
 import {
   DEFAULT_MODEL,
@@ -50,6 +51,8 @@ export interface AssistantConfig {
   /** Where the assistant reaches this same API. Loopback. */
   selfUrl: string
   deposits?: DepositConfig
+  /** Selected deployment, never inferred from the wallet's sign-in network. */
+  executionChainId?: 56 | 97
   conversations?: ConversationStore
 }
 
@@ -158,19 +161,36 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
     },
   )
 
-  app.get('/v1/credits/treasury', async () => ({
+  app.get('/v1/credits/treasury', async (_request, reply) => {
+    reply.header('cache-control', 'no-store')
     // Public on purpose: somebody has to be able to see where to send money
     // before they have signed in, and the address is not a secret.
-    ...(config.deposits
-      ? {
-          chainId: config.deposits.chainId,
-          token: config.deposits.token,
-          treasury: config.deposits.treasury,
-          pointsPerUsdt: POINTS_PER_USD,
-          confirmations: DEPOSIT_CONFIRMATIONS,
-        }
-      : { available: false }),
-  }))
+    if (!config.deposits) return { available: false }
+    // A configured address must not become payment instructions before the
+    // selected RPC and token have been checked on this request.
+    try {
+      await verifyCreditNetwork(config.deposits)
+      if (config.deposits.chainId === 56) await readCreditFinalizedBlock(config.deposits)
+    } catch (error) {
+      if (error instanceof ClientError) throw error
+      throw new ClientError(
+        'The payment network could not be verified. Try again later before sending funds.',
+        {
+          code: 'DEPOSIT_NETWORK_UNAVAILABLE',
+          statusCode: 503,
+        },
+      )
+    }
+    return {
+      chainId: config.deposits.chainId,
+      decimals: config.deposits.decimals,
+      token: config.deposits.token,
+      treasury: config.deposits.treasury,
+      pointsPerUsdt: POINTS_PER_USD,
+      confirmations: DEPOSIT_CONFIRMATIONS,
+      finality: config.deposits.chainId === 56 ? 'finalized' : 'confirmations',
+    }
+  })
 
   app.post<{ Body: { messages?: unknown; conversationId?: unknown } }>(
     '/v1/assistant/messages',
@@ -360,6 +380,10 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
           ctx: { baseUrl: config.selfUrl, cookie, turnId, sessionAddress: session.address },
           messages,
           budgetPoints: hold,
+          networkContext: {
+            ...(config.executionChainId ? { executionChainId: config.executionChainId } : {}),
+            ...(config.deposits ? { depositChainId: config.deposits.chainId } : {}),
+          },
           onUsage: (usage, points) =>
             config.credits.assistantRequests.checkpoint(
               turnId,
