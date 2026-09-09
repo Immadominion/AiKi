@@ -8,6 +8,7 @@ import {
   referenceBase,
   referenceManifest,
 } from '../manifest.js'
+import { registerReportTask, reportInputs, reportTaskCapability } from '../report-task.js'
 import type { PancakeReader } from './client.js'
 import { persistPancakeAssessment } from './evidence-sink.js'
 
@@ -47,6 +48,31 @@ export function createPancakeRebalancerServer(options: {
       ? reciprocalProof([registration.agentId])
       : reply.code(503).send(NOT_REGISTERED),
   )
+  registerReportTask(app, {
+    path: SPEC.servicePath,
+    agentId: base ? registration?.agentId : undefined,
+    kind: 'rebalancer',
+    title: 'PancakeSwap v3 LP range report',
+    parse: reportInputs.rebalancer,
+    read: (tokenId) => options.reader.assess(tokenId),
+    persist: async (assessment) =>
+      registration && options.evidenceStore
+        ? persistPancakeAssessment(options.evidenceStore, {
+            agentId: registration.agentId,
+            assessment,
+            registry: BSC_MAINNET.contracts.erc8004Identity,
+            chainId: BSC_MAINNET.id,
+          })
+        : false,
+    summary: (assessment) => [
+      `Position NFT: ${assessment.tokenId}. Owner: ${assessment.owner}.`,
+      `Pool: ${assessment.pool}. Tokens: ${assessment.token0} / ${assessment.token1}. Fee tier: ${assessment.fee}.`,
+      `Current tick: ${assessment.currentTick}. Position range: [${assessment.tickLower}, ${assessment.tickUpper}).`,
+      `Range state: ${assessment.state}. Range direction: ${assessment.recommendation}. Distance to range: ${assessment.distanceToRangeTicks} ticks.`,
+      `Liquidity units: ${assessment.liquidity}. Uncollected token units: ${assessment.tokensOwed0} / ${assessment.tokensOwed1}.`,
+      assessment.methodology,
+    ],
+  })
   app.get<{ Params: { agentId: string }; Querystring: { tokenId?: string } }>(
     '/v1/reference/pancake/rebalancer/agent/:agentId',
     async (request, reply) => {
@@ -60,6 +86,7 @@ export function createPancakeRebalancerServer(options: {
       if (request.query.tokenId === undefined)
         return {
           capability: 'pancakeswap-v3-lp-rebalance-assessment',
+          ...reportTaskCapability('rebalancer'),
           category: 'rebalancing',
           input: { tokenId: 'PancakeSwap v3 position NFT integer' },
           output: 'Verified range state and read-only rebalance recommendation.',

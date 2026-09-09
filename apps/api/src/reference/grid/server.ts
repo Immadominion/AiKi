@@ -8,6 +8,7 @@ import {
   referenceBase,
   referenceManifest,
 } from '../manifest.js'
+import { registerReportTask, reportInputs, reportTaskCapability } from '../report-task.js'
 import type { GridReader } from './client.js'
 import { persistGridAssessment } from './evidence-sink.js'
 
@@ -22,6 +23,7 @@ const SPEC = {
 
 const CAPABILITY = {
   capability: SPEC.serviceName,
+  ...reportTaskCapability('grid'),
   category: 'grid_trading',
   input: {
     pool: 'v3 pool address',
@@ -58,6 +60,35 @@ export function createGridServer(options: {
   app.get('/.well-known/agent-registration.json', async (_request, reply) =>
     agentId ? reciprocalProof([agentId]) : reply.code(503).send(NOT_REGISTERED),
   )
+
+  registerReportTask(app, {
+    path: SPEC.servicePath,
+    agentId,
+    kind: 'grid',
+    title: 'PancakeSwap v3 grid range report',
+    parse: reportInputs.grid,
+    read: (policy) => options.reader.assess(policy),
+    persist: async (assessment) =>
+      agentId && options.evidenceStore
+        ? (
+            await persistGridAssessment(options.evidenceStore, {
+              agentId,
+              assessment,
+              registry: BSC_MAINNET.contracts.erc8004Identity,
+              chainId: BSC_MAINNET.id,
+            })
+          ).inserted
+        : false,
+    summary: (assessment) => [
+      `Pool: ${assessment.pool}. Current tick: ${assessment.currentTick}.`,
+      `Requested grid: [${assessment.tickLower}, ${assessment.tickUpper}), spacing ${assessment.spacing}.`,
+      `State: ${assessment.state}. Grid direction: ${assessment.recommendation}.`,
+      ...(assessment.activeBand
+        ? [`Active band: [${assessment.activeBand.lower}, ${assessment.activeBand.upper}).`]
+        : []),
+      `Pool liquidity units: ${assessment.poolLiquidity}.`,
+    ],
+  })
 
   async function assess(
     query: { pool?: `0x${string}`; tickLower?: string; tickUpper?: string; spacing?: string },

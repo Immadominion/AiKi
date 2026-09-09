@@ -23,15 +23,16 @@ describe.skipIf(!url)('durable execution attempts', () => {
       `0x${'11'.repeat(20)}`,
     )
     const job = await jobs.createJob(auth.id, randomUUID())
-    return { jobs, auth, job }
+    const sender = `0x${randomUUID().replaceAll('-', '')}12345678`
+    return { jobs, auth, job, sender }
   }
 
   it('permits exactly one concurrent claimant across two database connections', async () => {
     const h = await fixture()
     const second = service()
     const claims = await Promise.all([
-      h.jobs.beginExecution(h.job.id, 56),
-      second.beginExecution(h.job.id, 56),
+      h.jobs.beginExecution(h.job.id, 56, h.sender),
+      second.beginExecution(h.job.id, 56, h.sender),
     ])
     expect(claims.filter((claim) => claim.acquired)).toHaveLength(1)
     expect(claims[0]?.attempt.id).toBe(claims[1]?.attempt.id)
@@ -39,7 +40,7 @@ describe.skipIf(!url)('durable execution attempts', () => {
 
   it('retains unresolved hash and cap across connection restart, including a new job', async () => {
     const h = await fixture()
-    const claim = await h.jobs.beginExecution(h.job.id, 56)
+    const claim = await h.jobs.beginExecution(h.job.id, 56, h.sender)
     await h.jobs.attempt(h.job.id, {
       target: '0x1',
       selector: '0x12',
@@ -51,7 +52,7 @@ describe.skipIf(!url)('durable execution attempts', () => {
     await h.jobs.finishExecution(claim.attempt.id, 'UNCONFIRMED')
     const restart = service()
     const newerJob = await restart.createJob(h.auth.id, randomUUID())
-    const retry = await restart.beginExecution(newerJob.id, 56)
+    const retry = await restart.beginExecution(newerJob.id, 56, h.sender)
     expect(retry).toMatchObject({
       acquired: false,
       attempt: { id: claim.attempt.id, transactionHash: hash, state: 'UNCONFIRMED' },
@@ -64,7 +65,7 @@ describe.skipIf(!url)('durable execution attempts', () => {
 
   it('does not release an uncertain cap, and keeps prepared hashes immutable', async () => {
     const h = await fixture()
-    const claim = await h.jobs.beginExecution(h.job.id, 56)
+    const claim = await h.jobs.beginExecution(h.job.id, 56, h.sender)
     await h.jobs.recordExecutionHash(claim.attempt.id, hash)
     await expect(
       h.jobs.recordExecutionHash(claim.attempt.id, `0x${'cd'.repeat(32)}`),
@@ -77,7 +78,7 @@ describe.skipIf(!url)('durable execution attempts', () => {
 
   it('settles a known revert and releases its cap exactly once across concurrent retries', async () => {
     const h = await fixture()
-    const claim = await h.jobs.beginExecution(h.job.id, 56)
+    const claim = await h.jobs.beginExecution(h.job.id, 56, h.sender)
     await h.jobs.attempt(h.job.id, {
       target: '0x1',
       selector: '0x12',
@@ -92,14 +93,14 @@ describe.skipIf(!url)('durable execution attempts', () => {
     ])
     expect((await h.jobs.getAuthorization(h.auth.id)).spent).toBe(60n)
     expect(await h.jobs.pendingExecution(h.auth.id)).toBeNull()
-    expect((await h.jobs.beginExecution(h.job.id, 56)).acquired).toBe(true)
+    expect((await h.jobs.beginExecution(h.job.id, 56, h.sender)).acquired).toBe(true)
   })
 
   it('has no timer that releases an abandoned preparing claim', async () => {
     const h = await fixture()
-    const claim = await h.jobs.beginExecution(h.job.id, 97)
+    const claim = await h.jobs.beginExecution(h.job.id, 97, h.sender)
     const restart = service()
-    expect(await restart.beginExecution(h.job.id, 97)).toMatchObject({
+    expect(await restart.beginExecution(h.job.id, 97, h.sender)).toMatchObject({
       acquired: false,
       attempt: { id: claim.attempt.id, state: 'PREPARING' },
     })

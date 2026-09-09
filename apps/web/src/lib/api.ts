@@ -521,7 +521,7 @@ export const api = {
   taskSupport: (agentId: string) =>
     req<AgentTaskSupport>(`/v1/agents/${encodeURIComponent(agentId)}/task-support`),
   postTask: (task: TaskRequest, idempotencyKey?: string) =>
-    req<TaskSummary & { heldPoints: number }>('/v1/tasks', {
+    req<TaskSummary & { heldPoints: number; refundedPoints?: number }>('/v1/tasks', {
       method: 'POST',
       ...(idempotencyKey ? { headers: { 'idempotency-key': idempotencyKey } } : {}),
       body: JSON.stringify(task),

@@ -84,6 +84,90 @@ describe.skipIf(!databaseUrl)('payment-rail reconciliation against PostgreSQL', 
     ).toBe(true)
   })
 
+  it('verifies mixed liabilities against independent original-rail observations without rewriting points', async () => {
+    await deposit(3000, { chainId: 97, token: testnetToken, baseUnits: '3000000' })
+    await deposit(2000, { chainId: 56, token: mainnetToken, baseUnits: '2000000000000000000' })
+    const before = await sql`SELECT * FROM credit_entries ORDER BY id`
+    const findings = await checkLedger(sql, 2000, rail, [
+      { chainId: 97, token: testnetToken, treasury, backingPoints: 3000 },
+    ])
+    expect(findings.every((entry) => entry.ok)).toBe(true)
+    expect(finding(findings, historicalCheck).detail).toContain('3000 points of backing')
+    expect(finding(findings, historicalCheck).detail).toContain('chain 97')
+    expect(finding(findings, allPaidCheck).detail).toContain('each original payment rail')
+    expect(await sql`SELECT * FROM credit_entries ORDER BY id`).toEqual(before)
+    expect(await credits.balance(`0x${'11'.repeat(20)}`)).toBe(5000)
+  })
+
+  it.each([null, 2999, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])(
+    'does not verify a historical liability against invalid or insufficient backing %s',
+    async (backingPoints) => {
+      await deposit(3000, { chainId: 97, token: testnetToken })
+      const findings = await checkLedger(sql, 1_000_000, rail, [
+        { chainId: 97, token: testnetToken, treasury, backingPoints },
+      ])
+      expect(finding(findings, historicalCheck).ok).toBe(false)
+      expect(finding(findings, allPaidCheck).ok).toBe(false)
+    },
+  )
+
+  it('does not use historical testnet backing to cover a mainnet shortfall', async () => {
+    await deposit(3000, { chainId: 97, token: testnetToken })
+    await deposit(2000, { chainId: 56, token: mainnetToken })
+    const findings = await checkLedger(sql, 1999, rail, [
+      { chainId: 97, token: testnetToken, treasury, backingPoints: 1_000_000 },
+      { ...rail, backingPoints: 1_000_000 },
+    ])
+    expect(finding(findings, historicalCheck).ok).toBe(true)
+    expect(finding(findings, currentCheck).ok).toBe(false)
+    expect(finding(findings, allPaidCheck).ok).toBe(false)
+  })
+
+  it('keeps unknown metadata unverified even when every configured treasury has backing', async () => {
+    await deposit(3000, { chainId: 97, token: testnetToken })
+    await deposit(100)
+    const findings = await checkLedger(sql, 10_000, rail, [
+      { chainId: 97, token: testnetToken, treasury, backingPoints: 10_000 },
+    ])
+    expect(finding(findings, historicalCheck).ok).toBe(false)
+    expect(finding(findings, historicalCheck).detail).toContain('100 points')
+    expect(finding(findings, historicalCheck).detail).toContain('unknown')
+    expect(finding(findings, allPaidCheck).ok).toBe(false)
+  })
+
+  it('does not pool duplicate historical observations or match a different chain/token', async () => {
+    await deposit(3000, { chainId: 97, token: testnetToken })
+    for (const observations of [
+      [
+        { chainId: 97, token: testnetToken, treasury, backingPoints: 3000 },
+        { chainId: 97, token: testnetToken, treasury, backingPoints: 3000 },
+      ],
+      [
+        { chainId: 97, token: testnetToken, treasury, backingPoints: 3000 },
+        { chainId: 97, token: testnetToken, treasury, backingPoints: null },
+      ],
+      [{ chainId: 56, token: testnetToken, treasury, backingPoints: 3000 }],
+      [{ chainId: 97, token: mainnetToken, treasury, backingPoints: 3000 }],
+    ]) {
+      const findings = await checkLedger(sql, 3000, rail, observations)
+      expect(finding(findings, historicalCheck).ok).toBe(false)
+      expect(finding(findings, allPaidCheck).ok).toBe(false)
+    }
+  })
+
+  it('keeps historical point liabilities beyond safe integer precision unverified', async () => {
+    await deposit(3000, { chainId: 97, token: testnetToken })
+    await sql`
+      UPDATE credit_entries SET delta = CASE WHEN owner = ${ISSUANCE_ACCOUNT}
+        THEN -9007199254740993::bigint ELSE 9007199254740993::bigint END
+    `
+    const findings = await checkLedger(sql, 0, rail, [
+      { chainId: 97, token: testnetToken, treasury, backingPoints: Number.MAX_SAFE_INTEGER },
+    ])
+    expect(finding(findings, historicalCheck).ok).toBe(false)
+    expect(finding(findings, allPaidCheck).ok).toBe(false)
+  })
+
   it.each([
     {},
     { chainId: 56 },

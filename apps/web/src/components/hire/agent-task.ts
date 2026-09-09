@@ -85,6 +85,26 @@ export function taskAttempt(
   return previous?.fingerprint === fingerprint ? previous : { fingerprint, key: createKey() }
 }
 
+/** Refund copy uses only the confirmed API amount, never the quoted offer or task status alone. */
+export function taskCreationMessage(task: {
+  status: string
+  submission?: string
+  refundedPoints?: number
+}): string {
+  if (task.status === 'CANCELLED') {
+    if (
+      typeof task.refundedPoints === 'number' &&
+      Number.isSafeInteger(task.refundedPoints) &&
+      task.refundedPoints > 0
+    )
+      return `The agent declined. Your ${task.refundedPoints.toLocaleString()} points were refunded. See the task in Work.`
+    return 'This request was cancelled. Check its refund status in Work.'
+  }
+  return task.submission
+    ? 'Your request was delivered. Review the result in Work.'
+    : 'Your request is in Work. Follow its delivery there.'
+}
+
 /** Only these API responses confirm that no points were taken for the request. */
 const UNCHARGED_TASK_ERRORS: Record<string, number> = {
   INVALID_IDEMPOTENCY_KEY: 400,

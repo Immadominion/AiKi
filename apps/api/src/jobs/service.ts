@@ -8,7 +8,11 @@ import {
   evaluatePurchase,
   needsApproval,
 } from '../authority/policy.js'
-import type { ExecutionAttempt, ExecutionState } from '../execution/attempts.js'
+import {
+  type ExecutionAttempt,
+  type ExecutionState,
+  normalizeExecutionSender,
+} from '../execution/attempts.js'
 import { ClientError } from '../http/errors.js'
 import {
   type AuthorizationRecord,
@@ -44,21 +48,31 @@ export class JobService {
   async beginExecution(
     jobId: string,
     chainId: number,
-  ): Promise<{ acquired: boolean; attempt: ExecutionAttempt }> {
+    executorAddress?: string,
+  ): Promise<{ acquired: boolean; attempt: ExecutionAttempt; scope?: 'executor' }> {
+    if (!Number.isInteger(chainId) || chainId <= 0 || chainId > 2_147_483_647)
+      throw new Error('Execution chain is invalid.')
     const job = await this.getJob(jobId)
     const attempt: ExecutionAttempt = {
       id: randomUUID(),
       jobId,
       authorizationId: job.authorizationId,
       chainId,
+      ...(executorAddress === undefined
+        ? {}
+        : { executorAddress: normalizeExecutionSender(executorAddress) }),
       state: 'PREPARING',
       createdAt: new Date().toISOString(),
     }
     if (await this.store.beginExecution(attempt)) return { acquired: true, attempt }
     const pending = await this.store.pendingExecution(job.authorizationId)
-    if (!pending)
-      throw new Error('Execution changed concurrently. No action was sent; retry the request.')
-    return { acquired: false, attempt: pending }
+    if (pending) return { acquired: false, attempt: pending }
+    const signerPending = await this.store.pendingExecutionForExecutor(
+      chainId,
+      attempt.executorAddress,
+    )
+    if (signerPending) return { acquired: false, attempt: signerPending, scope: 'executor' }
+    throw new Error('Execution changed concurrently. No action was sent; retry the request.')
   }
 
   pendingExecution(authorizationId: string) {

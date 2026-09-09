@@ -5,6 +5,7 @@ import {
   type ExecutionAttempt,
   type ExecutionState,
   executionPending,
+  executionSenderConflicts,
 } from '../execution/attempts.js'
 import { ClientError } from '../http/errors.js'
 
@@ -110,6 +111,7 @@ export interface ApprovalRequest {
 export interface JobStore {
   beginExecution(attempt: ExecutionAttempt): Promise<boolean>
   pendingExecution(authorizationId: string): Promise<ExecutionAttempt | null>
+  pendingExecutionForExecutor(chainId: number, address?: string): Promise<ExecutionAttempt | null>
   recordExecutionHash(id: string, hash: `0x${string}`): Promise<void>
   finishExecution(
     id: string,
@@ -239,7 +241,8 @@ export class InMemoryJobStore implements JobStore {
     if (
       [...this.executions.values()].some(
         (entry) =>
-          entry.authorizationId === attempt.authorizationId && executionPending(entry.state),
+          (entry.authorizationId === attempt.authorizationId && executionPending(entry.state)) ||
+          executionSenderConflicts(entry, attempt.chainId, attempt.executorAddress),
       )
     )
       return false
@@ -250,6 +253,13 @@ export class InMemoryJobStore implements JobStore {
   async pendingExecution(authorizationId: string) {
     const found = [...this.executions.values()].find(
       (entry) => entry.authorizationId === authorizationId && executionPending(entry.state),
+    )
+    return found ? { ...found } : null
+  }
+
+  async pendingExecutionForExecutor(chainId: number, address?: string) {
+    const found = [...this.executions.values()].find((entry) =>
+      executionSenderConflicts(entry, chainId, address),
     )
     return found ? { ...found } : null
   }

@@ -17,6 +17,28 @@ import type {
 
 const iso = (value: string | Date): string => (value instanceof Date ? value.toISOString() : value)
 
+interface ExecutionRow {
+  id: string
+  authorization_id: string
+  job_id: string
+  chain_id: number
+  executor_address: `0x${string}` | null
+  state: ExecutionState
+  transaction_hash: `0x${string}` | null
+  created_at: Date
+}
+
+const toExecution = (row: ExecutionRow): ExecutionAttempt => ({
+  id: row.id,
+  authorizationId: row.authorization_id,
+  jobId: row.job_id,
+  chainId: Number(row.chain_id),
+  ...(row.executor_address ? { executorAddress: row.executor_address } : {}),
+  state: row.state,
+  createdAt: iso(row.created_at),
+  ...(row.transaction_hash ? { transactionHash: row.transaction_hash } : {}),
+})
+
 interface AuthorizationRow {
   id: string
   policy: CompiledPolicy
@@ -111,42 +133,47 @@ export class PostgresJobStore implements JobStore {
   }
 
   async beginExecution(attempt: ExecutionAttempt) {
-    const rows = await this.sql`
-      INSERT INTO execution_attempts (id, authorization_id, job_id, chain_id, state, created_at)
-      SELECT ${attempt.id}, ${attempt.authorizationId}, id, ${attempt.chainId}, 'PREPARING', ${attempt.createdAt}
-      FROM jobs WHERE id = ${attempt.jobId} AND authorization_id = ${attempt.authorizationId}
-      ON CONFLICT DO NOTHING RETURNING id
-    `
-    return rows.length === 1
+    return this.sql.begin(async (tx) => {
+      // This short transaction serializes the legacy-unknown check and insert.
+      // The durable attempt, NOT the connection/advisory lock, guards the nonce
+      // until a terminal outcome; crashes and timeouts must never clear it.
+      await tx`SELECT pg_advisory_xact_lock(1095322441, ${attempt.chainId}::integer)`
+      const pending = await tx`
+        SELECT id FROM execution_attempts WHERE chain_id = ${attempt.chainId}
+        AND state IN ('PREPARING', 'SUBMITTED', 'UNCONFIRMED')
+        AND (executor_address IS NULL OR ${attempt.executorAddress ?? null}::text IS NULL
+          OR executor_address = ${attempt.executorAddress ?? null}) LIMIT 1
+      `
+      if (pending.length) return false
+      const rows = await tx`
+        INSERT INTO execution_attempts (id, authorization_id, job_id, chain_id, executor_address, state, created_at)
+        SELECT ${attempt.id}, ${attempt.authorizationId}, id, ${attempt.chainId}, ${attempt.executorAddress ?? null}, 'PREPARING', ${attempt.createdAt}
+        FROM jobs WHERE id = ${attempt.jobId} AND authorization_id = ${attempt.authorizationId}
+        ON CONFLICT DO NOTHING RETURNING id
+      `
+      return rows.length === 1
+    })
   }
 
   async pendingExecution(authorizationId: string): Promise<ExecutionAttempt | null> {
-    const rows = await this.sql<
-      {
-        id: string
-        authorization_id: string
-        job_id: string
-        chain_id: number
-        state: ExecutionState
-        transaction_hash: `0x${string}` | null
-        created_at: Date
-      }[]
-    >`
+    const rows = await this.sql<ExecutionRow[]>`
       SELECT * FROM execution_attempts WHERE authorization_id = ${authorizationId}
       AND state IN ('PREPARING', 'SUBMITTED', 'UNCONFIRMED')
     `
-    const row = rows[0]
-    return row
-      ? {
-          id: row.id,
-          authorizationId: row.authorization_id,
-          jobId: row.job_id,
-          chainId: Number(row.chain_id),
-          state: row.state,
-          createdAt: iso(row.created_at),
-          ...(row.transaction_hash ? { transactionHash: row.transaction_hash } : {}),
-        }
-      : null
+    return rows[0] ? toExecution(rows[0]) : null
+  }
+
+  async pendingExecutionForExecutor(
+    chainId: number,
+    address?: string,
+  ): Promise<ExecutionAttempt | null> {
+    const rows = await this.sql<ExecutionRow[]>`
+      SELECT * FROM execution_attempts WHERE chain_id = ${chainId}
+      AND state IN ('PREPARING', 'SUBMITTED', 'UNCONFIRMED')
+      AND (executor_address IS NULL OR ${address ?? null}::text IS NULL OR executor_address = ${address ?? null})
+      ORDER BY created_at, id LIMIT 1
+    `
+    return rows[0] ? toExecution(rows[0]) : null
   }
 
   async recordExecutionHash(id: string, hash: `0x${string}`) {

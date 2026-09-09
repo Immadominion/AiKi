@@ -1,0 +1,41 @@
+{
+  "chainId": 56,
+  "network": "mainnet",
+  "audited": false,
+  "manager": "0x625cfda19d2f4424e546b610b4cef1f5441f84c9",
+  "registry": "0xfe2a585fd81bbf222a6c9130ea2aae250cb38614",
+  "managerCodeHash": "0x92a458ba7578f05c7a2bb8b21d40165309b3d10d1c75df5cdf2aec9db7880689",
+  "registryCodeHash": "0x03a3180aca08b0df33edc54f262e611958f4a865be1511191ec8800f62a74ec4",
+  "enforcers": [
+    {
+      "name": "ExpiryEnforcer",
+      "address": "0x15d7a002e420f66c08ff0f0446f47668c6099121",
+      "codeHash": "0x0c719e178625d2a54f75dd3a0b5c91454b8e5763745770f0e298abe1fa1f71c8"
+    },
+    {
+      "name": "AllowedTargetsEnforcer",
+      "address": "0x664a7b4f0dcace0c56e21116908d3825dd845f76",
+      "codeHash": "0x2f24256f96430115d58f3b46c613bc1071bb954c50901719148d8b2a16fbb24b"
+    },
+    {
+      "name": "AllowedSelectorsEnforcer",
+      "address": "0x933fc376cce6ae05721b685c432e3c9354ed3775",
+      "codeHash": "0xedd59dbf2294a86cd458ac59ae899e800839f512f066a9e432127a5279b3c87b"
+    },
+    {
+      "name": "AssetScopeEnforcer",
+      "address": "0x0bf91dc7e4125a04ec50bcee4b7e2ae513749fee",
+      "codeHash": "0x94e235d51c1377986681030238d14c2a11003ea2c0694d7c911d7daeda5acae9"
+    },
+    {
+      "name": "PerActionCapEnforcer",
+      "address": "0xaf0b9352cbb860c3577a46bbe98e8057a835e959",
+      "codeHash": "0x27612fcd92098ca11bbf8eba16d03f49e2026be003d92bf041d88b7ac19bd501"
+    },
+    {
+      "name": "SessionTotalCapEnforcer",
+      "address": "0xdb857f97d05e7b3779e8dee81f9da4fd2d9e76c1",
+      "codeHash": "0x5baf152f5efd3ec23c75974c136aa677420021de3e6be712cb348a7bc3e4b5a2"
+    }
+  ]
+}

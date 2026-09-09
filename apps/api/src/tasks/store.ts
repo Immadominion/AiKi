@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
+import { ESCROW_ACCOUNT } from '../credits/store.js'
 import type { TaskKind } from './kinds.js'
 
 /**
@@ -132,6 +133,8 @@ export interface TaskStore {
   recordDelivery(id: string, agentId: string, submission: string): Promise<TaskRecord | null>
   /** Note that we called an agent, and what came of it. */
   noteDispatch(id: string, note: string | null, attempted?: boolean): Promise<void>
+  /** Trusted explicit provider decline: cancel, refund exact funding, and release the cap atomically. */
+  refundDeclinedAssignment(id: string, agentId: string, note: string): Promise<TaskRecord | null>
   /**
    * Take back work whose claimant ran out of time.
    *
@@ -449,6 +452,106 @@ export class PostgresTaskStore implements TaskStore {
         dispatch_note = ${note}, updated_at = now()
        WHERE id = ${id}
     `
+  }
+
+  async refundDeclinedAssignment(id: string, agentId: string, note: string) {
+    return this.sql.begin(async (tx) => {
+      // This row lock arbitrates against both callback delivery and manual submit.
+      // A committed submission cannot be cancelled; cancellation prevents a later delivery.
+      const [task] = await tx<TaskRow[]>`SELECT * FROM tasks WHERE id = ${id} FOR UPDATE`
+      if (
+        task?.status !== 'CLAIMED' ||
+        !task.direct_hire ||
+        task.assigned_agent_id !== agentId ||
+        task.submission !== null ||
+        task.submitted_at !== null
+      )
+        return null
+      const points = BigInt(task.total_points)
+      if (
+        points <= 0n ||
+        points > BigInt(Number.MAX_SAFE_INTEGER) ||
+        points !== BigInt(task.price_points) + BigInt(task.fee_points)
+      )
+        throw new Error('Task refund amount could not be verified.')
+      const fundingReference = `task:${id}:funding`
+      const funding = await tx<
+        { owner: string; delta: string; reason: string; reference: string }[]
+      >`
+        SELECT owner, delta::text, reason, reference FROM credit_entries
+        WHERE reference IN (${`${fundingReference}:out`}, ${`${fundingReference}:in`})
+      `
+      const paid = funding.find((entry) => entry.reference === `${fundingReference}:out`)
+      const held = funding.find((entry) => entry.reference === `${fundingReference}:in`)
+      // Refund the actual funding source, never a claimant or an authorization owner.
+      // A different payer is inconsistent with this task's original funding contract.
+      if (
+        funding.length !== 2 ||
+        !paid ||
+        !held ||
+        paid.owner !== lower(task.poster) ||
+        paid.owner === ESCROW_ACCOUNT ||
+        held.owner !== ESCROW_ACCOUNT ||
+        paid.reason !== 'task_funding' ||
+        held.reason !== 'task_funding' ||
+        BigInt(paid.delta) !== -points ||
+        BigInt(held.delta) !== points
+      )
+        throw new Error('Task funding could not be verified for this refund.')
+
+      // Same ascending-owner credit lock order as PostgresCreditStore.transfer.
+      const owners = [paid.owner, ESCROW_ACCOUNT].sort()
+      const balances = await tx<{ owner: string; balance: string }[]>`
+        SELECT owner, balance::text FROM credit_balances
+        WHERE owner = ANY(${owners}) ORDER BY owner FOR UPDATE
+      `
+      const escrow = balances.find((balance) => balance.owner === ESCROW_ACCOUNT)
+      const payer = balances.find((balance) => balance.owner === paid.owner)
+      if (
+        balances.length !== 2 ||
+        !escrow ||
+        !payer ||
+        BigInt(escrow.balance) < points ||
+        BigInt(payer.balance) < 0n ||
+        BigInt(payer.balance) + points > BigInt(Number.MAX_SAFE_INTEGER)
+      )
+        throw new Error('Task refund balances could not be verified.')
+
+      const [cancelled] = await tx<TaskRow[]>`
+        UPDATE tasks SET status = 'CANCELLED', resolution = 'The assigned agent declined without delivering. The full payment was refunded.',
+          dispatched_at = COALESCE(dispatched_at, now()), dispatch_note = ${note},
+          decided_at = now(), updated_at = now()
+        WHERE id = ${id} RETURNING *
+      `
+      const reference = `task:${id}:refund`
+      const detail = tx.json({ taskId: id, agentId, cause: 'provider_declined' })
+      // Both globally unique legs, the balances, cap, and task state commit together.
+      // A reference conflict or any later failure rolls the entire cancellation back.
+      await tx`
+        INSERT INTO credit_entries (id, owner, delta, reason, reference, detail) VALUES
+          (${randomUUID()}, ${ESCROW_ACCOUNT}, ${(-points).toString()}, 'task_refund', ${`${reference}:out`}, ${detail}),
+          (${randomUUID()}, ${paid.owner}, ${points.toString()}, 'task_refund', ${`${reference}:in`}, ${detail})
+      `
+      await tx`
+        UPDATE credit_balances SET balance = balance + CASE WHEN owner = ${paid.owner}
+          THEN ${points.toString()}::bigint ELSE ${(-points).toString()}::bigint END, updated_at = now()
+        WHERE owner = ANY(${owners})
+      `
+      if (task.authorization_id) {
+        const outlay = BigInt(task.outlay)
+        if (outlay <= 0n) throw new Error('Task mandate reservation could not be verified.')
+        const released = await tx`
+          UPDATE authorizations SET spent = spent - ${outlay.toString()}::numeric
+          WHERE id = ${task.authorization_id} AND spent >= ${outlay.toString()}::numeric
+            AND (owner IS NULL OR lower(owner) = ${paid.owner})
+          RETURNING id
+        `
+        if (released.length !== 1)
+          throw new Error('Task mandate reservation could not be verified.')
+      }
+      if (!cancelled) throw new Error('Task cancellation could not be recorded.')
+      return toTask(cancelled)
+    })
   }
 
   async cancelLapsedClaim(id: string, poster: string) {

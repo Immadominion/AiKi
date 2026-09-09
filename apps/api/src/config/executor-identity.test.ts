@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { executorAddress, executorIdentity } from './executor-identity.js'
+import { accountFunderIdentity, executorAddress, executorIdentity } from './executor-identity.js'
 
 // Public fixture scalar, not a funded or configured project key.
 const KEY = `0x${'00'.repeat(31)}01`
@@ -61,5 +61,38 @@ it.each(['invalid-address', `0x${'00'.repeat(20)}`, '0x1234'])(
     expect(() => executorIdentity({ AGENT_SESSION_ADDRESS: address })).toThrow(
       'nonzero executor address',
     )
+  },
+)
+
+it('requires different nonce spaces for account deployment and mandate execution', () => {
+  expect(() =>
+    accountFunderIdentity({ ACCOUNT_FUNDER_PRIVATE_KEY: KEY, AGENT_PRIVATE_KEY: KEY }),
+  ).toThrow('different signing keys')
+  expect(() =>
+    accountFunderIdentity({
+      ACCOUNT_FUNDER_PRIVATE_KEY: KEY,
+      AGENT_SESSION_ADDRESS: ADDRESS.toLowerCase(),
+    }),
+  ).toThrow('different signing keys')
+  expect(
+    accountFunderIdentity({
+      ACCOUNT_FUNDER_PRIVATE_KEY: KEY,
+      AGENT_PRIVATE_KEY: `0x${'00'.repeat(31)}02`,
+    }),
+  ).toEqual({ funderKey: KEY })
+  expect(accountFunderIdentity({})).toEqual({})
+})
+
+it.each(['not-a-key', `0x${'00'.repeat(32)}`])(
+  'rejects invalid account funder keys without disclosing them',
+  (key) => {
+    expect(() => accountFunderIdentity({ ACCOUNT_FUNDER_PRIVATE_KEY: key })).toThrow(
+      'ACCOUNT_FUNDER_PRIVATE_KEY is not a valid',
+    )
+    try {
+      accountFunderIdentity({ ACCOUNT_FUNDER_PRIVATE_KEY: key })
+    } catch (error) {
+      expect(String(error)).not.toContain(key)
+    }
   },
 )

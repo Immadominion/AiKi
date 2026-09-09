@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import Fastify from 'fastify'
+import postgres from 'postgres'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { settlementForPoints } from '../credits/pricing.js'
 import {
@@ -48,6 +49,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const tasks = new PostgresTaskStore(process.env.DATABASE_URL as string)
       const jobStore = new PostgresJobStore(process.env.DATABASE_URL as string)
       const jobs = new JobService(jobStore)
+      const sql = postgres(process.env.DATABASE_URL as string, { max: 1 })
       const credits = options.postgresCredits
         ? new PostgresCreditStore(process.env.DATABASE_URL as string)
         : new InMemoryCreditStore()
@@ -99,6 +101,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         () => app.close(),
         () => tasks.close(),
         () => jobStore.close(),
+        () => sql.end(),
       )
       const payload = {
         title: 'Read my Venus position',
@@ -116,7 +119,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           headers: { 'idempotency-key': key },
           payload: body,
         })
-      return { app, tasks, jobs, credits, owner, seller, authorization, payload, request }
+      return { app, tasks, jobs, credits, owner, seller, authorization, payload, request, sql }
     }
 
     it('replays one actual task without repeating the cap, funding or agent dispatch', async () => {
@@ -206,6 +209,229 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect(await h.credits.balance(h.owner)).toBe(10)
       expect(fetched).not.toHaveBeenCalled()
     })
+
+    it('atomically refunds a declined report to its actual payer and replays without another cap release', async () => {
+      fetched.mockResolvedValue(
+        new Response(JSON.stringify({ error: 'Invalid report inputs.' }), { status: 400 }),
+      )
+      const h = await harness({ postgresCredits: true })
+      const first = await h.request()
+      expect(first.statusCode).toBe(201)
+      expect(first.json()).toMatchObject({
+        status: 'CANCELLED',
+        heldPoints: 0,
+        refundedPoints: 512,
+      })
+      expect(await h.credits.balance(h.owner)).toBe(5000)
+      expect((await h.jobs.getAuthorization(h.authorization.id)).spent).toBe(0n)
+      expect(
+        (await h.credits.history(h.owner)).filter((entry) => entry.reason === 'task_refund'),
+      ).toHaveLength(1)
+      expect((await h.request()).json()).toEqual(first.json())
+      expect(fetched).toHaveBeenCalledOnce()
+      expect((await h.jobs.getAuthorization(h.authorization.id)).spent).toBe(0n)
+      expect(
+        await h.tasks.refundDeclinedAssignment(first.json().id, '315943', 'Declined again.'),
+      ).toBeNull()
+      expect(await h.credits.balance(h.owner)).toBe(5000)
+      const callback = await h.app.inject({
+        method: 'POST',
+        url: `/v1/tasks/${first.json().id}/deliver`,
+        payload: {
+          token: JSON.parse(fetched.mock.calls[0]?.[1].body).callback.token,
+          result: 'Too late.',
+        },
+      })
+      expect(callback.statusCode).toBe(409)
+    })
+
+    it('never refunds a callback delivery that commits before an explicit decline arrives', async () => {
+      const h = await harness({ postgresCredits: true })
+      fetched.mockImplementation(async (_url, init) => {
+        const envelope = JSON.parse(init.body)
+        const callback = await h.app.inject({
+          method: 'POST',
+          url: `/v1/tasks/${envelope.taskId}/deliver`,
+          payload: { token: envelope.callback.token, result: 'Already delivered.' },
+        })
+        expect(callback.statusCode).toBe(200)
+        return new Response(JSON.stringify({ error: 'Declined after delivery.' }))
+      })
+      const response = await h.request()
+      expect(response.statusCode).toBe(201)
+      expect(response.json()).toMatchObject({
+        status: 'SUBMITTED',
+        heldPoints: 512,
+        submission: 'Already delivered.',
+      })
+      expect(await h.credits.balance(h.owner)).toBe(4488)
+      expect(
+        (await h.credits.history(h.owner)).filter((entry) => entry.reason === 'task_refund'),
+      ).toHaveLength(0)
+      expect((await h.jobs.getAuthorization(h.authorization.id)).spent).toBe(
+        settlementForPoints(512, SETTLEMENT.decimals),
+      )
+    })
+
+    it.each(['callback', 'manual submission'])(
+      'arbitrates a concurrent %s and refund under the task row lock',
+      async (delivery) => {
+        fetched.mockResolvedValue(new Response('', { status: 202 }))
+        const h = await harness({ postgresCredits: true })
+        const created = await h.request()
+        const id = created.json().id
+        const [refunded, submitted] = await Promise.all([
+          h.tasks.refundDeclinedAssignment(id, '315943', 'Explicit decline.'),
+          delivery === 'callback'
+            ? h.tasks.recordDelivery(id, '315943', 'Completed work.')
+            : h.tasks.submit(id, h.seller, 'Completed work.'),
+        ])
+        expect([refunded, submitted].filter(Boolean)).toHaveLength(1)
+        const task = await h.tasks.get(id)
+        expect(task?.status).toBe(refunded ? 'CANCELLED' : 'SUBMITTED')
+        expect(await h.credits.balance(h.owner)).toBe(refunded ? 5000 : 4488)
+        expect((await h.jobs.getAuthorization(h.authorization.id)).spent).toBe(
+          refunded ? 0n : settlementForPoints(512, SETTLEMENT.decimals),
+        )
+        expect(
+          (await h.credits.history(h.owner)).filter((entry) => entry.reason === 'task_refund'),
+        ).toHaveLength(refunded ? 1 : 0)
+      },
+    )
+
+    it('lets only one concurrent decline refund and release its cap', async () => {
+      fetched.mockResolvedValue(new Response('', { status: 202 }))
+      const h = await harness({ postgresCredits: true })
+      const created = await h.request()
+      const id = created.json().id
+      expect(await h.tasks.refundDeclinedAssignment(id, 'another-agent', 'Declined.')).toBeNull()
+      const refunds = await Promise.all([
+        h.tasks.refundDeclinedAssignment(id, '315943', 'Declined.'),
+        h.tasks.refundDeclinedAssignment(id, '315943', 'Declined.'),
+      ])
+      expect(refunds.filter(Boolean)).toHaveLength(1)
+      expect(await h.credits.balance(h.owner)).toBe(5000)
+      expect((await h.jobs.getAuthorization(h.authorization.id)).spent).toBe(0n)
+      const entries =
+        await h.sql`SELECT owner, delta::text FROM credit_entries WHERE reference IN (${`task:${id}:refund:out`}, ${`task:${id}:refund:in`})`
+      expect(entries).toHaveLength(2)
+      expect(entries.reduce((sum, row) => sum + BigInt(row.delta), 0n)).toBe(0n)
+    })
+
+    it.each([
+      'missing funding',
+      'wrong payer',
+      'imbalanced funding',
+      'unknown amount',
+      'cap failure',
+      'reference conflict',
+    ])('fails closed and rolls back the entire decline refund on %s', async (failure) => {
+      const h = await harness({ postgresCredits: true })
+      let taskId = ''
+      let restore: () => Promise<unknown> = async () => {}
+      fetched.mockImplementation(async (_url, init) => {
+        taskId = JSON.parse(init.body).taskId
+        const reference = `task:${taskId}:funding:in`
+        if (failure === 'missing funding') {
+          await h.sql`UPDATE credit_entries SET reference = ${`${reference}:hidden`} WHERE reference = ${reference}`
+          restore = () =>
+            h.sql`UPDATE credit_entries SET reference = ${reference} WHERE reference = ${`${reference}:hidden`}`
+        } else if (failure === 'wrong payer') {
+          await h.sql`UPDATE credit_entries SET owner = ${h.seller} WHERE reference = ${`task:${taskId}:funding:out`}`
+          restore = () =>
+            h.sql`UPDATE credit_entries SET owner = ${h.owner} WHERE reference = ${`task:${taskId}:funding:out`}`
+        } else if (failure === 'imbalanced funding') {
+          await h.sql`UPDATE credit_entries SET delta = 511 WHERE reference = ${reference}`
+          restore = () =>
+            h.sql`UPDATE credit_entries SET delta = 512 WHERE reference = ${reference}`
+        } else if (failure === 'unknown amount') {
+          await h.sql`UPDATE tasks SET total_points = 513 WHERE id = ${taskId}`
+          restore = () => h.sql`UPDATE tasks SET total_points = 512 WHERE id = ${taskId}`
+        } else if (failure === 'cap failure') {
+          await h.sql`UPDATE authorizations SET spent = 0 WHERE id = ${h.authorization.id}`
+          restore = () =>
+            h.sql`UPDATE authorizations SET spent = ${settlementForPoints(512, SETTLEMENT.decimals).toString()} WHERE id = ${h.authorization.id}`
+        } else {
+          // A conflicting incoming reference forces failure after the cancellation UPDATE.
+          await h.sql`UPDATE credit_entries SET reference = ${`task:${taskId}:refund:in`} WHERE owner = ${h.owner} AND reason = 'test'`
+          restore = () =>
+            h.sql`UPDATE credit_entries SET reference = ${randomUUID()} WHERE owner = ${h.owner} AND reason = 'test'`
+        }
+        return new Response(JSON.stringify({ error: 'Invalid report inputs.' }), { status: 400 })
+      })
+      try {
+        const response = await h.request()
+        expect(response.statusCode).toBe(503)
+        expect(response.json().error).toMatchObject({
+          code: 'TASK_REFUND_UNCONFIRMED',
+          taskId,
+          retryable: false,
+        })
+        expect(response.body).not.toContain('SQL')
+        expect((await h.tasks.get(taskId))?.status).toBe('CLAIMED')
+        expect(await h.credits.balance(h.owner)).toBe(4488)
+        expect(
+          (await h.credits.history(h.owner)).filter((entry) => entry.reason === 'task_refund'),
+        ).toHaveLength(0)
+        expect((await h.jobs.getAuthorization(h.authorization.id)).spent).toBe(
+          failure === 'cap failure' ? 0n : settlementForPoints(512, SETTLEMENT.decimals),
+        )
+        expect((await h.request()).json()).toEqual(response.json())
+        expect(fetched).toHaveBeenCalledOnce()
+      } finally {
+        await restore()
+      }
+    })
+
+    it('keeps a committed refund exactly once after its acknowledgement is lost', async () => {
+      const h = await harness({ postgresCredits: true })
+      fetched.mockResolvedValue(new Response(JSON.stringify({ error: 'Declined.' })))
+      const refund = h.tasks.refundDeclinedAssignment.bind(h.tasks)
+      const mocked = vi
+        .spyOn(h.tasks, 'refundDeclinedAssignment')
+        .mockImplementationOnce(async (...args) => {
+          await refund(...args)
+          throw new Error('Commit acknowledgement lost')
+        })
+      try {
+        const response = await h.request()
+        expect(response.statusCode).toBe(503)
+        const id = response.json().error.taskId
+        expect((await h.tasks.get(id))?.status).toBe('CANCELLED')
+        expect(await h.credits.balance(h.owner)).toBe(5000)
+        expect((await h.jobs.getAuthorization(h.authorization.id)).spent).toBe(0n)
+        expect((await h.request()).json()).toEqual(response.json())
+        expect(await refund(id, '315943', 'Declined.')).toBeNull()
+        expect(await h.credits.balance(h.owner)).toBe(5000)
+        expect(
+          (await h.credits.history(h.owner)).filter((entry) => entry.reason === 'task_refund'),
+        ).toHaveLength(1)
+      } finally {
+        mocked.mockRestore()
+      }
+    })
+
+    it.each(['network', 'server', 'rate-limit', 'accepted'])(
+      'keeps %s outcomes protected in escrow',
+      async (outcome) => {
+        const h = await harness({ postgresCredits: true })
+        if (outcome === 'network') fetched.mockRejectedValue(new Error('Network timeout'))
+        else
+          fetched.mockResolvedValue(
+            new Response(
+              JSON.stringify(outcome === 'accepted' ? { accepted: true } : { error: 'Try later.' }),
+              { status: outcome === 'server' ? 503 : outcome === 'rate-limit' ? 429 : 202 },
+            ),
+          )
+        const response = await h.request()
+        expect(response.statusCode).toBe(201)
+        expect(response.json()).toMatchObject({ status: 'CLAIMED', heldPoints: 512 })
+        expect(await h.credits.balance(h.owner)).toBe(4488)
+        expect((await h.jobs.getAuthorization(h.authorization.id)).spent).toBe(
+          settlementForPoints(512, SETTLEMENT.decimals),
+        )
+      },
+    )
 
     it('rejects malformed prices and durations without reserving a spending cap', async () => {
       const h = await harness()

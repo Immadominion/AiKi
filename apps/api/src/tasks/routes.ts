@@ -578,12 +578,13 @@ export function registerTaskRoutes(
        * committed is being asked on a promise, which is the thing this whole board
        * exists not to do.
        *
-       * Failure here is not failure of the request. The task exists, the money is
+       * Uncertainty here does not cancel the request. The task exists, the money is
        * held, and what happened when we called is written down: if the agent never
        * answers, its claim runs out on the same clock a person's would and the
        * buyer takes their money back. Most of this registry will not answer, and
        * that being visible is the point rather than the problem.
        */
+      let refundedPoints = 0
       if (assigned && input.publicUrl && input.deliverySecret) {
         const outcome = await dispatchToAgent({
           endpoint: assigned.endpoint,
@@ -601,16 +602,39 @@ export function registerTaskRoutes(
             },
           },
         })
-        await input.tasks.noteDispatch(task.id, outcome.note)
-        if (outcome.delivered)
-          await input.tasks.recordDelivery(task.id, assigned.agentId, outcome.delivered)
+        if (outcome.declined && !outcome.delivered) {
+          try {
+            const refunded = await input.tasks.refundDeclinedAssignment(
+              task.id,
+              assigned.agentId,
+              outcome.note,
+            )
+            if (refunded) refundedPoints = refunded.totalPoints
+          } catch {
+            return reply.code(503).send({
+              error: {
+                code: 'TASK_REFUND_UNCONFIRMED',
+                message:
+                  'The agent declined, but AiKi could not confirm the refund. Keep this task and check Work before creating another hire.',
+                taskId: task.id,
+                workUrl: '/work',
+                retryable: false,
+              },
+            })
+          }
+        } else {
+          await input.tasks.noteDispatch(task.id, outcome.note)
+          if (outcome.delivered)
+            await input.tasks.recordDelivery(task.id, assigned.agentId, outcome.delivered)
+        }
       }
 
       const settled = (await input.tasks.get(task.id)) ?? task
       return reply.code(201).send({
         ...settled,
         outlay: settled.outlay.toString(),
-        heldPoints: total,
+        heldPoints: refundedPoints ? 0 : total,
+        ...(refundedPoints ? { refundedPoints } : {}),
       })
     },
   )

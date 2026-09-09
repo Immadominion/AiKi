@@ -1,8 +1,9 @@
+import { executorAddress } from '../config/executor-identity.js'
 import type { JobService } from '../jobs/service.js'
 import { unresolvedExecutionMessage } from './attempts.js'
 import { type ExecutionOutcome, type ExecutionRequest, execute } from './executor.js'
 
-/** A durable, authorization-wide lock covers the policy hold and the entire broadcast. */
+/** Durable mandate and chain/signer locks cover the hold through finality or review. */
 export async function executeJobAction(input: {
   jobs: JobService
   jobId: string
@@ -10,7 +11,23 @@ export async function executeJobAction(input: {
   why?: string
 }) {
   const { jobs, jobId, request } = input
-  const claimed = await jobs.beginExecution(jobId, request.chainId)
+  const claimed = await jobs.beginExecution(
+    jobId,
+    request.chainId,
+    executorAddress(request.relayerKey),
+  )
+  if (!claimed.acquired && claimed.scope === 'executor')
+    return {
+      inFlight: true,
+      policy: {
+        allow: false,
+        rule: 'executor_pending',
+        reason:
+          'The execution signer is busy with another pending transaction. This action is deferred; no spending limit was reserved.',
+      },
+      // A different owner's hash and mandate identity must never leave here.
+      outcome: { status: 'unconfirmed', gasUsed: 0n } satisfies ExecutionOutcome,
+    }
   if (!claimed.acquired)
     return {
       inFlight: claimed.attempt.state !== 'UNCONFIRMED',

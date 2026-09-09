@@ -99,6 +99,7 @@ export interface ExecutionRequest {
 export interface ExecutionOutcome {
   /**
    * `landed` and `reverted` have a receipt for this exact signed transaction.
+   * On BNB networks the receipt must also be canonical and finalized.
    * `refused` is a known failure before broadcasting, with no transfer or gas
    * spent. `unconfirmed` means submission or its result is uncertain. Its hash
    * and reserved spending limit must survive; it must not be sent again.
@@ -148,7 +149,10 @@ export async function execute(request: ExecutionRequest): Promise<ExecutionOutco
 
   let signed: Hex
   let hash: Hex
+  const requiresFinality = request.chainId === 56 || request.chainId === 97
   try {
+    if (requiresFinality && (await publicClient.getChainId()) !== request.chainId)
+      throw new Error('Execution RPC chain mismatch.')
     const prepared = await wallet.prepareTransactionRequest({ to: request.delegationManager, data })
     signed = await wallet.signTransaction(prepared)
     hash = keccak256(signed)
@@ -165,7 +169,11 @@ export async function execute(request: ExecutionRequest): Promise<ExecutionOutco
     // Any exception from here is ambiguous: the RPC may accept a transaction
     // before its acknowledgement is lost. The pre-recorded hash survives it.
     await publicClient.sendRawTransaction({ serializedTransaction: signed })
-    const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 })
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: 60_000,
+      ...(requiresFinality ? { confirmations: 3 } : {}),
+    })
     if (receipt.transactionHash?.toLowerCase() !== hash.toLowerCase())
       return {
         status: 'unconfirmed',
@@ -174,6 +182,41 @@ export async function execute(request: ExecutionRequest): Promise<ExecutionOutco
         revertReason:
           'A different transaction used this nonce. Review the original hash before any further action.',
       }
+    if (receipt.status !== 'success' && receipt.status !== 'reverted')
+      throw new Error('Execution receipt outcome is unavailable.')
+    if (requiresFinality) {
+      const validHash = (value: unknown): value is Hex =>
+        typeof value === 'string' && /^0x[0-9a-f]{64}$/i.test(value) && !/^0x0{64}$/i.test(value)
+      if (
+        !validHash(receipt.blockHash) ||
+        typeof receipt.blockNumber !== 'bigint' ||
+        receipt.blockNumber < 0n
+      )
+        throw new Error('Execution receipt block identity is unavailable.')
+      // Depth is not finality. An unavailable or lagging finalized checkpoint
+      // keeps the signer locked even for a mined revert; there is no resend.
+      const finalized = await publicClient.getBlock({ blockTag: 'finalized' })
+      if (
+        !finalized ||
+        typeof finalized.number !== 'bigint' ||
+        finalized.number < receipt.blockNumber ||
+        !validHash(finalized.hash) ||
+        (finalized.number === receipt.blockNumber &&
+          finalized.hash.toLowerCase() !== receipt.blockHash.toLowerCase())
+      )
+        throw new Error('Execution receipt is not finalized.')
+      // Read canonicality AFTER the checkpoint to catch a branch change during
+      // finality lookup. Neither replacement nor orphaned receipts unlock.
+      const canonical = await publicClient.getBlock({ blockNumber: receipt.blockNumber })
+      if (
+        !canonical ||
+        canonical.number !== receipt.blockNumber ||
+        !validHash(canonical.hash) ||
+        canonical.hash.toLowerCase() !== receipt.blockHash.toLowerCase() ||
+        (await publicClient.getChainId()) !== request.chainId
+      )
+        throw new Error('Execution receipt is not canonical on the configured chain.')
+    }
     return {
       status: receipt.status === 'success' ? 'landed' : 'reverted',
       transactionHash: hash,

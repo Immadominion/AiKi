@@ -20,6 +20,7 @@ import { SessionSigner } from '../auth/session.js'
 import { viemChainReader } from '../authority/chain-reader.js'
 import { creditsNetwork } from '../config/credits-network.js'
 import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
+import { accountFunderIdentity, executorIdentity } from '../config/executor-identity.js'
 import { PostgresCreditStore } from '../credits/store.js'
 import { materializeObservation } from '../evidence/store.js'
 import type { Observation } from '../evidence/types.js'
@@ -36,9 +37,8 @@ import { PostgresTaskStore } from '../tasks/store.js'
 import { createApiServer } from './server.js'
 
 /** Absent means this deployment cannot prepare a delegation to sign. */
-const agentSessionKey = process.env.AGENT_SESSION_ADDRESS as `0x${string}` | undefined
-const accountFunderKey = process.env.ACCOUNT_FUNDER_PRIVATE_KEY as `0x${string}` | undefined
-const agentKey = process.env.AGENT_PRIVATE_KEY as `0x${string}` | undefined
+const { agentSessionKey, agentKey } = executorIdentity(process.env)
+const { funderKey: accountFunderKey } = accountFunderIdentity(process.env)
 const enforcerRpc =
   process.env.ENFORCER_RPC_URL ?? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545'
 
@@ -59,6 +59,7 @@ const agents = new Set(observations.map((o) => o.subject.agentId)).size
 // mandate made here is a row you can go and look at. Without one it stays in
 // memory and dies with the process.
 const databaseUrl = process.env.DATABASE_URL
+const accountStore = databaseUrl ? new PostgresAccountStore(databaseUrl) : undefined
 const deposits = creditsNetwork(process.env)
 const conversationStore = databaseUrl ? new PostgresConversationStore(databaseUrl) : undefined
 const creditStore = databaseUrl ? new PostgresCreditStore(databaseUrl) : undefined
@@ -96,11 +97,12 @@ const persistence =
         // Accounts too, so the browser walk is the same walk production does. A
         // dev API that could not deploy one would make the hire flow fall back to
         // "AiKi counts your limits" and look like a bug in the web.
-        ...(accountFunderKey
+        ...(accountFunderKey && accountStore
           ? {
               accounts: {
-                store: new PostgresAccountStore(databaseUrl),
+                store: accountStore,
                 deployer: viemAccountDeployer({
+                  store: accountStore,
                   rpcUrl: enforcerRpc,
                   chainId: AIKI_ENFORCERS_BSC_TESTNET.chainId,
                   manager: AIKI_ENFORCERS_BSC_TESTNET.manager as `0x${string}`,

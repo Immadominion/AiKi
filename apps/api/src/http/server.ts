@@ -886,7 +886,7 @@ export function createApiServer(input: {
       chainId: stored.chainId,
       // False when a concurrent request won the race, so a caller is never told
       // it created something it did not.
-      created: stored.address === deployed.address,
+      created: deployed.created ?? stored.address === deployed.address,
       deployedTx: stored.deployedTx,
     }
   })

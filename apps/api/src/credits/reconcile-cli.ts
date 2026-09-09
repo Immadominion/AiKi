@@ -1,7 +1,6 @@
 import postgres from 'postgres'
 import { creditsNetwork } from '../config/credits-network.js'
-import { checkLedger } from './reconcile.js'
-import { treasuryBackingPoints } from './treasury.js'
+import { checkCreditLedger, historicalCreditNetworks } from './reconcile-backing.js'
 
 /**
  * Ask the live database whether the money adds up, and exit non-zero if not.
@@ -19,10 +18,11 @@ if (!databaseUrl) throw new Error('DATABASE_URL is required to reconcile the led
  * the health route cannot disagree about whether AiKi is solvent.
  */
 const deposits = creditsNetwork(process.env)
+const historicalDeposits = historicalCreditNetworks(process.env)
 const sql = postgres(databaseUrl, { max: 1 })
 const findings = await (async () => {
   try {
-    return await checkLedger(sql, await treasuryBackingPoints(deposits), deposits)
+    return await checkCreditLedger(sql, deposits, historicalDeposits)
   } finally {
     await sql.end()
   }

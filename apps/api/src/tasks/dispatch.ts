@@ -62,6 +62,8 @@ export function tokenMatches(secret: string, taskId: string, given: string): boo
 export interface DispatchOutcome {
   /** What the agent handed back now, if it did. */
   delivered?: string
+  /** Explicit protocol non-delivery only; a transport failure is not a decline. */
+  declined?: true
   /** What happened, in a sentence, whether it worked or not. */
   note: string
 }
@@ -96,11 +98,10 @@ export async function dispatchToAgent(input: {
   }
 
   if (res.status === 202) return { note: 'Accepted the work and will call back.' }
-  if (!res.ok) return { note: `Answered ${res.status} rather than taking the work.` }
 
-  const raw = (await res.text()).slice(0, MAX_DELIVERY_CHARS)
   let parsed: unknown
   try {
+    const raw = (await res.text()).slice(0, MAX_DELIVERY_CHARS)
     parsed = JSON.parse(raw)
   } catch {
     /*
@@ -112,13 +113,26 @@ export async function dispatchToAgent(input: {
     return { note: 'Answered with something that is not JSON, so it does not speak this protocol.' }
   }
 
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+    return { note: 'Answered, but with nothing this protocol recognises as work.' }
   const body = parsed as { result?: unknown; accepted?: unknown; error?: unknown }
-  if (typeof body.error === 'string') return { note: `Declined it: ${body.error.slice(0, 200)}` }
-  if (body.accepted === true) return { note: 'Accepted the work and will call back.' }
+  // Never refund a response that contains work, even if another field conflicts.
   if (typeof body.result === 'string' && body.result.trim())
+    return res.ok
+      ? { delivered: body.result.slice(0, MAX_DELIVERY_CHARS), note: 'Answered straight away.' }
+      : { note: `Answered ${res.status} with possible work; delivery remains unconfirmed.` }
+  if (body.accepted === true) return { note: 'Accepted the work and will call back.' }
+  const explicitRefusal = body.accepted === false
+  const error = typeof body.error === 'string' ? body.error.trim().slice(0, 200) : ''
+  // A bare auth/rate-limit/conflict/server error may follow work already accepted.
+  // Only accepted:false can disambiguate a retryable 4xx protocol reply.
+  const ordinaryDecline = res.ok || [400, 404, 405, 410, 413, 415, 422].includes(res.status)
+  const explicitClientDecline = res.status >= 400 && res.status < 500 && explicitRefusal
+  if ((ordinaryDecline && (explicitRefusal || error)) || explicitClientDecline)
     return {
-      delivered: body.result.slice(0, MAX_DELIVERY_CHARS),
-      note: 'Answered straight away.',
+      declined: true,
+      note: `Declined it: ${error || 'The agent did not accept this task.'}`,
     }
+  if (!res.ok) return { note: `Answered ${res.status}; whether it accepted work is unconfirmed.` }
   return { note: 'Answered, but with nothing this protocol recognises as work.' }
 }

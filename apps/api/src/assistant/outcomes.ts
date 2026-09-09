@@ -85,6 +85,25 @@ function taskSummary(body: Record<string, unknown>): string {
 
 function describe(outcome: ToolOutcome): string {
   const body = object(outcome.body)
+  if (outcome.tool === 'read_external_agent') {
+    const id =
+      typeof body.agentId === 'string' && /^\d{1,64}$/.test(body.agentId) ? body.agentId : null
+    const provider = id ? `[External agent ${id}](/catalog/${id})` : 'External agent'
+    const providerExcerpt = (Array.isArray(body.content) ? body.content : [])
+      .slice(0, 3)
+      .map((part) => object(part))
+      .filter((part) => part.type === 'text')
+      .map((part) => text(part.text, 1_100))
+      .filter(Boolean)
+      .join(' ')
+      .slice(0, 1_100)
+    const errorMessage = text(
+      typeof body.error === 'string' ? body.error : object(body.error).message,
+    )
+    const excerpt = providerExcerpt || errorMessage
+    const succeeded = outcome.ok && body.status === 'completed' && !body.error
+    return `${provider}: ${succeeded ? 'read completed' : 'read did not complete'}.${excerpt ? ` ${providerExcerpt ? 'Provider response excerpt, not independently verified' : 'Read error'}: "${excerpt}"` : succeeded ? ' The provider returned structured data without a text summary.' : ' No successful report was confirmed.'}`
+  }
   const error = typeof body.error === 'string' ? body.error : object(body.error).message
   if (!outcome.ok || body.error)
     return `${TOOL_NAMES[outcome.tool] ?? 'Tool request'} was not confirmed: ${text(error) || 'the API did not return a successful result'}.`
@@ -153,6 +172,12 @@ export function stoppedReply(reason: 'budget' | 'rounds', outcomes: ToolOutcome[
     opening,
     details,
     ...(omitted > 0 ? [`${omitted} other tool results are omitted from this summary.`] : []),
-    '[Open your work](/work) to review existing tasks before creating another. A stopped reply does not cancel work already created.',
+    ...(outcomes.some(
+      (outcome) => outcome.mutating || TASK_TOOLS.has(outcome.tool) || outcome.tool === 'my_tasks',
+    )
+      ? [
+          '[Open your work](/work) to review existing tasks before creating another. A stopped reply does not cancel work already created.',
+        ]
+      : ['These were read-only requests. No task was created in this turn.']),
   ].join('\n\n')
 }

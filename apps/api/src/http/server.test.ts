@@ -109,6 +109,7 @@ it.each([
         submit: noTaskAccess,
         recordDelivery: noTaskAccess,
         noteDispatch: noTaskAccess,
+        refundDeclinedAssignment: noTaskAccess,
         cancelLapsedClaim: noTaskAccess,
         advance: noTaskAccess,
       },

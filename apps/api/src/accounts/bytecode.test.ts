@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
 import { MANDATE_ACCOUNT_BYTECODE } from './bytecode.js'
+import { ACCOUNT_MANAGER_OFFSETS, ACCOUNT_RUNTIME_OFFSET } from './runtime.js'
 
 /**
  * A committed copy of compiled bytecode is a constant that can go stale, and the
@@ -16,7 +17,13 @@ it('is the bytecode the contract actually compiles to', () => {
     '../../../../onchain/out/AiKiMandateAccount.sol/AiKiMandateAccount.json',
     import.meta.url,
   )
-  let artifact: { bytecode: { object: string } }
+  let artifact: {
+    bytecode: { object: string }
+    deployedBytecode: {
+      object: string
+      immutableReferences: Record<string, { start: number; length: number }[]>
+    }
+  }
   try {
     artifact = JSON.parse(readFileSync(path, 'utf8'))
   } catch {
@@ -26,6 +33,11 @@ it('is the bytecode the contract actually compiles to', () => {
     ? artifact.bytecode.object
     : `0x${artifact.bytecode.object}`
   expect(MANDATE_ACCOUNT_BYTECODE).toBe(compiled)
+  const runtime = artifact.deployedBytecode.object.replace(/^0x/, '')
+  expect(MANDATE_ACCOUNT_BYTECODE.slice(2 + ACCOUNT_RUNTIME_OFFSET * 2)).toBe(runtime)
+  expect(Object.values(artifact.deployedBytecode.immutableReferences).flat()).toEqual(
+    ACCOUNT_MANAGER_OFFSETS.map((start) => ({ start, length: 32 })),
+  )
 })
 
 it('is creation bytecode, not runtime', () => {

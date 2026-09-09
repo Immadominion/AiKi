@@ -6,12 +6,16 @@ const rpc = vi.hoisted(() => ({
   send: vi.fn(),
   receipt: vi.fn(),
   sendLegacy: vi.fn(),
+  chain: vi.fn(),
+  block: vi.fn(),
 }))
 vi.mock('viem', async (original) => ({
   ...(await original<typeof import('viem')>()),
   createPublicClient: () => ({
     sendRawTransaction: rpc.send,
     waitForTransactionReceipt: rpc.receipt,
+    getChainId: rpc.chain,
+    getBlock: rpc.block,
   }),
   createWalletClient: () => ({
     prepareTransactionRequest: rpc.prepare,
@@ -24,6 +28,14 @@ const { execute } = await import('./executor.js')
 const signed = '0x010203' as const
 const hash = keccak256(signed)
 const address = `0x${'11'.repeat(20)}` as const
+const blockHash = `0x${'cd'.repeat(32)}` as const
+const goodReceipt = {
+  status: 'success',
+  gasUsed: 123n,
+  transactionHash: hash,
+  blockNumber: 80n,
+  blockHash,
+}
 const request = {
   rpcUrl: 'http://127.0.0.1:1',
   chainId: 56,
@@ -53,9 +65,13 @@ beforeEach(() => {
   rpc.sign.mockReset().mockResolvedValue(signed)
   rpc.send.mockReset().mockResolvedValue(hash)
   rpc.sendLegacy.mockReset().mockResolvedValue(hash)
-  rpc.receipt
+  rpc.receipt.mockReset().mockResolvedValue(goodReceipt)
+  rpc.chain.mockReset().mockResolvedValue(56)
+  rpc.block
     .mockReset()
-    .mockResolvedValue({ status: 'success', gasUsed: 123n, transactionHash: hash })
+    .mockImplementation(async (input) =>
+      'blockTag' in input ? { number: 100n, hash: blockHash } : { number: 80n, hash: blockHash },
+    )
 })
 
 it('persists the locally calculated hash before any broadcast', async () => {
@@ -119,7 +135,7 @@ it.each(['prepare', 'sign'] as const)(
 )
 
 it('distinguishes a mined revert from an unknown result', async () => {
-  rpc.receipt.mockResolvedValue({ status: 'reverted', gasUsed: 123n, transactionHash: hash })
+  rpc.receipt.mockResolvedValue({ ...goodReceipt, status: 'reverted' })
   expect(await execute(request)).toEqual({
     status: 'reverted',
     gasUsed: 123n,
@@ -139,4 +155,86 @@ it('does not count a cancellation or replacement receipt as this action landing'
 it('requires the receipt to identify the exact prepared transaction', async () => {
   rpc.receipt.mockResolvedValue({ status: 'success', gasUsed: 123n })
   expect(await execute(request)).toMatchObject({ status: 'unconfirmed', transactionHash: hash })
+})
+
+it.each([56, 97])(
+  'requires three confirmations AND finalized canonical identity on chain %s',
+  async (chainId) => {
+    rpc.chain.mockResolvedValue(chainId)
+    expect((await execute({ ...request, chainId })).status).toBe('landed')
+    expect(rpc.receipt).toHaveBeenCalledWith({ hash, timeout: 60_000, confirmations: 3 })
+    expect(rpc.block.mock.calls).toEqual([[{ blockTag: 'finalized' }], [{ blockNumber: 80n }]])
+    expect(rpc.chain).toHaveBeenCalledTimes(2)
+  },
+)
+
+it('refuses a wrong RPC chain before preparing, signing or broadcasting', async () => {
+  rpc.chain.mockResolvedValue(97)
+  expect((await execute(request)).status).toBe('refused')
+  expect(rpc.prepare).not.toHaveBeenCalled()
+  expect(rpc.sign).not.toHaveBeenCalled()
+  expect(rpc.send).not.toHaveBeenCalled()
+})
+
+it.each(['success', 'reverted'])(
+  'keeps a mined %s unresolved while finality is behind',
+  async (status) => {
+    rpc.receipt.mockResolvedValue({ ...goodReceipt, status })
+    rpc.block.mockResolvedValue({ number: 79n, hash: blockHash })
+    expect(await execute(request)).toMatchObject({
+      status: 'unconfirmed',
+      transactionHash: hash,
+      gasUsed: 0n,
+    })
+    expect(rpc.send).toHaveBeenCalledOnce()
+    expect(rpc.block).toHaveBeenCalledOnce()
+  },
+)
+
+it.each([
+  undefined,
+  null,
+  {},
+  { number: 100, hash: blockHash },
+  { number: -1n, hash: blockHash },
+  { number: 100n },
+  { number: 100n, hash: `0x${'00'.repeat(32)}` },
+  { number: 80n, hash: `0x${'ef'.repeat(32)}` },
+])('retains the signer lock for invalid or contradictory finality checkpoint %#', async (block) => {
+  rpc.block.mockResolvedValue(block)
+  expect((await execute(request)).status).toBe('unconfirmed')
+})
+
+it.each([
+  { blockNumber: undefined },
+  { blockNumber: 80 },
+  { blockNumber: -1n },
+  { blockHash: undefined },
+  { blockHash: `0x${'00'.repeat(32)}` },
+  { status: 'unknown' },
+])('rejects malformed mined receipt identity or status %#', async (patch) => {
+  rpc.receipt.mockResolvedValue({ ...goodReceipt, ...patch })
+  expect((await execute(request)).status).toBe('unconfirmed')
+})
+
+it('retains the signer lock when finalized lookup is unavailable', async () => {
+  rpc.block.mockRejectedValue(new Error('private-rpc-fixture'))
+  const result = await execute(request)
+  expect(result.status).toBe('unconfirmed')
+  expect(result.revertReason).not.toContain('private-rpc-fixture')
+})
+
+it.each([
+  { number: 80n, hash: `0x${'ef'.repeat(32)}` },
+  { number: 81n, hash: blockHash },
+  { number: 80n, hash: null },
+])('rejects canonical block disagreement after reading finality %#', async (block) => {
+  rpc.block.mockResolvedValueOnce({ number: 100n, hash: blockHash }).mockResolvedValueOnce(block)
+  expect((await execute(request)).status).toBe('unconfirmed')
+  expect(rpc.block.mock.calls).toEqual([[{ blockTag: 'finalized' }], [{ blockNumber: 80n }]])
+})
+
+it('retains the signer lock when the RPC chain changes during confirmation', async () => {
+  rpc.chain.mockResolvedValueOnce(56).mockResolvedValueOnce(97)
+  expect((await execute(request)).status).toBe('unconfirmed')
 })

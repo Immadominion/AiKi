@@ -8,6 +8,7 @@ import {
   referenceBase,
   referenceManifest,
 } from '../manifest.js'
+import { registerReportTask, reportInputs, reportTaskCapability } from '../report-task.js'
 import type { YieldReader } from './client.js'
 import { persistYieldAssessment } from './evidence-sink.js'
 
@@ -22,6 +23,7 @@ const SPEC = {
 
 const CAPABILITY = {
   capability: SPEC.serviceName,
+  ...reportTaskCapability('yield'),
   category: 'yield_optimisation',
   input: {
     markets: 'comma-separated Venus market addresses',
@@ -56,6 +58,35 @@ export function createYieldServer(options: {
   app.get('/.well-known/agent-registration.json', async (_request, reply) =>
     agentId ? reciprocalProof([agentId]) : reply.code(503).send(NOT_REGISTERED),
   )
+
+  registerReportTask(app, {
+    path: SPEC.servicePath,
+    agentId,
+    kind: 'yield',
+    title: 'Venus supply-rate comparison report',
+    parse: reportInputs.yield,
+    read: ({ markets, rateOnly }) => options.reader.assess(markets, rateOnly),
+    persist: async (assessment) =>
+      agentId && options.evidenceStore
+        ? (
+            await persistYieldAssessment(options.evidenceStore, {
+              agentId,
+              assessment,
+              registry: BSC_MAINNET.contracts.erc8004Identity,
+              chainId: BSC_MAINNET.id,
+            })
+          ).inserted
+        : false,
+    summary: (assessment) => [
+      ...assessment.routes.map(
+        (route) =>
+          `${route.symbol} (${route.market}): ${route.simpleAnnualRateBps} basis points simple annual rate; ${route.supplyRatePerBlock} rate units per block.`,
+      ),
+      assessment.recommendedMarket
+        ? `Highest rate among the supplied markets: ${assessment.recommendedMarket}. Rate-only comparison, not an investment recommendation.`
+        : 'Rates shown without selecting a market. No risk-adjusted investment recommendation is made.',
+    ],
+  })
 
   async function assess(
     query: { markets?: string; rateOnly?: string },

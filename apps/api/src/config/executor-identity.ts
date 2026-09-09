@@ -27,3 +27,23 @@ export function executorIdentity(env: Record<string, string | undefined>): {
     )
   return { agentSessionKey: derived, agentKey: privateKey as Hex }
 }
+
+/** Deployment and redemption have separate durable queues and must never share a nonce space. */
+export function accountFunderIdentity(env: Record<string, string | undefined>): {
+  funderKey?: Hex
+} {
+  const key = env.ACCOUNT_FUNDER_PRIVATE_KEY?.trim()
+  if (!key) return {}
+  let funder: Address
+  try {
+    funder = executorAddress(key)
+  } catch {
+    throw new Error('ACCOUNT_FUNDER_PRIVATE_KEY is not a valid account-deployment key.')
+  }
+  const { agentSessionKey } = executorIdentity(env)
+  if (agentSessionKey?.toLowerCase() === funder.toLowerCase())
+    throw new Error(
+      'Account deployment and execution must use different signing keys. Startup is disabled.',
+    )
+  return { funderKey: key as Hex }
+}

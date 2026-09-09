@@ -81,6 +81,44 @@ it('records a refusal in the agent own words', async () => {
   const out = await send()
   expect(out.delivered).toBeUndefined()
   expect(out.note).toMatch(/I do not do that kind of work/)
+  expect(out.declined).toBe(true)
+})
+
+it('recognises an explicit invalid-input decline but not ambiguous response statuses', async () => {
+  answer({ error: 'Invalid report inputs.' }, 400)
+  expect((await send()).declined).toBe(true)
+  for (const status of [202, 401, 403, 408, 409, 425, 429, 500, 502, 503]) {
+    answer({ error: 'Try later.' }, status)
+    expect((await send()).declined).not.toBe(true)
+  }
+  answer({ accepted: false, error: 'I decline this task.' }, 409)
+  expect((await send()).declined).toBe(true)
+})
+
+it('never classifies delivered or accepted work as a refundable decline', async () => {
+  answer({ result: 'Finished report.', error: 'A warning.', accepted: false })
+  const delivered = await send()
+  expect(delivered).toMatchObject({ delivered: 'Finished report.' })
+  expect(delivered.declined).not.toBe(true)
+  answer({ accepted: true, error: 'A warning.' })
+  expect((await send()).declined).not.toBe(true)
+  answer({ result: 'Possibly finished.', error: 'A warning.' }, 400)
+  expect((await send()).declined).not.toBe(true)
+})
+
+it('keeps unreadable and malformed response bodies uncertain', async () => {
+  for (const body of [null, [], '<html>Unavailable</html>', { error: '' }]) {
+    answer(body)
+    expect((await send()).declined).not.toBe(true)
+  }
+  fetched.mockResolvedValue({
+    status: 200,
+    ok: true,
+    text: async () => {
+      throw new Error('body connection lost')
+    },
+  })
+  expect((await send()).declined).not.toBe(true)
 })
 
 it('records an unreachable endpoint rather than throwing', async () => {

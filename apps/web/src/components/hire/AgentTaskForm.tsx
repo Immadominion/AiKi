@@ -15,6 +15,7 @@ import {
   TASK_TYPES,
   type TaskAttempt,
   taskAttempt,
+  taskCreationMessage,
   taskPrice,
   taskRejectedBeforeCharge,
 } from './agent-task'
@@ -151,11 +152,7 @@ export function AgentTaskForm({
       } catch {
         /* The server still deduplicates this key. */
       }
-      say(
-        task.submission
-          ? 'Your request was delivered. Review the result in Work.'
-          : 'Your request is in Work. Follow its delivery there.',
-      )
+      say(taskCreationMessage(task))
       router.push(`/work?task=${encodeURIComponent(task.id)}`)
     } catch (error) {
       if (taskRejectedBeforeCharge(error)) {

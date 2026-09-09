@@ -12,10 +12,9 @@ import { viemChainReader } from './authority/chain-reader.js'
 import { createWatchMandateVerifier } from './authority/watch-readiness.js'
 import { creditsNetwork } from './config/credits-network.js'
 import { executionNetwork, verifyExecutionNetwork } from './config/execution-network.js'
-import { executorIdentity } from './config/executor-identity.js'
-import { checkLedger } from './credits/reconcile.js'
+import { accountFunderIdentity, executorIdentity } from './config/executor-identity.js'
+import { checkCreditLedger, historicalCreditNetworks } from './credits/reconcile-backing.js'
 import { PostgresCreditStore } from './credits/store.js'
-import { treasuryBackingPoints } from './credits/treasury.js'
 import { PostgresEvidenceStore } from './evidence/postgres-store.js'
 import { createApiServer } from './http/server.js'
 import { COVERAGE_START_STREAM } from './indexer/evidence-sink.js'
@@ -77,7 +76,7 @@ const { agentSessionKey, agentKey } = executorIdentity(process.env)
  * deploying accounts for strangers. Absent means this deployment cannot make
  * accounts, which every screen has to be able to say.
  */
-const accountFunderKey = process.env.ACCOUNT_FUNDER_PRIVATE_KEY as `0x${string}` | undefined
+const { funderKey: accountFunderKey } = accountFunderIdentity(process.env)
 const accountStore = new PostgresAccountStore(databaseUrl)
 const watchStore = new PostgresWatchStore(databaseUrl)
 const creditStore = new PostgresCreditStore(databaseUrl)
@@ -105,6 +104,7 @@ const marketplaceStore = new PostgresMarketplaceStore(databaseUrl)
  */
 const assistantKey = process.env.ANTHROPIC_API_KEY
 const deposits = creditsNetwork(process.env)
+const historicalDeposits = historicalCreditNetworks(process.env)
 const treasury = deposits?.treasury
 const execution = await executionNetwork(process.env)
 await verifyExecutionNetwork(execution)
@@ -141,12 +141,10 @@ const app = createApiServer({
   deliverySecret: receiptSeed,
   // Names and verdicts only. The route is public and the amounts are not.
   ledgerHealth: async () =>
-    (await checkLedger(ledgerSql, await treasuryBackingPoints(deposits), deposits)).map(
-      ({ check, ok }) => ({
-        check,
-        ok,
-      }),
-    ),
+    (await checkCreditLedger(ledgerSql, deposits, historicalDeposits)).map(({ check, ok }) => ({
+      check,
+      ok,
+    })),
   appendObservation: (observation) => store.append(observation),
   enforcers: deployment,
   ...(agentSessionKey ? { agentSessionKey } : {}),
@@ -160,6 +158,7 @@ const app = createApiServer({
         accounts: {
           store: accountStore,
           deployer: viemAccountDeployer({
+            store: accountStore,
             rpcUrl: enforcerRpcUrl,
             chainId: deployment.chainId,
             manager: deployment.manager as `0x${string}`,
@@ -269,16 +268,25 @@ app.post('/v1/reference/venus/*', (request, reply) =>
 app.get('/v1/reference/pancake/rebalancer/*', (request, reply) =>
   delegate(rebalancer as unknown as Injectable, request, reply),
 )
+app.post('/v1/reference/pancake/rebalancer/*', (request, reply) =>
+  delegate(rebalancer as unknown as Injectable, request, reply),
+)
 app.get('/v1/reference/pancake/grid', (request, reply) =>
   delegate(grid as unknown as Injectable, request, reply),
 )
 app.get('/v1/reference/pancake/grid/*', (request, reply) =>
   delegate(grid as unknown as Injectable, request, reply),
 )
+app.post('/v1/reference/pancake/grid/*', (request, reply) =>
+  delegate(grid as unknown as Injectable, request, reply),
+)
 app.get('/v1/reference/yield', (request, reply) =>
   delegate(yieldAgent as unknown as Injectable, request, reply),
 )
 app.get('/v1/reference/yield/*', (request, reply) =>
+  delegate(yieldAgent as unknown as Injectable, request, reply),
+)
+app.post('/v1/reference/yield/*', (request, reply) =>
   delegate(yieldAgent as unknown as Injectable, request, reply),
 )
 app.get('/.well-known/agent-registration.json', async (_request, reply) => {

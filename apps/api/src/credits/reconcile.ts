@@ -31,7 +31,15 @@ export interface LedgerRail {
   treasury?: string
 }
 
+/** A fresh, independently verified observation, never pooled across networks. */
+export interface LedgerBacking extends LedgerRail {
+  backingPoints: number | null
+}
+
 const n = (value: unknown) => Number(value ?? 0)
+const railKey = (chainId: number, token: string) => `chain ${chainId}, token ${token.toLowerCase()}`
+const validBacking = (value: number | null | undefined): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 
 export async function checkLedger(
   sql: postgres.Sql,
@@ -46,6 +54,8 @@ export async function checkLedger(
   backingPoints?: number | null,
   /** The chain and token that the supplied treasury backing actually covers. */
   rail?: LedgerRail,
+  /** Explicit observations of original historical rails, not current-rail collateral. */
+  historicalBackings: readonly LedgerBacking[] = [],
 ): Promise<LedgerFinding[]> {
   const findings: LedgerFinding[] = []
 
@@ -250,7 +260,7 @@ export async function checkLedger(
       } else if (chainId === rail.chainId && token === rail.token.toLowerCase()) {
         currentSold += points
       } else {
-        const key = `chain ${chainId}, token ${token}`
+        const key = railKey(chainId, token as string)
         const prior = other.get(key)
         other.set(key, {
           points: (prior?.points ?? 0) + points,
@@ -259,7 +269,7 @@ export async function checkLedger(
       }
     }
     const otherSold = [...other.values()].reduce((sum, entry) => sum + entry.points, 0)
-    const backingAvailable = typeof backingPoints === 'number' && Number.isFinite(backingPoints)
+    const backingAvailable = validBacking(backingPoints)
     const validRail =
       Number.isSafeInteger(rail.chainId) && rail.chainId > 0 && /^0x[0-9a-f]{40}$/i.test(rail.token)
     const currentBacked =
@@ -267,7 +277,34 @@ export async function checkLedger(
       Number.isSafeInteger(currentSold) &&
       backingAvailable &&
       backingPoints >= currentSold
-    const historyVerified = other.size === 0 && unknownEntries === 0
+    const historicalDetails: string[] = []
+    let historyVerified = unknownEntries === 0
+    for (const [key, entry] of [...other.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      const observations = historicalBackings.filter(
+        (observation) =>
+          Number.isSafeInteger(observation.chainId) &&
+          observation.chainId > 0 &&
+          /^0x[0-9a-f]{40}$/i.test(observation.token) &&
+          railKey(observation.chainId, observation.token) === key,
+      )
+      // Exactly one observation: duplicated readings must never be added together
+      // or selected opportunistically to conceal an unavailable historical rail.
+      const observation = observations.length === 1 ? observations[0] : undefined
+      const available = validBacking(observation?.backingPoints)
+      const backed =
+        Number.isSafeInteger(entry.points) &&
+        entry.points >= 0 &&
+        available &&
+        (observation?.backingPoints as number) >= entry.points
+      historyVerified &&= backed
+      historicalDetails.push(
+        `${entry.points} points in ${entry.entries} deposits on ${key}${observation?.treasury ? `; treasury ${observation.treasury.toLowerCase()}` : ''}; ${available ? `${observation?.backingPoints} points of backing held` : 'backing is unverified'}${observations.length > 1 ? ' (duplicate observations are not pooled)' : ''}; ${backed ? 'verified on this original payment rail' : 'this liability remains unverified'}`,
+      )
+    }
+    if (unknownEntries)
+      historicalDetails.push(
+        `${unknownSold} points in ${unknownEntries} deposits with unknown chain/token metadata; backing is unverified`,
+      )
     const issuanceMatches =
       Number.isSafeInteger(sold) && Number.isSafeInteger(payerTotal) && payerTotal === sold
     const allBacked = currentBacked && historyVerified && issuanceMatches
@@ -279,27 +316,14 @@ export async function checkLedger(
     findings.push({
       check: 'paid points on other or unknown payment rails are verified',
       ok: historyVerified,
-      detail: historyVerified
-        ? 'no paid points recorded on another or unknown payment rail'
-        : `${[
-            ...[...other.entries()]
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(
-                ([key, entry]) => `${entry.points} points in ${entry.entries} deposits on ${key}`,
-              ),
-            ...(unknownEntries
-              ? [
-                  `${unknownSold} points in ${unknownEntries} deposits with unknown chain/token metadata`,
-                ]
-              : []),
-          ].join(
-            '; ',
-          )}; backing is unverified for these liabilities by the current treasury observation`,
+      detail: historicalDetails.length
+        ? historicalDetails.join('; ')
+        : 'no paid points recorded on another or unknown payment rail',
     })
     findings.push({
       check: 'every point somebody paid for is still backed',
       ok: allBacked,
-      detail: `${sold} points sold: ${currentSold} on the current rail, ${otherSold} on other rails, ${unknownSold} with unknown metadata; ${granted} more were granted, which AiKi carries. ${issuanceMatches ? '' : `Issuance records ${sold} sold points but positive payer deposits total ${payerTotal}; this mismatch is unverified. `}${allBacked ? 'All paid points have verified backing on the current rail.' : 'Not all paid points have verified backing.'}`,
+      detail: `${sold} points sold: ${currentSold} on the current rail, ${otherSold} on other rails, ${unknownSold} with unknown metadata; ${granted} more were granted, which AiKi carries. ${issuanceMatches ? '' : `Issuance records ${sold} sold points but positive payer deposits total ${payerTotal}; this mismatch is unverified. `}${allBacked ? 'All paid points have verified backing on each original payment rail; no cross-network conversion is implied.' : 'Not all paid points have verified backing.'}`,
     })
     return findings
   }

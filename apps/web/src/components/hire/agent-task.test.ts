@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { buildAgentTask, taskAttempt, taskPrice, taskRejectedBeforeCharge } from './agent-task'
+import {
+  buildAgentTask,
+  taskAttempt,
+  taskCreationMessage,
+  taskPrice,
+  taskRejectedBeforeCharge,
+} from './agent-task'
 
 const draft = {
   agentId: '315943',
@@ -91,6 +97,7 @@ test('uncertain failures keep the operation key so retrying cannot fund another 
     { status: 500, code: 'INTERNAL_ERROR' },
     { status: 500, code: 'INSUFFICIENT_POINTS' },
     { status: 503, code: 'UNKNOWN' },
+    { status: 503, code: 'TASK_REFUND_UNCONFIRMED' },
     { status: 409, code: 'TASK_REQUEST_IN_PROGRESS' },
     { status: 409, code: 'TASK_ALREADY_FUNDED' },
     { status: 409, code: 'TASK_IDEMPOTENCY_CONFLICT' },
@@ -105,4 +112,31 @@ test('uncertain failures keep the operation key so retrying cannot fund another 
       previous,
     )
   }
+})
+
+test('a declined task reports only a confirmed returned refund amount', () => {
+  assert.equal(
+    taskCreationMessage({ status: 'CANCELLED', refundedPoints: 512 }),
+    'The agent declined. Your 512 points were refunded. See the task in Work.',
+  )
+  for (const refundedPoints of [undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(
+      taskCreationMessage({
+        status: 'CANCELLED',
+        ...(refundedPoints === undefined ? {} : { refundedPoints }),
+      }),
+      'This request was cancelled. Check its refund status in Work.',
+    )
+  }
+})
+
+test('delivered and still-working requests retain their existing guidance', () => {
+  assert.equal(
+    taskCreationMessage({ status: 'SUBMITTED', submission: 'The report.' }),
+    'Your request was delivered. Review the result in Work.',
+  )
+  assert.equal(
+    taskCreationMessage({ status: 'CLAIMED' }),
+    'Your request is in Work. Follow its delivery there.',
+  )
 })
