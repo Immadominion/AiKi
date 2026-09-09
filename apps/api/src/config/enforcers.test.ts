@@ -21,6 +21,7 @@ function fakeChain(
     chainId?: number
     code?: Record<string, string>
     resolves?: Record<string, string>
+    links?: Record<string, string>
   } = {},
 ): JsonRpcClient {
   const real: Record<string, string> = {}
@@ -36,9 +37,18 @@ function fakeChain(
       if (method === 'eth_getCode') return (code[String(params[0]).toLowerCase()] ?? '0x') as T
       if (method === 'eth_call') {
         const to = String((params[0] as { to: string }).to).toLowerCase()
-        if (to !== AIKI_ENFORCERS_BSC_TESTNET.registry) throw new Error('unexpected call target')
         // The fake resolves every name to the pinned address unless told not to.
         const data = String((params[0] as { data: string }).data)
+        for (const [getter, expected] of [
+          ['EXPIRY_ENFORCER', AIKI_ENFORCERS_BSC_TESTNET.enforcers[0]?.address],
+          ['DELEGATION_MANAGER', AIKI_ENFORCERS_BSC_TESTNET.manager],
+        ]) {
+          if (data === keccak256(new TextEncoder().encode(`${getter}()`)).slice(0, 10)) {
+            const address = overrides.links?.[`${to}:${getter}`] ?? expected
+            return `0x${address?.slice(2).padStart(64, '0')}` as T
+          }
+        }
+        if (to !== AIKI_ENFORCERS_BSC_TESTNET.registry) throw new Error('unexpected call target')
         const named = AIKI_ENFORCERS_BSC_TESTNET.enforcers.find((e) => {
           const hex = [...new TextEncoder().encode(e.name)]
             .map((b) => b.toString(16).padStart(2, '0'))
@@ -138,6 +148,25 @@ it('requires mainnet pins for the manager and registry as well as the enforcers'
       pinned,
     ),
   ).rejects.toThrow('AiKiEnforcerRegistry')
+
+  for (const [contract, getter] of [
+    [deployment.manager, 'EXPIRY_ENFORCER'],
+    [deployment.registry, 'DELEGATION_MANAGER'],
+    ...deployment.enforcers
+      .filter((entry) => ['PerActionCapEnforcer', 'SessionTotalCapEnforcer'].includes(entry.name))
+      .map((entry) => [entry.address, 'DELEGATION_MANAGER']),
+  ]) {
+    await expect(
+      assertEnforcerDeployment(
+        fakeChain({
+          chainId: 56,
+          code,
+          links: { [`${contract}:${getter}`]: `0x${'dd'.repeat(20)}` },
+        }),
+        pinned,
+      ),
+    ).rejects.toThrow('reviewed contract wiring')
+  }
 })
 
 it('will not let a testnet deployment claim T0 without saying so', () => {

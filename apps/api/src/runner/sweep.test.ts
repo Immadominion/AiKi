@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest'
+import { executorAddress } from '../config/executor-identity.js'
 import { JobService } from '../jobs/service.js'
 import { InMemoryJobStore } from '../jobs/store.js'
 import type { VenusAccountSnapshot } from '../reference/venus/types.js'
@@ -44,7 +45,10 @@ const SNAPSHOT: VenusAccountSnapshot = {
   ],
 }
 
-async function setup(options: { signed?: boolean; cap?: string; revoked?: boolean } = {}) {
+async function setup(
+  options: { signed?: boolean; cap?: string; revoked?: boolean; chainId?: number } = {},
+) {
+  const chainId = options.chainId ?? 97
   const jobs = new JobService(new InMemoryJobStore())
   const watches = new InMemoryWatchStore()
   const constraints = options.cap
@@ -69,7 +73,7 @@ async function setup(options: { signed?: boolean; cap?: string; revoked?: boolea
   if (options.signed !== false)
     await jobs.attachDelegation(authorization.id, {
       delegation: {
-        delegate: `0x${'44'.repeat(20)}`,
+        delegate: executorAddress(CHAIN.relayerKey),
         delegator: ACCOUNT,
         authority: `0x${'ff'.repeat(32)}`,
         caveats: [],
@@ -77,7 +81,7 @@ async function setup(options: { signed?: boolean; cap?: string; revoked?: boolea
         epoch: '0',
         signature: `0x${'66'.repeat(65)}`,
       } as never,
-      chainId: 97,
+      chainId,
     })
   const job = await jobs.createJob(authorization.id, `k-${Math.random()}`)
   // Revoked after the watch exists, which is the order it happens in: somebody
@@ -87,7 +91,7 @@ async function setup(options: { signed?: boolean; cap?: string; revoked?: boolea
     jobId: job.id,
     authorizationId: authorization.id,
     account: ACCOUNT,
-    chainId: 97,
+    chainId,
     protocol: 'venus',
     minimumHealthFactor: '1.25',
     asset: TOKEN,
@@ -101,7 +105,8 @@ async function setup(options: { signed?: boolean; cap?: string; revoked?: boolea
     jobs,
     watches,
     reader: () => ({ snapshot: async () => SNAPSHOT, underlying: async () => TOKEN }),
-    chain: () => CHAIN,
+    chain: () => ({ ...CHAIN, chainId }),
+    verifyMandate: async () => ({ ready: true }),
   }
   return { jobs, watches, deps, job, authorizationId: authorization.id }
 }
@@ -118,6 +123,78 @@ it('will not act unattended under a mandate nobody signed', async () => {
   expect(tickMock).not.toHaveBeenCalled()
   expect((await watches.get(job.id))?.status).toBe('stopped')
 })
+
+it('stops stale mandates after executor-key rotation before reads, spending or execution', async () => {
+  tickMock.mockReset()
+  const { deps, watches, jobs, job, authorizationId } = await setup({ cap: '100' })
+  const snapshot = vi.fn(async () => SNAPSHOT)
+  deps.reader = () => ({ snapshot, underlying: async () => TOKEN })
+  deps.chain = () => ({ ...CHAIN, relayerKey: `0x${'44'.repeat(32)}` })
+  const report = await sweep(deps)
+  expect(report.stopped).toBe(1)
+  expect(report.passes[0]?.reason).toMatch(/different executor/)
+  expect((await watches.get(job.id))?.status).toBe('stopped')
+  expect((await jobs.getAuthorization(authorizationId)).spent).toBe(0n)
+  expect(snapshot).not.toHaveBeenCalled()
+  expect(tickMock).not.toHaveBeenCalled()
+})
+
+it.each([56, 97])('keeps matching executor mandates runnable on chain%d', async (chainId) => {
+  tickMock.mockReset()
+  tickMock.mockResolvedValue({ acted: false, reason: 'Position is healthy.' })
+  const { deps, watches, job } = await setup({ cap: '100', chainId })
+  const report = await sweep(deps)
+  expect(report.stopped).toBe(0)
+  expect((await watches.get(job.id))?.status).toBe('active')
+  expect(tickMock).toHaveBeenCalledTimes(1)
+  expect(tickMock).toHaveBeenCalledWith(
+    expect.objectContaining({ chain: expect.objectContaining({ chainId }) }),
+  )
+})
+
+it.each([false, true])('does not execute an unready mandate (retryable: %s)', async (retryable) => {
+  tickMock.mockReset()
+  const { deps, watches, jobs, job, authorizationId } = await setup({ cap: '100' })
+  const snapshot = vi.fn(async () => SNAPSHOT)
+  deps.reader = () => ({ snapshot, underlying: async () => TOKEN })
+  const reason = retryable
+    ? 'Mandate verification is temporarily unavailable.'
+    : 'Sign a new mandate for this manager.'
+  deps.verifyMandate = vi.fn(async () => ({ ready: false as const, retryable, reason }))
+  const report = await sweep(deps)
+  expect(report.stopped).toBe(retryable ? 0 : 1)
+  expect(report.passes[0]?.reason).toBe(reason)
+  expect((await watches.get(job.id))?.status).toBe(retryable ? 'active' : 'stopped')
+  expect((await watches.get(job.id))?.lastReason).toBe(reason)
+  expect(deps.verifyMandate).toHaveBeenCalledWith(await jobs.getAuthorization(authorizationId))
+  expect((await jobs.getAuthorization(authorizationId)).spent).toBe(0n)
+  expect(snapshot).not.toHaveBeenCalled()
+  expect(tickMock).not.toHaveBeenCalled()
+})
+
+it.each(['missing', 'throws'] as const)(
+  'does not execute if mandate verification %s',
+  async (mode) => {
+    tickMock.mockReset()
+    const { deps, watches, jobs, job, authorizationId } = await setup({ cap: '100' })
+    const snapshot = vi.fn(async () => SNAPSHOT)
+    deps.reader = () => ({ snapshot, underlying: async () => TOKEN })
+    if (mode === 'missing') delete deps.verifyMandate
+    else
+      deps.verifyMandate = async () => {
+        throw new Error('private-rpc-credential-fixture')
+      }
+    const report = await sweep(deps)
+    expect(report.stopped).toBe(0)
+    expect(report.acted).toBe(0)
+    expect(report.passes[0]?.reason).toMatch(/No action was taken/)
+    expect(JSON.stringify(report)).not.toContain('private-rpc-credential-fixture')
+    expect((await watches.get(job.id))?.status).toBe('active')
+    expect((await jobs.getAuthorization(authorizationId)).spent).toBe(0n)
+    expect(snapshot).not.toHaveBeenCalled()
+    expect(tickMock).not.toHaveBeenCalled()
+  },
+)
 
 it('stops watching when the mandate is revoked', async () => {
   tickMock.mockReset()

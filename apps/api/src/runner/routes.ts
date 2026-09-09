@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { type Address, createPublicClient, http, type PublicClient, parseAbi } from 'viem'
 import { bsc, bscTestnet } from 'viem/chains'
 import { requireOwner, requireSession } from '../auth/guard.js'
+import type { WatchMandateVerifier } from '../authority/watch-readiness.js'
 import { ClientError } from '../http/errors.js'
 import type { JobService } from '../jobs/service.js'
 import { VenusClient, type VenusReader } from '../reference/venus/client.js'
@@ -26,6 +27,9 @@ export interface WatchRoutesConfig {
 
 export interface WatchActivationReader extends VenusReader {
   chainId: number
+  /** Public address derived from this deployment's validated execution key. */
+  executorAddress?: Address
+  verifyMandate?: WatchMandateVerifier
   underlying(market: Address): Promise<Address>
 }
 
@@ -34,6 +38,8 @@ export function createWatchActivationReader(
   rpcUrl: string,
   suppliedClient?: PublicClient,
   chainId = 56,
+  executorAddress?: Address,
+  verifyMandate?: WatchMandateVerifier,
 ): WatchActivationReader {
   if (chainId !== 56 && chainId !== 97) throw new Error('Unsupported watch execution network.')
   const client =
@@ -49,6 +55,8 @@ export function createWatchActivationReader(
   }
   return {
     chainId,
+    ...(executorAddress ? { executorAddress } : {}),
+    ...(verifyMandate ? { verifyMandate } : {}),
     async snapshot(account) {
       await assertChain()
       return venus.snapshot(account)
@@ -190,11 +198,33 @@ export function registerWatchRoutes(app: FastifyInstance, config: WatchRoutesCon
           statusCode: 409,
         })
       const reader = config.activation
-      if (!reader || reader.chainId !== chainId)
+      if (!reader || reader.chainId !== chainId || !reader.executorAddress || !reader.verifyMandate)
         throw new ClientError('Automatic repayment is not configured on this deployment.', {
           code: 'WATCH_UNAVAILABLE',
           statusCode: 503,
         })
+      if (authorization.delegation.delegate.toLowerCase() !== reader.executorAddress.toLowerCase())
+        throw new ClientError(
+          'This mandate names a different executor. Sign a new mandate before starting a watch.',
+          {
+            code: 'WATCH_EXECUTOR_MISMATCH',
+            statusCode: 409,
+          },
+        )
+      try {
+        const readiness = await reader.verifyMandate(authorization)
+        if (!readiness.ready)
+          throw new ClientError(readiness.reason, {
+            code: 'WATCH_MANDATE_NOT_READY',
+            statusCode: readiness.retryable ? 503 : 409,
+          })
+      } catch (error) {
+        if (error instanceof ClientError) throw error
+        throw new ClientError('The signed mandate could not be verified. No watch was started.', {
+          code: 'WATCH_MANDATE_NOT_READY',
+          statusCode: 503,
+        })
+      }
       try {
         const snapshot = await reader.snapshot(account as Address)
         if (snapshot.account.toLowerCase() !== account)
@@ -253,7 +283,7 @@ export function registerWatchRoutes(app: FastifyInstance, config: WatchRoutesCon
 
     const watch = await watches.get(job.id)
     if (!watch)
-      return reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'Not watched.' } })
+      return reply.code(404).send({ error: { code: 'WATCH_NOT_FOUND', message: 'Not watched.' } })
     return {
       ...watch,
       // What is left to spend, so the page can say it without doing the

@@ -9,7 +9,9 @@ import { PostgresConversationStore } from './assistant/conversations.js'
 import { PostgresNonceStore } from './auth/nonce-store.js'
 import { describeCookieMismatch, SessionSigner } from './auth/session.js'
 import { viemChainReader } from './authority/chain-reader.js'
+import { createWatchMandateVerifier } from './authority/watch-readiness.js'
 import { executionNetwork, verifyExecutionNetwork } from './config/execution-network.js'
+import { executorIdentity } from './config/executor-identity.js'
 import { checkLedger } from './credits/reconcile.js'
 import { PostgresCreditStore } from './credits/store.js'
 import { treasuryBackingPoints } from './credits/treasury.js'
@@ -63,17 +65,11 @@ const cookieMismatch = describeCookieMismatch(authDomain, webOrigin)
 if (cookieMismatch) throw new Error(cookieMismatch)
 const nonceStore = new PostgresNonceStore(databaseUrl)
 /**
- * The agent's session key address. Absent means this deployment cannot prepare
- * a delegation to sign, which is a real state and not an error: everything else
- * still works and the limits are counted by AiKi.
+ * Derive the executor we control and reject an explicit session-address mismatch.
+ * An address without a private key remains signing-only; it cannot activate a
+ * watch. The execution key redeems signed mandates and pays its own gas.
  */
-const agentSessionKey = process.env.AGENT_SESSION_ADDRESS as `0x${string}` | undefined
-/**
- * Signs redemptions and pays their gas. Its address must be AGENT_SESSION_ADDRESS,
- * because the manager accepts a redemption only from the delegate a mandate
- * names. Absent means actions are decided off chain and submitted nowhere.
- */
-const agentKey = process.env.AGENT_PRIVATE_KEY as `0x${string}` | undefined
+const { agentSessionKey, agentKey } = executorIdentity(process.env)
 /**
  * Pays gas to put a person's mandate account on chain, and nothing else. It is
  * not an owner and not an executor: the worst it can do if it leaks is waste gas
@@ -192,7 +188,13 @@ const app = createApiServer({
   watches: watchStore,
   ...(agentKey
     ? {
-        watchActivation: createWatchActivationReader(enforcerRpcUrl, undefined, deployment.chainId),
+        watchActivation: createWatchActivationReader(
+          enforcerRpcUrl,
+          undefined,
+          deployment.chainId,
+          agentSessionKey,
+          createWatchMandateVerifier({ rpcUrl: enforcerRpcUrl, deployment }),
+        ),
       }
     : {}),
   assistant: {

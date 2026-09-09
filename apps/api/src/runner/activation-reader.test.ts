@@ -8,6 +8,24 @@ const TOKEN = `0x${'cc'.repeat(20)}` as const
 const ORACLE = `0x${'dd'.repeat(20)}` as const
 const WAD = 10n ** 18n
 
+it('exposes only the configured public executor address for activation checks', () => {
+  const rpc = client()
+  const verifyMandate = vi.fn(async () => ({ ready: true as const }))
+  const reader = createWatchActivationReader(
+    'http://127.0.0.1:1',
+    rpc as unknown as PublicClient,
+    56,
+    ACCOUNT,
+    verifyMandate,
+  )
+  expect(reader.executorAddress).toBe(ACCOUNT)
+  expect(reader.verifyMandate).toBe(verifyMandate)
+  expect(verifyMandate).not.toHaveBeenCalled()
+  expect(reader).not.toHaveProperty('agentKey')
+  expect(reader).not.toHaveProperty('privateKey')
+  expect(rpc.readContract).not.toHaveBeenCalled()
+})
+
 function client() {
   const getChainId = vi.fn(async () => 97)
   const readContract = vi.fn(async (request: { functionName: string }) => {

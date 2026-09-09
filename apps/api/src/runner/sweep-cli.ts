@@ -1,4 +1,6 @@
+import { createWatchMandateVerifier } from '../authority/watch-readiness.js'
 import { executionNetwork, verifyExecutionNetwork } from '../config/execution-network.js'
+import { executorIdentity } from '../config/executor-identity.js'
 import { PostgresJobStore } from '../jobs/postgres-store.js'
 import { JobService } from '../jobs/service.js'
 import { createWatchActivationReader } from './routes.js'
@@ -19,6 +21,7 @@ import { type SweepChainConfig, sweep } from './sweep.js'
 
 const databaseUrl = process.env.DATABASE_URL
 if (!databaseUrl) throw new Error('DATABASE_URL is required.')
+const { agentKey: relayerKey, agentSessionKey } = executorIdentity(process.env)
 
 /*
  * The chain the mandates are enforced on. Venus has a deployment there too,
@@ -39,7 +42,6 @@ const rpcUrl = network.rpcUrl
  * it against. It is the one address that must not be a knob.
  */
 const manager = deployment.manager as `0x${string}`
-const relayerKey = process.env.AGENT_PRIVATE_KEY as `0x${string}` | undefined
 
 const intervalMs = Number(process.env.RUNNER_INTERVAL_MS ?? String(5 * 60_000))
 const limit = Number(process.env.RUNNER_LIMIT ?? '50')
@@ -62,13 +64,21 @@ try {
     ? { rpcUrl, chainId, delegationManager: manager, relayerKey }
     : null
 
-  const reader = createWatchActivationReader(rpcUrl, undefined, chainId)
+  const verifyMandate = createWatchMandateVerifier({ rpcUrl, deployment })
+  const reader = createWatchActivationReader(
+    rpcUrl,
+    undefined,
+    chainId,
+    agentSessionKey,
+    verifyMandate,
+  )
 
   const report = await sweep({
     jobs: new JobService(jobStore),
     watches: watchStore,
     reader: (id) => (id === chainId ? reader : null),
     chain: (id) => (id === chainId ? chain : null),
+    verifyMandate,
     intervalMs,
     limit,
   })

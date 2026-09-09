@@ -19,14 +19,19 @@ The API and scheduled runner now share `config/execution-network.ts`. It selects
 - Existing installs remain on their existing chain97 configuration during migration.
 - `AIKI_EXECUTION_CHAIN_ID=56` requires `AIKI_ENFORCER_DEPLOYMENT_FILE`, pointing to a reviewed mainnet deployment JSON. There is no fallback to testnet when this file is absent or invalid.
 - The file uses `EnforcerDeployment`: chain56, mainnet, truthful audited status, manager and registry addresses and runtime code hashes, plus all six distinct named enforcers and their runtime hashes.
-- API startup and each runner process verify the RPC chain, runtime hashes and registry mappings before accepting that deployment.
+- API startup and each runner process verify the RPC chain, runtime hashes and registry mappings before accepting that deployment. Mainnet checks also verify the manager's expiry enforcer and each stateful contract's manager binding.
 - `RUNNER_RPC_URL`, then `ENFORCER_RPC_URL`, then `BSC_RPC_URL` select the mainnet RPC. They must all refer to the intended deployment network when configured.
 - Account, delegation and watch networks must agree. The watched account must be the signed delegator. The selected Venus market must contain debt for that account and its underlying token must match the repayment asset.
 - Existing watches are checked again before dispatch. A cross-network watch, mismatched account or mismatched repayment token never reaches execution.
+- The executor's address is derived from its private key. A configured session address must match it, and each saved mandate must name that executor. API and scheduler identities were checked in production and agree.
+- Before activation and each pass, the account must bind the selected manager, its owner must match the saved authorization, and ERC-1271 must accept the signature for the current manager's EIP-712 domain. Changed caveats, expired mandates, on-chain revocations and bumped epochs are rejected. Temporary verification failures do not submit an action or discard the user's watch.
+- The watch panel distinguishes an absent watch from a failed request. Wallet changes discard stale responses; a failed refresh retains the stop control and labels the last known state. A stopped watch does not offer a restart the API cannot perform.
 
 The mainnet deployment file has not been produced or enabled in this repair. Mainnet execution is not live merely because the software can select it. Mainnet deployment, source verification, funding/allowance setup, wallet activation and receipt verification remain release gates. The contracts are unaudited; passing tests is not an independent audit.
 
 `onchain/script/Deploy.s.sol` now requires `EXPECTED_CHAIN_ID` and rejects a mismatched RPC before reading a signing key. Simulate and review the deployment first. A successful simulation must not be recorded as a broadcast or a deployed mainnet address.
+
+A local chain56 fork simulation completed without broadcasting. It estimated 7,627,698 gas for the suite. The known prior deployment wallet has mainnet BNB, but its deployment key was not found in the project locations checked. The server's executor and account-funding keys are distinct operational roles, not substitutes for a reviewed deployment handoff. No real BNB was moved during this repair.
 
 Points purchases remain separately configured on testnet. Changing the execution network does not silently migrate billing. Mainnet billing needs its own treasury, asset, RPC and end-to-end deposit checks.
 

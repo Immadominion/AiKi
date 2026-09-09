@@ -41,6 +41,8 @@ const START = {
 
 const activation = (): WatchActivationReader => ({
   chainId: 97,
+  executorAddress: `0x${'44'.repeat(20)}`,
+  verifyMandate: vi.fn(async () => ({ ready: true as const })),
   snapshot: vi.fn(async (account) => ({
     account,
     observedAt: new Date().toISOString(),
@@ -66,6 +68,7 @@ async function harness(
     signed?: boolean
     capped?: boolean
     delegator?: string
+    delegate?: string
     delegationChainId?: number
     activation?: WatchActivationReader | null
   } = {},
@@ -104,7 +107,7 @@ async function harness(
   if (options.signed !== false)
     await jobs.attachDelegation(authorization.id, {
       delegation: {
-        delegate: `0x${'44'.repeat(20)}`,
+        delegate: options.delegate ?? `0x${'44'.repeat(20)}`,
         delegator: options.delegator ?? ACCOUNT,
         authority: `0x${'ff'.repeat(32)}`,
         caveats: [],
@@ -142,6 +145,121 @@ it('starts a mainnet watch when the reader and signed mandate both use chain56',
   })
   expect(response.statusCode).toBe(201)
   expect((await watches.get(job.id))?.chainId).toBe(56)
+})
+
+it.each([56, 97])(
+  'refuses a mandate for a different executor before chain reads on chain%d',
+  async (chainId) => {
+    const reader = { ...activation(), chainId }
+    const { app, job, watches } = await harness({
+      activation: reader,
+      delegationChainId: chainId,
+      delegate: `0x${'55'.repeat(20)}`,
+    })
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/jobs/${job.id}/watch`,
+      headers: cookie,
+      payload: { ...START, chainId },
+    })
+    expect(response.statusCode).toBe(409)
+    expect(response.json().error.code).toBe('WATCH_EXECUTOR_MISMATCH')
+    expect(await watches.get(job.id)).toBeNull()
+    expect(reader.snapshot).not.toHaveBeenCalled()
+    expect(reader.underlying).not.toHaveBeenCalled()
+  },
+)
+
+it('does not activate a watch when its execution key address is unavailable', async () => {
+  const reader = activation()
+  delete reader.executorAddress
+  const { app, job, watches } = await harness({ activation: reader })
+  const response = await app.inject({
+    method: 'POST',
+    url: `/v1/jobs/${job.id}/watch`,
+    headers: cookie,
+    payload: START,
+  })
+  expect(response.statusCode).toBe(503)
+  expect(response.json().error.code).toBe('WATCH_UNAVAILABLE')
+  expect(await watches.get(job.id)).toBeNull()
+  expect(reader.snapshot).not.toHaveBeenCalled()
+})
+
+it('compares the signed and configured executor without checksum-case differences', async () => {
+  const reader = { ...activation(), executorAddress: `0x${'aB'.repeat(20)}` as `0x${string}` }
+  const { app, job } = await harness({ activation: reader, delegate: `0x${'ab'.repeat(20)}` })
+  const response = await app.inject({
+    method: 'POST',
+    url: `/v1/jobs/${job.id}/watch`,
+    headers: cookie,
+    payload: START,
+  })
+  expect(response.statusCode).toBe(201)
+})
+
+it.each([false, true])(
+  'refuses an incompatible signed mandate (retryable: %s)',
+  async (retryable) => {
+    const reader = activation()
+    reader.verifyMandate = vi.fn(async () => ({
+      ready: false as const,
+      reason: retryable
+        ? 'Mandate verification is temporarily unavailable.'
+        : 'Sign a new mandate for this manager.',
+      retryable,
+    }))
+    const { app, job, jobs, watches } = await harness({ activation: reader })
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/jobs/${job.id}/watch`,
+      headers: cookie,
+      payload: START,
+    })
+    expect(response.statusCode).toBe(retryable ? 503 : 409)
+    expect(response.json().error.code).toBe('WATCH_MANDATE_NOT_READY')
+    expect(reader.verifyMandate).toHaveBeenCalledWith(
+      await jobs.getAuthorization(job.authorizationId),
+    )
+    expect(await watches.get(job.id)).toBeNull()
+    expect(reader.snapshot).not.toHaveBeenCalled()
+    expect(reader.underlying).not.toHaveBeenCalled()
+  },
+)
+
+it('requires signed mandate verification before creating a watch', async () => {
+  const reader = activation()
+  delete reader.verifyMandate
+  const { app, job, watches } = await harness({ activation: reader })
+  const response = await app.inject({
+    method: 'POST',
+    url: `/v1/jobs/${job.id}/watch`,
+    headers: cookie,
+    payload: START,
+  })
+  expect(response.statusCode).toBe(503)
+  expect(response.json().error.code).toBe('WATCH_UNAVAILABLE')
+  expect(await watches.get(job.id)).toBeNull()
+  expect(reader.snapshot).not.toHaveBeenCalled()
+})
+
+it('sanitizes unexpected mandate verifier failures without starting a watch', async () => {
+  const reader = activation()
+  reader.verifyMandate = vi.fn(async () => {
+    throw new Error('private-rpc-credential-fixture')
+  })
+  const { app, job, watches } = await harness({ activation: reader })
+  const response = await app.inject({
+    method: 'POST',
+    url: `/v1/jobs/${job.id}/watch`,
+    headers: cookie,
+    payload: START,
+  })
+  expect(response.statusCode).toBe(503)
+  expect(response.json().error.code).toBe('WATCH_MANDATE_NOT_READY')
+  expect(response.body).not.toContain('private-rpc-credential-fixture')
+  expect(await watches.get(job.id)).toBeNull()
+  expect(reader.snapshot).not.toHaveBeenCalled()
 })
 
 it('refuses to watch under a mandate nobody signed', async () => {

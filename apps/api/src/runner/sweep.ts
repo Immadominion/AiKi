@@ -1,4 +1,6 @@
 import type { Address } from 'viem'
+import type { WatchMandateVerifier } from '../authority/watch-readiness.js'
+import { executorAddress } from '../config/executor-identity.js'
 import type { SignedDelegation } from '../execution/executor.js'
 import type { JobService } from '../jobs/service.js'
 import type { AuthorizationRecord } from '../jobs/store.js'
@@ -37,6 +39,8 @@ export interface SweepDeps {
   reader(chainId: number): (VenusReader & { underlying(market: Address): Promise<Address> }) | null
   /** How to send on a given chain. Absent means this deployment cannot act there. */
   chain(chainId: number): SweepChainConfig | null
+  /** Confirm the stored signature and account still match this deployment. */
+  verifyMandate?: WatchMandateVerifier
   now?: () => number
   /** How stale a look has to be before it is taken again. */
   intervalMs?: number
@@ -152,6 +156,20 @@ async function pass(deps: SweepDeps, watch: Watch, now: number): Promise<WatchPa
     return note(deps, watch, at, `AiKi cannot reach chain ${watch.chainId} at the moment.`)
   if (chain.chainId !== watch.chainId)
     return halt('the executor is configured for a different network')
+  if (delegation.delegate.toLowerCase() !== executorAddress(chain.relayerKey).toLowerCase())
+    return halt(
+      'the signed mandate names a different executor; sign a new mandate before restarting',
+    )
+
+  if (!deps.verifyMandate)
+    return note(deps, watch, at, 'Signed mandate verification is unavailable. No action was taken.')
+  try {
+    const readiness = await deps.verifyMandate(authorization)
+    if (!readiness.ready)
+      return readiness.retryable ? note(deps, watch, at, readiness.reason) : halt(readiness.reason)
+  } catch {
+    return note(deps, watch, at, 'The signed mandate could not be verified. No action was taken.')
+  }
 
   const snapshot = await reader.snapshot(watch.account as Address)
   if (snapshot.account.toLowerCase() !== watch.account.toLowerCase())
