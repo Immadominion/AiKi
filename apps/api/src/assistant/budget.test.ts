@@ -40,11 +40,13 @@ it('stops before it costs more than was held for it', async () => {
     model: 'claude-sonnet-5',
     ctx: { baseUrl: 'http://localhost', cookie: 'x' },
     messages: [{ role: 'user', content: 'find me a liquidation agent' }],
-    budgetPoints: 400,
+    budgetPoints: 500,
   })
 
   expect(turn.stoppedBy).toBe('budget')
-  expect(turn.points).toBeLessThanOrEqual(400)
+  expect(turn.points).toBeLessThanOrEqual(500)
+  expect(create).toHaveBeenCalledTimes(1)
+  expect(turn.requiredPoints).toBeUndefined()
   // It says so rather than returning a shorter answer as though that were all
   // there was: somebody who paid for an answer is owed the reason it stopped.
   expect(turn.reply).toMatch(/cost more than the points held/i)

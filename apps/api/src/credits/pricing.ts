@@ -78,8 +78,9 @@ export function explainCost(model: string, usage: Usage): string {
 /**
  * The least a turn may be allowed to start with.
  *
- * Below this there is not enough held to reach an answer worth reading, so the
- * turn is refused rather than begun and cut off two rounds in.
+ * This is an admission floor, not a quote for every message. The actual system,
+ * tools and conversation are counted before a paid request; if their reserve
+ * cannot fit, Fast refuses the turn and returns its unused hold.
  */
 export const MINIMUM_BALANCE_POINTS = 200
 
@@ -121,7 +122,7 @@ export const WELCOME_GRANT_POINTS = 5_000
  * Signing in costs a signature and nothing else, so an address is free and
  * unlimited, and a grant keyed on the address is a faucet: every grant is real
  * model spend somebody else pays for. This is the number that turns an
- * unbounded liability into a line item. Two hundred grants is a thousand
+ * unbounded liability into a line item. Two hundred grants is one hundred
  * dollars of points a day, which is a decision rather than an accident.
  *
  * When it is reached, new accounts are told plainly that the free allowance is

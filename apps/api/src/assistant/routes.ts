@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import type Anthropic from '@anthropic-ai/sdk'
 import type { FastifyInstance } from 'fastify'
 import { requireSession } from '../auth/guard.js'
-import { creditDeposit, type DepositConfig } from '../credits/deposit.js'
+import { creditDeposit, DEPOSIT_CONFIRMATIONS, type DepositConfig } from '../credits/deposit.js'
 import {
   DEFAULT_MODEL,
   explainCost,
@@ -21,7 +20,12 @@ import {
   REVENUE_ACCOUNT,
 } from '../credits/store.js'
 import { ClientError } from '../http/errors.js'
+import { hashCanonicalJson } from '../marketplace/canonical-json.js'
+import { assistantLimits } from './billing.js'
+import type { ConversationStore } from './conversations.js'
+import { assistantMessages } from './input.js'
 import { runAssistant } from './run.js'
+import { AssistantRunFailure } from './usage.js'
 
 /**
  * Fast mode over HTTP, and the points that pay for it.
@@ -46,12 +50,12 @@ export interface AssistantConfig {
   /** Where the assistant reaches this same API. Loopback. */
   selfUrl: string
   deposits?: DepositConfig
+  conversations?: ConversationStore
 }
-
-const MAX_TURN_CHARS = 8000
 
 export function registerAssistantRoutes(app: FastifyInstance, config: AssistantConfig) {
   const model = config.model ?? DEFAULT_MODEL
+  const limits = assistantLimits()
 
   /**
    * The one-off welcome grant, issued the first time an account is looked at.
@@ -69,14 +73,10 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
        * without a ceiling this route hands out real model spend to anybody who
        * can sign a message, as many times as they can be bothered to.
        */
-      const since = new Date(Date.now() - 86_400_000).toISOString()
-      if ((await config.credits.countSince('welcome', since)) >= WELCOME_GRANTS_PER_DAY) return
-      await config.credits.deposit({
+      await config.credits.grantWelcome({
         owner: address,
         points: WELCOME_GRANT_POINTS,
-        reason: 'welcome',
-        reference: `welcome:${address.toLowerCase()}`,
-        detail: { note: 'One-time grant so a new account can try Fast mode without paying first.' },
+        dailyLimit: WELCOME_GRANTS_PER_DAY,
       })
     } catch (error) {
       if (error instanceof DuplicateDeposit) return
@@ -112,6 +112,13 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
         'Points buy work and Fast mode turns inside AiKi. There is no way to withdraw them yet.',
       minimumToAsk: MINIMUM_BALANCE_POINTS,
       model: MODELS[model]?.label ?? model,
+      limits: {
+        ...limits,
+        walletConcurrent: 1,
+        maximumTurnPoints: TURN_HOLD_POINTS,
+        welcomePoints: WELCOME_GRANT_POINTS,
+        welcomeGrantsPerDay: WELCOME_GRANTS_PER_DAY,
+      },
       history,
     }
   })
@@ -134,6 +141,13 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
           transactionHash: String(request.body?.transactionHash ?? ''),
         })
       } catch (error) {
+        if (error instanceof ClientError && error.code === 'DEPOSIT_CONFIRMING')
+          return reply
+            .header('retry-after', '3')
+            .code(409)
+            .send({
+              error: { code: error.code, message: error.message, retryable: true },
+            })
         if (error instanceof DuplicateDeposit)
           throw new ClientError('That payment has already been credited.', {
             code: 'DEPOSIT_ALREADY_CREDITED',
@@ -153,115 +167,225 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
           token: config.deposits.token,
           treasury: config.deposits.treasury,
           pointsPerUsdt: POINTS_PER_USD,
+          confirmations: DEPOSIT_CONFIRMATIONS,
         }
       : { available: false }),
   }))
 
-  app.post<{ Body: { messages?: Anthropic.MessageParam[] } }>(
+  app.post<{ Body: { messages?: unknown; conversationId?: unknown } }>(
     '/v1/assistant/messages',
     async (request, reply) => {
       const session = requireSession(request, reply)
       if (!session) return reply
-
       if (!config.apiKey)
         throw new ClientError(
           'Fast mode is not configured on this deployment. Manual mode does everything Fast mode does.',
           { code: 'ASSISTANT_UNAVAILABLE', statusCode: 503 },
         )
 
-      const messages = request.body?.messages
-      if (!Array.isArray(messages) || messages.length === 0)
-        throw new ClientError('Send at least one message.', { code: 'ASSISTANT_NO_MESSAGES' })
-      const size = JSON.stringify(messages).length
-      if (size > MAX_TURN_CHARS)
-        throw new ClientError(
-          'That conversation is too long to send in one turn. Start a new one.',
-          { code: 'ASSISTANT_TOO_LONG' },
-        )
-
-      await withWelcomeGrant(session.address)
-      const balance = await config.credits.balance(session.address)
-      if (balance < MINIMUM_BALANCE_POINTS)
-        throw new ClientError(
-          `Fast mode needs at least ${MINIMUM_BALANCE_POINTS} points and you have ${balance}. ` +
-            `Points are bought by sending USDT to AiKi; ${POINTS_PER_USD} points per USDT. ` +
-            'Manual mode is free and does everything Fast mode does.',
-          { code: 'ASSISTANT_NO_CREDIT', statusCode: 402 },
-        )
-
+      const messages = assistantMessages(request.body?.messages)
+      const conversationId = request.body?.conversationId
+      if (
+        conversationId !== undefined &&
+        (typeof conversationId !== 'string' ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(conversationId))
+      )
+        throw new ClientError('Choose a valid conversation.', { code: 'CONVERSATION_INVALID' })
+      const suppliedKey = request.headers['idempotency-key']
+      if (
+        suppliedKey !== undefined &&
+        (typeof suppliedKey !== 'string' || !/^[\x21-\x7e]{1,200}$/.test(suppliedKey))
+      )
+        throw new ClientError('Use a request key of 1 to 200 printable characters.', {
+          code: 'INVALID_IDEMPOTENCY_KEY',
+        })
+      const key = suppliedKey ?? `legacy:${randomUUID()}`
       const cookie = request.headers.cookie
       if (!cookie)
         throw new ClientError('No session cookie to act with.', { code: 'ASSISTANT_NO_SESSION' })
 
-      /*
-       * The money is taken before the model runs, and the turn is told what it
-       * has to spend.
-       *
-       * This used to be a balance check followed by a charge at the end for
-       * whatever the turn came to, clamped to whatever was left. Three things
-       * were wrong with that and all three were visible on production. Turns
-       * costing 402, 263 and 711 points passed a gate of 200. Any shortfall was
-       * written off in silence, so the overrun did not even appear as a number
-       * anybody could add up. And two turns in two tabs both read the same
-       * balance and both judged it sufficient, which no check outside a
-       * transaction can prevent.
-       *
-       * A hold fixes all three at once: it is taken under a row lock so a second
-       * turn sees the money already gone, it is a ceiling the loop enforces
-       * rather than a figure compared against afterwards, and what is not spent
-       * is returned within the same request.
-       */
+      await withWelcomeGrant(session.address)
+      const balance = await config.credits.balance(session.address)
       const hold = Math.min(TURN_HOLD_POINTS, balance)
-      const turnId = randomUUID()
-      try {
-        await config.credits.transfer({
-          from: session.address,
-          to: RESERVE_ACCOUNT,
-          points: hold,
-          reason: 'fast_mode_hold',
-          reference: `turn:${turnId}:hold`,
-          detail: { turnId },
+      const requestHash = hashCanonicalJson({
+        messages: messages.map(({ role, content }) => ({ role, content })),
+        ...(conversationId ? { conversationId } : {}),
+      })
+      const claim = await config.credits.assistantRequests.begin({
+        owner: session.address,
+        key,
+        requestHash,
+        reservedPoints: hold,
+        limits,
+      })
+      if (claim.kind === 'conflict')
+        return reply.code(409).send({
+          error: {
+            code: 'ASSISTANT_IDEMPOTENCY_CONFLICT',
+            message:
+              'This request key belongs to a different message. Start a new turn for different work.',
+            retryable: false,
+          },
         })
-      } catch (error) {
-        if (error instanceof InsufficientBalance)
-          throw new ClientError(
-            `Fast mode holds ${hold} points while it answers and gives back what it does not use. ` +
-              'There are not that many in the account right now.',
-            { code: 'ASSISTANT_NO_CREDIT', statusCode: 402 },
-          )
-        throw error
+      if (claim.kind === 'refused') {
+        if (claim.retryAfter) reply.header('retry-after', String(claim.retryAfter))
+        return reply.code(claim.status).send({
+          error: {
+            code: claim.code,
+            message: claim.message,
+            retryable: Boolean(claim.retryAfter),
+          },
+        })
       }
 
-      /*
-       * From here the hold MUST be resolved, whatever happens. A turn that
-       * throws after the money was taken and before it was accounted for leaves
-       * that money sitting in a house account owed to somebody, which is the
-       * exact condition this whole area of the codebase exists to prevent.
-       */
+      type Result = {
+        turnId: string
+        conversationId?: string
+        reply: string
+        steps: Awaited<ReturnType<typeof runAssistant>>['steps']
+        truncated: boolean
+        cost: {
+          points: number
+          balance: number
+          held: number
+          explanation: string
+          pendingPoints?: number
+        }
+      }
+      const record = async (body: unknown, status: number) => {
+        if (!conversationId || !config.conversations) return
+        const result = body as Result
+        if (!result.reply || !result.cost || !Array.isArray(result.steps)) return
+        await config.conversations.record({
+          owner: session.address,
+          conversationId,
+          turnId: result.turnId,
+          messages,
+          reply: result.reply,
+          steps: result.steps,
+          cost: result.cost,
+          status: status < 400 ? 'completed' : 'failed',
+        })
+      }
+      if (claim.kind === 'replayed') {
+        // History may have failed after billing committed. Repair it from the
+        // cached response, never by running the provider or tools again.
+        await record(claim.body, claim.status)
+        return reply.header('idempotency-replayed', 'true').code(claim.status).send(claim.body)
+      }
+      const turnId = claim.id
+      reply.header('idempotency-replayed', 'false')
+      const finish = async (status: number, body: unknown, points = 0, uncertain = false) => {
+        await config.credits.assistantRequests.complete({
+          id: turnId,
+          status,
+          body,
+          points,
+          uncertain,
+        })
+        await record(body, status)
+        return reply.code(status).send(body)
+      }
+      const refused = (status: number, code: string, message: string) =>
+        finish(status, { turnId, error: { code, message, retryable: false } })
+
+      if (conversationId) {
+        if (!config.conversations)
+          return refused(
+            503,
+            'CONVERSATIONS_UNAVAILABLE',
+            'Saved conversations are not configured on this deployment.',
+          )
+        try {
+          await config.conversations.prepare(session.address, conversationId, messages)
+        } catch (error) {
+          if (error instanceof ClientError)
+            return refused(error.statusCode, error.code, error.message)
+          return refused(
+            503,
+            'CONVERSATION_UNAVAILABLE',
+            'This conversation could not be checked. Nothing was charged.',
+          )
+        }
+      }
+      if (balance < MINIMUM_BALANCE_POINTS)
+        return refused(
+          402,
+          'ASSISTANT_NO_CREDIT',
+          `Fast mode needs at least ${MINIMUM_BALANCE_POINTS} points and you have ${balance}. Manual mode is free and does everything Fast mode does.`,
+        )
+
+      const holding = {
+        from: session.address,
+        to: RESERVE_ACCOUNT,
+        points: hold,
+        reason: 'fast_mode_hold',
+        reference: `turn:${turnId}:hold`,
+        detail: { turnId },
+      }
+      try {
+        await config.credits.transfer(holding)
+      } catch (error) {
+        if (error instanceof InsufficientBalance)
+          return refused(
+            402,
+            'ASSISTANT_NO_CREDIT',
+            `Fast mode holds ${hold} points while it answers. There are not that many available right now.`,
+          )
+        const confirmed = await config.credits.transferRecorded?.(holding).catch(() => false)
+        if (!confirmed)
+          return finish(
+            503,
+            {
+              turnId,
+              error: {
+                code: 'ASSISTANT_HOLD_UNCONFIRMED',
+                message:
+                  'The points hold could not be confirmed. Do not submit this turn again with a new request key.',
+                retryable: false,
+              },
+            },
+            0,
+            true,
+          )
+      }
+
       let turn: Awaited<ReturnType<typeof runAssistant>> | null = null
-      let spent = 0
+      let failure: unknown
+      let uncertain = false
       try {
         turn = await runAssistant({
           apiKey: config.apiKey,
           model,
-          ctx: { baseUrl: config.selfUrl, cookie },
+          ctx: { baseUrl: config.selfUrl, cookie, turnId, sessionAddress: session.address },
           messages,
           budgetPoints: hold,
+          onUsage: (usage, points) =>
+            config.credits.assistantRequests.checkpoint(
+              turnId,
+              points,
+              usage.inputTokens,
+              usage.outputTokens,
+            ),
         })
-        // Charged whether or not the answer was good: the tokens were spent
-        // either way, and eating the cost of failed turns is how a metered
-        // product becomes a loss-making one. Never more than the hold, because
-        // the loop stopped before it could be.
-        spent = Math.min(turn.points, hold)
-      } finally {
-        /*
-         * Spend first, return second. A crash between the two leaves the unspent
-         * remainder in the reserve, which is recoverable and visible. The other
-         * order would hand back the whole hold and then fail to charge, which is
-         * a free turn nobody can detect afterwards.
-         */
+      } catch (error) {
+        failure = error
+        if (error instanceof AssistantRunFailure) {
+          turn = error.turn
+          uncertain = error.uncertain
+        }
+      }
+      const spent = Math.min(turn?.points ?? 0, hold)
+      const settle = async (movement: Parameters<CreditStore['transfer']>[0]) => {
+        try {
+          await config.credits.transfer(movement)
+        } catch (error) {
+          if (!(await config.credits.transferRecorded?.(movement).catch(() => false))) throw error
+        }
+      }
+      try {
         if (spent > 0)
-          await config.credits.transfer({
+          await settle({
             from: RESERVE_ACCOUNT,
             to: REVENUE_ACCOUNT,
             points: spent,
@@ -269,14 +393,16 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
             reference: `turn:${turnId}:spend`,
             detail: {
               turnId,
-              model: turn?.model ?? model,
+              model,
               inputTokens: turn?.usage.inputTokens ?? 0,
               outputTokens: turn?.usage.outputTokens ?? 0,
-              tools: turn?.steps.map((s) => s.tool) ?? [],
+              tools: turn?.steps.map((step) => step.tool) ?? [],
+              providerPoints: turn?.points ?? 0,
+              overrunPoints: Math.max(0, (turn?.points ?? 0) - hold),
             },
           })
-        if (hold - spent > 0)
-          await config.credits.transfer({
+        if (!uncertain && hold > spent)
+          await settle({
             from: RESERVE_ACCOUNT,
             to: session.address,
             points: hold - spent,
@@ -284,21 +410,85 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
             reference: `turn:${turnId}:release`,
             detail: { turnId },
           })
+      } catch {
+        return finish(
+          503,
+          {
+            turnId,
+            error: {
+              code: 'ASSISTANT_SETTLEMENT_UNCONFIRMED',
+              message:
+                'This turn ran, but its points settlement needs confirmation. Check your work before retrying.',
+              retryable: false,
+            },
+          },
+          turn?.points ?? 0,
+          true,
+        )
       }
-
-      return {
-        reply: turn.reply,
-        steps: turn.steps,
-        truncated: turn.truncated,
-        ...(turn.stoppedBy ? { stoppedBy: turn.stoppedBy } : {}),
+      const explanation = turn ? explainCost(turn.model, turn.usage) : 'No confirmed model usage.'
+      const result: Result = {
+        turnId,
+        ...(conversationId ? { conversationId } : {}),
+        reply: turn?.reply ?? 'Fast mode could not finish this turn. No model usage was confirmed.',
+        steps: turn?.steps ?? [],
+        truncated: turn?.truncated ?? true,
         cost: {
           points: spent,
           balance: await config.credits.balance(session.address),
           held: hold,
-          // The same sum in words, so a person can check it rather than trust it.
-          explanation: explainCost(turn.model, turn.usage),
+          explanation,
+          ...(uncertain ? { pendingPoints: hold - spent } : {}),
         },
       }
+      if (
+        turn?.requiredPoints !== undefined &&
+        turn.stoppedBy === 'budget' &&
+        turn.points === 0 &&
+        turn.steps.length === 0
+      ) {
+        // Settle the unused hold above before claiming that nothing was charged.
+        // Persist this refusal like any other terminal turn, including its history
+        // and replay response. Later budget stops still return useful partial work.
+        const message = `${turn.reply} ${
+          turn.requiredPoints > TURN_HOLD_POINTS
+            ? `That exceeds the ${TURN_HOLD_POINTS} point limit per turn. Shorten the request or start a new conversation.`
+            : 'Add points or shorten the request before starting a new turn.'
+        }`
+        return finish(402, {
+          ...result,
+          reply: message,
+          error: {
+            code: 'ASSISTANT_BUDGET_TOO_SMALL',
+            message,
+            requiredPoints: turn.requiredPoints,
+            availablePoints: hold,
+            retryable: false,
+          },
+        })
+      }
+      if (failure)
+        return finish(
+          503,
+          {
+            ...result,
+            error: {
+              code: uncertain ? 'ASSISTANT_USAGE_UNCONFIRMED' : 'ASSISTANT_TURN_FAILED',
+              message:
+                failure instanceof AssistantRunFailure
+                  ? failure.message
+                  : 'Fast mode could not finish. Unused points were returned. Check your work before retrying.',
+              retryable: false,
+            },
+          },
+          turn?.points ?? 0,
+          uncertain,
+        )
+      return finish(
+        200,
+        { ...result, ...(turn?.stoppedBy ? { stoppedBy: turn.stoppedBy } : {}) },
+        turn?.points ?? 0,
+      )
     },
   )
 }

@@ -141,7 +141,7 @@ export function projectPassport(agentId: string, observations: Observation[]): P
   const registered = latestOf(own.filter((o) => o.predicate === 'erc8004.agent_registered'))
   const reciprocal = latestOf(own.filter((o) => o.predicate === 'erc8004.reciprocal_proof'))
   const manifest = registration?.value.manifest as
-    | { name?: unknown; description?: unknown }
+    | { name?: unknown; description?: unknown; image?: unknown }
     | undefined
   const reciprocalVerified = reciprocal ? reciprocal.value.verified === true : null
   const reciprocalDetail =
@@ -174,6 +174,8 @@ export function projectPassport(agentId: string, observations: Observation[]): P
     chainId: own[0]?.subject.chainId ?? null,
     registry: own[0]?.subject.registry ?? null,
     name: typeof manifest?.name === 'string' ? manifest.name : null,
+    image:
+      typeof manifest?.image === 'string' && manifest.image.length <= 2048 ? manifest.image : null,
     /*
      * What the agent says it does, in its own words.
      *

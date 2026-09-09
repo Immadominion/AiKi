@@ -3,6 +3,7 @@ import { pointsFor, type Usage } from '../credits/pricing.js'
 import { PLATFORM_FEE_BPS } from '../settlement/pricing.js'
 import { stoppedReply, type ToolOutcome } from './outcomes.js'
 import { MUTATING, runTool, TOOLS, type ToolContext } from './tools.js'
+import { AssistantRunFailure } from './usage.js'
 
 /**
  * Fast mode: the model driving AiKi's own tools.
@@ -68,6 +69,8 @@ export interface AssistantTurn {
   truncated: boolean
   /** Which ceiling, when it hit one. Absent when the model finished. */
   stoppedBy?: 'rounds' | 'budget'
+  /** First-round reserve that could not fit, before any paid request or tool ran. */
+  requiredPoints?: number
 }
 
 export const SYSTEM = `You are AiKi's Fast mode. AiKi is a marketplace where humans and AI agents
@@ -76,11 +79,26 @@ You have exactly the authority of the API routes available to that session.
 
 Write in simple words. Lead with the useful answer and the next action. Usually stay under 120 words,
 with at most three short bullets. Give more detail when asked. Use Markdown links to actual agent
-IDs at /registry/ID. Link a returned task ID to /work?task=ID, or use /work for the whole list.
+IDs at /registry/ID for AiKi-indexed passports, and /catalog/ID for external catalog registrations.
+Use the href returned by catalog tools. Link a returned task ID to /work?task=ID, or use /work for the whole list.
 There is no /work/ID route. Never invent a route, task ID, delivery or payment.
 Avoid em dashes, tool names, long evidence recitals and unexplained points arithmetic in user copy.
 
 Discovery and work:
+- catalog_agents browses real external BNB Chain registrations through 8004scan, beyond AiKi's
+  indexed subset. Use it when someone wants other providers or broader discovery. Source totals
+  count registered identities, not working agents, independent businesses or available hires.
+- catalog_agent and catalog_capabilities inspect an external provider. ReadTools returned by the
+  capability check identify exactly which reads AiKi enables. The known external connectors are
+  HeyAnon Venus 43129 (signed-in wallet liquidity) and V3 Pools 45650 (BNB DEX information), not the
+  first-party reference agents 315943–315946. Link these providers at /catalog/ID.
+- For a requested read that one of those connectors supports, check its capabilities and use
+  read_external_agent. Stay within the requested read; never turn it into a trade or approval.
+  Report the provider's actual result and any limitations. A successful read is not a hired agent,
+  paid delivery or guarantee. Authentication or payment requirements stop the read, with no payment.
+  The read connector charges zero AiKi points; this Fast conversation's model usage still costs points.
+- search_agents searches AiKi's indexed registry, not every agent registered on BNB Chain. Do not
+  invent a fixed catalog size or equate the supported hireable subset with the whole marketplace.
 - Search uses names and descriptions. Try relevant task words; an empty search does not prove no
   agent can help. Read the passport and agent_task_support before proposing a hire. Only offer direct
   hiring when task support says available. Follow its declared input requirements. Explain what it can do and any material
@@ -132,6 +150,7 @@ export interface RunInput {
    * cost more than the person had and the difference was quietly written off.
    */
   budgetPoints?: number
+  onUsage?: (usage: Usage, points: number) => Promise<void>
 }
 
 /** Punctuation is presentation only. Keep code and URL bytes exactly as returned. */
@@ -182,93 +201,139 @@ export function readableAssistantProse(text: string): string {
 }
 
 export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
-  const client = new Anthropic({ apiKey: input.apiKey })
+  const client = new Anthropic({ apiKey: input.apiKey, timeout: 60_000, maxRetries: 0 })
   const messages: Anthropic.MessageParam[] = [...input.messages]
   const steps: AssistantStep[] = []
   const outcomes: ToolOutcome[] = []
   const usage: Usage = { inputTokens: 0, outputTokens: 0 }
   let truncated = true
+  let awaitingProvider = false
 
   const maxTokens = input.maxTokens ?? 1500
-  for (let round = 0; round < MAX_ROUNDS; round++) {
-    /*
-     * Asked before the request, not after. Checking afterwards would mean the
-     * round that broke the budget had already been paid for at the provider.
-     */
-    if (
-      input.budgetPoints !== undefined &&
-      pointsFor(input.model, usage) + roundCeiling(input.model, messages, maxTokens) >
-        input.budgetPoints
-    )
-      return {
-        reply: readableAssistantProse(stoppedReply('budget', outcomes)),
+  try {
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      /*
+       * Asked before the request, not after. Checking afterwards would mean the
+       * round that broke the budget had already been paid for at the provider.
+       */
+      let ceiling = roundCeiling(input.model, messages, maxTokens)
+      if (input.budgetPoints !== undefined && typeof client.messages.countTokens === 'function') {
+        const counted = await client.messages.countTokens({
+          model: input.model,
+          system: SYSTEM,
+          tools: TOOLS,
+          messages,
+        })
+        if (!Number.isSafeInteger(counted.input_tokens) || counted.input_tokens < 0)
+          throw new Error('The model input could not be measured.')
+        // The provider documents a small counting variance. Reserve headroom,
+        // include the real system/tools, and never infer document cost from a URL.
+        ceiling = pointsFor(input.model, {
+          inputTokens: Math.ceil(counted.input_tokens * 1.05) + 256,
+          outputTokens: maxTokens,
+        })
+      }
+      if (
+        input.budgetPoints !== undefined &&
+        pointsFor(input.model, usage) + ceiling > input.budgetPoints
+      ) {
+        const beforeWork =
+          round === 0 && usage.inputTokens === 0 && usage.outputTokens === 0 && steps.length === 0
+        return {
+          reply: beforeWork
+            ? `This request needs ${ceiling} points reserved to start. No points were charged and no tools ran.`
+            : readableAssistantProse(stoppedReply('budget', outcomes)),
+          steps,
+          usage,
+          points: pointsFor(input.model, usage),
+          model: input.model,
+          truncated: true,
+          stoppedBy: 'budget',
+          ...(beforeWork ? { requiredPoints: ceiling } : {}),
+        }
+      }
+
+      awaitingProvider = true
+      const response = await client.messages.create({
+        model: input.model,
+        max_tokens: maxTokens,
+        system: SYSTEM,
+        tools: TOOLS,
+        messages,
+      })
+      awaitingProvider = false
+
+      // Summed every round: the provider charges for each request, so charging for
+      // one would make the expensive questions the ones AiKi loses money on.
+      usage.inputTokens += response.usage.input_tokens
+      usage.outputTokens += response.usage.output_tokens
+      await input.onUsage?.({ ...usage }, pointsFor(input.model, usage))
+
+      const calls = response.content.filter(
+        (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use',
+      )
+      if (calls.length === 0) {
+        truncated = false
+        const reply = response.content
+          .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+          .map((block) => block.text)
+          .join('\n')
+          .trim()
+        return {
+          reply: readableAssistantProse(reply),
+          steps,
+          usage,
+          points: pointsFor(input.model, usage),
+          model: input.model,
+          truncated,
+        }
+      }
+
+      messages.push({ role: 'assistant', content: response.content })
+      const results: Anthropic.ToolResultBlockParam[] = []
+      for (const call of calls) {
+        const args = (call.input ?? {}) as Record<string, unknown>
+        const out = await runTool({ ...input.ctx, toolCallId: call.id }, call.name, args)
+        steps.push({ tool: call.name, input: args, ok: out.ok, mutating: MUTATING.has(call.name) })
+        outcomes.push({ tool: call.name, mutating: MUTATING.has(call.name), ...out })
+        results.push({
+          type: 'tool_result',
+          tool_use_id: call.id,
+          // A refusal goes back as content rather than an error, so the model can
+          // explain it and offer the fix instead of stalling.
+          is_error: !out.ok,
+          content: JSON.stringify(out.body ?? null).slice(0, 20_000),
+        })
+      }
+      messages.push({ role: 'user', content: results })
+    }
+
+    return {
+      reply: readableAssistantProse(stoppedReply('rounds', outcomes)),
+      steps,
+      usage,
+      stoppedBy: 'rounds',
+      points: pointsFor(input.model, usage),
+      model: input.model,
+      truncated,
+    }
+  } catch (error) {
+    // A rejected request did not run. A lost network/5xx response may have run,
+    // so do not automatically give away its reserved spend or repeat its tools.
+    const status = (error as { status?: unknown })?.status
+    const rejected =
+      typeof status === 'number' && [400, 401, 403, 404, 413, 422, 429].includes(status)
+    throw new AssistantRunFailure(
+      {
+        reply:
+          'Fast mode stopped before it could finish. Check your work before asking it to buy anything again.',
         steps,
         usage,
         points: pointsFor(input.model, usage),
         model: input.model,
         truncated: true,
-        stoppedBy: 'budget',
-      }
-
-    const response = await client.messages.create({
-      model: input.model,
-      max_tokens: maxTokens,
-      system: SYSTEM,
-      tools: TOOLS,
-      messages,
-    })
-
-    // Summed every round: the provider charges for each request, so charging for
-    // one would make the expensive questions the ones AiKi loses money on.
-    usage.inputTokens += response.usage.input_tokens
-    usage.outputTokens += response.usage.output_tokens
-
-    const calls = response.content.filter(
-      (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use',
+      },
+      awaitingProvider && !rejected,
     )
-    if (calls.length === 0) {
-      truncated = false
-      const reply = response.content
-        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-        .map((block) => block.text)
-        .join('\n')
-        .trim()
-      return {
-        reply: readableAssistantProse(reply),
-        steps,
-        usage,
-        points: pointsFor(input.model, usage),
-        model: input.model,
-        truncated,
-      }
-    }
-
-    messages.push({ role: 'assistant', content: response.content })
-    const results: Anthropic.ToolResultBlockParam[] = []
-    for (const call of calls) {
-      const args = (call.input ?? {}) as Record<string, unknown>
-      const out = await runTool(input.ctx, call.name, args)
-      steps.push({ tool: call.name, input: args, ok: out.ok, mutating: MUTATING.has(call.name) })
-      outcomes.push({ tool: call.name, mutating: MUTATING.has(call.name), ...out })
-      results.push({
-        type: 'tool_result',
-        tool_use_id: call.id,
-        // A refusal goes back as content rather than an error, so the model can
-        // explain it and offer the fix instead of stalling.
-        is_error: !out.ok,
-        content: JSON.stringify(out.body ?? null).slice(0, 20_000),
-      })
-    }
-    messages.push({ role: 'user', content: results })
-  }
-
-  return {
-    reply: readableAssistantProse(stoppedReply('rounds', outcomes)),
-    steps,
-    usage,
-    stoppedBy: 'rounds',
-    points: pointsFor(input.model, usage),
-    model: input.model,
-    truncated,
   }
 }

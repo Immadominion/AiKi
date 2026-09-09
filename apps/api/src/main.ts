@@ -5,6 +5,7 @@ import { createPublicClient, http } from 'viem'
 import { bsc } from 'viem/chains'
 import { viemAccountDeployer } from './accounts/deploy.js'
 import { PostgresAccountStore } from './accounts/store.js'
+import { PostgresConversationStore } from './assistant/conversations.js'
 import { PostgresNonceStore } from './auth/nonce-store.js'
 import { describeCookieMismatch, SessionSigner } from './auth/session.js'
 import { viemChainReader } from './authority/chain-reader.js'
@@ -82,6 +83,7 @@ const accountFunderKey = process.env.ACCOUNT_FUNDER_PRIVATE_KEY as `0x${string}`
 const accountStore = new PostgresAccountStore(databaseUrl)
 const watchStore = new PostgresWatchStore(databaseUrl)
 const creditStore = new PostgresCreditStore(databaseUrl)
+const conversationStore = new PostgresConversationStore(databaseUrl)
 /*
  * A separate, single connection for reading the books.
  *
@@ -180,6 +182,7 @@ const app = createApiServer({
   watches: watchStore,
   assistant: {
     credits: creditStore,
+    conversations: conversationStore,
     ...(assistantKey ? { apiKey: assistantKey } : {}),
     ...(process.env.ASSISTANT_MODEL ? { model: process.env.ASSISTANT_MODEL } : {}),
     selfUrl: `http://127.0.0.1:${Number(process.env.PORT ?? '3000')}`,
@@ -295,6 +298,12 @@ app.addHook('onClose', async () => {
     nonceStore.close(),
     accountStore.close(),
     marketplaceStore.close(),
+    conversationStore.close(),
+    creditStore.close(),
+    watchStore.close(),
+    taskStore.close(),
+    sellerStore.close(),
+    ledgerSql.end(),
   ])
 })
 const port = Number(process.env.PORT ?? '3000')
