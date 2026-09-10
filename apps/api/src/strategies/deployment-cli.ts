@@ -1,5 +1,6 @@
 /** Unsigned-only CLI. Examples (explicit public JSON paths, no private-key options):
  * pnpm exec tsx src/strategies/deployment-cli.ts infrastructure --owner 0x... --rpc https://...
+ * pnpm exec tsx src/strategies/deployment-cli.ts finalize-infrastructure --owner 0x... --receipts receipts.json --rpc https://...
  * pnpm exec tsx src/strategies/deployment-cli.ts prepare --owner 0x... --input setup.json --config reviewed.json --rpc https://...
  * pnpm exec tsx src/strategies/deployment-cli.ts finalize --prepared preparation.json --transaction-hash 0x... --config reviewed.json --rpc https://...
  * pnpm exec tsx src/strategies/deployment-cli.ts verify-config --config reviewed.json --rpc https://...
@@ -16,6 +17,10 @@ import {
   strategyDeploymentConfigDigest,
 } from './deployment-config.js'
 import { prepareStrategyInfrastructure } from './deployment-infrastructure.js'
+import {
+  finalizeStrategyInfrastructure,
+  parseStrategyInfrastructureReceiptsJSON,
+} from './deployment-infrastructure-finalization.js'
 import { verifyStrategyDeploymentConfiguration } from './deployment-verification.js'
 import { nonzeroAddress, nonzeroHash } from './operation.js'
 
@@ -33,13 +38,15 @@ export async function runStrategyDeploymentCli(argv: readonly string[]): Promise
     const expected =
       command === 'infrastructure'
         ? ['--owner', '--rpc']
-        : command === 'prepare'
-          ? ['--owner', '--input', '--config', '--rpc']
-          : command === 'finalize'
-            ? ['--prepared', '--transaction-hash', '--config', '--rpc']
-            : command === 'verify-config'
-              ? ['--config', '--rpc']
-              : null
+        : command === 'finalize-infrastructure'
+          ? ['--owner', '--receipts', '--rpc']
+          : command === 'prepare'
+            ? ['--owner', '--input', '--config', '--rpc']
+            : command === 'finalize'
+              ? ['--prepared', '--transaction-hash', '--config', '--rpc']
+              : command === 'verify-config'
+                ? ['--config', '--rpc']
+                : null
     if (!expected || options.size !== expected.length || expected.some((key) => !options.has(key)))
       throw Error('arguments')
     const rpc = new URL(options.get('--rpc') ?? '')
@@ -49,7 +56,9 @@ export async function runStrategyDeploymentCli(argv: readonly string[]): Promise
     )
       throw Error('rpc')
     if (
-      (command === 'prepare' || command === 'infrastructure') &&
+      (command === 'prepare' ||
+        command === 'infrastructure' ||
+        command === 'finalize-infrastructure') &&
       !nonzeroAddress(options.get('--owner'))
     )
       throw Error('owner')
@@ -61,6 +70,14 @@ export async function runStrategyDeploymentCli(argv: readonly string[]): Promise
     })
     if (command === 'infrastructure')
       return prepareStrategyInfrastructure({ owner: options.get('--owner') as Hex, reader })
+    if (command === 'finalize-infrastructure')
+      return finalizeStrategyInfrastructure({
+        owner: options.get('--owner') as Hex,
+        receipts: parseStrategyInfrastructureReceiptsJSON(
+          await readFile(options.get('--receipts') ?? '', 'utf8'),
+        ),
+        reader,
+      })
     const json = async (key: string) => {
       const text = await readFile(options.get(key) ?? '', 'utf8')
       if (text.length > 1000000) throw Error('size')
