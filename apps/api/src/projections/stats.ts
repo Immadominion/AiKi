@@ -1,4 +1,4 @@
-import type { EcosystemStats } from '@aiki/contracts'
+import { type EcosystemStats, hasCurrentLiveness, probeFreshness } from '@aiki/contracts'
 import { BSC_MAINNET } from '../config/chains.js'
 import type { Observation } from '../evidence/types.js'
 import { classifyDeclared, declaredText } from './categories.js'
@@ -47,6 +47,8 @@ export interface StatsAggregate {
     agentsProbed: number
     /** Counted by the raw stored state; `asLiveness` is applied once, below. */
     byRawState: Record<string, number>
+    currentByRawState?: Record<string, number>
+    staleAgents?: number
     lastProbeSweepAt: string | null
   }
   /**
@@ -67,6 +69,11 @@ export function assembleStats(agg: StatsAggregate, input: StatsInput = {}): Ecos
     // Two raw values can normalise to one state, so accumulate rather than assign.
     const state = asLiveness(raw)
     byState[state] = (byState[state] ?? 0) + n
+  }
+  const currentByState: Partial<Record<string, number>> = {}
+  for (const [raw, n] of Object.entries(agg.probed.currentByRawState ?? {})) {
+    const state = asLiveness(raw)
+    currentByState[state] = (currentByState[state] ?? 0) + n
   }
 
   return {
@@ -95,6 +102,8 @@ export function assembleStats(agg: StatsAggregate, input: StatsInput = {}): Ecos
     probed: {
       agentsProbed: agg.probed.agentsProbed,
       byState: byState as EcosystemStats['probed']['byState'],
+      currentByState,
+      staleAgents: agg.probed.staleAgents ?? agg.probed.agentsProbed,
       lastProbeSweepAt: agg.probed.lastProbeSweepAt,
     },
     reputation: null,
@@ -103,7 +112,7 @@ export function assembleStats(agg: StatsAggregate, input: StatsInput = {}): Ecos
 }
 
 /** Count from an array. Correct for any store small enough to hold in memory. */
-export function aggregateStats(observations: Observation[]): StatsAggregate {
+export function aggregateStats(observations: Observation[], nowMs = Date.now()): StatsAggregate {
   const latestVerdict = new Map<string, Observation>()
   for (const o of observations) {
     if (o.predicate !== 'agent.liveness_verdict') continue
@@ -112,10 +121,15 @@ export function aggregateStats(observations: Observation[]): StatsAggregate {
     if (!held || o.observedAt > held.observedAt) latestVerdict.set(key, o)
   }
   const byRawState: Record<string, number> = {}
+  const currentByRawState: Record<string, number> = {}
+  let staleAgents = 0
   let lastProbeSweepAt: string | null = null
   for (const o of latestVerdict.values()) {
     const raw = String(o.value.state)
     byRawState[raw] = (byRawState[raw] ?? 0) + 1
+    if (probeFreshness(o.observedAt, nowMs).state === 'LIVE')
+      currentByRawState[raw] = (currentByRawState[raw] ?? 0) + 1
+    else staleAgents += 1
     if (!lastProbeSweepAt || o.observedAt > lastProbeSweepAt) lastProbeSweepAt = o.observedAt
   }
 
@@ -150,7 +164,15 @@ export function aggregateStats(observations: Observation[]): StatsAggregate {
     const bucket = categories[category] ?? { agents: 0, live: 0 }
     categories[category] = bucket
     bucket.agents += 1
-    if (asLiveness(latestVerdict.get(key)?.value.state) === 'LIVE') bucket.live += 1
+    const verdict = latestVerdict.get(key)
+    if (
+      hasCurrentLiveness(
+        { liveness: asLiveness(verdict?.value.state), lastProbeAt: verdict?.observedAt },
+        ['LIVE'],
+        nowMs,
+      )
+    )
+      bucket.live += 1
   }
 
   return {
@@ -165,6 +187,8 @@ export function aggregateStats(observations: Observation[]): StatsAggregate {
     probed: {
       agentsProbed: latestVerdict.size,
       byRawState,
+      currentByRawState,
+      staleAgents,
       lastProbeSweepAt,
     },
   }

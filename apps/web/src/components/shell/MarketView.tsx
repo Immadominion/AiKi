@@ -1,16 +1,19 @@
 'use client'
 
 import type { ProjectedPassport } from '@aiki/contracts'
+import { hasCurrentLiveness } from '@aiki/contracts/probe-freshness'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { MarketGrid } from '@/components/shell/MarketCard'
 import { PageCard } from '@/components/shell/PageCard'
 import { useLayoutPref } from '@/components/shell/prefs'
+import { livenessPresentation } from '@/components/ui/LivenessBadge'
 import type { AgentRow } from '@/lib/agents'
 import { api } from '@/lib/api'
 import { briefText } from '@/lib/identity'
 import { FAST_HOME } from '@/lib/routes'
+import { useProbeExpiry } from '@/lib/use-probe-expiry'
 
 /**
  * The market home: the alternative to the single question.
@@ -39,7 +42,7 @@ function distinct(passports: readonly ProjectedPassport[]): ProjectedPassport[] 
 function toRow(p: ProjectedPassport): AgentRow {
   const display = (p.name ?? `Agent ${p.agentId}`).replace(/^AiKi\s+/i, '')
   const trials = p.checks?.trials ?? 0
-  const answering = p.liveness === 'LIVE'
+  const answering = hasCurrentLiveness(p)
   const description = (p.description ?? '').trim()
   const sentence = description ? (description.split(/(?<=\.)\s/)[0] ?? description) : ''
   return {
@@ -57,7 +60,7 @@ function toRow(p: ProjectedPassport): AgentRow {
     bars: answering ? Math.min(5, Math.max(1, Math.round(trials / 6))) : 1,
     evidence: answering
       ? `Answering · ${trials} ${trials === 1 ? 'check' : 'checks'}`
-      : `${p.liveness.replace(/_/g, ' ').toLowerCase()} · ${trials} ${trials === 1 ? 'check' : 'checks'}`,
+      : `${livenessPresentation(p.liveness, p.lastProbeAt).label} · ${trials} ${trials === 1 ? 'check' : 'checks'}`,
     evidenceTone: answering ? (trials >= 20 ? 'strong' : 'fair') : 'thin',
     // Almost nothing in this registry publishes a price, and a blank that reads
     // as free is worse than saying so.
@@ -70,14 +73,16 @@ export function MarketView() {
   const router = useRouter()
   const fast = layout === 'fast'
 
-  const [rows, setRows] = useState<AgentRow[] | null>(null)
+  const [passports, setPassports] = useState<ProjectedPassport[] | null>(null)
+  useProbeExpiry((passports ?? []).map((passport) => passport.lastProbeAt))
+  const rows = passports === null ? null : distinct(passports).slice(0, 12).map(toRow)
   const [failed, setFailed] = useState(false)
   useEffect(() => {
     let cancelled = false
     api
       .search({ limit: 60 })
       .then((answer) => {
-        if (!cancelled) setRows(distinct(answer.results).slice(0, 12).map(toRow))
+        if (!cancelled) setPassports(answer.results)
       })
       .catch(() => {
         if (!cancelled) setFailed(true)

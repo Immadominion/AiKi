@@ -78,7 +78,8 @@ export function CoverageBlock({ shown, coverage }: { shown: number; coverage: Re
           href={route('/registry')}
           className="text-ink-app font-bold underline decoration-[rgb(26_26_25_/_0.25)] underline-offset-2 hover:decoration-current"
         >
-          {coverage.answering} answered like an agent at all
+          {coverage.answering}{' '}
+          {coverage.freshness === 'live' ? 'have current answering checks' : 'last known to answer'}
         </Link>
         . The rest are counted here rather than deleted, because an agent we cannot test is a fact
         about the registry, not an absence.
@@ -86,6 +87,17 @@ export function CoverageBlock({ shown, coverage }: { shown: number; coverage: Re
 
       {excluded > 0 ? (
         <div className="mt-[11px] flex flex-col gap-[6px]">
+          {(coverage.awaitingRecheck ?? 0) > 0 ? (
+            <div className="flex items-start gap-[9px]">
+              <span className="mt-[6px] size-[5px] flex-none rounded-full bg-[rgb(26_26_25_/_0.18)]" />
+              <span className="text-[12.5px] leading-[1.45] text-pretty">
+                <b className="font-bold tabular-nums">
+                  {coverage.awaitingRecheck?.toLocaleString()}
+                </b>{' '}
+                <span className="text-muted">previously answered and need a fresh check</span>
+              </span>
+            </div>
+          ) : null}
           {coverage.reasons.map((r) => (
             <div key={r.state} className="flex items-start gap-[9px]">
               <span className="mt-[6px] size-[5px] flex-none rounded-full bg-[rgb(26_26_25_/_0.18)]" />
@@ -102,8 +114,8 @@ export function CoverageBlock({ shown, coverage }: { shown: number; coverage: Re
 
       <p className="text-muted-3 mt-[10px] mb-0 text-[11.5px] leading-[1.45]">
         {coverage.freshness === 'live'
-          ? `From AiKi's evidence API${coverage.sweptAt ? ` · last sweep ${sweepDay(coverage.sweptAt)}` : ''}`
-          : `From AiKi's probe sweep${coverage.sweptAt ? ` of ${sweepDay(coverage.sweptAt)}` : ''} · ${
+          ? `From AiKi's evidence API${coverage.sweptAt ? ` · latest check ${sweepDay(coverage.sweptAt)}` : ''}`
+          : `Last known checks${coverage.sweptAt ? ` · ${sweepDay(coverage.sweptAt)}` : ''} · ${
               coverage.freshness === 'asking'
                 ? 'checking for newer numbers'
                 : 'live numbers unreachable right now'

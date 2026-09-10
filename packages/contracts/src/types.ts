@@ -208,7 +208,7 @@ export interface SearchFilters {
   category?: Category
   protocols?: string[]
   assets?: string[]
-  /** Defaults to ['LIVE','DEGRADED'] - unverified agents are hidden but counted. */
+  /** Optional. LIVE/DEGRADED filters require current probe evidence; browsing stays open. */
   liveness?: LivenessState[]
   minConfidence?: number
   maxPricePerTask?: Money
@@ -613,6 +613,10 @@ export interface EcosystemStats {
     agentsProbed: number
     /** The headline finding. */
     byState: Partial<Record<LivenessState, number>>
+    /** Latest verdicts backed by evidence at most 24 hours old. Missing is not current. */
+    currentByState?: Partial<Record<LivenessState, number>>
+    /** Historical verdicts whose timestamps cannot support a current claim. */
+    staleAgents?: number
     /** Null when nothing has been probed - never an epoch sentinel. */
     lastProbeSweepAt: Timestamp | null
   }
@@ -695,6 +699,8 @@ export interface ProjectedPassport {
   liveness: LivenessState
   livenessDetail: string | null
   lastProbeAt: Timestamp | null
+  /** Separate from the historical verdict; older APIs may omit this metadata. */
+  livenessFreshness?: import('./probe-freshness.js').ProbeFreshness
   p95LatencyMs: number | null
   proofScore: {
     value: number

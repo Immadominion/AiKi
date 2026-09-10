@@ -1,5 +1,6 @@
 'use client'
 
+import type { ProjectedPassport } from '@aiki/contracts'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useAccount } from '@/components/shell/prefs'
@@ -7,13 +8,14 @@ import { useToast } from '@/components/ui/Toast'
 import { api } from '@/lib/api'
 import { agentHref, registryHref } from '@/lib/routes'
 import type { Task } from '@/lib/tasks'
+import { useProbeExpiry } from '@/lib/use-probe-expiry'
 import { AskField } from './AskField'
 import { FastChat } from './FastChat'
 import { FastChatHeader } from './FastChatHeader'
 import { HistoryRail } from './HistoryRail'
 import { liveShards } from './live-shards'
 import { ShardField } from './ShardField'
-import type { Frame, ShardSpec } from './shards'
+import type { Frame } from './shards'
 
 /**
  * Fast mode's actual content, independent of the box it sits in.
@@ -93,7 +95,8 @@ export function FastCore({
    * a true statement about a marketplace we cannot currently read, and the
    * fixtures were not.
    */
-  const [live, setLive] = useState<ShardSpec[] | null>(null)
+  const [live, setLive] = useState<ProjectedPassport[] | null>(null)
+  useProbeExpiry((live ?? []).map((passport) => passport.lastProbeAt))
   useEffect(() => {
     let cancelled = false
     api
@@ -101,7 +104,7 @@ export function FastCore({
       // six distinct names need more than six rows to find.
       .search({ limit: 60 })
       .then((answer) => {
-        if (!cancelled) setLive(liveShards(answer.results))
+        if (!cancelled) setLive(answer.results)
       })
       .catch(() => {
         if (!cancelled) setLive([])
@@ -112,7 +115,7 @@ export function FastCore({
   }, [])
 
   const first = !connected
-  const shards = live ?? []
+  const shards = liveShards(live ?? [])
 
   const submit = (q: string) => {
     if (!q) {

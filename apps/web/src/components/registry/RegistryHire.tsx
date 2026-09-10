@@ -9,6 +9,7 @@ import { guardianSubjectFromPassport, isGuardianPassport } from '@/components/hi
 import { PageCard } from '@/components/shell/PageCard'
 import { StrategyHireChoice } from '@/components/strategies/StrategyHireChoice'
 import { type AgentTaskSupport, api } from '@/lib/api'
+import { useProbeExpiry } from '@/lib/use-probe-expiry'
 
 const CHOICE_BUTTON =
   'min-h-11 min-w-0 basis-full cursor-pointer rounded-xl border px-4 py-2 text-center text-sm leading-5 font-semibold whitespace-normal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-app motion-safe:transition-colors motion-safe:duration-100 sm:basis-auto'
@@ -23,6 +24,7 @@ export function RegistryHire({ agentId }: { agentId: string }) {
   const [problem, setProblem] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const [repayment, setRepayment] = useState(false)
+  useProbeExpiry([details?.passport.lastProbeAt])
 
   // Retrying intentionally repeats the same support request.
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt is an explicit retry trigger.

@@ -229,7 +229,7 @@ it.skipIf(!databaseUrl)(
 )
 
 it.skipIf(!databaseUrl)(
-  'selects agents by their latest verdict, however old their rows are',
+  'requires a current verdict while preserving all older rows for the selected subject',
   async () => {
     const url = process.env.DATABASE_URL
     if (!url) return
@@ -275,6 +275,9 @@ it.skipIf(!databaseUrl)(
       // Never live, probed most recently of the three.
       await store.append(verdict('dead', 'IMPOSTOR_STATIC', '2026-08-02T00:00:00.000Z'))
 
+      const before = await store.observationsForLiveness(['LIVE'])
+      expect(before.filter((o) => o.subject.registry === registry)).toEqual([])
+      await store.append(verdict('ancient', 'LIVE', new Date().toISOString()))
       const live = await store.observationsForLiveness(['LIVE'])
       const mine = live.filter((o) => o.subject.registry.toLowerCase() === registry.toLowerCase())
       const agents = [...new Set(mine.map((o) => o.subject.agentId))].sort()
@@ -283,6 +286,7 @@ it.skipIf(!databaseUrl)(
       // Whole agent or no agent: the registration comes back with the verdict, so
       // a passport projected from this is never half-remembered.
       expect(mine.map((o) => o.predicate).sort()).toEqual([
+        'agent.liveness_verdict',
         'agent.liveness_verdict',
         'erc8004.agent_registered',
       ])
@@ -339,7 +343,7 @@ it.skipIf(!databaseUrl)(
         observedAt: '2026-01-01T00:00:00.000Z',
         dedupeKey: `${agentId}:registered`,
       })
-      // Its identity and its verdict, written once and long ago.
+      // Its old identity and current verdict must survive newer telemetry.
       await store.append({
         ...base,
         predicate: 'erc8004.registration_resolution',
@@ -358,8 +362,8 @@ it.skipIf(!databaseUrl)(
         ...base,
         predicate: 'agent.liveness_verdict',
         value: { state: 'LIVE' },
-        validAt: '2026-01-01T00:00:01.000Z',
-        observedAt: '2026-01-01T00:00:01.000Z',
+        validAt: new Date(Date.now() - 60_000).toISOString(),
+        observedAt: new Date(Date.now() - 60_000).toISOString(),
         dedupeKey: `${agentId}:verdict`,
       })
       // Its work, written continuously and recently.
@@ -368,8 +372,8 @@ it.skipIf(!databaseUrl)(
           ...base,
           predicate: 'venus.health_factor_assessment',
           value: { healthFactor: '1.42' },
-          validAt: `2026-09-01T00:00:0${n}.000Z`,
-          observedAt: `2026-09-01T00:00:0${n}.000Z`,
+          validAt: new Date(Date.now() - 10_000 + n).toISOString(),
+          observedAt: new Date(Date.now() - 10_000 + n).toISOString(),
           dedupeKey: `${agentId}:work:${n}`,
         })
       }
@@ -445,7 +449,7 @@ it.skipIf(!databaseUrl)(
       registry,
       agentId,
     })
-    const at = '2026-01-01T00:00:00.000Z'
+    const at = new Date().toISOString()
     try {
       // Three agents that all say "beacon": one answering, one never probed, one
       // caught serving the same bytes to every input.

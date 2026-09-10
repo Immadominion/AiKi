@@ -1,3 +1,4 @@
+import { hasCurrentLiveness } from '@aiki/contracts'
 import type Anthropic from '@anthropic-ai/sdk'
 import type { ToolCallResult } from './tools.js'
 
@@ -246,7 +247,10 @@ export async function runStrategyTool(
       passport.chainId !== agent.chainId ||
       typeof passport.registry !== 'string' ||
       passport.registry.toLowerCase() !== agent.registry ||
-      passport.liveness !== 'LIVE' ||
+      !hasCurrentLiveness({
+        liveness: typeof passport.liveness === 'string' ? passport.liveness : '',
+        lastProbeAt: typeof passport.lastProbeAt === 'string' ? passport.lastProbeAt : null,
+      }) ||
       registration.reciprocalProofVerified !== true
     )
       throw new Error('Identity changed.')

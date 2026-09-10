@@ -10,7 +10,11 @@ Keep the existing production budget of 40 probes every 30 minutes, with concurre
 
 This is preferable to increasing the request budget, which does not fix starvation, or global oldest-first ordering, which can starve new registrations. The 24-hour threshold means eligible for recheck, not a guaranteed refresh deadline for the entire registry.
 
+Interleave the reserved lanes so a time-limited sweep reaches discoveries as well as rechecks in its first four entries. Rotate the preferred lanes for limits of one or two. Preserve the complete chain, registry and token identity when projecting selected search results; recheck eligibility if the verdict changes or expires between selection and projection.
+
 Represent freshness separately from the historical verdict. A successful observation at most 24 hours old is current; older, missing, invalid or future timestamps cannot support a current-answering claim. Preserve the original verdict, timestamp and evidence. Current-ready filtering and counts must use the same freshness rule. Old observations should appear as last known, not as current green availability. Use the existing neutral, stale and freshness styling without redesigning cards or adding a new dashboard.
+
+Retain raw passport timestamps in open pages and demote their status at expiry or when a suspended tab resumes. Refresh aggregate counts on a visible-page cadence. Bound public stats and search reads to ten seconds, including response bodies, so a hung refresh cannot keep a current-status claim indefinitely. This deadline does not apply to financial mutations.
 
 ## Release order and verification
 

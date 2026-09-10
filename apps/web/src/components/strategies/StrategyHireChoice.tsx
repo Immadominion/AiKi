@@ -1,10 +1,12 @@
 'use client'
 
 import type { ProjectedPassport } from '@aiki/contracts'
+import { hasCurrentLiveness } from '@aiki/contracts/probe-freshness'
 import type { StrategyKind, StrategyPublicConfig } from '@aiki/contracts/strategies'
 import type { Route } from 'next'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useProbeExpiry } from '@/lib/use-probe-expiry'
 import { strategyApi } from './api'
 import { PANEL, SECONDARY } from './PolicyForm'
 import { STRATEGY_COPY } from './policy'
@@ -17,7 +19,7 @@ export function strategyForPassport(
   if (
     passport.chainId !== 56 ||
     config.chainId !== 56 ||
-    passport.liveness !== 'LIVE' ||
+    !hasCurrentLiveness(passport) ||
     passport.identity?.tokenId !== passport.agentId ||
     !passport.identity.registrationFile.resolved ||
     !passport.identity.registrationFile.reciprocalProofVerified
@@ -35,6 +37,7 @@ export function strategyForPassport(
 }
 
 export function StrategyHireChoice({ passport }: { passport: ProjectedPassport }) {
+  useProbeExpiry([passport.lastProbeAt])
   const [resolved, setResolved] = useState<{
     agentId: string
     config: StrategyPublicConfig

@@ -1,6 +1,7 @@
 'use client'
 
 import type { ProjectedPassport } from '@aiki/contracts'
+import { hasCurrentLiveness } from '@aiki/contracts/probe-freshness'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { AgentCell, Cell, DataTable, RowActions } from '@/components/shell/DataTable'
@@ -9,6 +10,7 @@ import { LIVENESS_LABEL, LivenessBadge } from '@/components/ui/LivenessBadge'
 import { api } from '@/lib/api'
 import { useRegistryCoverage } from '@/lib/live'
 import { route } from '@/lib/routes'
+import { useProbeExpiry } from '@/lib/use-probe-expiry'
 
 type State =
   | { kind: 'loading' }
@@ -26,6 +28,7 @@ export function RegistryView() {
   const router = useRouter()
   const coverage = useRegistryCoverage()
   const [state, setState] = useState<State>({ kind: 'loading' })
+  useProbeExpiry(state.kind === 'ready' ? state.rows.map((passport) => passport.lastProbeAt) : [])
 
   useEffect(() => {
     let alive = true
@@ -35,7 +38,7 @@ export function RegistryView() {
         if (!alive) return
         const rows = [...response.results].sort(
           (a, b) =>
-            (a.liveness === 'LIVE' ? 0 : 1) - (b.liveness === 'LIVE' ? 0 : 1) ||
+            (hasCurrentLiveness(a) ? 0 : 1) - (hasCurrentLiveness(b) ? 0 : 1) ||
             b.checks.trials - a.checks.trials,
         )
         setState({ kind: 'ready', rows })
@@ -46,7 +49,7 @@ export function RegistryView() {
     }
   }, [])
 
-  const silent = coverage.probed - coverage.answering
+  const notCurrent = coverage.probed - coverage.answering
 
   return (
     <PageCard
@@ -61,7 +64,7 @@ export function RegistryView() {
       count={
         coverage.freshness === 'asking'
           ? 'reading the evidence store'
-          : `${coverage.answering.toLocaleString()} answering of ${coverage.probed.toLocaleString()} probed`
+          : `${coverage.answering.toLocaleString()} ${coverage.freshness === 'live' ? 'answering' : 'last known to answer'} of ${coverage.probed.toLocaleString()} probed`
       }
       tabs={[]}
       tabHint=""
@@ -99,7 +102,7 @@ export function RegistryView() {
                   sub={`token ${p.identity.tokenId}`}
                   bg="linear-gradient(135deg,#3D3D3A,#6B6B66)"
                 />,
-                <LivenessBadge key="b" state={p.liveness} />,
+                <LivenessBadge key="b" state={p.liveness} lastProbeAt={p.lastProbeAt} />,
                 <Cell key="c" color="var(--color-body)">
                   {p.checks.successes} of {p.checks.trials}
                 </Cell>,
@@ -121,8 +124,8 @@ export function RegistryView() {
             footnote={`Ranked by what answered, then by how often we probed it. ${LIVENESS_LABEL.DEGRADED} means it answered, slowly.`}
           />
           <p className="text-muted mt-[14px] mb-0 text-[12.5px] leading-[1.55] text-pretty">
-            The other <b className="text-ink-app font-bold">{silent.toLocaleString()}</b> probed
-            entries did not pass the last check. This is not a test of every supported protocol.
+            The other <b className="text-ink-app font-bold">{notCurrent.toLocaleString()}</b> probed
+            entries do not have a current answering check. Older results remain in their history.
             Explore includes other registered agents and their published services.
           </p>
         </>

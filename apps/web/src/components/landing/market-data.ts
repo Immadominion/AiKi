@@ -1,4 +1,5 @@
 import type { EcosystemStats, LivenessState, ProjectedPassport } from '@aiki/contracts'
+import { hasCurrentLiveness } from '@aiki/contracts/probe-freshness'
 
 export type LandingMarketDataStatus = 'loading' | 'live' | 'fallback' | 'error'
 export type LandingResourceStatus = 'loading' | 'live' | 'fallback' | 'error'
@@ -14,6 +15,8 @@ export interface LandingMarketAggregate {
   answeringAgents: number
   lastSweepAt: string | null
   byState: Readonly<Partial<Record<LivenessState, number>>>
+  /** Null only for the explicitly dated historical fallback. */
+  currentByState: Readonly<Partial<Record<LivenessState, number>>> | null
 }
 
 export interface LandingAgentRisk {
@@ -90,6 +93,7 @@ export const COMMITTED_LANDING_SWEEP: LandingMarketAggregate = {
   probedAgents: 1_143,
   answeringAgents: 11,
   lastSweepAt: '2026-08-20T10:25:32.066Z',
+  currentByState: null,
   byState: {
     LIVE: 9,
     DEGRADED: 2,
@@ -132,7 +136,15 @@ export function landingAggregateFromStats(stats: EcosystemStats): LandingMarketA
     byState[state] = count(value, state)
   }
 
-  const answeringAgents = (byState.LIVE ?? 0) + (byState.DEGRADED ?? 0)
+  if (!stats.probed.currentByState)
+    throw new Error('Current registry checks are unavailable. Previous results are historical.')
+  const answeringAgents =
+    count(stats.probed.currentByState.LIVE ?? 0, 'currently answering') +
+    count(stats.probed.currentByState.DEGRADED ?? 0, 'currently degraded')
+  for (const state of ['LIVE', 'DEGRADED'] as const) {
+    if ((stats.probed.currentByState[state] ?? 0) > (byState[state] ?? 0))
+      throw new Error('Current answering counts exceed their historical verdicts.')
+  }
   if (answeringAgents > probedAgents)
     throw new Error('The evidence API returned more answering agents than probed agents.')
 
@@ -145,7 +157,16 @@ export function landingAggregateFromStats(stats: EcosystemStats): LandingMarketA
     answeringAgents,
     lastSweepAt: stats.probed.lastProbeSweepAt,
     byState,
+    currentByState: { ...stats.probed.currentByState },
   }
+}
+
+/** Every landing headline uses current counts, except the visibly dated fallback. */
+export function landingAnsweringEvidence(aggregate: LandingMarketAggregate) {
+  const counts = aggregate.source === 'api' ? aggregate.currentByState : aggregate.byState
+  const live = counts?.LIVE ?? 0
+  const degraded = counts?.DEGRADED ?? 0
+  return { live, degraded, answering: live + degraded }
 }
 
 const safeName = (passport: ProjectedPassport): { displayName: string; measured: boolean } => {
@@ -163,6 +184,7 @@ const safeName = (passport: ProjectedPassport): { displayName: string; measured:
  */
 export function landingAgentNodeFromPassport(passport: ProjectedPassport): LandingAgentNode | null {
   if (passport.liveness !== 'LIVE' && passport.liveness !== 'DEGRADED') return null
+  if (!hasCurrentLiveness(passport, ['LIVE', 'DEGRADED'])) return null
   if (!passport.agentId.trim() || passport.updatedAt === null) return null
   if (
     !Number.isSafeInteger(passport.checks.trials) ||

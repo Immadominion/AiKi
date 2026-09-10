@@ -4,6 +4,7 @@ import {
   DELEGATION_TYPES,
   delegationDomain,
   guardianFor,
+  hasCurrentLiveness,
   parseExecutionNetwork,
   ROOT_AUTHORITY,
 } from '@aiki/contracts'
@@ -104,6 +105,7 @@ export function createApiServer(input: {
     matches: { chainId: number; registry: string; agentId: string; state: string }[]
     total: number
     byState: Record<string, number>
+    currentByState?: Record<string, number>
     truncated: boolean
   }>
   /**
@@ -276,7 +278,7 @@ export function createApiServer(input: {
         const services = (
           registration?.value as { manifest?: { services?: { endpoint?: unknown }[] } } | undefined
         )?.manifest?.services
-        if (passport.liveness !== 'LIVE')
+        if (!hasCurrentLiveness(passport))
           return { owner, endpoint: '', live: false, compatible: false }
         return { owner, live: true, ...(await resolveTaskEndpoint(services)) }
       },
@@ -596,25 +598,46 @@ export function createApiServer(input: {
         // re-scan its observations once per agent, which for a common word is
         // seconds of blocked event loop on a route needing no credentials.
         const observations = await agentObservations(found.matches.map((m) => m.agentId))
-        const results = found.matches.map((m) => projectPassport(m.agentId, observations))
+        const results = found.matches
+          .map((m) =>
+            projectPassport(
+              m.agentId,
+              observations.filter(
+                (o) =>
+                  o.subject.agentId === m.agentId &&
+                  o.subject.chainId === m.chainId &&
+                  o.subject.registry.toLowerCase() === m.registry.toLowerCase(),
+              ),
+            ),
+          )
+          .filter(
+            (passport) =>
+              !states ||
+              (states.includes(passport.liveness) &&
+                (!['LIVE', 'DEGRADED'].includes(passport.liveness) ||
+                  hasCurrentLiveness(passport, ['LIVE', 'DEGRADED']))),
+          )
+        // The latest verdict can change or expire between selection and this read.
+        // Remove known ineligible page rows without claiming an exact rescan.
+        const invalidatedMatches = found.matches.length - results.length
 
         /*
          * Not "excluded" any more, because nothing is. This says what the listed
          * set is MADE of, so a reader can see at a glance how much of it AiKi has
          * actually watched.
          */
-        const unverified = Object.entries(found.byState).reduce(
-          (n, [state, count]) => (state === 'LIVE' || state === 'DEGRADED' ? n : n + count),
+        const unverified = Math.max(
           0,
+          found.total - (found.currentByState?.LIVE ?? 0) - (found.currentByState?.DEGRADED ?? 0),
         )
 
         return {
           results,
-          total: found.total,
+          total: Math.max(0, found.total - invalidatedMatches),
           coverage: {
             indexedAgents: agg?.indexed?.totalAgents ?? 0,
             matchedBeforeFilters: found.total,
-            excludedUnverified: states ? unverified : 0,
+            excludedUnverified: states ? Math.min(found.total, unverified + invalidatedMatches) : 0,
             exclusionReasons: found.byState,
             ...(found.truncated ? { truncated: true } : {}),
           },
@@ -646,7 +669,12 @@ export function createApiServer(input: {
                 passport.liveness.toLowerCase().includes(term),
             ),
         )
-      const kept = states ? matched.filter((p) => states.includes(p.liveness)) : matched
+      const matchesStates = (p: (typeof matched)[number]) =>
+        !states ||
+        (states.includes(p.liveness) &&
+          (!['LIVE', 'DEGRADED'].includes(p.liveness) ||
+            hasCurrentLiveness(p, ['LIVE', 'DEGRADED'])))
+      const kept = matched.filter(matchesStates)
 
       /*
        * Counted over every row where the deployment can do that, so the block
@@ -659,18 +687,25 @@ export function createApiServer(input: {
         const total = agg.indexed?.totalAgents ?? 0
         const unprobed = Math.max(0, total - agg.probed.agentsProbed)
         const note = (state: string, count: number) => {
-          if (count <= 0 || states.includes(state)) return
-          byState[state] = (byState[state] ?? 0) + count
-          if (state !== 'LIVE' && state !== 'DEGRADED') excludedUnverified += count
+          const selected = states.includes(state)
+          const positive = state === 'LIVE' || state === 'DEGRADED'
+          const excluded =
+            selected && positive
+              ? count - (agg.probed.currentByRawState?.[state] ?? 0)
+              : selected
+                ? 0
+                : count
+          if (excluded <= 0) return
+          byState[state] = (byState[state] ?? 0) + excluded
+          excludedUnverified += excluded
         }
         for (const [state, count] of Object.entries(agg.probed.byRawState)) note(state, count)
         note('UNPROBED', unprobed)
       } else {
         for (const passport of matched) {
-          if (states?.includes(passport.liveness) === false) {
+          if (!matchesStates(passport)) {
             byState[passport.liveness] = (byState[passport.liveness] ?? 0) + 1
-            if (passport.liveness !== 'LIVE' && passport.liveness !== 'DEGRADED')
-              excludedUnverified += 1
+            excludedUnverified += 1
           }
         }
       }
@@ -707,8 +742,11 @@ export function createApiServer(input: {
         error: { code, message, retryable: false, requestId: request.headers['x-request-id'] },
       })
 
-    if (passport.liveness !== 'LIVE')
-      return fail('AGENT_NOT_QUOTABLE', 'Only LIVE agents may issue a marketplace quote.')
+    if (!hasCurrentLiveness(passport))
+      return fail(
+        'AGENT_NOT_QUOTABLE',
+        'A current LIVE probe is required for a marketplace quote. Historical verdicts remain available on the passport.',
+      )
 
     /*
      * A price is a number AND the thing it is counted in, and this route settles
@@ -1216,8 +1254,11 @@ export function createApiServer(input: {
       const passport = projectPassport(agentId, observations)
       const fail = (code: string, message: string) =>
         reply.code(422).send({ error: { code, message, retryable: false } })
-      if (passport.liveness !== 'LIVE')
-        return fail('AGENT_NOT_QUOTABLE', 'Only LIVE agents may be hired.')
+      if (!hasCurrentLiveness(passport))
+        return fail(
+          'AGENT_NOT_QUOTABLE',
+          'A current LIVE probe is required before hiring. Historical verdicts remain available on the passport.',
+        )
       const price = priceForQuote(agentId, observations)?.amount ?? null
       if (price === null)
         return fail(

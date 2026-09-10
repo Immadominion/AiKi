@@ -1,4 +1,5 @@
 import type { LivenessState } from '@aiki/contracts'
+import { probeFreshness } from '@aiki/contracts/probe-freshness'
 import type { Tone } from './StatusPill'
 import { StatusPill } from './StatusPill'
 
@@ -45,6 +46,27 @@ const TONE: Record<LivenessState, Tone> = {
   UNPROBED: 'idle',
 }
 
-export function LivenessBadge({ state }: { state: LivenessState }) {
-  return <StatusPill label={LIVENESS_LABEL[state]} tone={TONE[state]} />
+export function livenessPresentation(
+  state: LivenessState,
+  lastProbeAt: string | null | undefined,
+  nowMs = Date.now(),
+): { label: string; tone: Tone } {
+  if (state === 'UNPROBED') return { label: LIVENESS_LABEL.UNPROBED, tone: 'idle' }
+  const freshness = probeFreshness(lastProbeAt ?? null, nowMs)
+  if (freshness.state === 'NO_DATA' || freshness.ageMs === null)
+    return { label: 'Check needed', tone: 'idle' }
+  if (freshness.state !== 'LIVE')
+    return { label: `Last known: ${LIVENESS_LABEL[state].toLowerCase()}`, tone: 'idle' }
+  return { label: LIVENESS_LABEL[state], tone: TONE[state] }
+}
+
+export function LivenessBadge({
+  state,
+  lastProbeAt,
+}: {
+  state: LivenessState
+  lastProbeAt: string | null
+}) {
+  const presentation = livenessPresentation(state, lastProbeAt)
+  return <StatusPill {...presentation} wrap />
 }

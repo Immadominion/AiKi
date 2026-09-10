@@ -26,6 +26,7 @@ const passport = {
   registry: '0x8004a169fb4a3325136eb29fa0ceb6d2e539a432',
   name: 'Venus Guardian',
   liveness: 'LIVE',
+  lastProbeAt: new Date().toISOString(),
   identity: {
     tokenId: '315943',
     registrationFile: { resolved: true, reciprocalProofVerified: true },

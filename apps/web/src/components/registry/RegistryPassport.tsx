@@ -1,6 +1,7 @@
 'use client'
 
 import type { ProjectedPassport } from '@aiki/contracts'
+import { hasCurrentLiveness } from '@aiki/contracts/probe-freshness'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { OwnerListing } from '@/components/registry/OwnerListing'
@@ -10,6 +11,7 @@ import { LIVENESS_DETAIL, LivenessBadge } from '@/components/ui/LivenessBadge'
 import { api } from '@/lib/api'
 import { briefText } from '@/lib/identity'
 import { route } from '@/lib/routes'
+import { useProbeExpiry } from '@/lib/use-probe-expiry'
 
 type State =
   | { kind: 'loading' }
@@ -51,6 +53,7 @@ function Fact({ label, value }: { label: string; value: string | null }) {
 export function RegistryPassport({ agentId }: { agentId: string }) {
   const router = useRouter()
   const [state, setState] = useState<State>({ kind: 'loading' })
+  useProbeExpiry([state.kind === 'ready' ? state.passport.lastProbeAt : null])
 
   useEffect(() => {
     let alive = true
@@ -108,7 +111,7 @@ export function RegistryPassport({ agentId }: { agentId: string }) {
        * tenth of the registry, but the sale is still gated: you can read the
        * page of a suspended seller and you cannot buy from them.
        */
-      {...(p.liveness === 'LIVE'
+      {...(hasCurrentLiveness(p)
         ? {
             primary: 'Hire this agent',
             onPrimary: () => router.push(route(`/registry/${p.agentId}/hire`)),
@@ -134,9 +137,9 @@ export function RegistryPassport({ agentId }: { agentId: string }) {
 
       <div className="grid gap-[14px] md:grid-cols-2">
         <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-[15px]">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-[14px] font-bold">What we measured</span>
-            <LivenessBadge state={p.liveness} />
+            <LivenessBadge state={p.liveness} lastProbeAt={p.lastProbeAt} />
           </div>
           <p className="text-muted mt-[8px] mb-0 text-[12.5px] leading-[1.55] text-pretty">
             {p.livenessDetail ?? LIVENESS_DETAIL[p.liveness]}

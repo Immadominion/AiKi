@@ -176,10 +176,10 @@ function ipfsGatewayPath(uri: string): string {
   return segments.join('/')
 }
 
-async function fetchText(url: string): Promise<string> {
+async function fetchText(url: string, read: typeof guardedFetch): Promise<string> {
   // guardedFetch validates every hop against private address space; the
   // registry is permissionless, so this URL is attacker input by definition.
-  const response = await guardedFetch(url, {
+  const response = await read(url, {
     headers: { accept: 'application/json, application/ld+json;q=0.9' },
     signal: AbortSignal.timeout(15_000),
   })
@@ -210,6 +210,7 @@ async function fetchText(url: string): Promise<string> {
 export async function resolveRegistration(
   uri: string,
   ipfsGateway = 'https://ipfs.io/ipfs/',
+  read: typeof guardedFetch = guardedFetch,
 ): Promise<RegistrationResolution> {
   const fetchedAt = new Date().toISOString()
   const scheme = schemeFor(uri)
@@ -229,6 +230,7 @@ export async function resolveRegistration(
         ? decodeDataUri(uri)
         : await fetchText(
             scheme === 'ipfs' ? `${ipfsGateway.replace(/\/$/, '')}/${ipfsGatewayPath(uri)}` : uri,
+            read,
           )
     return { uri, scheme, fetchedAt, zeroCost, ...parseManifest(text) }
   } catch (error) {

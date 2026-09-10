@@ -189,6 +189,7 @@ test('catalogue automation requires configured exact chain/registry/token identi
     chainId: 56,
     registry: addressAt('ab'),
     liveness: 'LIVE',
+    lastProbeAt: new Date().toISOString(),
     identity: {
       tokenId: '315944',
       registrationFile: { resolved: true, reciprocalProofVerified: true },
@@ -213,6 +214,8 @@ test('catalogue automation requires configured exact chain/registry/token identi
     { ...passport, chainId: 97 },
     { ...passport, registry: owner },
     { ...passport, liveness: 'UNPROBED' },
+    { ...passport, lastProbeAt: new Date(Date.now() - 86_400_001).toISOString() },
+    { ...passport, lastProbeAt: null },
     { ...passport, identity: { ...passport.identity, tokenId: '999' } },
   ])
     assert.equal(strategyForPassport(changed as ProjectedPassport, mapped), null)

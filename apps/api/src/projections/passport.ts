@@ -1,4 +1,9 @@
-import type { LivenessState, ProjectedPassport, ProjectedRisk } from '@aiki/contracts'
+import {
+  type LivenessState,
+  type ProjectedPassport,
+  type ProjectedRisk,
+  probeFreshness,
+} from '@aiki/contracts'
 import type { Observation } from '../evidence/types.js'
 import { SCORING_VERSION, wilson } from '../scoring/wilson.js'
 
@@ -104,7 +109,11 @@ function deriveRisks(input: {
   return risks
 }
 
-export function projectPassport(agentId: string, observations: Observation[]): PassportProjection {
+export function projectPassport(
+  agentId: string,
+  observations: Observation[],
+  nowMs = Date.now(),
+): PassportProjection {
   // A tokenId is only unique per registry, so evidence is never merged across
   // (chain, registry) subjects that happen to share one. When more than one
   // subject matches, the best-evidenced one wins, deterministically.
@@ -189,6 +198,7 @@ export function projectPassport(agentId: string, observations: Observation[]): P
     liveness: state,
     livenessDetail,
     lastProbeAt: latestVerdict?.observedAt ?? null,
+    livenessFreshness: probeFreshness(latestVerdict?.observedAt, nowMs),
     p95LatencyMs,
     proofScore: {
       value: score.lower,

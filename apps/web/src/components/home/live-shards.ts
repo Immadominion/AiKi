@@ -1,4 +1,6 @@
 import type { ProjectedPassport } from '@aiki/contracts'
+import { probeFreshness } from '@aiki/contracts/probe-freshness'
+import { livenessPresentation } from '@/components/ui/LivenessBadge'
 import { type ShardSpec, seatOccupants } from './shards'
 
 /**
@@ -79,6 +81,13 @@ function stateOf(passport: ProjectedPassport): {
 } {
   const trials = passport.checks?.trials ?? 0
   const probes = trials === 1 ? '1 check' : `${trials} checks`
+
+  if (probeFreshness(passport.lastProbeAt).state !== 'LIVE')
+    return {
+      state: `${livenessPresentation(passport.liveness, passport.lastProbeAt).label} · ${probes}`,
+      stateDot: 'var(--color-muted)',
+      stateColor: 'var(--color-muted)',
+    }
 
   if (passport.liveness === 'LIVE')
     return trials >= 20

@@ -13,11 +13,11 @@ import {
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { route } from '@/lib/routes'
 import { SplitWords, useHoldAction, useMagnetic, usePagedScroll } from './feel'
 import styles from './landing.module.css'
-import type { LandingAgentNode } from './market-data'
+import { type LandingAgentNode, landingAnsweringEvidence } from './market-data'
 import { useLandingMarketData } from './useLandingMarketData'
 
 const MarketCanvas = dynamic(() => import('./MarketCanvas'), {
@@ -236,8 +236,10 @@ export function LandingExperience() {
   const reducedMotion = useReducedMotion() ?? false
   const [activeChapter, setActiveChapter] = useState(0)
   const [exploreMode, setExploreMode] = useState(false)
-  const [selectedAgent, setSelectedAgent] = useState<LandingAgentNode | null>(null)
+  const [selectedAgentSnapshot, setSelectedAgent] = useState<LandingAgentNode | null>(null)
   const market = useLandingMarketData()
+  const selectedAgent =
+    market.agents.find((agent) => agent.id === selectedAgentSnapshot?.id) ?? null
   const goToChapter = usePagedScroll(!exploreMode, "section[id^='market-story-']")
   const pillMagnet = useMagnetic<HTMLAnchorElement>()
   const exitMagnet = useMagnetic<HTMLButtonElement>()
@@ -290,11 +292,7 @@ export function LandingExperience() {
     }
   }, [exploreMode])
 
-  const aggregateEvidence = useMemo(() => {
-    const live = market.aggregate.byState.LIVE ?? 0
-    const degraded = market.aggregate.byState.DEGRADED ?? 0
-    return { live, degraded, answering: live + degraded }
-  }, [market.aggregate.byState])
+  const aggregateEvidence = landingAnsweringEvidence(market.aggregate)
 
   return (
     <main id="main" className={`${styles.page} ${exploreMode ? styles.pageExploring : ''}`}>
@@ -362,7 +360,7 @@ export function LandingExperience() {
               />
               {[
                 {
-                  label: 'Swept',
+                  label: market.aggregate.source === 'api' ? 'Checks' : 'Swept',
                   value: market.aggregate.source === 'api' ? 'live' : '20 Aug',
                 },
                 { label: 'Probed', value: NUMBER.format(market.aggregate.probedAgents) },

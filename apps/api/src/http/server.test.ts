@@ -57,7 +57,7 @@ it.each([
         dedupeKey: `${predicate}:${observedAt}`,
       })
     await append('erc8004.agent_registered', { owner: OWNER }, '2026-01-01T00:00:00.000Z')
-    await append('agent.liveness_verdict', { state: 'LIVE' }, '2026-01-02T00:00:00.000Z')
+    await append('agent.liveness_verdict', { state: 'LIVE' }, new Date().toISOString())
     await append(
       'erc8004.registration_resolution',
       { manifest: { name: 'Old agent name', services: [{ endpoint: oldEndpoint }] } },
@@ -175,7 +175,7 @@ it('serves intent, search, quote, SSE snapshot, receipt retrieval, and Arena end
     predicate: 'agent.liveness_verdict',
     value: { state: 'LIVE' },
     validAt: '2026-01-01T00:00:00.000Z',
-    observedAt: '2026-01-01T00:00:00.000Z',
+    observedAt: new Date().toISOString(),
     source: 'test',
     method: 'test',
     evidenceClass: 'B',
@@ -259,7 +259,7 @@ it('search coverage names what the liveness filter excluded, and total survives 
       predicate: 'agent.liveness_verdict',
       value: { state },
       validAt: '2026-01-01T00:00:00.000Z',
-      observedAt: '2026-01-01T00:00:00.000Z',
+      observedAt: new Date().toISOString(),
       source: 'test',
       method: 'test',
       evidenceClass: 'B',
@@ -294,7 +294,7 @@ it('finds agents a capped read model has already forgotten, and counts exclusion
     predicate: 'agent.liveness_verdict',
     value: { state },
     validAt: '2026-08-01T00:00:00.000Z',
-    observedAt: '2026-08-01T00:00:00.000Z',
+    observedAt: new Date().toISOString(),
     recordedAt: '2026-08-01T00:00:00.000Z',
     source: 'prober',
     method: 'probe/v1',
@@ -319,6 +319,7 @@ it('finds agents a capped read model has already forgotten, and counts exclusion
       probed: {
         agentsProbed: 40,
         byRawState: { LIVE: 2, IMPOSTOR_STATIC: 38 },
+        currentByRawState: { LIVE: 2 },
         lastProbeSweepAt: '2026-08-01T00:00:00.000Z',
       },
     }),

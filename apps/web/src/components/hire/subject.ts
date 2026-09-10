@@ -1,5 +1,6 @@
 import type { ProjectedPassport } from '@aiki/contracts'
 import { type ExecutionNetwork, parseExecutionNetwork } from '@aiki/contracts/guardian'
+import { hasCurrentLiveness } from '@aiki/contracts/probe-freshness'
 import { paletteFor } from '@/components/home/live-shards'
 import { AGENT_BG, AGENT_BY_KEY, type AgentKey } from '@/lib/agents'
 import { DETAILS } from '@/lib/detail'
@@ -69,7 +70,7 @@ export function isGuardianPassport(passport: ProjectedPassport): boolean {
     passport.identity?.tokenId === passport.agentId &&
     passport.identity.registrationFile.resolved === true &&
     passport.identity.registrationFile.reciprocalProofVerified === true &&
-    passport.liveness === 'LIVE'
+    hasCurrentLiveness(passport)
   )
 }
 

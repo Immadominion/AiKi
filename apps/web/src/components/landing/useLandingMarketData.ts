@@ -1,7 +1,9 @@
 'use client'
 
+import { hasCurrentLiveness } from '@aiki/contracts/probe-freshness'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
+import { useProbeExpiry } from '@/lib/use-probe-expiry'
 import {
   COMMITTED_LANDING_SWEEP,
   type LandingMarketData,
@@ -59,12 +61,20 @@ async function loadLandingMarketSnapshot(): Promise<InternalState> {
  */
 export function useLandingMarketData(): LandingMarketData {
   const [state, setState] = useState<InternalState>(INITIAL_STATE)
+  useProbeExpiry(state.agents.map((agent) => agent.lastProbeAt))
   const requestRef = useRef(0)
+  const pendingRef = useRef(false)
 
   const load = useCallback(async () => {
+    if (pendingRef.current) return
+    pendingRef.current = true
     const request = ++requestRef.current
-    const next = await loadLandingMarketSnapshot()
-    if (request === requestRef.current) setState(next)
+    try {
+      const next = await loadLandingMarketSnapshot()
+      if (request === requestRef.current) setState(next)
+    } finally {
+      if (request === requestRef.current) pendingRef.current = false
+    }
   }, [])
 
   const refresh = useCallback(() => {
@@ -73,11 +83,23 @@ export function useLandingMarketData(): LandingMarketData {
   }, [load])
 
   useEffect(() => {
-    void load()
+    const refreshVisible = () => {
+      if (document.visibilityState !== 'hidden') void load()
+    }
+    refreshVisible()
+    const timer = setInterval(refreshVisible, 60_000)
+    document.addEventListener('visibilitychange', refreshVisible)
     return () => {
       requestRef.current += 1
+      pendingRef.current = false
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', refreshVisible)
     }
   }, [load])
 
-  return { ...state, refresh }
+  return {
+    ...state,
+    agents: state.agents.filter((agent) => hasCurrentLiveness(agent, ['LIVE', 'DEGRADED'])),
+    refresh,
+  }
 }

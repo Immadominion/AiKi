@@ -7,15 +7,26 @@ const TONES: Record<Tone, { bg: string; dot: string; fg: string }> = {
   warn: { bg: 'var(--color-warn-bg)', dot: 'var(--color-warn)', fg: 'var(--color-warn-ink)' },
 }
 
-export function StatusPill({ label, tone }: { label: string; tone: Tone }) {
+export function StatusPill({
+  label,
+  tone,
+  wrap = false,
+}: {
+  label: string
+  tone: Tone
+  wrap?: boolean
+}) {
   const t = TONES[tone]
   return (
     <span
-      className="inline-flex items-center gap-[7px] rounded-full py-[5px] pr-[11px] pl-[9px]"
+      className={`inline-flex items-center gap-[7px] rounded-full py-[5px] pr-[11px] pl-[9px] ${wrap ? 'min-w-0 max-w-full' : ''}`}
       style={{ background: t.bg }}
     >
       <span className="size-[6px] flex-none rounded-full" style={{ background: t.dot }} />
-      <span className="text-[12.5px] font-bold whitespace-nowrap" style={{ color: t.fg }}>
+      <span
+        className={`text-[12.5px] font-bold ${wrap ? 'whitespace-normal' : 'whitespace-nowrap'}`}
+        style={{ color: t.fg }}
+      >
         {label}
       </span>
     </span>

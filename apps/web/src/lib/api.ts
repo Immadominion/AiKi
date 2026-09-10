@@ -12,6 +12,7 @@ import type {
   ProjectedSearchResponse,
   SearchRequest,
 } from '@aiki/contracts'
+import { withPublicReadDeadline } from './public-read-deadline'
 import { invalidateWalletSession, isWalletSessionCurrent, walletSession } from './wallet-session'
 
 /**
@@ -33,8 +34,15 @@ export class ApiError extends Error {
   }
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
+async function req<T>(
+  path: string,
+  init?: RequestInit,
+  publicReadSignal?: AbortSignal,
+): Promise<T> {
   const session = walletSession()
+  const sessionSignal = init?.signal
+    ? AbortSignal.any([init.signal, session.signal])
+    : session.signal
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
@@ -44,10 +52,12 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     },
     // A stale cookie must not act as the previous wallet while logout is pending.
     credentials: session.address ? 'include' : 'omit',
-    signal: init?.signal ? AbortSignal.any([init.signal, session.signal]) : session.signal,
+    signal: publicReadSignal ? AbortSignal.any([publicReadSignal, sessionSignal]) : sessionSignal,
     cache: 'no-store',
   })
 
+  // A late response from an abort-ignoring transport must not mutate the session.
+  publicReadSignal?.throwIfAborted()
   if (!isWalletSessionCurrent(session.revision)) {
     throw new ApiError(401, 'WALLET_CHANGED', 'Your wallet changed. Sign in to continue.', false)
   }
@@ -57,6 +67,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     const body = (await res.json().catch(() => null)) as {
       error?: { code: string; message: string; retryable: boolean }
     } | null
+    publicReadSignal?.throwIfAborted()
     throw new ApiError(
       res.status,
       body?.error?.code ?? 'UNKNOWN',
@@ -67,6 +78,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     )
   }
   const body = (await res.json()) as T
+  publicReadSignal?.throwIfAborted()
   if (!isWalletSessionCurrent(session.revision)) {
     throw new ApiError(401, 'WALLET_CHANGED', 'Your wallet changed. Sign in to continue.', false)
   }
@@ -74,6 +86,10 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export { req as apiRequest }
+
+function publicEvidenceRead<T>(path: string, init?: RequestInit): Promise<T> {
+  return withPublicReadDeadline((signal) => req<T>(path, init, signal))
+}
 
 /**
  * What the API says a single limit is actually worth.
@@ -365,7 +381,7 @@ export interface MarketplaceJob {
 }
 
 export const api = {
-  stats: () => req<EcosystemStats>('/v1/stats'),
+  stats: () => publicEvidenceRead<EcosystemStats>('/v1/stats'),
   me: () => req<{ address: string; chainId: number }>('/v1/auth/me'),
   /**
    * What a mandate would be worth, without creating one. No session needed,
@@ -519,7 +535,10 @@ export const api = {
       body: JSON.stringify({ authorizationId }),
     }),
   search: (body: SearchRequest) =>
-    req<ProjectedSearchResponse>('/v1/search', { method: 'POST', body: JSON.stringify(body) }),
+    publicEvidenceRead<ProjectedSearchResponse>('/v1/search', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   passport: (id: string) => req<ProjectedPassport>(`/v1/agents/${id}/passport`),
   /**
    * Two or more agents side by side, plus the server's own verdict on whether

@@ -71,17 +71,20 @@ export interface FetchResult {
  * default, which matters because many declared endpoints redirect, and it keeps
  * the dependency surface at zero.
  */
-export function fetchOnce(url: string): Promise<FetchResult> {
-  return perHost(url, () => fetchOnceRaw(url))
+export function fetchOnce(
+  url: string,
+  read: typeof guardedFetch = guardedFetch,
+): Promise<FetchResult> {
+  return perHost(url, () => fetchOnceRaw(url, read))
 }
 
-async function fetchOnceRaw(url: string): Promise<FetchResult> {
+async function fetchOnceRaw(url: string, read: typeof guardedFetch): Promise<FetchResult> {
   const started = Date.now()
   try {
     // Declared endpoints are attacker input; guardedFetch validates every
     // redirect hop, where a bare `redirect: 'follow'` would glide from a
     // public host straight into private address space.
-    const res = await guardedFetch(url, {
+    const res = await read(url, {
       method: 'GET',
       headers: { 'user-agent': USER_AGENT, accept: '*/*' },
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -169,6 +172,8 @@ export function d1Variants(endpoint: string): { label: ProbeSample['label']; url
 }
 
 export interface ProbeAgentInput {
+  /** Optional stricter transport for a reviewed bounded operator workflow. */
+  read?: typeof guardedFetch
   agentId: string
   registry: string
   services: DeclaredService[]
@@ -224,7 +229,7 @@ export async function probeAgent(input: ProbeAgentInput): Promise<ProbeAgentResu
   let primaryBody = ''
 
   for (const v of variants) {
-    const r = await fetchOnce(v.url)
+    const r = await fetchOnce(v.url, input.read)
     if (v.label === 'valid') primaryBody = r.body
     samples.push({
       label: v.label,
@@ -249,7 +254,7 @@ export async function probeAgent(input: ProbeAgentInput): Promise<ProbeAgentResu
   let reciprocal: ProbeAgentResult['reciprocal']
   try {
     const origin = new URL(primary.endpoint).origin
-    const wk = await fetchOnce(`${origin}/.well-known/agent-registration.json`)
+    const wk = await fetchOnce(`${origin}/.well-known/agent-registration.json`, input.read)
     if (wk.status >= 200 && wk.status < 300 && wk.body) {
       reciprocal = d8_reciprocalProof(JSON.parse(wk.body), {
         agentId: input.agentId,

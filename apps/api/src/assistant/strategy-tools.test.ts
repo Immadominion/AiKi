@@ -74,6 +74,7 @@ function fixture() {
                 chainId: 56,
                 registry,
                 liveness: 'LIVE',
+                lastProbeAt: new Date().toISOString(),
                 identity: { registrationFile: { reciprocalProofVerified: true } },
               },
             },
@@ -138,23 +139,33 @@ describe('Fast read-only strategy discovery', () => {
       },
     })
   })
-  it.each(['agent', 'registry', 'chain', 'liveness', 'reciprocal', 'missing-mapping'] as const)(
-    'refuses %s mismatch with no navigation fallback',
-    async (mode) => {
-      const f = fixture(),
-        passport = f.responses.get('/v1/agents/315946/passport')?.body as Record<string, unknown>
-      if (mode === 'agent') passport.agentId = '315944'
-      if (mode === 'registry') passport.registry = address('ab')
-      if (mode === 'chain') passport.chainId = 97
-      if (mode === 'liveness') passport.liveness = 'DEGRADED'
-      if (mode === 'reciprocal')
-        passport.identity = { registrationFile: { reciprocalProofVerified: false } }
-      if (mode === 'missing-mapping') f.current.agents = {} as typeof f.current.agents
-      const result = await f.run('strategy_setup_link', { kind: 'yield' })
-      expect(result?.ok).toBe(false)
-      expect(JSON.stringify(result)).not.toContain('href')
-    },
-  )
+  it.each([
+    'agent',
+    'registry',
+    'chain',
+    'liveness',
+    'stale',
+    'future',
+    'missing-time',
+    'reciprocal',
+    'missing-mapping',
+  ] as const)('refuses %s mismatch with no navigation fallback', async (mode) => {
+    const f = fixture(),
+      passport = f.responses.get('/v1/agents/315946/passport')?.body as Record<string, unknown>
+    if (mode === 'agent') passport.agentId = '315944'
+    if (mode === 'registry') passport.registry = address('ab')
+    if (mode === 'chain') passport.chainId = 97
+    if (mode === 'liveness') passport.liveness = 'DEGRADED'
+    if (mode === 'stale') passport.lastProbeAt = new Date(Date.now() - 86_400_001).toISOString()
+    if (mode === 'future') passport.lastProbeAt = new Date(Date.now() + 86_400_000).toISOString()
+    if (mode === 'missing-time') delete passport.lastProbeAt
+    if (mode === 'reciprocal')
+      passport.identity = { registrationFile: { reciprocalProofVerified: false } }
+    if (mode === 'missing-mapping') f.current.agents = {} as typeof f.current.agents
+    const result = await f.run('strategy_setup_link', { kind: 'yield' })
+    expect(result?.ok).toBe(false)
+    expect(JSON.stringify(result)).not.toContain('href')
+  })
   it.each(['absent', 'chain', 'fake-ready', 'missing-factory', 'rpc'] as const)(
     'fails closed on %s configuration',
     async (mode) => {

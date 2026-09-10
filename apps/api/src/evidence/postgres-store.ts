@@ -1,3 +1,4 @@
+import { hasCurrentLiveness, PROBE_FRESHNESS_MAX_AGE_MS } from '@aiki/contracts'
 import postgres from 'postgres'
 import { classifyDeclared, declaredText } from '../projections/categories.js'
 import { asLiveness } from '../projections/passport.js'
@@ -74,12 +75,28 @@ export class PostgresEvidenceStore implements EvidenceStore {
       .sql`INSERT INTO indexer_checkpoints (stream, last_indexed_block, updated_at) VALUES (${checkpoint.stream}, ${checkpoint.lastIndexedBlock}, ${checkpoint.updatedAt}) ON CONFLICT (stream) DO UPDATE SET last_indexed_block = EXCLUDED.last_indexed_block, updated_at = EXCLUDED.updated_at`
   }
   /**
-   * Agents that should be probed next: never probed first, then stalest.
+   * Bounded fair lanes: historical LIVE rechecks, other rechecks, and discoveries.
    *
    * Registration and probing are joined on the full subject, not just the token
    * id, because a token id is only unique within its own registry.
    */
-  async dueForProbe(limit: number, staleAfterHours: number) {
+  async dueForProbe(limit: number, staleAfterHours: number, nowMs = Date.now()) {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000)
+      throw new RangeError('Probe limit must be an integer between 1 and 1000.')
+    if (!Number.isFinite(staleAfterHours) || staleAfterHours < 1 || staleAfterHours > 8_760)
+      throw new RangeError('Probe stale interval must be between 1 and 8760 hours.')
+    if (!Number.isSafeInteger(nowMs) || nowMs < 0)
+      throw new RangeError('Probe selection time must be a valid epoch millisecond.')
+    const quotas = [Math.max(1, Math.floor(limit / 4)), Math.max(1, Math.floor(limit / 4)), 0]
+    quotas[2] = limit - (quotas[0] ?? 0) - (quotas[1] ?? 0)
+    if (limit < 3) {
+      quotas.fill(0)
+      // A tiny batch cannot reserve all three lanes. Rotate the preferred lanes
+      // across the existing 30-minute cadence instead of permanently omitting new work.
+      const phase = Math.floor(nowMs / 1_800_000) % 3
+      for (let n = 0; n < limit; n++) quotas[(phase + n) % 3] = 1
+    }
+    const [liveQuota = 0, staleQuota = 0, newQuota = 0] = quotas
     return this.sql<
       {
         chain_id: number
@@ -90,46 +107,47 @@ export class PostgresEvidenceStore implements EvidenceStore {
       }[]
     >`
       WITH registered AS (
-        SELECT DISTINCT ON (chain_id, registry_address, agent_id)
-          chain_id, registry_address, agent_id, value->>'agentURI' AS agent_uri, block_number
+        SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
+          chain_id, lower(registry_address) AS registry_address, agent_id,
+          value->>'agentURI' AS agent_uri, block_number
         FROM observations
         WHERE predicate = 'erc8004.agent_registered'
-        ORDER BY chain_id, registry_address, agent_id, observed_at DESC
+        ORDER BY chain_id, lower(registry_address), agent_id, observed_at DESC, id DESC
       ),
       probed AS (
-        SELECT chain_id, registry_address, agent_id, MAX(observed_at) AS last_probed_at
+        SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
+          chain_id, lower(registry_address) AS registry_address, agent_id,
+          observed_at AS last_probed_at, value->>'state' AS state
         FROM observations
         WHERE predicate = 'agent.liveness_verdict'
-        GROUP BY chain_id, registry_address, agent_id
+        ORDER BY chain_id, lower(registry_address), agent_id, observed_at DESC, id DESC
+      ), candidates AS (
+        SELECT r.*, p.last_probed_at,
+          CASE WHEN p.last_probed_at IS NULL THEN 2 WHEN p.state = 'LIVE' THEN 0 ELSE 1 END AS lane
+        FROM registered r
+        LEFT JOIN probed p
+          ON p.chain_id = r.chain_id
+         AND p.registry_address = r.registry_address
+         AND p.agent_id = r.agent_id
+        WHERE r.agent_uri IS NOT NULL
+          AND (p.last_probed_at IS NULL
+            OR p.last_probed_at < now() - ${`${staleAfterHours} hours`}::interval
+            OR p.last_probed_at > now())
+      ), ranked AS (
+        SELECT *, row_number() OVER (
+          PARTITION BY lane ORDER BY last_probed_at ASC NULLS FIRST,
+            block_number DESC NULLS LAST, chain_id, registry_address, agent_id
+        ) AS lane_rank,
+          CASE lane WHEN 0 THEN ${liveQuota}::integer WHEN 1 THEN ${staleQuota}::integer ELSE ${newQuota}::integer END AS quota
+        FROM candidates
       )
-      SELECT r.chain_id, r.registry_address, r.agent_id, r.agent_uri, p.last_probed_at
-      FROM registered r
-      LEFT JOIN probed p
-        ON p.chain_id = r.chain_id
-       AND p.registry_address = r.registry_address
-       AND p.agent_id = r.agent_id
-      WHERE r.agent_uri IS NOT NULL
-        AND (
-          p.last_probed_at IS NULL
-          OR p.last_probed_at < now() - ${`${staleAfterHours} hours`}::interval
-        )
-      /**
-       * Never-probed first, and among those the most recently REGISTERED first.
-       *
-       * The tiebreak is the point. Without it the unprobed group has no ordering
-       * at all, so Postgres returns it in whatever order the plan happens to
-       * produce - on an append-only table, oldest first. An agent that registers
-       * today then waits behind every agent that has ever gone unprobed, and the
-       * delay between "an agent exists" and "AiKi has an opinion about it" is
-       * unbounded and unrepeatable. That delay is the product's core latency and
-       * it should be short and stated.
-       *
-       * This does not starve the backlog: probe capacity is well above the rate
-       * new agents arrive, so the old unprobed set still drains, just behind
-       * today's. If registrations ever outpace probing, that ceases to be true
-       * and this ordering has to be revisited.
-       */
-      ORDER BY p.last_probed_at ASC NULLS FIRST, r.block_number DESC NULLS LAST
+      SELECT chain_id, registry_address, agent_id, agent_uri, last_probed_at
+      FROM ranked
+      -- Reserve every lane before borrowing unused slots. No new-registration
+      -- backlog can consume another lane's reserved capacity.
+      ORDER BY CASE WHEN lane_rank <= quota THEN 0 ELSE 1 END,
+        CASE WHEN lane_rank <= quota THEN (lane_rank - 1)::numeric / quota ELSE lane_rank - quota END,
+        lane, lane_rank
       LIMIT ${limit}
     `
   }
@@ -142,7 +160,9 @@ export class PostgresEvidenceStore implements EvidenceStore {
    * is distinct agents holding a verdict, not verdicts, and `byRawState` uses
    * each agent's LATEST verdict, which is what DISTINCT ON gives.
    */
-  async statsAggregate(): Promise<StatsAggregate> {
+  async statsAggregate(nowMs = Date.now()): Promise<StatsAggregate> {
+    const currentSince = new Date(nowMs - PROBE_FRESHNESS_MAX_AGE_MS).toISOString()
+    const currentUntil = new Date(nowMs).toISOString()
     const [indexed] = await this.sql<
       {
         total_agents: string | number
@@ -162,15 +182,20 @@ export class PostgresEvidenceStore implements EvidenceStore {
       FROM observations
       WHERE predicate = 'erc8004.agent_registered'
     `
-    const states = await this.sql<{ state: string | null; n: string | number }[]>`
+    const states = await this.sql<
+      { state: string | null; n: string | number; current_n: string | number }[]
+    >`
       WITH latest AS (
         SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
-          value->>'state' AS state
+          value->>'state' AS state, observed_at
         FROM observations
         WHERE predicate = 'agent.liveness_verdict'
         ORDER BY chain_id, lower(registry_address), agent_id, observed_at DESC
       )
-      SELECT state, count(*) AS n FROM latest GROUP BY state
+      SELECT state, count(*) AS n,
+        count(*) FILTER (WHERE observed_at >= ${currentSince}::timestamptz
+          AND observed_at <= ${currentUntil}::timestamptz) AS current_n
+      FROM latest GROUP BY state
     `
     const [sweep] = await this.sql<{ last_probe_sweep_at: string | Date | null }[]>`
       SELECT max(observed_at) AS last_probe_sweep_at
@@ -182,11 +207,16 @@ export class PostgresEvidenceStore implements EvidenceStore {
     const num = (v: string | number | null | undefined) =>
       v === null || v === undefined ? null : Number(v)
     const byRawState: Record<string, number> = {}
+    const currentByRawState: Record<string, number> = {}
     let agentsProbed = 0
+    let staleAgents = 0
     for (const row of states) {
       const n = Number(row.n)
       agentsProbed += n
       byRawState[row.state ?? 'null'] = (byRawState[row.state ?? 'null'] ?? 0) + n
+      const current = Number(row.current_n)
+      if (current > 0) currentByRawState[row.state ?? 'null'] = current
+      staleAgents += n - current
     }
 
     /*
@@ -197,7 +227,12 @@ export class PostgresEvidenceStore implements EvidenceStore {
      * exists to catch.
      */
     const declared = await this.sql<
-      { agent_id: string; manifest: unknown; state: string | null }[]
+      {
+        agent_id: string
+        manifest: unknown
+        state: string | null
+        observed_at: string | Date | null
+      }[]
     >`
       WITH latest_manifest AS (
         SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
@@ -208,12 +243,12 @@ export class PostgresEvidenceStore implements EvidenceStore {
       ),
       latest_state AS (
         SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
-          chain_id, lower(registry_address) AS reg, agent_id, value->>'state' AS state
+          chain_id, lower(registry_address) AS reg, agent_id, value->>'state' AS state, observed_at
         FROM observations
         WHERE predicate = 'agent.liveness_verdict'
         ORDER BY chain_id, lower(registry_address), agent_id, observed_at DESC
       )
-      SELECT m.agent_id, m.manifest, s.state
+      SELECT m.agent_id, m.manifest, s.state, s.observed_at
       FROM latest_manifest m
       LEFT JOIN latest_state s
         ON s.chain_id = m.chain_id AND s.reg = m.reg AND s.agent_id = m.agent_id
@@ -226,7 +261,17 @@ export class PostgresEvidenceStore implements EvidenceStore {
       const bucket = categories[category] ?? { agents: 0, live: 0 }
       categories[category] = bucket
       bucket.agents += 1
-      if (asLiveness(row.state) === 'LIVE') bucket.live += 1
+      if (
+        hasCurrentLiveness(
+          {
+            liveness: asLiveness(row.state),
+            lastProbeAt: row.observed_at ? iso(row.observed_at) : null,
+          },
+          ['LIVE'],
+          nowMs,
+        )
+      )
+        bucket.live += 1
     }
 
     return {
@@ -241,6 +286,8 @@ export class PostgresEvidenceStore implements EvidenceStore {
       probed: {
         agentsProbed,
         byRawState,
+        currentByRawState,
+        staleAgents,
         lastProbeSweepAt: sweep?.last_probe_sweep_at ? iso(sweep.last_probe_sweep_at) : null,
       },
     }
@@ -341,7 +388,12 @@ export class PostgresEvidenceStore implements EvidenceStore {
    *
    * `states` is now an optional filter a caller may ask for, not a default.
    */
-  async searchAgents(input: { tsquery: string | null; states: string[] | null; limit: number }) {
+  async searchAgents(
+    input: { tsquery: string | null; states: string[] | null; limit: number },
+    nowMs = Date.now(),
+  ) {
+    const currentSince = new Date(nowMs - PROBE_FRESHNESS_MAX_AGE_MS).toISOString()
+    const currentUntil = new Date(nowMs).toISOString()
     const rows = await this.sql<
       {
         chain_id: number
@@ -350,12 +402,13 @@ export class PostgresEvidenceStore implements EvidenceStore {
         state: string
         rank: number
         described: boolean
+        is_current: boolean
       }[]
     >`
       WITH latest_state AS (
         SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
           chain_id, lower(registry_address) AS reg, agent_id,
-          value->>'state' AS state
+          value->>'state' AS state, observed_at
         FROM observations
         WHERE predicate = 'agent.liveness_verdict'
         ORDER BY chain_id, lower(registry_address), agent_id, observed_at DESC
@@ -382,6 +435,8 @@ export class PostgresEvidenceStore implements EvidenceStore {
         SELECT
           r.chain_id, r.reg, r.agent_id,
           COALESCE(s.state, 'UNPROBED') AS state,
+          COALESCE(s.observed_at >= ${currentSince}::timestamptz
+            AND s.observed_at <= ${currentUntil}::timestamptz, false) AS is_current,
           -- A row with no resolved manifest has no name and nothing to read, so
           -- it is a stub rather than a listing. Still listed, still last.
           (m.m IS NOT NULL) AS described,
@@ -400,15 +455,15 @@ export class PostgresEvidenceStore implements EvidenceStore {
         LEFT JOIN latest_manifest m
           ON m.chain_id = r.chain_id AND m.reg = r.reg AND m.agent_id = r.agent_id
       )
-      SELECT chain_id, reg, agent_id, state, described,
+      SELECT chain_id, reg, agent_id, state, described, is_current,
         /*
          * Evidence order. Watched-and-answering beats unknown, and unknown beats
          * known-broken, because "we have not checked" is a better thing to say
          * about a listing than "we checked and it is a static page".
          */
         (CASE state
-           WHEN 'LIVE' THEN 6
-           WHEN 'DEGRADED' THEN 5
+           WHEN 'LIVE' THEN CASE WHEN is_current THEN 6 ELSE 4 END
+           WHEN 'DEGRADED' THEN CASE WHEN is_current THEN 5 ELSE 4 END
            WHEN 'UNPROBED' THEN 4
            WHEN 'DECLARED_ONLY' THEN 3
            WHEN 'PLACEHOLDER_URL' THEN 2
@@ -417,7 +472,8 @@ export class PostgresEvidenceStore implements EvidenceStore {
          END) AS rank
       FROM doc
       WHERE (${input.tsquery}::text IS NULL OR tsv @@ to_tsquery('english', ${input.tsquery}))
-        AND (${input.states}::text[] IS NULL OR state = ANY(${input.states}))
+        AND (${input.states}::text[] IS NULL OR (state = ANY(${input.states})
+          AND (state NOT IN ('LIVE', 'DEGRADED') OR is_current)))
       ORDER BY
         described DESC,
         rank DESC,
@@ -428,7 +484,10 @@ export class PostgresEvidenceStore implements EvidenceStore {
     `
 
     const byState: Record<string, number> = {}
+    const currentByState: Record<string, number> = {}
     for (const row of rows) byState[row.state] = (byState[row.state] ?? 0) + 1
+    for (const row of rows)
+      if (row.is_current) currentByState[row.state] = (currentByState[row.state] ?? 0) + 1
 
     return {
       matches: rows.slice(0, input.limit).map((row) => ({
@@ -440,12 +499,15 @@ export class PostgresEvidenceStore implements EvidenceStore {
       total: rows.length,
       /** What the listed set is made of, so a row's label has a denominator. */
       byState,
+      currentByState,
       truncated: rows.length >= MATCH_CEILING,
     }
   }
 
-  async observationsForLiveness(states: string[], agentLimit = 1_000) {
+  async observationsForLiveness(states: string[], agentLimit = 1_000, nowMs = Date.now()) {
     if (states.length === 0) return []
+    const currentSince = new Date(nowMs - PROBE_FRESHNESS_MAX_AGE_MS).toISOString()
+    const currentUntil = new Date(nowMs).toISOString()
     const rows = await this.sql<ObservationRow[]>`
       WITH latest AS (
         SELECT DISTINCT ON (chain_id, lower(registry_address), agent_id)
@@ -462,6 +524,8 @@ export class PostgresEvidenceStore implements EvidenceStore {
         SELECT chain_id, reg, agent_id
         FROM latest
         WHERE state = ANY(${states})
+          AND (state NOT IN ('LIVE', 'DEGRADED') OR
+            (observed_at >= ${currentSince}::timestamptz AND observed_at <= ${currentUntil}::timestamptz))
         ORDER BY observed_at DESC
         LIMIT ${agentLimit}
       )

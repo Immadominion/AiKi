@@ -1,6 +1,6 @@
 'use client'
 
-import type { LivenessState } from '@aiki/contracts'
+import type { EcosystemStats, LivenessState } from '@aiki/contracts'
 import { useEffect, useState } from 'react'
 import { api } from './api'
 
@@ -23,8 +23,10 @@ export interface RegistryCoverage {
    */
   indexComplete: boolean
   probed: number
-  /** LIVE + DEGRADED: everything that answered like an agent at all. */
+  /** LIVE + DEGRADED with current checks. Cached sweeps remain explicitly historical. */
   answering: number
+  /** Previously answering agents excluded from the current count, not declared offline. */
+  awaitingRecheck?: number
   reasons: { state: LivenessState; count: number }[]
   /**
    * Three states, not two. `asking` is the truth before the API answers: the
@@ -61,12 +63,35 @@ export const SWEEP_COVERAGE: RegistryCoverage = {
 }
 
 let cached: RegistryCoverage | null = null
+let cachedAt = 0
 let inflight: Promise<RegistryCoverage> | null = null
+const REFRESH_MS = 60_000
 
-async function load(): Promise<RegistryCoverage> {
-  const stats = await api.stats()
+export function coverageFromStats(stats: EcosystemStats): RegistryCoverage {
   const byState = stats.probed.byState
-  const answering = (byState.LIVE ?? 0) + (byState.DEGRADED ?? 0)
+  if (!stats.probed.currentByState)
+    throw new Error('Current registry check counts are unavailable.')
+  for (const state of ['LIVE', 'DEGRADED'] as const) {
+    const current = stats.probed.currentByState[state] ?? 0
+    const historical = byState[state] ?? 0
+    if (
+      !Number.isSafeInteger(current) ||
+      current < 0 ||
+      !Number.isSafeInteger(historical) ||
+      current > historical
+    )
+      throw new Error('The registry answering counts are inconsistent.')
+  }
+  const answering =
+    (stats.probed.currentByState.LIVE ?? 0) + (stats.probed.currentByState.DEGRADED ?? 0)
+  const historicalAnswering = (byState.LIVE ?? 0) + (byState.DEGRADED ?? 0)
+  if (
+    !Number.isSafeInteger(answering) ||
+    answering < 0 ||
+    answering > historicalAnswering ||
+    historicalAnswering > stats.probed.agentsProbed
+  )
+    throw new Error('The registry answering counts are inconsistent.')
   const reasons = (Object.entries(byState) as [LivenessState, number][])
     .filter(([state]) => state !== 'LIVE' && state !== 'DEGRADED')
     .map(([state, count]) => ({ state, count }))
@@ -76,34 +101,60 @@ async function load(): Promise<RegistryCoverage> {
     indexComplete: stats.indexed?.complete ?? false,
     probed: stats.probed.agentsProbed,
     answering,
+    awaitingRecheck: historicalAnswering - answering,
     reasons,
     freshness: 'live',
     sweptAt: stats.probed.lastProbeSweepAt,
   }
 }
 
+function load(): Promise<RegistryCoverage> {
+  inflight ??= api
+    .stats()
+    .then(coverageFromStats)
+    .then((coverage) => {
+      cached = coverage
+      cachedAt = Date.now()
+      return coverage
+    })
+    .finally(() => {
+      inflight = null
+    })
+  return inflight
+}
+
 export function useRegistryCoverage(): RegistryCoverage {
-  const [coverage, setCoverage] = useState<RegistryCoverage>(
-    cached ?? { ...SWEEP_COVERAGE, freshness: 'asking' },
+  const [coverage, setCoverage] = useState<RegistryCoverage>(() =>
+    cached && Date.now() - cachedAt < REFRESH_MS
+      ? cached
+      : { ...(cached ?? SWEEP_COVERAGE), freshness: 'asking' },
   )
   useEffect(() => {
-    if (cached) return
-    inflight ??= load()
     let alive = true
-    inflight.then(
-      (live) => {
-        cached = live
-        if (alive) setCoverage(live)
-      },
-      () => {
-        // Sweep numbers stay up, and only now may they be called unreachable:
-        // we asked, and the answer did not come.
-        inflight = null
-        if (alive) setCoverage(SWEEP_COVERAGE)
-      },
-    )
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return
+      if (cached && Date.now() - cachedAt < REFRESH_MS) {
+        setCoverage(cached)
+        return
+      }
+      void load().then(
+        (live) => {
+          if (alive) setCoverage(live)
+        },
+        () => {
+          // Retain actual last-known measurements instead of replacing newer
+          // data with the committed fallback after a refresh fails.
+          if (alive) setCoverage(cached ? { ...cached, freshness: 'cached' } : SWEEP_COVERAGE)
+        },
+      )
+    }
+    refresh()
+    const timer = setInterval(refresh, REFRESH_MS)
+    document.addEventListener('visibilitychange', refresh)
     return () => {
       alive = false
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', refresh)
     }
   }, [])
   return coverage
