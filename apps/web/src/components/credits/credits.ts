@@ -81,6 +81,9 @@ export function creditEntryLabel(reason: string, delta: number): string {
     job_funding: 'Work payment reserved',
     job_earnings: 'Work earnings',
     job_refund: 'Work refund',
+    task_funding: 'Work payment reserved',
+    task_earnings: 'Work earnings',
+    task_refund: 'Work refund',
     platform_fee: 'Marketplace fee',
   }
   if (reason === 'fast_mode_hold')
