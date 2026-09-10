@@ -107,6 +107,22 @@ function describe(outcome: ToolOutcome): string {
   const error = typeof body.error === 'string' ? body.error : object(body.error).message
   if (!outcome.ok || body.error)
     return `${TOOL_NAMES[outcome.tool] ?? 'Tool request'} was not confirmed: ${text(error) || 'the API did not return a successful result'}.`
+  if (outcome.tool === 'strategy_setup_link') {
+    const kind =
+      typeof body.kind === 'string' && ['yield', 'grid', 'lp'].includes(body.kind)
+        ? body.kind
+        : null
+    if (kind && body.navigationOnly === true && body.href === `/strategy/${kind}`)
+      return `[Review ${kind === 'lp' ? 'LP' : kind} setup](/strategy/${kind}). ${body.available === true ? 'Reviewed deployments are available; your own funding, signature and start still need separate verification and confirmation.' : 'Reviewed deployments are not available yet.'} No wallet action or strategy start was submitted.`
+  }
+  if (outcome.tool === 'strategy_config')
+    return body.available === true
+      ? 'Reviewed mainnet strategy deployments are available. Owner setup and scheduler readiness remain separate; no strategy was started.'
+      : 'Reviewed strategy deployments are not available yet. No strategy was started.'
+  if (outcome.tool === 'strategy_status')
+    return `Strategy ${text(body.kind, 16)}: recorded state ${text(body.status, 24)}. ${object(body.readiness).ready === true ? 'Current owner readiness checks passed.' : 'Owner readiness is incomplete; open the existing setup to review it.'} ACTIVE alone does not prove a trade or profit. No wallet action was submitted.`
+  if (outcome.tool === 'my_strategies')
+    return `Returned ${Array.isArray(body.setups) ? Math.min(body.setups.length, 12) : 0} existing owner strategy setups. This read did not create, sign, fund or start a strategy.`
   if (TASK_TOOLS.has(outcome.tool)) return taskSummary(body)
   const id = recordId(body.id)
   if (outcome.tool === 'create_spending_mandate')

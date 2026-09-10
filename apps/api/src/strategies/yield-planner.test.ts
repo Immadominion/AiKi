@@ -13,9 +13,9 @@ import type {
   YieldPlannerPolicy,
   YieldPlannerState,
   YieldSnapshot,
-  YieldVenueSnapshot,
 } from './yield/types.js'
-import { decideYield, YIELD_CANONICAL } from './yield-planner.js'
+import { decideYield } from './yield-planner.js'
+import { yieldPlannerFixture } from './yield-planner.test-support.js'
 
 const address = (digit: string) => `0x${digit.repeat(40)}` as const
 const hash = (digit: string) => `0x${digit.repeat(64)}` as const
@@ -23,143 +23,7 @@ const U = YIELD_WAD
 const R = YIELD_RAY
 const NOW = 1_000_000
 
-function fixture(): { snapshot: YieldSnapshot; policy: YieldPlannerPolicy } {
-  const limits = {
-    maxPrincipal: 1_000n * U,
-    maxMove: 500n * U,
-    maxTurnover: 2_000n * U,
-    minIdle: 100n * U,
-    maxVenusExposure: 800n * U,
-    maxAaveExposure: 800n * U,
-    maxLossPerMove: U,
-    maxCumulativeLoss: 2n * U,
-    maxLossBps: 100,
-  }
-  const base: YieldVenueSnapshot = {
-    id: 'venus',
-    blockNumber: 10_000n,
-    blockHash: hash('a'),
-    identityVerified: true,
-    underlying: YIELD_CANONICAL.underlying,
-    market: YIELD_CANONICAL.venus,
-    receipt: YIELD_CANONICAL.venus,
-    decimals: 18,
-    listed: true,
-    active: true,
-    supplyPaused: false,
-    withdrawPaused: false,
-    frozen: false,
-    legacy: false,
-    cash: 100_000n * U,
-    virtualCash: 100_000n * U,
-    debt: 100_000n * U,
-    reserves: 0n,
-    unbacked: 0n,
-    stableDebt: 0n,
-    reserveFactorWad: U / 10n,
-    totalSupplied: 200_000n * U,
-    accruedTreasuryAssets: 0n,
-    supplyCap: 1_000_000n * U,
-    withdrawalFeeWad: 0n,
-    receiptRate: 2n * 10n ** 26n,
-    actualReceiptBalance: 0n,
-    observedSupplyRate: 562_500_000n,
-    model: {
-      kind: 'reviewed-two-slope',
-      address: address('1'),
-      runtimeHash: hash('1'),
-      verified: true,
-      clock: { kind: 'per-second', scale: U, verifiedOnchain: true },
-      baseBorrowRate: 0n,
-      slopeBelowKink: 2_000_000_000n,
-      slopeAboveKink: 20_000_000_000n,
-      kinkWad: (8n * U) / 10n,
-    },
-  }
-  const aave: YieldVenueSnapshot = {
-    ...structuredClone(base),
-    id: 'aave',
-    market: YIELD_CANONICAL.aave,
-    receipt: YIELD_CANONICAL.aaveReceipt,
-    receiptRate: R,
-    observedSupplyRate: (3375n * R) / 100_000n,
-    model: {
-      kind: 'reviewed-two-slope',
-      address: address('2'),
-      runtimeHash: hash('2'),
-      verified: true,
-      clock: { kind: 'annual', scale: R },
-      baseBorrowRate: 0n,
-      slopeBelowKink: (12n * R) / 100n,
-      slopeAboveKink: R,
-      kinkWad: (8n * U) / 10n,
-    },
-  }
-  const snapshot: YieldSnapshot = {
-    block: {
-      chainId: 56,
-      number: 10_000n,
-      hash: hash('a'),
-      timestamp: NOW,
-      finalized: true,
-      canonical: true,
-    },
-    vault: address('3'),
-    controller: address('4'),
-    policyHash: hash('5'),
-    identityVerified: true,
-    expiresAt: NOW + 90 * 86_400,
-    minInterval: 60,
-    maxDeadlineDelay: 300,
-    limits,
-    nonce: 2n,
-    lastExecutionAt: 0,
-    paused: false,
-    fundedPrincipal: 1_000n * U,
-    turnover: 0n,
-    cumulativeLoss: 0n,
-    managedIdle: 1_000n * U,
-    actualIdle: 1_000n * U,
-    managedVenusShares: 0n,
-    managedAaveScaled: 0n,
-    venues: { venus: base, aave },
-    nativePrice: {
-      blockNumber: 10_000n,
-      blockHash: hash('a'),
-      usdtPerBnbRay: 600n * R,
-      updatedAt: NOW,
-      verified: true,
-    },
-    executionQuotes: [],
-  }
-  const policy: YieldPlannerPolicy = {
-    vault: snapshot.vault,
-    controller: snapshot.controller,
-    policyHash: snapshot.policyHash,
-    limits: { ...limits },
-    horizonSeconds: 30 * 86_400,
-    maxSnapshotAgeSeconds: 30,
-    maxPriceAgeSeconds: 60,
-    minClockSampleSeconds: 300,
-    maxObservationGapSeconds: 60,
-    requiredObservations: 1,
-    minObservationSeconds: 10,
-    minMove: U,
-    minIncrementalYield: U / 100n,
-    minNetGain: U / 100n,
-    maxGasCost: U,
-    gasBufferBps: 2_000,
-    capacityBuffer: U,
-    liquidityBuffer: U,
-    minIdleBps: 1_000,
-    rateToleranceRay: 0n,
-    reviewedModels: [
-      { address: address('1'), runtimeHash: hash('1') },
-      { address: address('2'), runtimeHash: hash('2') },
-    ],
-  }
-  return { snapshot, policy }
-}
+const fixture = yieldPlannerFixture
 
 function quote(snapshot: YieldSnapshot, candidate: YieldCandidate): YieldExecutionQuote {
   return {

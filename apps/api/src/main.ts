@@ -10,6 +10,7 @@ import { PostgresNonceStore } from './auth/nonce-store.js'
 import { describeCookieMismatch, SessionSigner } from './auth/session.js'
 import { viemChainReader } from './authority/chain-reader.js'
 import { createWatchMandateVerifier } from './authority/watch-readiness.js'
+import { BSC_MAINNET } from './config/chains.js'
 import { creditsNetwork } from './config/credits-network.js'
 import { executionNetwork, verifyExecutionNetwork } from './config/execution-network.js'
 import { accountFunderIdentity, executorIdentity } from './config/executor-identity.js'
@@ -34,6 +35,10 @@ import { VenusYieldClient } from './reference/yield/client.js'
 import { createYieldServer } from './reference/yield/server.js'
 import { createWatchActivationReader } from './runner/routes.js'
 import { PostgresWatchStore } from './runner/store.js'
+import { loadStrategyDeploymentConfig } from './strategies/deployment-config.js'
+import { StrategySetupService } from './strategies/setup.js'
+import { PostgresStrategySetupStore } from './strategies/setup-store.js'
+import { PostgresStrategyStore } from './strategies/store.js'
 import { PostgresSellerStore } from './tasks/sellers.js'
 import { PostgresTaskStore } from './tasks/store.js'
 
@@ -89,6 +94,7 @@ const conversationStore = new PostgresConversationStore(databaseUrl)
  * runs when somebody asks, not on a loop.
  */
 const ledgerSql = postgres(databaseUrl, { max: 1 })
+const strategySql = postgres(databaseUrl, { max: 5 })
 const taskStore = new PostgresTaskStore(databaseUrl)
 const sellerStore = new PostgresSellerStore(databaseUrl)
 const marketplaceStore = new PostgresMarketplaceStore(databaseUrl)
@@ -123,7 +129,36 @@ const venusId = process.env.VENUS_GUARDIAN_AGENT_ID
 const rebalancerId = process.env.PANCAKE_REBALANCER_AGENT_ID
 const gridId = process.env.PANCAKE_GRID_AGENT_ID
 const yieldId = process.env.YIELD_OPTIMIZER_AGENT_ID
+const strategyAgentIds = { lp: rebalancerId, grid: gridId, yield: yieldId }
+const strategyAgents = base
+  ? Object.fromEntries(
+      Object.entries(strategyAgentIds)
+        .filter(
+          (entry): entry is [string, string] =>
+            typeof entry[1] === 'string' && /^[1-9][0-9]{0,77}$/.test(entry[1]),
+        )
+        .map(([kind, agentId]) => [
+          kind,
+          { agentId, registry: BSC_MAINNET.contracts.erc8004Identity, chainId: 56 as const },
+        ]),
+    )
+  : {}
+const strategies = new StrategySetupService({
+  store: new PostgresStrategySetupStore(strategySql),
+  strategies: new PostgresStrategyStore(strategySql),
+  deployments:
+    deployment.chainId === 56
+      ? loadStrategyDeploymentConfig(process.env.STRATEGY_DEPLOYMENT_CONFIG)
+      : null,
+  ...(agentSessionKey ? { executor: agentSessionKey } : {}),
+  reader: createPublicClient({
+    chain: bsc,
+    transport: http(enforcerRpcUrl, { timeout: 8000, retryCount: 1 }),
+  }),
+  agents: strategyAgents,
+})
 const app = createApiServer({
+  strategies,
   observations: () => store.list(),
   coverageStart: async () =>
     (await store.getCheckpoint(COVERAGE_START_STREAM))?.lastIndexedBlock ?? null,
@@ -314,6 +349,7 @@ app.addHook('onClose', async () => {
     taskStore.close(),
     sellerStore.close(),
     ledgerSql.end(),
+    strategySql.end(),
   ])
 })
 const port = Number(process.env.PORT ?? '3000')

@@ -5,7 +5,14 @@ import {
   type StrategyBinding,
   YieldAllocationVaultAbi,
 } from '@aiki/contracts/strategies'
-import { type Abi, encodeAbiParameters, type Hex, toFunctionSelector } from 'viem'
+import {
+  type Abi,
+  decodeAbiParameters,
+  encodeAbiParameters,
+  type Hex,
+  toFunctionSelector,
+} from 'viem'
+import mainnet from '../config/deployments/bsc-mainnet.json' with { type: 'json' }
 import type { SignedDelegation } from '../execution/executor.js'
 import { nonzeroAddress, STRATEGY_KIND_HASH, validateStrategyBinding } from './operation.js'
 
@@ -15,6 +22,16 @@ const bytes = (value: unknown): value is Hex =>
 const uint256 = (value: unknown): value is bigint =>
   typeof value === 'bigint' && value >= 0n && value < 1n << 256n
 const CURVE_ORDER = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n
+const expiryPin = mainnet.enforcers.find((enforcer) => enforcer.name === 'ExpiryEnforcer')
+if (!expiryPin) throw new Error('Reviewed mainnet expiry enforcer is missing.')
+export const STRATEGY_EXPIRY_ENFORCER = {
+  address: expiryPin.address as Hex,
+  runtimeCodeHash: expiryPin.codeHash as Hex,
+} as const
+export function encodeStrategyExpiryTerms(expiresAt: bigint): Hex {
+  if (!uint256(expiresAt) || expiresAt === 0n) throw invalid()
+  return encodeAbiParameters([{ type: 'uint256' }], [expiresAt])
+}
 
 function selector(abi: Abi, name: string): Hex {
   const operation = abi.find((entry) => entry.type === 'function' && entry.name === name)
@@ -93,16 +110,30 @@ export function assertStrategyGrant(input: {
     if (r === 0n || r >= CURVE_ORDER || s === 0n || s > CURVE_ORDER / 2n || (v !== 27 && v !== 28))
       throw invalid()
 
-    let matches = 0
+    const first = delegation.caveats[0]
+    if (
+      !first ||
+      first.enforcer.toLowerCase() !== STRATEGY_EXPIRY_ENFORCER.address ||
+      !bytes(first.terms) ||
+      first.terms.length !== 66 ||
+      first.args !== '0x'
+    )
+      throw invalid()
+    const [expiresAt] = decodeAbiParameters([{ type: 'uint256' }], first.terms)
+    if (encodeStrategyExpiryTerms(expiresAt).toLowerCase() !== first.terms.toLowerCase())
+      throw invalid()
+    let matches = 0,
+      expiryMatches = 0
     for (const caveat of delegation.caveats) {
       if (!nonzeroAddress(caveat.enforcer) || !bytes(caveat.terms) || caveat.args !== '0x')
         throw invalid()
+      if (caveat.enforcer.toLowerCase() === STRATEGY_EXPIRY_ENFORCER.address) expiryMatches++
       if (caveat.enforcer.toLowerCase() !== bindingEnforcer.toLowerCase()) continue
       matches++
       // Exact comparison also rejects trailing bytes and noncanonical ABI padding.
       if (caveat.terms.length !== 322 || caveat.terms.toLowerCase() !== expected) throw invalid()
     }
-    if (matches !== 1) throw invalid()
+    if (matches !== 1 || expiryMatches !== 1) throw invalid()
   } catch {
     throw invalid()
   }

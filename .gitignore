@@ -23,3 +23,7 @@ CLAUDE.md
 # Local mock state - yours to tweak, not to push
 apps/web/src/mock/local.*
 .vercel
+.gstack/
+
+# Explicit local production QA build; never shares the running development output.
+/apps/web/.next-build-qa/

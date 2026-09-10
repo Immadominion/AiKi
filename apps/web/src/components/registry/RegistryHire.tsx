@@ -7,6 +7,7 @@ import { AgentTaskForm } from '@/components/hire/AgentTaskForm'
 import { MandateBuilder } from '@/components/hire/MandateBuilder'
 import { guardianSubjectFromPassport, isGuardianPassport } from '@/components/hire/subject'
 import { PageCard } from '@/components/shell/PageCard'
+import { StrategyHireChoice } from '@/components/strategies/StrategyHireChoice'
 import { type AgentTaskSupport, api } from '@/lib/api'
 
 const CHOICE_BUTTON =
@@ -47,6 +48,7 @@ export function RegistryHire({ agentId }: { agentId: string }) {
     const guardian = isGuardianPassport(details.passport)
     return (
       <>
+        {!guardian ? <StrategyHireChoice passport={details.passport} /> : null}
         {guardian ? (
           <section className="mb-5 rounded-2xl border border-black/10 p-5">
             <p className="text-body m-0 text-sm leading-relaxed">
@@ -93,6 +95,9 @@ export function RegistryHire({ agentId }: { agentId: string }) {
       tabHint=""
       back={{ href: `/registry/${agentId}`, label: details?.passport.name ?? `Agent ${agentId}` }}
     >
+      {details?.passport.agentId === agentId ? (
+        <StrategyHireChoice passport={details.passport} />
+      ) : null}
       {problem || details ? (
         <section className="max-w-xl rounded-2xl border border-black/10 p-6">
           <h1 className="m-0 text-lg font-bold">

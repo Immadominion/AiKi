@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
 import { encodeAbiParameters, encodeEventTopics } from 'viem'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { BSC_MAINNET } from '../config/chains.js'
+import { applyMigrations, readMigrations } from '../db/migrate.js'
 import { APEX_COMMERCE_ABI } from './apex.js'
 import { hashCanonicalJson } from './canonical-json.js'
 import type { ActorIdentity, CreateOffer, JsonValue, PutProvider } from './model.js'
@@ -12,9 +14,27 @@ import { PostgresMarketplaceStore } from './store.js'
 const databaseUrl = process.env.DATABASE_URL
 
 describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
-  const store = new PostgresMarketplaceStore(databaseUrl as string)
-  const worker = new PostgresMarketplaceSettlementWorker(databaseUrl as string)
-  const sql = postgres(databaseUrl as string, { max: 1 })
+  const schema = `marketplace_store_qa_${randomUUID().replaceAll('-', '')}`
+  let store: PostgresMarketplaceStore
+  let worker: PostgresMarketplaceSettlementWorker
+  let sql: postgres.Sql
+  let admin: postgres.Sql
+  beforeAll(async () => {
+    if (!databaseUrl) throw new Error('Missing isolated test database URL')
+    admin = postgres(databaseUrl, { max: 1, onnotice: () => {} })
+    await admin`CREATE SCHEMA ${admin(schema)}`
+    const url = new URL(databaseUrl)
+    url.searchParams.set('search_path', schema)
+    sql = postgres(url.toString(), { max: 1, onnotice: () => {} })
+    expect((await sql`SELECT current_schema() AS name`)[0]?.name).toBe(schema)
+    await applyMigrations(
+      sql,
+      await readMigrations(new URL('../db/migrations/', import.meta.url)),
+      () => {},
+    )
+    store = new PostgresMarketplaceStore(url.toString())
+    worker = new PostgresMarketplaceSettlementWorker(url.toString())
+  }, 30000)
   const actor: ActorIdentity = { chainId: 56, address: `0x${'61'.repeat(20)}` }
   const stranger: ActorIdentity = { chainId: 56, address: `0x${'72'.repeat(20)}` }
   const provider: PutProvider = {
@@ -50,7 +70,11 @@ describe.skipIf(!databaseUrl)('PostgresMarketplaceStore', () => {
   const hash = (value: unknown) => hashCanonicalJson(value as JsonValue)
 
   afterAll(async () => {
-    await Promise.all([store.close(), worker.close(), sql.end()])
+    await Promise.all([store?.close(), worker?.close(), sql?.end()])
+    if (admin) {
+      await admin`DROP SCHEMA ${admin(schema)} CASCADE`
+      await admin.end()
+    }
   })
 
   it('atomically publishes a provider and immutable offer version', async () => {

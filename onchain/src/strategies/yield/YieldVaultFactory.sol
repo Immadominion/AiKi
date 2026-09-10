@@ -12,6 +12,9 @@ contract YieldVaultFactory {
     error InvalidFactoryConfiguration();
     error UnreviewedController();
     error NotControllerOwner();
+    error OccupiedVaultAddress();
+    error VaultDeploymentFailed();
+    error InvalidCreatedVault();
 
     // AiKi's reviewed deployment manifest, not MetaMask's differently typed manager.
     address public constant REVIEWED_MANAGER = 0x625cfdA19d2F4424e546B610B4CeF1F5441F84c9;
@@ -29,6 +32,7 @@ contract YieldVaultFactory {
     address public immutable manager;
     bytes32 public immutable accountRuntimeHash;
     mapping(address => bool) public isVault;
+    mapping(address => bytes32) public registeredRuntimeHash;
 
     event YieldVaultCreated(
         address indexed vault, address indexed controller, bytes32 indexed policyHash, address owner
@@ -60,20 +64,109 @@ contract YieldVaultFactory {
         );
     }
 
+    function expectedPolicyHash(
+        address controller,
+        StrategyVaultBase.CommonPolicy calldata common,
+        YieldAllocationVault.YieldPolicy calldata policy
+    ) public view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                keccak256("aiki.yield-allocation.v1"),
+                block.chainid,
+                controller,
+                common,
+                canonicalVenues(),
+                policy
+            )
+        );
+    }
+
+    /// @notice Same absolute inputs and CURRENT owner predict the same immutable vault.
+    function predictForController(
+        address controller,
+        StrategyVaultBase.CommonPolicy calldata common,
+        YieldAllocationVault.YieldPolicy calldata policy
+    ) external view returns (address) {
+        address owner = _reviewedOwner(controller);
+        return
+            _predict(
+                _salt(owner, controller, common, policy), keccak256(_initCode(controller, common, policy))
+            );
+    }
+
+    /// @notice Exact retries never duplicate creation, events or reset owner-funded state.
     function createForController(
         address controller,
         StrategyVaultBase.CommonPolicy calldata common,
         YieldAllocationVault.YieldPolicy calldata policy
     ) external returns (YieldAllocationVault vault) {
+        address owner = _reviewedOwner(controller);
+        if (owner != msg.sender || msg.sender == controller) revert NotControllerOwner();
+        bytes memory initCode = _initCode(controller, common, policy);
+        bytes32 salt = _salt(owner, controller, common, policy);
+        address predicted = _predict(salt, keccak256(initCode));
+        bytes32 expectedPolicy = expectedPolicyHash(controller, common, policy);
+        if (predicted.code.length != 0 || isVault[predicted]) {
+            if (!isVault[predicted] || predicted.codehash != registeredRuntimeHash[predicted]) {
+                revert OccupiedVaultAddress();
+            }
+            vault = YieldAllocationVault(predicted);
+            if (vault.controller() != controller || vault.policyHash() != expectedPolicy) {
+                revert OccupiedVaultAddress();
+            }
+            return vault;
+        }
+        address created;
+        assembly ("memory-safe") { created := create2(0, add(initCode, 32), mload(initCode), salt) }
+        if (created == address(0)) revert VaultDeploymentFailed();
+        vault = YieldAllocationVault(created);
+        if (
+            created != predicted || vault.controller() != controller || vault.policyHash() != expectedPolicy
+                || !vault.paused() || vault.operationNonce() != 0 || vault.fundedPrincipal() != 0
+                || vault.turnover() != 0 || vault.cumulativeLoss() != 0 || vault.managedIdle() != 0
+                || vault.managedVenusShares() != 0 || vault.managedAaveScaled() != 0
+        ) revert InvalidCreatedVault();
+        isVault[created] = true;
+        registeredRuntimeHash[created] = created.codehash;
+        emit YieldVaultCreated(created, controller, expectedPolicy, owner);
+    }
+
+    function _reviewedOwner(address controller) private view returns (address owner) {
         if (
             block.chainid != 56 || manager.codehash != REVIEWED_MANAGER_CODE_HASH
                 || controller.codehash != accountRuntimeHash
         ) revert UnreviewedController();
         AiKiMandateAccount account = AiKiMandateAccount(payable(controller));
         if (account.DELEGATION_MANAGER() != manager) revert UnreviewedController();
-        if (account.owner() != msg.sender || msg.sender == controller) revert NotControllerOwner();
-        vault = new YieldAllocationVault(controller, common, canonicalVenues(), policy);
-        isVault[address(vault)] = true;
-        emit YieldVaultCreated(address(vault), controller, vault.policyHash(), msg.sender);
+        owner = account.owner();
+        if (owner == address(0) || owner == controller) revert UnreviewedController();
+    }
+
+    function _initCode(
+        address controller,
+        StrategyVaultBase.CommonPolicy calldata common,
+        YieldAllocationVault.YieldPolicy calldata policy
+    ) private pure returns (bytes memory) {
+        return bytes.concat(
+            type(YieldAllocationVault).creationCode, abi.encode(controller, common, canonicalVenues(), policy)
+        );
+    }
+
+    function _salt(
+        address owner,
+        address controller,
+        StrategyVaultBase.CommonPolicy calldata common,
+        YieldAllocationVault.YieldPolicy calldata policy
+    ) private pure returns (bytes32) {
+        return keccak256(
+            abi.encode(owner, controller, common, policy, keccak256(type(YieldAllocationVault).creationCode))
+        );
+    }
+
+    function _predict(bytes32 salt, bytes32 initHash) private view returns (address) {
+        return
+            address(
+                uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, initHash))))
+            );
     }
 }

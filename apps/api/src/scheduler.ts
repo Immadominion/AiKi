@@ -1,7 +1,7 @@
 /**
  * The engine, running on its own.
  *
- * Three loops on three clocks. Indexing and probing build the evidence: the
+ * Independent loops on separate clocks. Indexing and probing build the evidence: the
  * registry grows on chain continuously, while probing is a courtesy call to
  * someone else's server and belongs on a slower clock. The runner is the third
  * and it is a different kind of thing - it is the one that spends money, on
@@ -23,6 +23,13 @@ const PROBE_INTERVAL_MS = Number(process.env.PROBE_INTERVAL_MS ?? String(30 * 60
  * which is what stops a fast clock repaying the same shortfall twice.
  */
 const RUN_INTERVAL_MS = Number(process.env.RUN_INTERVAL_MS ?? String(60_000))
+const STRATEGY_RUN_INTERVAL_MS = Number(process.env.STRATEGY_RUN_INTERVAL_MS ?? String(15_000))
+if (
+  !Number.isSafeInteger(STRATEGY_RUN_INTERVAL_MS) ||
+  STRATEGY_RUN_INTERVAL_MS < 5_000 ||
+  STRATEGY_RUN_INTERVAL_MS > 60_000
+)
+  throw new Error('Strategy runner interval must be between five and sixty seconds.')
 
 function runOnce(label: string, script: string) {
   return new Promise<void>((resolve) => {
@@ -53,10 +60,12 @@ const here = new URL('.', import.meta.url).pathname
 console.log(
   `scheduler: index every ${INDEX_INTERVAL_MS / 60_000}m, ` +
     `probe every ${PROBE_INTERVAL_MS / 60_000}m, ` +
-    `run every ${RUN_INTERVAL_MS / 60_000}m`,
+    `run every ${RUN_INTERVAL_MS / 60_000}m, ` +
+    `strategies every ${STRATEGY_RUN_INTERVAL_MS / 1000}s`,
 )
 await Promise.all([
   loop('index', `${here}indexer/persist-cli.ts`, INDEX_INTERVAL_MS),
   loop('probe', `${here}prober/sweep-cli.ts`, PROBE_INTERVAL_MS),
   loop('run', `${here}runner/sweep-cli.ts`, RUN_INTERVAL_MS),
+  loop('strategies', `${here}strategies/runner-cli.ts`, STRATEGY_RUN_INTERVAL_MS),
 ])

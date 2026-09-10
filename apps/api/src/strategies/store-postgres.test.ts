@@ -45,7 +45,7 @@ describe.skipIf(!databaseUrl)('strategy attempts and recovery in isolated Postgr
   }, 30_000)
   afterEach(async () => {
     // Only these three tables in the unique test schema, never production data.
-    await sql`TRUNCATE strategy_operations, strategy_watches, execution_attempts`
+    await sql`TRUNCATE strategy_setup_intents, strategy_setup_actions, strategy_setups, strategy_operations, strategy_watches, execution_attempts`
   })
   afterAll(async () => {
     await legacy?.close()
@@ -331,7 +331,7 @@ describe.skipIf(!databaseUrl)('strategy attempts and recovery in isolated Postgr
       expect(
         (await sql`SELECT state, transaction_hash FROM execution_attempts WHERE id = ${id}`)[0],
       ).toMatchObject({ state: 'PREPARING', transaction_hash: null })
-      await sql`TRUNCATE strategy_operations, strategy_watches, execution_attempts`
+      await sql`TRUNCATE strategy_setup_intents, strategy_setup_actions, strategy_setups, strategy_operations, strategy_watches, execution_attempts`
     }
   })
   it('loads only the exact durable pending intent for read-only recovery', async () => {

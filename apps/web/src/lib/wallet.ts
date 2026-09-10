@@ -4,6 +4,7 @@ import {
   acceptWalletSession,
   invalidateWalletSession,
   isWalletSessionCurrent,
+  walletSession,
 } from './wallet-session'
 
 /**
@@ -352,5 +353,111 @@ export async function signMandate(
     // Declining to sign is an ordinary answer and not an error. The caller
     // reports that nothing was authorised, which is exactly what happened.
     return 'declined'
+  }
+}
+
+export interface ReviewedWalletTransaction {
+  chainId: 56
+  from: string
+  to: string
+  data: `0x${string}`
+  value: '0'
+}
+
+export class WalletTransactionError extends Error {
+  constructor(
+    readonly code: 4001 | 'WALLET_CHANGED' | 'INVALID_TRANSACTION' | 'SUBMISSION_UNKNOWN',
+    message: string,
+    readonly mayHaveSubmitted: boolean,
+  ) {
+    super(message)
+  }
+}
+
+/** One explicit owner transaction. A returned hash survives a wallet change so callers
+ * can retain it for recovery; walletCurrent=false must discard private account UI. */
+export async function sendWalletTransaction(
+  owner: string,
+  input: ReviewedWalletTransaction,
+): Promise<{ transactionHash: `0x${string}`; walletCurrent: boolean }> {
+  const transaction = structuredClone(input),
+    session = walletSession(),
+    eth = provider()
+  const validAddress = (v: unknown): v is string =>
+    typeof v === 'string' && /^0x[0-9a-f]{40}$/i.test(v) && !/^0x0{40}$/i.test(v)
+  if (
+    !transaction ||
+    Object.keys(transaction).sort().join(',') !== 'chainId,data,from,to,value' ||
+    transaction.chainId !== 56 ||
+    transaction.value !== '0' ||
+    !validAddress(owner) ||
+    !validAddress(transaction.from) ||
+    !validAddress(transaction.to) ||
+    transaction.from.toLowerCase() !== owner.toLowerCase() ||
+    typeof transaction.data !== 'string' ||
+    !/^0x(?:[0-9a-f]{2}){4,}$/i.test(transaction.data)
+  )
+    throw new WalletTransactionError(
+      'INVALID_TRANSACTION',
+      'This is not a reviewed BNB mainnet contract transaction.',
+      false,
+    )
+  const current = async () => {
+    if (!eth || provider() !== eth) return false
+    const accounts = await eth.request({ method: 'eth_accounts' })
+    const chain = await eth.request({ method: 'eth_chainId' })
+    const active = walletSession()
+    return (
+      Array.isArray(accounts) &&
+      typeof accounts[0] === 'string' &&
+      accounts[0].toLowerCase() === owner.toLowerCase() &&
+      chain === '0x38' &&
+      provider() === eth &&
+      active.revision === session.revision &&
+      active.address === owner.toLowerCase()
+    )
+  }
+  if (!(await current().catch(() => false)) || !eth)
+    throw new WalletTransactionError(
+      'WALLET_CHANGED',
+      'Connect and sign in with the same wallet on BNB mainnet before continuing.',
+      false,
+    )
+  let hash: unknown
+  try {
+    hash = await eth.request({
+      method: 'eth_sendTransaction',
+      params: [
+        {
+          from: transaction.from,
+          to: transaction.to,
+          data: transaction.data,
+          value: '0x0',
+          chainId: '0x38',
+        },
+      ],
+    })
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 4001)
+      throw new WalletTransactionError(
+        4001,
+        'You declined this transaction. Nothing was submitted by AiKi.',
+        false,
+      )
+    throw new WalletTransactionError(
+      'SUBMISSION_UNKNOWN',
+      'The wallet did not return a transaction hash. Check its activity before trying again.',
+      true,
+    )
+  }
+  if (typeof hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(hash) || /^0x0{64}$/i.test(hash))
+    throw new WalletTransactionError(
+      'SUBMISSION_UNKNOWN',
+      'The wallet returned no verifiable transaction hash. Check its activity; do not send again.',
+      true,
+    )
+  return {
+    transactionHash: hash.toLowerCase() as `0x${string}`,
+    walletCurrent: await current().catch(() => false),
   }
 }

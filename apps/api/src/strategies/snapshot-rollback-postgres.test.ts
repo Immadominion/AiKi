@@ -42,7 +42,7 @@ describe.skipIf(!databaseUrl)('strategy snapshot rollback in isolated local Post
     store = new PostgresStrategyStore(sql)
   }, 30_000)
   afterEach(async () => {
-    await sql`TRUNCATE strategy_operations, strategy_watches, execution_attempts`
+    await sql`TRUNCATE strategy_setup_intents, strategy_setup_actions, strategy_setups, strategy_operations, strategy_watches, execution_attempts`
   })
   afterAll(async () => {
     await legacy?.close()

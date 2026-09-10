@@ -10,6 +10,8 @@ import {
   toHex,
 } from 'viem'
 import { describe, expect, it, vi } from 'vitest'
+import type { VerifiedStrategySnapshot } from '../snapshot.js'
+import { snapshotFixture } from '../snapshot.test-support.js'
 import { YIELD_RAY as R, YIELD_WAD as U } from './rates.js'
 import {
   YIELD_READ_ADDRESSES as A,
@@ -28,6 +30,11 @@ const TIME = 1_000_000n
 const aggregateAbi = parseAbi([
   'function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)',
 ])
+vi.mock('../../config/deployments/bsc-mainnet.json', async (original) => {
+  const data = await original<{ default: object }>(),
+    { keccak256 } = await import('viem')
+  return { default: { ...data.default, managerCodeHash: keccak256('0x6005') } }
+})
 
 function fixture() {
   const config: YieldSnapshotConfig = {
@@ -203,7 +210,9 @@ function fixture() {
   const client = {
     getChainId: vi.fn(async () => 56),
     getBlock: vi.fn(async () => ({ number: BLOCK, hash: HASH as Hex, timestamp: TIME })),
-    getBytecode: vi.fn(async () => CODE as Hex),
+    getBytecode: vi.fn(
+      async (_input?: { address: YieldAddress; blockNumber: bigint }) => CODE as Hex,
+    ),
     getStorageAt: vi.fn(async ({ address }: { address: YieldAddress }) =>
       pad(
         address === A.aave
@@ -255,6 +264,64 @@ function fixture() {
 }
 
 describe('verified same-block yield reader', () => {
+  async function pinnedFixture() {
+    const f = fixture(),
+      sf = snapshotFixture('yield', {
+        timestamp: TIME,
+        blockNumber: BLOCK,
+        blockHash: HASH,
+        binding: { policyHash: HASH },
+      })
+    const proof = await sf.run()
+    if (proof.status !== 'verified') throw new Error('Invalid strategy snapshot fixture')
+    f.config.factory.runtimeHash = proof.snapshot.factory.runtimeCodeHash
+    f.client.getBytecode.mockImplementation(async (input) =>
+      input?.address === f.config.factory.address ? '0x6001' : CODE,
+    )
+    return { ...f, proof: proof.snapshot }
+  }
+  it('pins yield accounting to the verified custody block even after finalized head advances', async () => {
+    const f = await pinnedFixture()
+    f.client.getBlock.mockResolvedValueOnce({
+      number: BLOCK + 2n,
+      hash: keccak256('0x02'),
+      timestamp: TIME + 1n,
+    })
+    const result = await readYieldSnapshot(f.readClient, f.config, {}, f.proof)
+    expect(result.block.number).toBe(BLOCK)
+    expect(result.block.hash).toBe(HASH)
+    expect(f.client.getBlock.mock.calls).toEqual([
+      [{ blockTag: 'finalized' }],
+      [{ blockNumber: BLOCK }],
+      [{ blockNumber: BLOCK }],
+    ])
+  })
+  it('rejects a serialized or forged custody proof before accounting reads', async () => {
+    const f = await pinnedFixture()
+    await expect(
+      readYieldSnapshot(f.readClient, f.config, {}, { ...f.proof } as VerifiedStrategySnapshot),
+    ).rejects.toBeInstanceOf(YieldSnapshotUnavailable)
+    expect(f.client.call).not.toHaveBeenCalled()
+  })
+  it('refuses a block that is no longer finalized or has a different canonical hash', async () => {
+    for (const mode of ['behind', 'reorg']) {
+      const f = await pinnedFixture()
+      if (mode === 'behind')
+        f.client.getBlock.mockResolvedValueOnce({
+          number: BLOCK - 1n,
+          hash: HASH,
+          timestamp: TIME - 1n,
+        })
+      else
+        f.client.getBlock
+          .mockResolvedValueOnce({ number: BLOCK, hash: HASH, timestamp: TIME })
+          .mockResolvedValueOnce({ number: BLOCK, hash: keccak256('0x02'), timestamp: TIME })
+      await expect(readYieldSnapshot(f.readClient, f.config, {}, f.proof)).rejects.toBeInstanceOf(
+        YieldSnapshotUnavailable,
+      )
+      expect(f.client.call).not.toHaveBeenCalled()
+    }
+  })
   it('accrues Venus before every accounting read in ONE pinned eth_call and preserves live ABI padding', async () => {
     const f = fixture()
     const s = await readYieldSnapshot(f.readClient, f.config)

@@ -1,6 +1,25 @@
 import type { NextConfig } from 'next'
 
+/** A fixed, ignored target prevents an opt-in QA build from cleaning the live dev output. */
+export function isolatedBuildDirectory(value: string | undefined) {
+  if (value === undefined || value === '') return undefined
+  if (value !== '.next-build-qa') throw new Error('AIKI_BUILD_DIR must be .next-build-qa when set.')
+  return value
+}
+const buildDirectory = isolatedBuildDirectory(process.env.AIKI_BUILD_DIR)
+const withoutPersistentCache: NonNullable<NextConfig['webpack']> = (webpackConfig) => {
+  webpackConfig.cache = false
+  return webpackConfig
+}
+
 const config: NextConfig = {
+  ...(buildDirectory
+    ? {
+        distDir: buildDirectory,
+        typescript: { tsconfigPath: 'tsconfig.build-qa.json' },
+        webpack: withoutPersistentCache,
+      }
+    : {}),
   // The contract package ships TypeScript source, not a build artifact, so the
   // seam stays a single source of truth rather than something we compile twice.
   transpilePackages: ['@aiki/contracts'],

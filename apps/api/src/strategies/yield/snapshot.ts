@@ -7,6 +7,7 @@ import {
   parseAbi,
   toHex,
 } from 'viem'
+import { isVerifiedStrategySnapshot, type VerifiedStrategySnapshot } from '../snapshot.js'
 import { YIELD_CANONICAL } from '../yield-planner.js'
 import { ceilDiv, YIELD_RAY, YIELD_WAD } from './rates.js'
 import type {
@@ -137,12 +138,13 @@ export async function readYieldSnapshot(
   client: Pick<PublicClient, 'getChainId' | 'getBlock' | 'getBytecode' | 'getStorageAt' | 'call'>,
   config: YieldSnapshotConfig,
   resolvers: YieldSnapshotResolvers = {},
+  atSnapshot?: VerifiedStrategySnapshot,
 ): Promise<YieldSnapshot> {
   const timeout = config?.timeoutMs ?? 12_000
   if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 30_000)
     throw new YieldSnapshotUnavailable()
   try {
-    return await bounded(readSnapshot(client, config, resolvers), timeout)
+    return await bounded(readSnapshot(client, config, resolvers, atSnapshot), timeout)
   } catch {
     throw new YieldSnapshotUnavailable()
   }
@@ -152,6 +154,7 @@ async function readSnapshot(
   client: Pick<PublicClient, 'getChainId' | 'getBlock' | 'getBytecode' | 'getStorageAt' | 'call'>,
   config: YieldSnapshotConfig,
   resolvers: YieldSnapshotResolvers,
+  atSnapshot?: VerifiedStrategySnapshot,
 ): Promise<YieldSnapshot> {
   if (
     ![
@@ -173,8 +176,31 @@ async function readSnapshot(
   )
     throw new YieldSnapshotUnavailable()
   if ((await client.getChainId()) !== 56) throw new YieldSnapshotUnavailable()
-  const head = await client.getBlock({ blockTag: 'finalized' })
+  const finalized = await client.getBlock({ blockTag: 'finalized' })
+  if (
+    atSnapshot &&
+    (!isVerifiedStrategySnapshot(atSnapshot) ||
+      atSnapshot.state.kind !== 'yield' ||
+      !same(atSnapshot.binding.vault, config.vault) ||
+      !same(atSnapshot.binding.controller, config.controller) ||
+      !same(atSnapshot.binding.policyHash, config.policyHash) ||
+      !same(atSnapshot.factory.address, config.factory.address) ||
+      !same(atSnapshot.factory.runtimeCodeHash, config.factory.runtimeHash) ||
+      typeof finalized.number !== 'bigint' ||
+      atSnapshot.block.number > finalized.number)
+  )
+    throw new YieldSnapshotUnavailable()
+  const head = atSnapshot
+    ? await client.getBlock({ blockNumber: atSnapshot.block.number })
+    : finalized
   if (typeof head.number !== 'bigint' || head.number < 0n || !hash(head.hash))
+    throw new YieldSnapshotUnavailable()
+  if (
+    atSnapshot &&
+    (head.number !== atSnapshot.block.number ||
+      !same(head.hash, atSnapshot.block.hash) ||
+      head.timestamp !== atSnapshot.block.timestamp)
+  )
     throw new YieldSnapshotUnavailable()
   const block: YieldBlock = {
     chainId: 56,

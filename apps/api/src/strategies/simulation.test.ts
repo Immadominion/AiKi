@@ -54,7 +54,7 @@ describe('full strategy manager simulation', () => {
         f.input.delegation.caveats = []
       },
       (f: Awaited<ReturnType<typeof setup>>) => {
-        const caveat = f.input.delegation.caveats[0]
+        const caveat = f.input.delegation.caveats[1]
         if (!caveat) throw new Error('Missing fixture caveat')
         caveat.terms = h('ab')
       },

@@ -1,6 +1,12 @@
-export { GridStrategyVaultAbi } from './GridStrategyVault.js'
-export { PancakeLPVaultAbi } from './PancakeLPVault.js'
-export { YieldAllocationVaultAbi } from './YieldAllocationVault.js'
+export { GridStrategyVaultAbi } from './GridStrategyVault'
+export { GridVaultFactoryAbi } from './GridVaultFactory'
+export { LPVaultFactoryAbi } from './LPVaultFactory'
+export { PancakeLPVaultAbi } from './PancakeLPVault'
+export type * from './setup'
+export type * from './setup-api-types'
+export { encodeStrategyBindingTerms, STRATEGY_REVIEWED_TOKENS } from './setup-binding'
+export { YieldAllocationVaultAbi } from './YieldAllocationVault'
+export { YieldVaultFactoryAbi } from './YieldVaultFactory'
 
 export type StrategyKind = 'yield' | 'grid' | 'lp'
 

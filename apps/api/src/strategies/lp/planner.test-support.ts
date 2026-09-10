@@ -1,7 +1,11 @@
 import { ROOT_AUTHORITY } from '@aiki/contracts/delegation'
 import { type Hex, keccak256 } from 'viem'
 import { vi } from 'vitest'
-import { encodeStrategyBindingTerms } from '../grant.js'
+import {
+  encodeStrategyBindingTerms,
+  encodeStrategyExpiryTerms,
+  STRATEGY_EXPIRY_ENFORCER,
+} from '../grant.js'
 import { sqrtRatioAtTick } from '../grid/math.js'
 import { decideLP, type LPPlannerPolicy, type LPStrategyOperation } from '../lp-planner.js'
 import { quoteStrategyOperation, type StrategySimulationReader } from '../simulation.js'
@@ -169,6 +173,11 @@ export function lpFixture(
           delegator: snapshot.binding.controller,
           authority: ROOT_AUTHORITY,
           caveats: [
+            {
+              enforcer: STRATEGY_EXPIRY_ENFORCER.address,
+              terms: encodeStrategyExpiryTerms(snapshot.expiresAt),
+              args: '0x',
+            },
             {
               enforcer: snapshot.bindingEnforcer.address,
               terms: encodeStrategyBindingTerms(snapshot.binding),

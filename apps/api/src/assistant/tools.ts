@@ -4,6 +4,7 @@ import { CATALOG_TOOLS, runCatalogTool } from '../catalog/assistant-tools.js'
 import { settlementForPoints } from '../credits/pricing.js'
 import { SETTLEMENT } from '../settlement/pricing.js'
 import { type MandateContinuation, mandateContinuation } from './continuation.js'
+import { runStrategyTool, STRATEGY_TOOLS } from './strategy-tools.js'
 
 /**
  * What Fast mode can actually do, and the one rule that makes it safe.
@@ -115,6 +116,7 @@ const spendingConstraints = (totalPoints: number, perTaskPoints: number, days: n
 
 export const TOOLS: Anthropic.Tool[] = [
   ...CATALOG_TOOLS,
+  ...STRATEGY_TOOLS,
   {
     name: 'agent_task_support',
     description:
@@ -528,6 +530,10 @@ export async function runTool(
     body === undefined ? call(path) : post(path, body),
   )
   if (catalog) return catalog
+  const strategy = await runStrategyTool(name, args, ctx.sessionAddress, (path) =>
+    call(path, { cache: 'no-store' }),
+  )
+  if (strategy) return strategy
 
   switch (name) {
     case 'agent_task_support':

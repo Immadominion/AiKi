@@ -1,7 +1,11 @@
 import { ROOT_AUTHORITY } from '@aiki/contracts/delegation'
 import type { Hex } from 'viem'
 import { vi } from 'vitest'
-import { encodeStrategyBindingTerms } from '../grant.js'
+import {
+  encodeStrategyBindingTerms,
+  encodeStrategyExpiryTerms,
+  STRATEGY_EXPIRY_ENFORCER,
+} from '../grant.js'
 import type { GridPlannerPolicy } from '../grid-planner.js'
 import type { StrategyOperation } from '../operation.js'
 import { quoteStrategyOperation } from '../simulation.js'
@@ -90,6 +94,11 @@ export function simulationFixture(snapshot: VerifiedStrategySnapshot) {
         delegator: snapshot.binding.controller,
         authority: ROOT_AUTHORITY,
         caveats: [
+          {
+            enforcer: STRATEGY_EXPIRY_ENFORCER.address,
+            terms: encodeStrategyExpiryTerms(snapshot.expiresAt),
+            args: '0x',
+          },
           {
             enforcer: snapshot.bindingEnforcer.address,
             terms: encodeStrategyBindingTerms(snapshot.binding),

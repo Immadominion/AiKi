@@ -5,6 +5,8 @@
       "**",
       "!**/dist",
       "!**/.next",
+      "!apps/web/.next-build-qa",
+      "!.gstack",
       "!**/node_modules",
       "!**/next-env.d.ts",
       "!**/.vercel",

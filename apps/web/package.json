@@ -7,7 +7,7 @@
     "dev": "NEXT_PUBLIC_API_URL=http://127.0.0.1:4700 next dev --turbopack --hostname 127.0.0.1 --port 4747",
     "build": "next build --webpack",
     "start": "next start",
-    "test": "tsx --tsconfig tsconfig.test.json --test src/lib/*.test.ts src/components/hire/*.test.ts src/components/home/*.test.ts src/components/home/*.test.mjs src/components/catalog/*.test.ts src/components/work/*.test.ts src/components/people/*.test.ts src/components/credits/*.test.ts src/components/job/*.test.ts next.config.test.mjs",
+    "test": "tsx --tsconfig tsconfig.test.json --test src/lib/*.test.ts src/components/hire/*.test.ts src/components/home/*.test.ts src/components/home/*.test.mjs src/components/catalog/*.test.ts src/components/work/*.test.ts src/components/people/*.test.ts src/components/credits/*.test.ts src/components/job/*.test.ts src/components/strategies/*.test.ts next.config.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -15,7 +15,11 @@ import {
 import { vi } from 'vitest'
 import mainnet from '../config/deployments/bsc-mainnet.json' with { type: 'json' }
 import { encodeStrategyEnvelope } from './envelope.js'
-import { encodeStrategyBindingTerms } from './grant.js'
+import {
+  encodeStrategyBindingTerms,
+  encodeStrategyExpiryTerms,
+  STRATEGY_EXPIRY_ENFORCER,
+} from './grant.js'
 import { STRATEGY_KIND_HASH, type StrategyOperation, strategyPlanHash } from './operation.js'
 import {
   type StrategyReceiptReader,
@@ -83,6 +87,11 @@ export function fixture(
     delegator: operation.binding.controller,
     authority: ROOT_AUTHORITY,
     caveats: [
+      {
+        enforcer: STRATEGY_EXPIRY_ENFORCER.address,
+        terms: encodeStrategyExpiryTerms(operation.deadline + 86400n),
+        args: '0x' as Hex,
+      },
       {
         enforcer: a('34'),
         terms: encodeStrategyBindingTerms(operation.binding),

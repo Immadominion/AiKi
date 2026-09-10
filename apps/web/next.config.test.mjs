@@ -4,7 +4,7 @@ import {
   getRewrittenUrl,
   unstable_getResponseFromNextConfig,
 } from 'next/experimental/testing/server.js'
-import config from './next.config.ts'
+import config, { isolatedBuildDirectory } from './next.config.ts'
 
 function setProxyTarget(t, target) {
   const previous = process.env.API_PROXY_TARGET
@@ -40,4 +40,16 @@ test('an unconfigured API target does not rewrite marketplace requests', async (
     nextConfig: config,
   })
   assert.equal(getRewrittenUrl(response), null)
+})
+
+test('isolated build is explicit and cannot target the shared dev output or arbitrary paths', () => {
+  assert.equal(isolatedBuildDirectory(undefined), undefined)
+  assert.equal(isolatedBuildDirectory(''), undefined)
+  assert.equal(isolatedBuildDirectory('.next-build-qa'), '.next-build-qa')
+  for (const path of ['.next', '.', '..', '../build', '/tmp/build', 'dist']) {
+    assert.throws(() => isolatedBuildDirectory(path), /AIKI_BUILD_DIR/)
+  }
+  assert.equal(config.distDir, undefined)
+  assert.equal(config.typescript, undefined)
+  assert.equal(config.webpack, undefined)
 })

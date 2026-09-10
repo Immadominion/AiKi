@@ -18,6 +18,7 @@ import {
   validateStrategyBinding,
 } from './operation.js'
 import { isVerifiedStrategyReceipt, type VerifiedStrategyReceipt } from './receipt.js'
+import { PostgresStrategyRunnerStore } from './runner-store.js'
 import { isVerifiedStrategySimulation, type StrategySimulationQuote } from './simulation.js'
 import { isVerifiedStrategySnapshot, type VerifiedStrategySnapshot } from './snapshot.js'
 import { operationMatchesStoredSnapshot } from './stored-state.js'
@@ -90,6 +91,16 @@ interface OperationRow {
 export class PostgresStrategyStore {
   constructor(private readonly sql: postgres.Sql) {}
 
+  getWatchForOwner(watchId: string, owner: Hex) {
+    return new PostgresStrategyRunnerStore(this.sql).getWatchForOwner(watchId, owner)
+  }
+  listForOwner(owner: Hex) {
+    return new PostgresStrategyRunnerStore(this.sql).listForOwner(owner)
+  }
+  schedulerStatus(configurationHash: Hex) {
+    return new PostgresStrategyRunnerStore(this.sql).schedulerStatus(configurationHash)
+  }
+
   /** Recovery can inspect one already-prepared attempt, but cannot change or resend its intent. */
   async getPendingAttempt(attemptId: string): Promise<{
     attemptId: string
@@ -130,19 +141,22 @@ export class PostgresStrategyStore {
   }
 
   /** Refresh complete chain state under a revision lock. Only an explicit owner request can start/restart. */
-  async syncSnapshot(input: {
-    watchId: string
-    expectedRevision: string
-    snapshot: VerifiedStrategySnapshot
-    activateOwner?: Hex
-  }): Promise<
+  async syncSnapshot(
+    input: {
+      watchId: string
+      expectedRevision: string
+      snapshot: VerifiedStrategySnapshot
+      activateOwner?: Hex
+    },
+    transaction?: postgres.TransactionSql,
+  ): Promise<
     | { status: 'applied'; revision: string; active: boolean }
     | { status: 'changed' | 'pending' | 'not_ready' }
   > {
     const { watchId, expectedRevision, snapshot, activateOwner } = input
     if (!isVerifiedStrategySnapshot(snapshot) || !/^\d+$/.test(expectedRevision))
       throw new Error('A fresh verified strategy snapshot is required.')
-    return this.sql.begin(async (tx) => {
+    const sync = async (tx: postgres.TransactionSql) => {
       const [watch] = await tx<
         (WatchRow & {
           owner: string
@@ -223,20 +237,24 @@ export class PostgresStrategyStore {
         revision: (BigInt(expectedRevision) + 1n).toString(),
         active: status === 'ACTIVE',
       } as const
-    })
+    }
+    return transaction ? sync(transaction) : this.sql.begin(sync)
   }
 
   /** Registration is inert. Funding, signing or creating a record never activates a watch. */
-  async registerPaused(request: {
-    jobId: string
-    binding: StrategyBinding
-    manager: Hex
-    executor: Hex
-    bindingEnforcer: Hex
-    expiresAt: string
-    policy: postgres.JSONValue
-    gasLimitWei: bigint
-  }): Promise<string> {
+  async registerPaused(
+    request: {
+      jobId: string
+      binding: StrategyBinding
+      manager: Hex
+      executor: Hex
+      bindingEnforcer: Hex
+      expiresAt: string
+      policy: postgres.JSONValue
+      gasLimitWei: bigint
+    },
+    transaction?: postgres.TransactionSql,
+  ): Promise<string> {
     const input = structuredClone(request)
     validateStrategyBinding(input.binding)
     if (
@@ -251,7 +269,7 @@ export class PostgresStrategyStore {
     )
       throw new Error('Invalid strategy registration.')
     const b = input.binding
-    return this.sql.begin(async (tx) => {
+    const register = async (tx: postgres.TransactionSql): Promise<string> => {
       await tx`SELECT pg_advisory_xact_lock(1095322441, 56)`
       const rows = await tx<
         {
@@ -317,7 +335,8 @@ export class PostgresStrategyStore {
          ${lower(b.policyHash)}, ${lower(b.runtimeCodeHash)}, ${b.kind}, ${lower(input.manager)}, ${lower(input.executor)},
          0, '{}'::jsonb, ${tx.json(input.policy)}, ${input.expiresAt}, ${input.gasLimitWei.toString()}, ${lower(input.bindingEnforcer)})`
       return id
-    })
+    }
+    return transaction ? register(transaction) : this.sql.begin(register)
   }
 
   /** The runner must refresh verified chain state before every claim; a receipt is not a full snapshot. */

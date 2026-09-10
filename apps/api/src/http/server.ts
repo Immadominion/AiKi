@@ -42,6 +42,8 @@ import { buildSearchQuery } from '../search/query.js'
 import { fundJob, InsufficientPoints, refundJob, settleJob } from '../settlement/ledger.js'
 import { buildQuote, priceJob, SETTLEMENT } from '../settlement/pricing.js'
 import { priceForQuote, publishedAsset } from '../settlement/published-price.js'
+import { registerStrategyRoutes } from '../strategies/routes.js'
+import type { StrategySetupService } from '../strategies/setup.js'
 import { registerTaskRoutes } from '../tasks/routes.js'
 import type { PostgresSellerStore } from '../tasks/sellers.js'
 import type { TaskStore } from '../tasks/store.js'
@@ -139,6 +141,8 @@ export function createApiServer(input: {
   watches?: WatchStore
   /** Read-only readiness checks for the configured unattended execution network. */
   watchActivation?: WatchActivationReader
+  /** Explicit owner-controlled setup for reviewed immutable strategy vaults. */
+  strategies?: StrategySetupService
   /**
    * Fast mode and the points that pay for it. Absent means the deployment
    * serves Manual mode only, and says so rather than failing oddly.
@@ -223,6 +227,7 @@ export function createApiServer(input: {
         input.auth.signer.verify(readCookie(request.headers.cookie, SESSION_COOKIE)) ?? undefined
   })
   if (input.auth) registerAuthRoutes(app, input.auth)
+  if (input.strategies) registerStrategyRoutes(app, input.strategies)
   registerCatalogRoutes(app)
   if (input.marketplace) registerMarketplaceRoutes(app, input.marketplace)
   if (input.watches)

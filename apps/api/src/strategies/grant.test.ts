@@ -3,7 +3,12 @@ import type { StrategyBinding } from '@aiki/contracts/strategies'
 import { decodeAbiParameters, encodeAbiParameters, type Hex, keccak256, stringToHex } from 'viem'
 import { describe, expect, it } from 'vitest'
 import type { SignedDelegation } from '../execution/executor.js'
-import { assertStrategyGrant, encodeStrategyBindingTerms } from './grant.js'
+import {
+  assertStrategyGrant,
+  encodeStrategyBindingTerms,
+  encodeStrategyExpiryTerms,
+  STRATEGY_EXPIRY_ENFORCER,
+} from './grant.js'
 import { encodeStrategyOperation } from './operation.js'
 import { a, gridOp, h, lpOp, yieldOp } from './receipt.test-support.js'
 
@@ -30,6 +35,11 @@ function fixture(binding: StrategyBinding = yieldOp.binding) {
     delegator: binding.controller,
     authority: ROOT_AUTHORITY,
     caveats: [
+      {
+        enforcer: STRATEGY_EXPIRY_ENFORCER.address,
+        terms: encodeStrategyExpiryTerms(1900086400n),
+        args: '0x',
+      },
       { enforcer: bindingEnforcer, terms: encodeStrategyBindingTerms(binding), args: '0x' },
     ],
     salt: 1n,
@@ -39,7 +49,7 @@ function fixture(binding: StrategyBinding = yieldOp.binding) {
   return { binding, delegation, executor, bindingEnforcer }
 }
 
-function caveat(input: ReturnType<typeof fixture>, index = 0) {
+function caveat(input: ReturnType<typeof fixture>, index = 1) {
   const value = input.delegation.caveats[index]
   if (!value) throw new Error('Missing test caveat')
   return value
@@ -64,7 +74,7 @@ describe('signed strategy binding admission', () => {
   )
   it('allows further signed restrictions, but does not invent or remove a binding caveat', () => {
     const input = fixture()
-    input.delegation.caveats.unshift({ enforcer: a('ab'), terms: '0x12', args: '0x' })
+    input.delegation.caveats.splice(1, 0, { enforcer: a('ab'), terms: '0x12', args: '0x' })
     const before = structuredClone(input)
     assertStrategyGrant(input)
     expect(input).toEqual(before)
@@ -107,15 +117,53 @@ describe('signed strategy binding admission', () => {
   })
   it('requires exactly one caveat at the supplied reviewed enforcer, not a lookalike address', () => {
     const input = fixture(),
-      original = structuredClone(caveat(input))
+      original = structuredClone(caveat(input)),
+      expiry = structuredClone(caveat(input, 0))
     caveat(input).enforcer = a('ab')
     expect(() => assertStrategyGrant(input)).toThrow('Invalid signed strategy grant.')
-    input.delegation.caveats = [original, { ...original }]
+    input.delegation.caveats = [expiry, original, { ...original }]
     expect(() => assertStrategyGrant(input)).toThrow('Invalid signed strategy grant.')
     caveat(input, 1).terms = '0x'
     expect(() => assertStrategyGrant(input)).toThrow('Invalid signed strategy grant.')
     input.delegation.caveats = []
     expect(() => assertStrategyGrant(input)).toThrow('Invalid signed strategy grant.')
+  })
+  it('requires the reviewed expiry enforcer first and exactly once', () => {
+    for (const change of [
+      (input: ReturnType<typeof fixture>) => input.delegation.caveats.shift(),
+      (input: ReturnType<typeof fixture>) => input.delegation.caveats.reverse(),
+      (input: ReturnType<typeof fixture>) => input.delegation.caveats.push({ ...caveat(input, 0) }),
+      (input: ReturnType<typeof fixture>) => {
+        caveat(input, 0).enforcer = a('ab')
+      },
+      (input: ReturnType<typeof fixture>) => {
+        caveat(input, 0).args = '0x00'
+      },
+    ]) {
+      const input = fixture()
+      change(input)
+      expect(() => assertStrategyGrant(input)).toThrow('Invalid signed strategy grant.')
+    }
+  })
+  it('requires a canonical nonzero uint256 expiry without truncation or trailing bytes', () => {
+    const input = fixture(),
+      valid = caveat(input, 0).terms
+    for (const terms of [
+      '0x',
+      h('00'),
+      valid.slice(0, -2),
+      `${valid}00`,
+      `${valid}0`,
+      '0xzz',
+    ] as Hex[]) {
+      caveat(input, 0).terms = terms
+      expect(() => assertStrategyGrant(input)).toThrow('Invalid signed strategy grant.')
+    }
+    caveat(input, 0).terms = encodeStrategyExpiryTerms((1n << 256n) - 1n)
+    expect(() => assertStrategyGrant(input)).not.toThrow()
+  })
+  it.each([0n, -1n, 1n << 256n])('rejects invalid expiry encoding %s', (expiresAt) => {
+    expect(() => encodeStrategyExpiryTerms(expiresAt)).toThrow('Invalid signed strategy grant.')
   })
   it.each(['delegator', 'delegate', 'authority'] as const)(
     'rejects different delegation %s',

@@ -383,7 +383,10 @@ export const api = {
     req<{ address: string | null; chainId: number; network: string | null }>('/v1/account'),
   /** Deploys one. AiKi pays the gas; the account belongs to the caller. */
   createAccount: () =>
-    req<{ address: string; chainId: number; created: boolean }>('/v1/account', { method: 'POST' }),
+    req<{ address: string; chainId: number; created: boolean }>('/v1/account', {
+      method: 'POST',
+      body: 'null',
+    }),
   /**
    * Exactly what to sign, computed by the side that will verify it. `message` is
    * what the wallet signs; `unsigned` is what to post back, and carries the args
