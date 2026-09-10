@@ -3,9 +3,9 @@ import { requireSession } from '../auth/guard.js'
 import { settlementForPoints } from '../credits/pricing.js'
 import {
   type CreditStore,
-  DuplicateCharge,
   ESCROW_ACCOUNT,
   InsufficientBalance,
+  PostgresCreditStore,
 } from '../credits/store.js'
 import { ClientError } from '../http/errors.js'
 import type { JobService } from '../jobs/service.js'
@@ -101,6 +101,57 @@ export function registerTaskRoutes(
   const text = (value: unknown, max: number) =>
     typeof value === 'string' ? value.trim().slice(0, max) : ''
   const activeRequests = new WeakMap<FastifyRequest, string>()
+  const finalizePayment = async (
+    task: TaskRecord,
+    actor: string,
+    action: 'accept' | 'release' | 'cancel',
+    reply: FastifyReply,
+  ) => {
+    if (!(await requireFunding(task, reply))) return null
+    if (!(input.credits instanceof PostgresCreditStore) || !input.tasks.finalizePayment) {
+      reply.code(503).send({
+        error: {
+          code: 'SETTLEMENT_UNAVAILABLE',
+          message:
+            'This deployment cannot finalize task payments atomically. No task payment was changed.',
+          retryable: false,
+        },
+      })
+      return null
+    }
+    try {
+      const result = await input.tasks.finalizePayment({
+        taskId: task.id,
+        actor,
+        action,
+        ...(input.settlementTreasury ? { treasury: input.settlementTreasury } : {}),
+      })
+      if (result) return result
+      reply.code(409).send({
+        error: {
+          code:
+            action === 'cancel'
+              ? 'TASK_NOT_CANCELLABLE'
+              : action === 'release'
+                ? 'NOT_RELEASABLE'
+                : 'NOTHING_TO_ACCEPT',
+          message:
+            'This task cannot make that payment transition. Refresh Work to see its current state.',
+          retryable: false,
+        },
+      })
+    } catch {
+      reply.code(503).send({
+        error: {
+          code: 'TASK_PAYMENT_UNCONFIRMED',
+          message:
+            'The task payment could not be confirmed. Keep this task and retry the same action; do not fund another task. Existing terminal records may need operator review.',
+          retryable: true,
+        },
+      })
+    }
+    return null
+  }
   const requireFunding = async (task: TaskRecord, reply: FastifyReply) => {
     // Existing injected test stores may omit the read. Both production ledger
     // stores implement it, so shared escrow is never proof of this task's funds.
@@ -873,56 +924,15 @@ export function registerTaskRoutes(
       return reply.code(404).send({
         error: { code: 'TASK_NOT_FOUND', message: 'No such task of yours.', retryable: false },
       })
-    if (!task.claimedBy || task.status !== 'SUBMITTED')
-      return reply.code(409).send({
-        error: {
-          code: 'NOTHING_TO_ACCEPT',
-          message: `Work is accepted once it is handed in. This one is ${task.status}.`,
-          retryable: false,
-        },
-      })
-
-    if (!(await requireFunding(task, reply))) return reply
-
-    // Claim the payout before any money moves, on the same reasoning the job
-    // routes use: only one of accepting and disputing may take a task out of
-    // SUBMITTED, or both could pay out against one funding.
-    const claimed = await input.tasks.advance(task.id, ['SUBMITTED', 'SETTLED'], 'SETTLED')
-    if (!claimed)
-      return reply.code(409).send({
-        error: {
-          code: 'TASK_ALREADY_DECIDED',
-          message: 'Somebody already decided this one.',
-          retryable: false,
-        },
-      })
-
-    const pay = async (to: string, points: number, reason: string) => {
-      if (points <= 0) return
-      try {
-        await credits.transfer({
-          from: ESCROW_ACCOUNT,
-          to,
-          points,
-          reason,
-          reference: `task:${task.id}:${reason}`,
-          detail: { taskId: task.id },
-        })
-      } catch (error) {
-        // Already paid. A retry after a timeout is not a mistake and must not
-        // pay twice, which the reference guarantees.
-        if (!(error instanceof DuplicateCharge)) throw error
-      }
-    }
-    await pay(task.claimedBy, task.pricePoints, 'task_earnings')
-    await pay(treasury, task.feePoints, 'platform_fee')
-
+    const result = await finalizePayment(task, session.address, 'accept', reply)
+    if (!result) return reply
     return {
-      ...claimed,
-      outlay: claimed.outlay.toString(),
-      paidTo: task.claimedBy,
-      paidPoints: task.pricePoints,
-      feePoints: task.feePoints,
+      ...result.task,
+      outlay: result.task.outlay.toString(),
+      paidTo: result.task.claimedBy,
+      paidPoints: result.task.pricePoints,
+      feePoints: result.task.feePoints,
+      alreadyFinalized: result.alreadyFinalized,
     }
   })
 
@@ -957,47 +967,15 @@ export function registerTaskRoutes(
         error: { code: 'TASK_NOT_FOUND', message: 'No such task.', retryable: false },
       })
 
-    if (!(await requireFunding(task, reply))) return reply
-    const released = await input.tasks.claimLapsedReview(task.id, session.address)
-    if (!released)
-      return reply.code(409).send({
-        error: {
-          code: 'NOT_RELEASABLE',
-          message:
-            task.claimedBy !== session.address.toLowerCase()
-              ? 'This is not work you handed in.'
-              : task.status !== 'SUBMITTED'
-                ? `This one is ${task.status}, so there is nothing waiting on the poster.`
-                : `The poster still has until ${task.reviewExpiresAt} to answer.`,
-          retryable: false,
-        },
-      })
-
-    const pay = async (to: string, points: number, reason: string) => {
-      if (points <= 0) return
-      try {
-        await credits.transfer({
-          from: ESCROW_ACCOUNT,
-          to,
-          points,
-          reason,
-          reference: `task:${task.id}:${reason}`,
-          detail: { taskId: task.id, released: true },
-        })
-      } catch (error) {
-        if (!(error instanceof DuplicateCharge)) throw error
-      }
-    }
-    // The same two legs and the same references accepting uses, so whichever
-    // way a task ends it pays once and the ledger reads the same.
-    await pay(session.address, task.pricePoints, 'task_earnings')
-    await pay(treasury, task.feePoints, 'platform_fee')
-
+    const result = await finalizePayment(task, session.address, 'release', reply)
+    if (!result) return reply
     return {
-      ...released,
-      outlay: released.outlay.toString(),
-      paidTo: session.address,
-      paidPoints: task.pricePoints,
+      ...result.task,
+      outlay: result.task.outlay.toString(),
+      paidTo: result.task.claimedBy,
+      paidPoints: result.task.pricePoints,
+      feePoints: result.task.feePoints,
+      alreadyFinalized: result.alreadyFinalized,
     }
   })
 
@@ -1068,66 +1046,13 @@ export function registerTaskRoutes(
         error: { code: 'TASK_NOT_FOUND', message: 'No such task of yours.', retryable: false },
       })
 
-    /*
-     * From OPEN only, and CANCELLED is deliberately not a source.
-     *
-     * Allowing re-entry here was a way to spend a mandate without limit. The
-     * refund transfer is idempotent by reference, so a second cancel moved no
-     * money and looked harmless, but `releaseSpend` is not: it subtracts every
-     * time it is called. Post a task, cancel it, cancel it again, and again,
-     * and the mandate's spend counter walks down to zero while the money spent
-     * on OTHER tasks stays spent. The cap stops meaning anything.
-     *
-     * A crash between this write and the refund below leaves the money in
-     * escrow against a cancelled task, which is visible in the ledger check and
-     * recoverable by hand. That is the right way round: money briefly stuck and
-     * countable beats a cap that quietly resets.
-     */
-    if (!(await requireFunding(task, reply))) return reply
-    const cancelled =
-      (await input.tasks.advance(task.id, ['OPEN'], 'CANCELLED', 'The poster took it back.')) ??
-      /*
-       * Or take it back from somebody who ran out of time.
-       *
-       * For a hire this is the only route out. Assigned work is never returned
-       * to the board, so an agent that was called and never answered would hold
-       * the buyer's money for good without this, and most of this registry does
-       * not answer.
-       */
-      (await input.tasks.cancelLapsedClaim(task.id, session.address))
-    if (!cancelled)
-      return reply.code(409).send({
-        error: {
-          code: 'TASK_NOT_CANCELLABLE',
-          message:
-            task.status === 'CLAIMED' || task.status === 'SUBMITTED'
-              ? 'Somebody is working on this. The money stays where it is until they hand it in, or until their time runs out.'
-              : task.status === 'CANCELLED'
-                ? 'This one is already cancelled and the money is already back.'
-                : `Only open work can be taken back. This one is ${task.status}.`,
-          retryable: false,
-        },
-      })
-
-    let refunded = true
-    try {
-      await credits.transfer({
-        from: ESCROW_ACCOUNT,
-        to: task.poster,
-        points: task.totalPoints,
-        reason: 'task_refund',
-        reference: `task:${task.id}:refund`,
-        detail: { taskId: task.id },
-      })
-    } catch (error) {
-      // Already refunded. The cap was released with it, so it must not be
-      // released a second time.
-      if (!(error instanceof DuplicateCharge)) throw error
-      refunded = false
+    const result = await finalizePayment(task, session.address, 'cancel', reply)
+    if (!result) return reply
+    return {
+      ...result.task,
+      outlay: result.task.outlay.toString(),
+      refundedPoints: result.task.totalPoints,
+      alreadyFinalized: result.alreadyFinalized,
     }
-    if (refunded && task.authorizationId)
-      await input.jobs.releaseSpend(task.authorizationId, task.outlay)
-
-    return { ...cancelled, outlay: cancelled.outlay.toString(), refundedPoints: task.totalPoints }
   })
 }

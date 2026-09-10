@@ -94,6 +94,8 @@ export interface NewTask {
 }
 
 export interface TaskStore {
+  /** Production capability: task state, exact ledger legs and refund cap commit together. */
+  finalizePayment?(input: TaskPaymentInput): Promise<TaskPaymentResult | null>
   /** A committed request claim prevents retries from charging or dispatching twice. */
   beginCreateRequest?(owner: string, key: string, requestHash: string): Promise<TaskRequestClaim>
   completeCreateRequest?(id: string, statusCode: number, body: unknown): Promise<void>
@@ -152,6 +154,17 @@ export interface TaskStore {
     to: TaskStatus,
     resolution?: string,
   ): Promise<TaskRecord | null>
+}
+
+export interface TaskPaymentInput {
+  taskId: string
+  actor: string
+  action: 'accept' | 'release' | 'cancel'
+  treasury?: string
+}
+export interface TaskPaymentResult {
+  task: TaskRecord
+  alreadyFinalized: boolean
 }
 
 export type TaskRequestClaim =
@@ -236,6 +249,193 @@ export class PostgresTaskStore implements TaskStore {
   private readonly sql: postgres.Sql
   constructor(databaseUrl: string) {
     this.sql = postgres(databaseUrl, { max: 4, idle_timeout: 20 })
+  }
+
+  /** No terminal task may commit ahead of its money. Legacy partial terminal
+   * records are not automatically repaired: only this transaction's complete
+   * marked ledger evidence permits a harmless readback retry. */
+  async finalizePayment(input: TaskPaymentInput): Promise<TaskPaymentResult | null> {
+    const address = (value: unknown): value is string =>
+      typeof value === 'string' && /^0x[0-9a-f]{40}$/i.test(value) && !/^0x0{40}$/i.test(value)
+    if (!address(input.actor) || !['accept', 'release', 'cancel'].includes(input.action))
+      throw new Error('Task payment actor or action is invalid.')
+    const actor = lower(input.actor),
+      refund = input.action === 'cancel'
+    if (!refund && !address(input.treasury)) throw new Error('Task payment treasury is invalid.')
+    return this.sql.begin(async (tx) => {
+      const [task] = await tx<
+        (TaskRow & { claim_lapsed: boolean | null; review_lapsed: boolean | null })[]
+      >`
+        SELECT *, claim_expires_at < now() AS claim_lapsed, review_expires_at < now() AS review_lapsed
+        FROM tasks WHERE id = ${input.taskId} FOR UPDATE
+      `
+      if (
+        !task ||
+        (input.action === 'release'
+          ? lower(task.claimed_by ?? '') !== actor
+          : lower(task.poster) !== actor)
+      )
+        return null
+      const terminal = task.status === (refund ? 'CANCELLED' : 'SETTLED')
+      if (
+        !terminal &&
+        (refund
+          ? !(
+              task.status === 'OPEN' ||
+              (task.status === 'CLAIMED' && task.claim_lapsed === true)
+            ) ||
+            task.submission !== null ||
+            task.submitted_at !== null
+          : task.status !== 'SUBMITTED' ||
+            task.submission === null ||
+            task.submitted_at === null ||
+            (input.action === 'release' && task.review_lapsed !== true))
+      )
+        return null
+      const total = BigInt(task.total_points),
+        price = BigInt(task.price_points),
+        fee = BigInt(task.fee_points)
+      if (
+        !address(task.poster) ||
+        (!refund && (!address(task.claimed_by) || lower(task.claimed_by) === lower(task.poster))) ||
+        total <= 0n ||
+        price <= 0n ||
+        fee < 0n ||
+        total > BigInt(Number.MAX_SAFE_INTEGER) ||
+        total !== price + fee
+      )
+        throw new Error('Task payment terms could not be verified.')
+      const id = task.id,
+        fundingReference = `task:${id}:funding`
+      const movements = refund
+        ? [
+            {
+              to: lower(task.poster),
+              points: total,
+              reason: 'task_refund',
+              reference: `task:${id}:refund`,
+            },
+          ]
+        : [
+            {
+              to: lower(task.claimed_by as string),
+              points: price,
+              reason: 'task_earnings',
+              reference: `task:${id}:task_earnings`,
+            },
+            ...(fee > 0n
+              ? [
+                  {
+                    to: lower(input.treasury as string),
+                    points: fee,
+                    reason: 'platform_fee',
+                    reference: `task:${id}:platform_fee`,
+                  },
+                ]
+              : []),
+          ]
+      const allReferences = [
+        fundingReference,
+        `task:${id}:refund`,
+        `task:${id}:task_earnings`,
+        `task:${id}:platform_fee`,
+      ].flatMap((reference) => [`${reference}:out`, `${reference}:in`])
+      const entries = await tx<
+        {
+          owner: string
+          delta: string
+          reason: string
+          reference: string
+          detail: Record<string, unknown>
+        }[]
+      >`
+        SELECT owner, delta::text, reason, reference, detail FROM credit_entries
+        WHERE reference = ANY(${allReferences})
+      `
+      const matching = (reference: string, owner: string, delta: bigint, reason: string) =>
+        entries.find(
+          (e) =>
+            e.reference === reference &&
+            e.owner === owner &&
+            BigInt(e.delta) === delta &&
+            e.reason === reason,
+        )
+      if (
+        !matching(`${fundingReference}:out`, lower(task.poster), -total, 'task_funding') ||
+        !matching(`${fundingReference}:in`, ESCROW_ACCOUNT, total, 'task_funding')
+      )
+        throw new Error('Task payment funding could not be verified.')
+      if (terminal) {
+        if (
+          entries.length !== 2 + 2 * movements.length ||
+          movements.some((m) => {
+            const out = matching(`${m.reference}:out`, ESCROW_ACCOUNT, -m.points, m.reason),
+              incoming = matching(`${m.reference}:in`, m.to, m.points, m.reason)
+            return [out, incoming].some(
+              (e) =>
+                e?.detail.atomicTaskFinalization !== 1 ||
+                e.detail.finalization !== (refund ? 'refund' : 'settlement') ||
+                e.detail.taskId !== id,
+            )
+          })
+        )
+          throw new Error('Task terminal payment needs review; no money was moved.')
+        return { task: toTask(task), alreadyFinalized: true }
+      }
+      if (entries.length !== 2) throw new Error('Task already has conflicting payment evidence.')
+
+      // Match the credit store's ascending owner lock order. The task lock also
+      // excludes callbacks, disputes, and the existing explicit-decline refund.
+      const owners = [...new Set([ESCROW_ACCOUNT, ...movements.map((m) => m.to)])].sort()
+      for (const owner of owners)
+        await tx`INSERT INTO credit_balances (owner, balance) VALUES (${owner}, 0) ON CONFLICT (owner) DO NOTHING`
+      const balances = await tx<{ owner: string; balance: string }[]>`
+        SELECT owner, balance::text FROM credit_balances WHERE owner = ANY(${owners}) ORDER BY owner FOR UPDATE
+      `
+      const changes = new Map<string, bigint>([[ESCROW_ACCOUNT, -total]])
+      for (const m of movements) changes.set(m.to, (changes.get(m.to) ?? 0n) + m.points)
+      if (
+        balances.length !== owners.length ||
+        balances.some((b) => {
+          const next = BigInt(b.balance) + (changes.get(b.owner) ?? 0n)
+          return next < 0n || next > BigInt(Number.MAX_SAFE_INTEGER)
+        })
+      )
+        throw new Error('Task payment balances could not be verified.')
+      const detail = tx.json({
+        taskId: id,
+        atomicTaskFinalization: 1,
+        finalization: refund ? 'refund' : 'settlement',
+      })
+      for (const m of movements)
+        await tx`
+        INSERT INTO credit_entries (id, owner, delta, reason, reference, detail) VALUES
+          (${randomUUID()}, ${ESCROW_ACCOUNT}, ${(-m.points).toString()}, ${m.reason}, ${`${m.reference}:out`}, ${detail}),
+          (${randomUUID()}, ${m.to}, ${m.points.toString()}, ${m.reason}, ${`${m.reference}:in`}, ${detail})
+      `
+      for (const [owner, delta] of changes)
+        await tx`
+        UPDATE credit_balances SET balance = balance + ${delta.toString()}::bigint, updated_at = now() WHERE owner = ${owner}
+      `
+      if (refund && task.authorization_id) {
+        const outlay = BigInt(task.outlay)
+        if (outlay <= 0n) throw new Error('Task mandate reservation could not be verified.')
+        const released = await tx`
+          UPDATE authorizations SET spent = spent - ${outlay.toString()}::numeric
+          WHERE id = ${task.authorization_id} AND spent >= ${outlay.toString()}::numeric
+            AND (owner IS NULL OR lower(owner) = ${lower(task.poster)}) RETURNING id
+        `
+        if (released.length !== 1)
+          throw new Error('Task mandate reservation could not be verified.')
+      }
+      const [finished] = await tx<TaskRow[]>`
+        UPDATE tasks SET status = ${refund ? 'CANCELLED' : 'SETTLED'}, decided_at = now(), updated_at = now(),
+          resolution = ${refund ? 'The task payment was refunded and its reserved allowance returned.' : 'The submitted work was paid in full.'}
+        WHERE id = ${id} RETURNING *
+      `
+      if (!finished) throw new Error('Task payment could not be recorded.')
+      return { task: toTask(finished), alreadyFinalized: false }
+    })
   }
 
   async beginCreateRequest(
