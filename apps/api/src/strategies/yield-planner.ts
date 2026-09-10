@@ -177,6 +177,7 @@ function validate(
         venue.reserves,
         venue.unbacked,
         venue.stableDebt,
+        venue.deficit,
         venue.reserveFactorWad,
         venue.totalSupplied,
         venue.accruedTreasuryAssets,
@@ -186,6 +187,10 @@ function validate(
         venue.observedSupplyRate,
       ].every(uint) ||
       !(venue.supplyCap === null || uint(venue.supplyCap)) ||
+      (venue.model?.kind === 'aave-v3-two-slope' &&
+        (!uint(venue.currentStateSupplyRate) ||
+          !integer(venue.storedRateTimestamp) ||
+          venue.storedRateTimestamp > block.timestamp)) ||
       (id === 'venus' && venue.supplyCap === null) ||
       venue.withdrawalFeeWad >= YIELD_WAD ||
       venue.reserveFactorWad > YIELD_WAD ||
@@ -194,7 +199,7 @@ function validate(
         (venue.receiptRate < YIELD_RAY ||
           venue.reserves !== 0n ||
           venue.withdrawalFeeWad !== 0n)) ||
-      (id === 'venus' && venue.virtualCash !== venue.cash) ||
+      (id === 'venus' && (venue.virtualCash !== venue.cash || venue.deficit !== 0n)) ||
       ![
         venue.active,
         venue.listed,
@@ -366,7 +371,17 @@ export function decideYield(
     for (const id of VENUES) {
       const venue = snapshot.venues[id]
       const modelRate = supplyRateAfter(venue, 0n, snapshot.block, policy)
-      const observed = normalizeYieldRate(venue.observedSupplyRate, venue, snapshot.block, policy)
+      // Aave's cached liquidityRate belongs to its last reserve update, whereas its
+      // debt is accrued to this block. The reader supplies an exact current-state
+      // pinned-model reference; never loosen tolerance to hide that state mismatch.
+      const referenceRate =
+        venue.model?.kind === 'aave-v3-two-slope'
+          ? venue.currentStateSupplyRate
+          : venue.observedSupplyRate
+      const observed =
+        referenceRate === undefined
+          ? null
+          : normalizeYieldRate(referenceRate, venue, snapshot.block, policy)
       if (modelRate === null || observed === null)
         return wait(
           'RATE_MODEL_UNSUPPORTED',

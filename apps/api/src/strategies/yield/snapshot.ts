@@ -31,6 +31,9 @@ const IMPLEMENTATION_SLOT = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a92
 const aggregateAbi = parseAbi([
   'function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)',
 ])
+/** Reviewed Aave V3 model ABI, verified against its pinned BSC deployment. */
+export const AAVE_CURRENT_STATE_RATE_SIGNATURE =
+  'function calculateInterestRates((uint256 unbacked,uint256 liquidityAdded,uint256 liquidityTaken,uint256 totalDebt,uint256 reserveFactor,address reserve,bool usingVirtualBalance,uint256 virtualUnderlyingBalance) params) view returns(uint256 liquidityRate,uint256 variableBorrowRate)'
 const LIMIT_KEYS = [
   'maxPrincipal',
   'maxMove',
@@ -369,6 +372,7 @@ async function readSnapshot(
   add('aVirtual', aave, 'function getVirtualUnderlyingBalance(address) view returns(uint128)', [
     underlying,
   ])
+  add('aDeficit', aave, 'function getReserveDeficit(address) view returns(uint256)', [underlying])
   const callData = encodeFunctionData({
     abi: aggregateAbi,
     functionName: 'aggregate3',
@@ -431,10 +435,15 @@ async function readSnapshot(
   const aCap = big(tuple(values.aCaps, 2)[1])
   const venusRate = big(values.vRate)
   const aaveIndex = big(values.aIndex)
+  const aaveDeficit = big(values.aDeficit),
+    aaveStoredRateTimestamp = num(aData[11]),
+    aaveReserveFactor = big(aConfig[4])
   if (
     num(aConfig[0]) !== 18 ||
     venusRate === 0n ||
     aaveIndex < YIELD_RAY ||
+    aaveStoredRateTimestamp > block.timestamp ||
+    aaveReserveFactor > 10_000n ||
     !address(values.vModel) ||
     !address(values.aModel)
   )
@@ -479,8 +488,38 @@ async function readSnapshot(
     )
       throw new YieldSnapshotUnavailable()
   }
+  let aaveCurrentStateSupplyRate: bigint | undefined
+  if (aaveModel?.kind === 'aave-v3-two-slope' && aaveModel.verified === true) {
+    // The provider returns current accrued debt beside a LAST-UPDATE cached rate.
+    // Compare like-for-like current state using the already code-verified model,
+    // keeping the original cached rate and timestamp as separate economic context.
+    // Source: aave-v3-origin ReserveLogic.updateInterestRatesAndVirtualBalance;
+    // its model `unbacked` parameter is the current reserve deficit, not aData[0].
+    const reference = tuple(
+      await context.read(aaveModel.address, AAVE_CURRENT_STATE_RATE_SIGNATURE, [
+        {
+          unbacked: aaveDeficit,
+          liquidityAdded: 0n,
+          liquidityTaken: 0n,
+          totalDebt: big(aData[4]),
+          reserveFactor: aaveReserveFactor,
+          reserve: underlying,
+          usingVirtualBalance: true,
+          virtualUnderlyingBalance: big(values.aVirtual),
+        },
+      ]),
+      2,
+    )
+    aaveCurrentStateSupplyRate = big(reference[0])
+    big(reference[1])
+  }
   const canonical = await client.getBlock({ blockNumber: block.number })
-  if (!same(canonical.hash, block.hash) || canonical.number !== block.number)
+  if (
+    !same(canonical.hash, block.hash) ||
+    canonical.number !== block.number ||
+    num(canonical.timestamp) !== block.timestamp ||
+    (await client.getChainId()) !== 56
+  )
     throw new YieldSnapshotUnavailable()
   const rawLimits = tuple(values.limits, 9)
   const limits = Object.fromEntries(
@@ -533,6 +572,7 @@ async function readSnapshot(
         reserves: big(values.vReserves),
         unbacked: 0n,
         stableDebt: 0n,
+        deficit: 0n,
         reserveFactorWad: big(values.vFactor),
         totalSupplied: (big(values.vSupply) * venusRate) / YIELD_WAD,
         accruedTreasuryAssets: 0n,
@@ -559,7 +599,8 @@ async function readSnapshot(
         reserves: 0n,
         unbacked: big(aData[0]),
         stableDebt: big(aData[3]),
-        reserveFactorWad: (big(aConfig[4]) * YIELD_WAD) / 10_000n,
+        deficit: aaveDeficit,
+        reserveFactorWad: (aaveReserveFactor * YIELD_WAD) / 10_000n,
         totalSupplied: big(aData[2]),
         accruedTreasuryAssets: ceilDiv(big(aData[1]) * aaveIndex, YIELD_RAY),
         supplyCap: aCap === 0n ? null : aCap * YIELD_WAD,
@@ -567,6 +608,10 @@ async function readSnapshot(
         receiptRate: aaveIndex,
         actualReceiptBalance: big(values.aBalance),
         observedSupplyRate: big(aData[5]),
+        storedRateTimestamp: aaveStoredRateTimestamp,
+        ...(aaveCurrentStateSupplyRate === undefined
+          ? {}
+          : { currentStateSupplyRate: aaveCurrentStateSupplyRate }),
         model: aaveModel,
       },
     },

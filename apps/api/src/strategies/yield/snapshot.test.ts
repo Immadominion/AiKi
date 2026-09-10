@@ -2,6 +2,7 @@ import {
   type Abi,
   decodeFunctionData,
   encodeFunctionResult,
+  getAddress,
   type Hex,
   keccak256,
   pad,
@@ -15,8 +16,10 @@ import { snapshotFixture } from '../snapshot.test-support.js'
 import { YIELD_RAY as R, YIELD_WAD as U } from './rates.js'
 import {
   YIELD_READ_ADDRESSES as A,
+  AAVE_CURRENT_STATE_RATE_SIGNATURE,
   readYieldSnapshot,
   type YieldSnapshotConfig,
+  type YieldSnapshotResolvers,
   YieldSnapshotUnavailable,
 } from './snapshot.js'
 import type { YieldAddress } from './types.js'
@@ -205,8 +208,18 @@ function fixture() {
     'function getVirtualUnderlyingBalance(address) view returns(uint128)',
     100_000n * U,
   )
+  register('aDeficit', A.aave, 'function getReserveDeficit(address) view returns(uint256)', 0n)
   const order: string[] = []
-  const behavior = { trailingVenusPadding: true, failedLeg: '', truncate: false }
+  const modelAbi = parseAbi([AAVE_CURRENT_STATE_RATE_SIGNATURE])
+  const modelCalls: { to: YieldAddress; blockNumber: bigint; args: unknown }[] = []
+  values.aCurrentRates = [100n, 200n]
+  const behavior = {
+    trailingVenusPadding: true,
+    failedLeg: '',
+    truncate: false,
+    modelFailure: '',
+    afterModelRead: () => {},
+  }
   const client = {
     getChainId: vi.fn(async () => 56),
     getBlock: vi.fn(async () => ({ number: BLOCK, hash: HASH as Hex, timestamp: TIME })),
@@ -223,6 +236,22 @@ function fixture() {
     call: vi.fn(
       async ({ to, data, blockNumber }: { to: YieldAddress; data: Hex; blockNumber: bigint }) => {
         expect(blockNumber).toBe(BLOCK)
+        if (data.slice(0, 10) === toFunctionSelector(AAVE_CURRENT_STATE_RATE_SIGNATURE)) {
+          const decoded = decodeFunctionData({ abi: modelAbi, data })
+          modelCalls.push({ to, blockNumber, args: decoded.args })
+          if (behavior.modelFailure === 'revert') throw Error('Test model read unavailable')
+          behavior.afterModelRead()
+          return {
+            data:
+              behavior.modelFailure === 'malformed'
+                ? ('0x' as Hex)
+                : encodeFunctionResult({
+                    abi: modelAbi,
+                    functionName: 'calculateInterestRates',
+                    result: values.aCurrentRates as readonly [bigint, bigint],
+                  }),
+          }
+        }
         if (to !== A.multicall)
           return {
             data: encodeFunctionResult({
@@ -260,10 +289,119 @@ function fixture() {
   }
   // Only the read methods used by the production reader are mocked; no wallet or send method exists.
   const readClient = client as unknown as Parameters<typeof readYieldSnapshot>[0]
-  return { config, values, client, readClient, order, behavior }
+  return { config, values, client, readClient, order, behavior, modelCalls }
+}
+
+const aaveResolvers: YieldSnapshotResolvers = {
+  model: async (id, address, ctx) =>
+    id !== 'aave'
+      ? null
+      : {
+          kind: 'aave-v3-two-slope',
+          address,
+          runtimeHash: await ctx.codeHash(address),
+          verified: true,
+          clock: { kind: 'annual', scale: R },
+          baseBorrowRate: 0n,
+          slopeBelowKink: 44n * 10n ** 24n,
+          slopeAboveKink: 100n * 10n ** 24n,
+          kinkWad: 9n * 10n ** 17n,
+        },
 }
 
 describe('verified same-block yield reader', () => {
+  it('binds Aave current-rate reference to exact accrued debt, deficit, virtual cash and reviewed model', async () => {
+    const f = fixture(),
+      data = f.values.aData as bigint[]
+    f.values.aDeficit = 1498702276233149882n
+    data[11] = TIME - 39n
+    const snapshot = await readYieldSnapshot(f.readClient, f.config, aaveResolvers)
+    expect(f.modelCalls).toEqual([
+      {
+        to: addr('8'),
+        blockNumber: BLOCK,
+        args: [
+          {
+            unbacked: f.values.aDeficit,
+            liquidityAdded: 0n,
+            liquidityTaken: 0n,
+            totalDebt: data[4],
+            reserveFactor: 1000n,
+            reserve: getAddress(A.underlying),
+            usingVirtualBalance: true,
+            virtualUnderlyingBalance: f.values.aVirtual,
+          },
+        ],
+      },
+    ])
+    expect(snapshot.venues.aave).toMatchObject({
+      deficit: f.values.aDeficit,
+      debt: data[4],
+      unbacked: 0n,
+      stableDebt: 0n,
+      currentStateSupplyRate: 100n,
+      observedSupplyRate: data[5],
+      storedRateTimestamp: Number(TIME - 39n),
+    })
+    expect(snapshot.venues.venus.deficit).toBe(0n)
+    expect(snapshot.venues.venus.currentStateSupplyRate).toBeUndefined()
+  })
+  it.each(['revert', 'malformed'])(
+    'does not return partial evidence on %s current-rate reads',
+    async (failure) => {
+      const f = fixture()
+      f.behavior.modelFailure = failure
+      await expect(readYieldSnapshot(f.readClient, f.config, aaveResolvers)).rejects.toBeInstanceOf(
+        YieldSnapshotUnavailable,
+      )
+    },
+  )
+  it.each(['hash', 'timestamp', 'chain'])(
+    'rechecks canonical %s after the current-rate call',
+    async (field) => {
+      const f = fixture()
+      f.behavior.afterModelRead = () => {
+        if (field === 'chain') f.client.getChainId.mockResolvedValue(97)
+        else
+          f.client.getBlock.mockResolvedValue({
+            number: BLOCK,
+            hash: field === 'hash' ? keccak256('0xff') : HASH,
+            timestamp: field === 'timestamp' ? TIME + 1n : TIME,
+          })
+      }
+      await expect(readYieldSnapshot(f.readClient, f.config, aaveResolvers)).rejects.toBeInstanceOf(
+        YieldSnapshotUnavailable,
+      )
+    },
+  )
+  it('never calls an unverified model or infers missing model evidence from the cached rate', async () => {
+    const f = fixture(),
+      noModel = await readYieldSnapshot(f.readClient, f.config)
+    expect(noModel.venues.aave.currentStateSupplyRate).toBeUndefined()
+    expect(f.modelCalls).toHaveLength(0)
+    await expect(
+      readYieldSnapshot(f.readClient, f.config, {
+        model: async (...args) => {
+          const model = await aaveResolvers.model?.(...args)
+          return model ? { ...model, runtimeHash: keccak256('0xffff') } : null
+        },
+      }),
+    ).rejects.toBeInstanceOf(YieldSnapshotUnavailable)
+    expect(f.modelCalls).toHaveLength(0)
+  })
+  it('requires the actual deficit read and a non-future stored-rate timestamp', async () => {
+    const f = fixture()
+    f.behavior.failedLeg = 'aDeficit'
+    await expect(readYieldSnapshot(f.readClient, f.config, aaveResolvers)).rejects.toBeInstanceOf(
+      YieldSnapshotUnavailable,
+    )
+    f.behavior.failedLeg = ''
+    ;(f.values.aData as bigint[])[11] = TIME + 1n
+    await expect(readYieldSnapshot(f.readClient, f.config, aaveResolvers)).rejects.toBeInstanceOf(
+      YieldSnapshotUnavailable,
+    )
+    expect(f.modelCalls).toHaveLength(0)
+  })
   async function pinnedFixture() {
     const f = fixture(),
       sf = snapshotFixture('yield', {

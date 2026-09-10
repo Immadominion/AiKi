@@ -68,6 +68,9 @@ export function supplyRateAfter(
     !model ||
     venue.unbacked !== 0n ||
     venue.stableDebt !== 0n ||
+    typeof venue.deficit !== 'bigint' ||
+    venue.deficit < 0n ||
+    (model.kind !== 'aave-v3-two-slope' && venue.deficit !== 0n) ||
     venue.reserveFactorWad < 0n ||
     venue.reserveFactorWad > YIELD_WAD ||
     model.baseBorrowRate < 0n
@@ -128,6 +131,9 @@ export function supplyRateAfter(
     const rayMul = (a: bigint, b: bigint) => (a * b + YIELD_RAY / 2n) / YIELD_RAY
     const rayDiv = (a: bigint, b: bigint) => (a * YIELD_RAY + b / 2n) / b
     const use = denominator === 0n ? 0n : rayDiv(venue.debt, denominator)
+    // Aave ReserveLogic passes reserve.deficit as the model's `unbacked` input.
+    // It dilutes supply usage only; including it in borrow usage changes the curve.
+    const supplyUse = venue.debt === 0n ? 0n : rayDiv(venue.debt, denominator + venue.deficit)
     const kink = model.kinkWad * (YIELD_RAY / YIELD_WAD)
     const borrow =
       model.baseBorrowRate +
@@ -135,7 +141,7 @@ export function supplyRateAfter(
         ? model.slopeBelowKink + rayMul(model.slopeAboveKink, rayDiv(use - kink, YIELD_RAY - kink))
         : rayDiv(rayMul(model.slopeBelowKink, use), kink))
     const factorBps = BPS - (venue.reserveFactorWad * BPS) / YIELD_WAD
-    const nativeSupplyRate = (rayMul(borrow, use) * factorBps + BPS / 2n) / BPS
+    const nativeSupplyRate = (rayMul(borrow, supplyUse) * factorBps + BPS / 2n) / BPS
     const annual = normalizeYieldRate(nativeSupplyRate, venue, block, policy)
     return annual !== null && annual <= 1_000n * YIELD_RAY ? annual : null
   }

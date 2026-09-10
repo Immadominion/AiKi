@@ -95,6 +95,8 @@ export interface YieldVenueSnapshot {
   reserves: bigint
   unbacked: bigint
   stableDebt: bigint
+  /** Current Aave reserve deficit; distinct from deprecated unbacked/stable debt. Venus is zero. */
+  deficit: bigint
   reserveFactorWad: bigint
   totalSupplied: bigint
   accruedTreasuryAssets: bigint
@@ -105,6 +107,10 @@ export interface YieldVenueSnapshot {
   receiptRate: bigint
   actualReceiptBalance: bigint
   observedSupplyRate: bigint
+  /** Aave cached liquidityRate is historical even inside a current block-pinned read. */
+  storedRateTimestamp?: number
+  /** Exact pinned-model calculateInterestRates result for this snapshot's current raw inputs. */
+  currentStateSupplyRate?: bigint
   model: YieldRateModel | null
 }
 

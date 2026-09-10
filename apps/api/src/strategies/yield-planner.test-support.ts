@@ -40,6 +40,7 @@ export function yieldPlannerFixture(): { snapshot: YieldSnapshot; policy: YieldP
     reserves: 0n,
     unbacked: 0n,
     stableDebt: 0n,
+    deficit: 0n,
     reserveFactorWad: U / 10n,
     totalSupplied: 200_000n * U,
     accruedTreasuryAssets: 0n,

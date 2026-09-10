@@ -146,6 +146,7 @@ function venue(
     reserves: 0n,
     unbacked: 0n,
     stableDebt: 0n,
+    deficit: 0n,
     reserveFactorWad: U / 10n,
     totalSupplied: cash + debt,
     accruedTreasuryAssets: 0n,
