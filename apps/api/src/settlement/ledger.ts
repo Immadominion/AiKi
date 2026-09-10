@@ -1,10 +1,5 @@
 import type { CreditStore } from '../credits/store.js'
-import {
-  DuplicateCharge,
-  DuplicateDeposit,
-  ESCROW_ACCOUNT,
-  InsufficientBalance,
-} from '../credits/store.js'
+import { DuplicateCharge, ESCROW_ACCOUNT, InsufficientBalance } from '../credits/store.js'
 import { priceJob } from './pricing.js'
 
 /**
@@ -122,17 +117,28 @@ export async function settleJob(input: {
   let alreadySettled = false
   const pay = async (owner: string, points: number, reason: string) => {
     if (points <= 0) return
+    const transfer = {
+      from: ESCROW_ACCOUNT,
+      to: owner,
+      points,
+      reason,
+      reference: `job:${input.jobId}:${reason}`,
+      detail: { jobId: input.jobId },
+    }
+    if (!input.credits.transferRecorded)
+      throw new Error('Exact settlement ledger readback is unavailable.')
+    // A prior leg can have spent the last escrow points. Check its exact pair
+    // before transfer's balance guard, not merely its duplicate reference.
+    if (await input.credits.transferRecorded(transfer)) {
+      alreadySettled = true
+      return
+    }
     try {
-      await input.credits.transfer({
-        from: ESCROW_ACCOUNT,
-        to: owner,
-        points,
-        reason,
-        reference: `job:${input.jobId}:${reason}`,
-        detail: { jobId: input.jobId },
-      })
+      await input.credits.transfer(transfer)
     } catch (error) {
-      if (error instanceof DuplicateCharge || error instanceof DuplicateDeposit) {
+      // A concurrent payout or a lost COMMIT acknowledgement is completed only
+      // when BOTH exact legs are durable. A duplicate with changed terms is not.
+      if (await input.credits.transferRecorded(transfer)) {
         alreadySettled = true
         return
       }

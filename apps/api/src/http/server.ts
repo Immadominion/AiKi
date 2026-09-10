@@ -40,7 +40,7 @@ import { ReceiptService } from '../receipts/service.js'
 import { registerWatchRoutes, type WatchActivationReader } from '../runner/routes.js'
 import type { WatchStore } from '../runner/store.js'
 import { buildSearchQuery } from '../search/query.js'
-import { fundJob, InsufficientPoints, refundJob, settleJob } from '../settlement/ledger.js'
+import { fundJob, InsufficientPoints, settleJob } from '../settlement/ledger.js'
 import { buildQuote, priceJob, SETTLEMENT } from '../settlement/pricing.js'
 import { priceForQuote, publishedAsset } from '../settlement/published-price.js'
 import { registerStrategyRoutes } from '../strategies/routes.js'
@@ -1238,6 +1238,40 @@ export function createApiServer(input: {
           },
         })
 
+      if (!['AUTHORIZED', 'FUNDED'].includes(job.status))
+        return reply.code(409).send({
+          error: {
+            code: 'JOB_NOT_FUNDABLE',
+            message: 'This job cannot be funded or reopened.',
+            retryable: false,
+          },
+        })
+      jobs.requireCreditPaymentStore()
+      if (job.status === 'FUNDED') {
+        if (!job.sale || request.body?.agentId !== job.sale.agentId)
+          return reply.code(409).send({
+            error: {
+              code: 'JOB_ALREADY_SOLD',
+              message: 'This retry does not match the recorded sale.',
+              retryable: false,
+            },
+          })
+        const confirmed = await jobs.claimCreditPayment({
+          jobId: job.id,
+          buyer: session.address,
+          status: 'FUNDED',
+        })
+        return reply.code(409).send({
+          error: {
+            code: confirmed ? 'JOB_ALREADY_FUNDED' : 'JOB_NOT_FUNDABLE',
+            message: confirmed
+              ? 'This job has already been paid for. Nothing was taken again.'
+              : 'This job cannot be funded or reopened.',
+            retryable: false,
+          },
+        })
+      }
+
       const agentId = request.body?.agentId
       if (!agentId)
         return reply.code(400).send({
@@ -1342,6 +1376,7 @@ export function createApiServer(input: {
         await jobs.recordSale(job.id, terms)
       }
 
+      let fundingMoved = false
       try {
         const held = await fundJob({
           credits: input.assistant.credits,
@@ -1349,9 +1384,26 @@ export function createApiServer(input: {
           buyer: session.address,
           totalPoints: total,
         })
-        await jobs.advance(job.id, 'FUNDED', `Buyer funded ${total} points for agent ${agentId}.`)
+        fundingMoved = true
+        if (
+          !(await jobs.claimCreditPayment({
+            jobId: job.id,
+            buyer: session.address,
+            status: 'FUNDED',
+          }))
+        )
+          return reply.code(409).send({
+            error: {
+              code: 'JOB_NOT_FUNDABLE',
+              message: 'This job changed after funding. Review this payment; do not pay again.',
+              retryable: false,
+            },
+          })
         return { jobId: job.id, agentId, ...held, status: 'FUNDED' }
       } catch (error) {
+        // Once a transfer returned successfully, a later proof/state failure
+        // must not restore a cap for points that remain committed in escrow.
+        if (fundingMoved) throw error
         if (error instanceof InsufficientPoints) {
           await releaseCap()
           return reply.code(402).send({
@@ -1368,7 +1420,20 @@ export function createApiServer(input: {
           // A retry of a funding that already went through. The cap was charged
           // for it the first time, so the charge this call made comes back.
           await releaseCap()
-          await jobs.advance(job.id, 'FUNDED', `Funding confirmed for agent ${agentId}.`)
+          if (
+            !(await jobs.claimCreditPayment({
+              jobId: job.id,
+              buyer: session.address,
+              status: 'FUNDED',
+            }))
+          )
+            return reply.code(409).send({
+              error: {
+                code: 'JOB_NOT_FUNDABLE',
+                message: 'This job cannot be funded or reopened.',
+                retryable: false,
+              },
+            })
           return reply.code(409).send({
             error: {
               code: 'JOB_ALREADY_FUNDED',
@@ -1459,12 +1524,11 @@ export function createApiServer(input: {
        * before the money moved can finish; the transfers are idempotent by
        * reference, so re-entering pays nobody twice.
        */
-      const claimed = await jobs.claim(
-        job.id,
-        ['FUNDED', 'COMPLETED', 'SETTLED'],
-        'SETTLED',
-        'Settlement claimed.',
-      )
+      const claimed = await jobs.claimCreditPayment({
+        jobId: job.id,
+        buyer: session.address,
+        status: 'SETTLED',
+      })
       if (!claimed)
         return reply.code(409).send({
           error: {
@@ -1607,9 +1671,6 @@ export function createApiServer(input: {
             retryable: false,
           },
         })
-      // Read first, claim second. Cancelling a job and then refusing to refund
-      // it leaves somebody looking at a cancelled job that still has their
-      // money, which is the worst of both answers.
       const sale = job.sale
       if (!sale)
         return reply.code(409).send({
@@ -1620,15 +1681,30 @@ export function createApiServer(input: {
           },
         })
 
-      // The same claim, from the other side. Only one of settle and refund can
-      // take a job out of FUNDED, so only one can be paid out of the escrow.
-      const claimedRefund = await jobs.claim(
-        job.id,
-        ['FUNDED', 'CANCELLED'],
-        'CANCELLED',
-        'Refund claimed.',
-      )
-      if (!claimedRefund)
+      // One durable operation owns cancellation, both refund legs and the cap.
+      // A lost commit acknowledgement can only be retried against this same job.
+      let back: Awaited<ReturnType<JobService['refundFundedJob']>>
+      try {
+        back = await jobs.refundFundedJob({
+          jobId: job.id,
+          buyer: session.address,
+          because:
+            typeof request.body?.because === 'string'
+              ? request.body.because.slice(0, 200)
+              : 'the buyer asked for it back',
+        })
+      } catch (error) {
+        if (error instanceof ClientError) throw error
+        return reply.code(503).send({
+          error: {
+            code: 'JOB_REFUND_UNCONFIRMED',
+            message:
+              'The refund could not be confirmed. Retry this same job; do not create another payment.',
+            retryable: true,
+          },
+        })
+      }
+      if (!back)
         return reply.code(409).send({
           error: {
             code: 'JOB_NOT_REFUNDABLE',
@@ -1640,24 +1716,6 @@ export function createApiServer(input: {
           },
         })
 
-      const back = await refundJob({
-        credits,
-        jobId: job.id,
-        buyer: session.address,
-        // Exactly what was taken, read from the sale rather than recomputed.
-        totalPoints: sale.totalPoints,
-        because: request.body?.because?.slice(0, 200) ?? 'the buyer asked for it back',
-      })
-      /*
-       * The cap gets it back too. Funding counted this hire against the
-       * mandate's lifetime total, and the money has now gone back to the buyer,
-       * so leaving the charge standing would spend somebody's allowance on a
-       * purchase that was undone. Exactly the number that was charged, read off
-       * the sale, because working it out again from the points would round a
-       * second time and disagree with the first.
-       */
-      await jobs.releaseSpend(job.authorizationId, sale.outlay)
-      await jobs.advance(job.id, 'CANCELLED', `Refunded ${back.refunded} points to the buyer.`)
       return { jobId: job.id, ...back, status: 'CANCELLED' }
     },
   )

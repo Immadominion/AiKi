@@ -78,6 +78,23 @@ export interface SpendVerdict {
   spend: bigint
 }
 
+export interface JobRefundInput {
+  jobId: string
+  buyer: string
+  because: string
+}
+
+export interface JobRefundResult {
+  refunded: number
+  alreadyRefunded: boolean
+}
+
+export interface CreditPaymentClaim {
+  jobId: string
+  buyer: string
+  status: 'FUNDED' | 'SETTLED'
+}
+
 /**
  * Where authorizations, jobs, and receipts actually live.
  *
@@ -110,6 +127,10 @@ export interface ApprovalRequest {
 }
 
 export interface JobStore {
+  /** Refund, release the exact reservation and cancel in one ledger transaction. */
+  refundFundedJob?(input: JobRefundInput): Promise<JobRefundResult | null>
+  /** Claim a money state only against exact, original, unrefunded funding. */
+  claimCreditPayment?(input: CreditPaymentClaim): Promise<boolean>
   beginExecution(attempt: ExecutionAttempt): Promise<boolean>
   pendingExecution(authorizationId: string): Promise<ExecutionAttempt | null>
   pendingExecutionForExecutor(chainId: number, address?: string): Promise<ExecutionAttempt | null>

@@ -2,15 +2,20 @@ import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
 import postgres from 'postgres'
 import type { CompiledPolicy } from '../authority/policy.js'
+import { ESCROW_ACCOUNT } from '../credits/store.js'
 import type { ExecutionAttempt, ExecutionState } from '../execution/attempts.js'
 import { ClientError } from '../http/errors.js'
+import { priceJob } from '../settlement/pricing.js'
 import { authorizationReplay } from './authorization-retry.js'
 import type {
   ApprovalRequest,
   AuthorizationRecord,
   AuthorizationStatus,
+  CreditPaymentClaim,
   JobEvent,
   JobRecord,
+  JobRefundInput,
+  JobRefundResult,
   JobStatus,
   JobStore,
   SpendVerdict,
@@ -357,6 +362,216 @@ export class PostgresJobStore implements JobStore {
       SET spent = GREATEST(spent - ${amount.toString()}, 0)
       WHERE id = ${authorizationId}
     `
+  }
+
+  async refundFundedJob(input: JobRefundInput): Promise<JobRefundResult | null> {
+    const review = () =>
+      new ClientError('This job needs a ledger review before any refund can be confirmed.', {
+        statusCode: 409,
+        code: 'JOB_REFUND_REVIEW_REQUIRED',
+      })
+    return this.sql.begin(async (tx) => {
+      // Serialize against the settlement claim before touching the shared escrow.
+      const [job] = await tx<JobRow[]>`SELECT * FROM jobs WHERE id = ${input.jobId} FOR UPDATE`
+      if (!job || !['FUNDED', 'CANCELLED'].includes(job.status)) return null
+      if (
+        job.sold_agent_id === null ||
+        job.sold_total_points === null ||
+        job.sold_price_points === null ||
+        job.sold_outlay === null
+      )
+        throw review()
+      const points = BigInt(job.sold_total_points),
+        price = BigInt(job.sold_price_points),
+        outlay = BigInt(job.sold_outlay),
+        buyer = input.buyer.toLowerCase()
+      if (
+        points <= 0n ||
+        points > BigInt(Number.MAX_SAFE_INTEGER) ||
+        price <= 0n ||
+        price > points ||
+        outlay <= 0n ||
+        outlay >= 1n << 256n ||
+        !/^0x[0-9a-f]{40}$/.test(buyer)
+      )
+        throw review()
+      const funding = `job:${job.id}:funding`,
+        refund = `job:${job.id}:refund`,
+        marker = JSON.stringify({
+          kind: 'atomic_job_refund_v1',
+          jobId: job.id,
+          authorizationId: job.authorization_id,
+          buyer,
+          points: points.toString(),
+          outlay: outlay.toString(),
+        })
+      const entries = await tx<
+        { owner: string; delta: string; reason: string; reference: string }[]
+      >`
+        SELECT owner, delta::text, reason, reference FROM credit_entries
+        WHERE reference = ANY(${[
+          `${funding}:out`,
+          `${funding}:in`,
+          refund,
+          `${refund}:out`,
+          `${refund}:in`,
+          ...['job_earnings', 'platform_fee'].flatMap((reason) =>
+            ['', ':out', ':in'].map((suffix) => `job:${job.id}:${reason}${suffix}`),
+          ),
+        ]})
+      `
+      const exact = (reference: string, owner: string, delta: bigint, reason: string) => {
+        const row = entries.find((entry) => entry.reference === reference)
+        return !!row && row.owner === owner && BigInt(row.delta) === delta && row.reason === reason
+      }
+      if (
+        !exact(`${funding}:out`, buyer, -points, 'job_funding') ||
+        !exact(`${funding}:in`, ESCROW_ACCOUNT, points, 'job_funding') ||
+        entries.some(
+          (entry) =>
+            entry.reference.includes(':job_earnings') || entry.reference.includes(':platform_fee'),
+        )
+      )
+        throw review()
+      // Same lock order as credit transfers, then the mandate reservation.
+      const owners = [buyer, ESCROW_ACCOUNT].sort()
+      const balances = await tx<{ owner: string; balance: string }[]>`
+        SELECT owner, balance::text FROM credit_balances
+        WHERE owner = ANY(${owners}) ORDER BY owner FOR UPDATE
+      `
+      const [authorization] = await tx<{ owner: string | null; spent: string }[]>`
+        SELECT owner, spent::text FROM authorizations WHERE id = ${job.authorization_id} FOR UPDATE
+      `
+      if (authorization?.owner?.toLowerCase() !== buyer) throw review()
+      const markers = await tx`
+        SELECT seq FROM job_events WHERE job_id = ${job.id} AND type = 'spend' AND detail = ${marker}
+      `
+      if (job.status === 'CANCELLED') {
+        // Historical cancellation/refund writes did not atomically release the cap.
+        // Neither their status nor their credit entries alone prove a safe replay.
+        if (
+          markers.length !== 1 ||
+          entries.length !== 4 ||
+          !exact(`${refund}:out`, ESCROW_ACCOUNT, -points, 'job_refund') ||
+          !exact(`${refund}:in`, buyer, points, 'job_refund')
+        )
+          throw review()
+        return { refunded: 0, alreadyRefunded: true }
+      }
+      const escrow = balances.find((balance) => balance.owner === ESCROW_ACCOUNT),
+        payer = balances.find((balance) => balance.owner === buyer)
+      if (
+        entries.length !== 2 ||
+        markers.length !== 0 ||
+        balances.length !== 2 ||
+        !escrow ||
+        !payer ||
+        BigInt(escrow.balance) < points ||
+        BigInt(payer.balance) < 0n ||
+        BigInt(payer.balance) + points > BigInt(Number.MAX_SAFE_INTEGER) ||
+        BigInt(authorization.spent) < outlay
+      )
+        throw review()
+      const detail = tx.json({
+        jobId: job.id,
+        because: input.because.slice(0, 200),
+        atomicRefundVersion: 1,
+      })
+      await tx`
+        INSERT INTO credit_entries (id, owner, delta, reason, reference, detail) VALUES
+          (${randomUUID()}, ${ESCROW_ACCOUNT}, ${(-points).toString()}, 'job_refund', ${`${refund}:out`}, ${detail}),
+          (${randomUUID()}, ${buyer}, ${points.toString()}, 'job_refund', ${`${refund}:in`}, ${detail})
+      `
+      await tx`
+        UPDATE credit_balances SET balance = balance + CASE WHEN owner = ${buyer}
+          THEN ${points.toString()}::bigint ELSE ${(-points).toString()}::bigint END, updated_at = now()
+        WHERE owner = ANY(${owners})
+      `
+      await tx`UPDATE authorizations SET spent = spent - ${outlay.toString()}::numeric WHERE id = ${job.authorization_id}`
+      await tx`UPDATE jobs SET status = 'CANCELLED', updated_at = now() WHERE id = ${job.id}`
+      await tx`
+        INSERT INTO job_events (job_id, type, detail, at) VALUES
+          (${job.id}, 'spend', ${marker}, now()),
+          (${job.id}, 'status', ${`Refunded ${points} points to the buyer.`}, now())
+      `
+      return { refunded: Number(points), alreadyRefunded: false }
+    })
+  }
+
+  async claimCreditPayment(input: CreditPaymentClaim): Promise<boolean> {
+    return this.sql.begin(async (tx) => {
+      const [job] = await tx<JobRow[]>`SELECT * FROM jobs WHERE id = ${input.jobId} FOR UPDATE`
+      const from =
+        input.status === 'FUNDED' ? ['AUTHORIZED', 'FUNDED'] : ['FUNDED', 'COMPLETED', 'SETTLED']
+      if (!job || !from.includes(job.status)) return false
+      const invalid = () =>
+        new ClientError('The original unrefunded job payment could not be verified.', {
+          statusCode: 409,
+          code: 'JOB_PAYMENT_REVIEW_REQUIRED',
+        })
+      if (
+        job.sold_total_points === null ||
+        job.sold_price_points === null ||
+        job.sold_agent_id === null
+      )
+        throw invalid()
+      const points = BigInt(job.sold_total_points),
+        price = BigInt(job.sold_price_points),
+        buyer = input.buyer.toLowerCase()
+      if (
+        points <= 0n ||
+        points > BigInt(Number.MAX_SAFE_INTEGER) ||
+        price <= 0n ||
+        priceJob(price).total !== points ||
+        !/^0x[0-9a-f]{40}$/.test(buyer)
+      )
+        throw invalid()
+      const [authorization] = await tx<{ owner: string | null }[]>`
+        SELECT owner FROM authorizations WHERE id = ${job.authorization_id} FOR SHARE
+      `
+      if (authorization?.owner?.toLowerCase() !== buyer) throw invalid()
+      const funding = `job:${job.id}:funding`,
+        refund = `job:${job.id}:refund`
+      const entries = await tx<
+        { owner: string; delta: string; reason: string; reference: string }[]
+      >`
+        SELECT owner, delta::text, reason, reference FROM credit_entries WHERE reference = ANY(${[
+          `${funding}:out`,
+          `${funding}:in`,
+          refund,
+          `${refund}:out`,
+          `${refund}:in`,
+          ...['job_earnings', 'platform_fee'].flatMap((reason) =>
+            ['', ':out', ':in'].map((suffix) => `job:${job.id}:${reason}${suffix}`),
+          ),
+        ]})
+      `
+      const paid = entries.find((entry) => entry.reference === `${funding}:out`),
+        held = entries.find((entry) => entry.reference === `${funding}:in`)
+      if (
+        !paid ||
+        !held ||
+        paid.owner !== buyer ||
+        held.owner !== ESCROW_ACCOUNT ||
+        paid.reason !== 'job_funding' ||
+        held.reason !== 'job_funding' ||
+        BigInt(paid.delta) !== -points ||
+        BigInt(held.delta) !== points ||
+        entries.some(
+          (entry) => entry.reference === refund || entry.reference.startsWith(`${refund}:`),
+        ) ||
+        (input.status === 'FUNDED' && entries.length !== 2)
+      )
+        throw invalid()
+      // In particular, a late duplicate funding acknowledgement cannot reopen
+      // a CANCELLED/SETTLED job after another request won its row lock.
+      if (job.status !== input.status) {
+        await tx`UPDATE jobs SET status = ${input.status}, updated_at = now() WHERE id = ${job.id}`
+        await tx`INSERT INTO job_events (job_id, type, detail, at)
+          VALUES (${job.id}, 'status', ${input.status === 'FUNDED' ? 'Original funding confirmed.' : 'Settlement claimed against original funding.'}, now())`
+      }
+      return true
+    })
   }
 
   async requestApproval(

@@ -17,9 +17,11 @@ import { ClientError } from '../http/errors.js'
 import { authorizationOperationId } from './authorization-retry.js'
 import {
   type AuthorizationRecord,
+  type CreditPaymentClaim,
   InMemoryJobStore,
   type JobEvent,
   type JobRecord,
+  type JobRefundInput,
   type JobStatus,
   type JobStore,
 } from './store.js'
@@ -316,6 +318,29 @@ export class JobService {
   /** Give back an amount counted against the cap that the chain then refused. */
   async releaseSpend(authorizationId: string, amount: bigint): Promise<void> {
     await this.store.releaseSpend(authorizationId, amount)
+  }
+
+  async refundFundedJob(input: JobRefundInput) {
+    if (!this.store.refundFundedJob)
+      throw new ClientError('This deployment cannot atomically refund this job.', {
+        statusCode: 503,
+        code: 'JOB_REFUND_UNAVAILABLE',
+      })
+    return this.store.refundFundedJob(input)
+  }
+
+  requireCreditPaymentStore() {
+    if (!this.store.claimCreditPayment)
+      throw new ClientError('This deployment cannot verify the original job payment.', {
+        statusCode: 503,
+        code: 'JOB_PAYMENT_UNAVAILABLE',
+      })
+  }
+
+  async claimCreditPayment(input: CreditPaymentClaim) {
+    this.requireCreditPaymentStore()
+    if (!this.store.claimCreditPayment) throw new Error('Atomic payment store unavailable.')
+    return this.store.claimCreditPayment(input)
   }
 
   /** Append one event to a job's log without changing its status. */
