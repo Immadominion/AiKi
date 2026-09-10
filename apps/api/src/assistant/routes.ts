@@ -488,11 +488,10 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
         // Settle the unused hold above before claiming that nothing was charged.
         // Persist this refusal like any other terminal turn, including its history
         // and replay response. Later budget stops still return useful partial work.
-        const message = `${turn.reply} ${
+        const message =
           turn.requiredPoints > TURN_HOLD_POINTS
-            ? `That exceeds the ${TURN_HOLD_POINTS} point limit per turn. Shorten the request or start a new conversation.`
-            : 'Add points or shorten the request before starting a new turn.'
-        }`
+            ? `This turn needs ${turn.requiredPoints} points reserved. That exceeds the ${TURN_HOLD_POINTS} point limit per turn. No points were charged and no tools ran. More points will not raise this limit. Use Manual mode instead.`
+            : `This turn needs ${turn.requiredPoints} points available; you have ${result.cost.balance}. No points were charged and no tools ran. ${result.cost.balance < turn.requiredPoints ? 'Add points to continue.' : 'Start a new turn when ready.'}`
         return finish(402, {
           ...result,
           reply: message,

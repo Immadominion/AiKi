@@ -77,6 +77,24 @@ beforeEach(() => {
 })
 
 describe('prepared full-transaction hard gas budget', () => {
+  it.each([56, 97])(
+    'explicitly prepares canonical legacy fees on BSC chain %s',
+    async (chainId) => {
+      mocks.chain.mockResolvedValue(chainId)
+      expect(await executeRedemption({ ...request(), chainId })).toMatchObject({ status: 'landed' })
+      expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith({
+        to: address('11'),
+        data: expect.stringMatching(/^0x[0-9a-f]+$/),
+        type: 'legacy',
+      })
+    },
+  )
+  it('leaves automatic transaction-type selection unchanged on other chains', async () => {
+    expect(await executeRedemption({ ...request(), chainId: 1 })).toMatchObject({
+      status: 'landed',
+    })
+    expect(mocks.prepare.mock.calls[0]?.[0]).not.toHaveProperty('type')
+  })
   it.each([20n, 21n])('accepts maximum legacy charge within inclusive budget %s', async (cap) => {
     const onPrepared = vi.fn(async () => undefined)
     const result = await executeRedemption({ ...request(cap), onPrepared })
@@ -100,10 +118,14 @@ describe('prepared full-transaction hard gas budget', () => {
   })
   it('uses EIP-1559 maximum fee, not its smaller priority fee', async () => {
     mocks.prepare.mockResolvedValue({ gas: 10n, maxFeePerGas: 100n, maxPriorityFeePerGas: 1n })
-    expect(await executeRedemption(request(999n))).toMatchObject({ status: 'refused' })
+    expect(await executeRedemption({ ...request(999n), chainId: 1 })).toMatchObject({
+      status: 'refused',
+    })
     expect(mocks.sign).not.toHaveBeenCalled()
     noBroadcast()
-    expect(await executeRedemption(request(1000n))).toMatchObject({ status: 'landed' })
+    expect(await executeRedemption({ ...request(1000n), chainId: 1 })).toMatchObject({
+      status: 'landed',
+    })
   })
   it('cannot hide a high maximum fee behind a low legacy gasPrice in an ambiguous prepared request', async () => {
     mocks.prepare.mockResolvedValue({

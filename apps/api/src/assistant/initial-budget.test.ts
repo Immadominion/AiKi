@@ -68,6 +68,12 @@ it.each([
   { balance: 200, inputTokens: 100, content: 'Hi.' },
   { balance: 250, inputTokens: 100, content: 'Hi.' },
   { balance: 292, inputTokens: 100, content: 'Hi.' },
+  {
+    balance: 525,
+    inputTokens: 8330,
+    content:
+      'Is automated grid strategy setup available on BNB mainnet right now? Only check availability and show the setup page if it is available. Do not create an account, buy anything, fund, sign, or start a strategy.',
+  },
   { balance: 500, inputTokens: 9_000, content: 'Explain these positions. '.repeat(200) },
   { balance: 5_000, inputTokens: 100_000, content: 'Review this larger context.' },
 ])(
@@ -91,11 +97,16 @@ it.each([
       steps: [],
       cost: { points: 0, balance, held: Math.min(balance, 2000) },
     })
-    expect(first.json().reply).toContain(`${requiredPoints} points reserved`)
     expect(first.json().reply).toContain('No points were charged and no tools ran.')
+    expect(first.json().reply).not.toMatch(/shorten|new conversation/i)
     if (requiredPoints > 2000) {
       expect(first.json().reply).toContain('exceeds the 2000 point limit')
       expect(first.json().reply).not.toContain('Add points')
+      expect(first.json().reply).toContain('More points will not raise this limit.')
+    } else {
+      expect(first.json().reply).toBe(
+        `This turn needs ${requiredPoints} points available; you have ${balance}. No points were charged and no tools ran. Add points to continue.`,
+      )
     }
     expect(create).not.toHaveBeenCalled()
     expect(tool).not.toHaveBeenCalled()
@@ -118,6 +129,36 @@ it.each([
     expect(create).not.toHaveBeenCalled()
     expect(await h.credits.history(owner, 20)).toEqual(entries)
     expect((await h.conversations.get(owner, h.conversationId))?.messages).toHaveLength(2)
+  },
+)
+
+it.each([
+  { added: 25, balance: 550, next: 'Add points to continue.' },
+  { added: 200, balance: 725, next: 'Start a new turn when ready.' },
+])(
+  'quotes the confirmed $balance post-refund balance rather than inferring it from the earlier hold',
+  async ({ added, balance, next }) => {
+    const h = await harness(525)
+    countTokens.mockImplementation(async () => {
+      // A separate movement during the preflight changes only this in-memory fixture.
+      await h.credits.deposit({
+        owner,
+        points: added,
+        reason: 'test:concurrent-credit',
+        reference: 'concurrent-credit',
+      })
+      return { input_tokens: 8330 }
+    })
+    const response = await h.ask()
+    expect(response.statusCode).toBe(402)
+    expect(response.json()).toMatchObject({
+      reply: `This turn needs 644 points available; you have ${balance}. No points were charged and no tools ran. ${next}`,
+      cost: { points: 0, held: 525, balance },
+      error: { requiredPoints: 644, availablePoints: 525 },
+    })
+    expect(await h.credits.balance(RESERVE_ACCOUNT)).toBe(0)
+    expect(create).not.toHaveBeenCalled()
+    expect(tool).not.toHaveBeenCalled()
   },
 )
 

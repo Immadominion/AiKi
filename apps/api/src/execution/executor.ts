@@ -164,7 +164,13 @@ export async function executeRedemption(request: RedemptionRequest): Promise<Exe
   try {
     if (requiresFinality && (await publicClient.getChainId()) !== request.chainId)
       throw new Error('Execution RPC chain mismatch.')
-    const prepared = await wallet.prepareTransactionRequest({ to: request.delegationManager, data })
+    const prepared = await wallet.prepareTransactionRequest({
+      to: request.delegationManager,
+      data,
+      // BSC supports legacy transactions. Select one fee model before viem's
+      // eth_fillTransaction merge; ambiguous mixed-fee responses remain refused.
+      ...(requiresFinality ? { type: 'legacy' as const } : {}),
+    })
     if (request.maxGasCostWei !== undefined) {
       const fee = prepared.gasPrice ?? prepared.maxFeePerGas
       const positiveUint = (value: unknown): value is bigint =>
