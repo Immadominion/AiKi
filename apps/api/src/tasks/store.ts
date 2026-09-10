@@ -297,7 +297,7 @@ export class PostgresTaskStore implements TaskStore {
         fee = BigInt(task.fee_points)
       if (
         !address(task.poster) ||
-        (!refund && (!address(task.claimed_by) || lower(task.claimed_by) === lower(task.poster))) ||
+        (!refund && !address(task.claimed_by)) ||
         total <= 0n ||
         price <= 0n ||
         fee < 0n ||
