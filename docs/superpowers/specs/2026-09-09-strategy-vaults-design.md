@@ -55,19 +55,41 @@ Preserve report hiring and existing design. Add explicit strategy review, deploy
 - [x] Inspect existing code, live protocol documentation and candidate markets.
 - [x] Compare account migration with dedicated vaults; user approves dedicated vaults.
 - [x] Document and self-review the approved design. Visual companion is unnecessary for this contract boundary.
-- [ ] Shared contract safeguards and binding enforcer, with adversarial tests.
-- [ ] Yield vault and both real venue operations, planner and tests.
-- [ ] Grid vault, oracle/fill/rung accounting, planner and tests.
-- [ ] LP vault, atomic replacement/inventory/loss accounting, planner and tests.
-- [ ] Versioned shared ABI/policies and deployment verification.
-- [ ] Durable strategy persistence, canonical outcome validation, scheduler and recovery.
+- [x] Shared contract safeguards and binding enforcer, with adversarial tests.
+- [x] Yield vault and both real venue operations, planner and tests.
+- [x] Grid vault, oracle/fill/rung accounting, planner and tests.
+- [x] LP vault, atomic replacement/inventory/loss accounting, planner and tests.
+- [x] Shared vault ABIs, typed operations and same-block factory/account/vault/enforcer verification.
+- [x] Durable strategy persistence, exact grant/simulation admission, canonical outcome validation and read-only recovery.
+- [ ] Public setup API, durable planner scheduling and owner-facing policy compilation.
+- [ ] Deployment tooling, published reviewed configuration and ABI drift checks.
 - [ ] Current-design activation and wallet handoff controls.
-- [ ] Full tests plus pinned local mainnet-fork interactions. No real-money transactions for automated tests.
+- [x] Full application tests plus configured strategy mainnet-fork interactions. No real-money transactions for automated tests.
 - [ ] Review deployment artifacts, publish verified configuration, complete user-signed funded journeys before claiming live execution.
 
 ## Verification requirements
 
 Cover foreign callers/recipients/targets, mutable account ownership, reentrancy, token false returns, failed approvals, expired/stale plans, replay, loss budgets and cleanup. Verify full rollback at each external failure. Cover both yield directions and idle exits; grid crossing/partial-fill/restart cases; LP zero-swap/both-swap directions and replacement custody. Database tests use isolated local schemas and concurrent connections. Fork tests use local funding only. Existing Guardian and billing regressions must remain green.
+
+## Implementation checkpoint: 10 September 2026
+
+The new strategy execution core exists locally. It is not connected to public setup routes or a running scheduler, and the new contracts are not deployed. Existing Guardian deployments and production configuration are unchanged. No funds moved during this implementation or its tests.
+
+Verification at this checkpoint:
+
+- API: 1,621 tests passed with all migrations applied to a fresh local PostgreSQL database.
+- Web: 177 tests passed. MCP: 46 passed. SDK: 1 passed.
+- All five workspace typechecks passed. Scoped TypeScript formatting/lint checks passed without warnings.
+- Strategy Solidity suite: 152 passed, zero failed/skipped with `BSC_FORK_BLOCK=121004566` and the public BSC Alchemy RPC. These are local fork interactions, not broadcast transactions.
+- Full default Solidity suite: 227 passed, five optional strategy fork suites skipped, one pre-existing real-manager fork setup failed because its configured public RPC returned HTTP 429. Do not describe that broader default run as fully green.
+
+Admission binds the exact stored signed permission, reviewed enforcer terms, immutable vault policy, full manager simulation and a per-operation gas ceiling. Database locks prevent competing legacy/strategy claims. The last pre-broadcast persistence checkpoint rechecks owner pause, authorization validity, job state, snapshot freshness and permission identity. A stop after that checkpoint cannot cancel an already admitted transaction; on-chain owner pause/revocation remains a separate action.
+
+Receipt settlement preserves nonce and canonical block/hash watermarks, so a still-recent pre-transaction snapshot cannot roll state back. A reverted transaction does not invent a new vault nonce. Recovery checks only the stored transaction hash, never resends, follows replacements, refunds limits or automatically restarts a watch.
+
+Remaining integration must preserve these boundaries. Planner observations need durable compare-and-swap persistence; scheduling must require a newly verified full snapshot after every outcome; deployment must publish actual reviewed addresses/code hashes rather than test fixtures. The full funded Guardian and three new strategy journeys still need explicit customer wallet confirmations and real-browser verification before any live-execution claim.
+
+Read-only funding check: the deployment wallet held `0.0070361189 BNB`. At the observed `0.05 gwei` quote, the binding enforcer, yield factory and LP factory deployment estimates totalled `0.00040132065 BNB`. This is a subtotal, not a total launch budget or funds reservation. Grid deployment, customer vaults, ongoing gas and strategy principal remain separate. No additional funding was requested at this checkpoint.
 
 ## Primary references
 

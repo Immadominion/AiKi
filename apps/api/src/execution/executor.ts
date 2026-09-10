@@ -41,7 +41,7 @@ export interface SignedDelegation {
   signature: Hex
 }
 
-const DELEGATION_ABI = [
+export const DELEGATION_ABI = [
   {
     type: 'function',
     name: 'redeemDelegations',
@@ -55,7 +55,7 @@ const DELEGATION_ABI = [
   },
 ] as const
 
-const DELEGATION_TUPLE = {
+export const DELEGATION_TUPLE = {
   type: 'tuple[]',
   components: [
     { name: 'delegate', type: 'address' },
@@ -120,6 +120,17 @@ export interface ExecutionOutcome {
  * carries the same rule and reason the off-chain engine would have given.
  */
 export async function execute(request: ExecutionRequest): Promise<ExecutionOutcome> {
+  return executeRedemption({ ...request, target: request.action.target as Address })
+}
+
+/** A vault operation is not a scalar ERC-20 spend. Its economic limits live in its immutable policy. */
+export type RedemptionRequest = Omit<ExecutionRequest, 'action'> & {
+  target: Address
+  /** Optional hard limit on the maximum prepared gas charge, not an inner-call estimate. */
+  maxGasCostWei?: bigint
+}
+
+export async function executeRedemption(request: RedemptionRequest): Promise<ExecutionOutcome> {
   const chain = {
     id: request.chainId,
     name: `chain-${request.chainId}`,
@@ -136,7 +147,7 @@ export async function execute(request: ExecutionRequest): Promise<ExecutionOutco
   })
 
   const context = encodeAbiParameters([DELEGATION_TUPLE], [[request.delegation]])
-  const execution = encodeSingleExecution(request.action.target as Address, 0n, request.callData)
+  const execution = encodeSingleExecution(request.target, 0n, request.callData)
   const data = encodeFunctionData({
     abi: DELEGATION_ABI,
     functionName: 'redeemDelegations',
@@ -154,6 +165,19 @@ export async function execute(request: ExecutionRequest): Promise<ExecutionOutco
     if (requiresFinality && (await publicClient.getChainId()) !== request.chainId)
       throw new Error('Execution RPC chain mismatch.')
     const prepared = await wallet.prepareTransactionRequest({ to: request.delegationManager, data })
+    if (request.maxGasCostWei !== undefined) {
+      const fee = prepared.gasPrice ?? prepared.maxFeePerGas
+      const positiveUint = (value: unknown): value is bigint =>
+        typeof value === 'bigint' && value > 0n && value < 1n << 256n
+      if (
+        !positiveUint(request.maxGasCostWei) ||
+        !positiveUint(prepared.gas) ||
+        !positiveUint(fee) ||
+        (prepared.gasPrice !== undefined && prepared.maxFeePerGas !== undefined) ||
+        prepared.gas * fee > request.maxGasCostWei
+      )
+        throw new Error('Prepared transaction exceeds the strategy gas budget.')
+    }
     signed = await wallet.signTransaction(prepared)
     hash = keccak256(signed)
     await request.onPrepared?.(hash)

@@ -139,6 +139,17 @@ export class PostgresJobStore implements JobStore {
       // The durable attempt, NOT the connection/advisory lock, guards the nonce
       // until a terminal outcome; crashes and timeouts must never clear it.
       await tx`SELECT pg_advisory_xact_lock(1095322441, ${attempt.chainId}::integer)`
+      await tx`SELECT id FROM authorizations WHERE id = ${attempt.authorizationId} FOR UPDATE`
+      const strategy =
+        await tx`SELECT id FROM strategy_watches WHERE authorization_id = ${attempt.authorizationId}`
+      if (strategy.length)
+        throw new ClientError(
+          'Use the strategy controls for this mandate. Generic actions cannot execute it.',
+          {
+            code: 'STRATEGY_EXECUTION_REQUIRED',
+            statusCode: 409,
+          },
+        )
       const pending = await tx`
         SELECT id FROM execution_attempts WHERE chain_id = ${attempt.chainId}
         AND state IN ('PREPARING', 'SUBMITTED', 'UNCONFIRMED')
