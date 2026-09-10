@@ -3,8 +3,11 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { ProjectedPassport } from '@aiki/contracts'
 import { delegationMessage } from '@aiki/contracts/delegation'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { encodeAbiParameters, encodeFunctionData, hashTypedData, parseAbi } from 'viem'
-import { buildStrategyInput, rawAmount } from './policy'
+import { PolicyForm } from './PolicyForm'
+import { buildStrategyInput, rawAmount, StrategyFieldError, strategyGasLimitWei } from './policy'
 import { assertConfig, assertStrategySigning, assertWalletAction } from './review'
 import { strategyForPassport } from './StrategyHireChoice'
 import {
@@ -41,6 +44,40 @@ test('both mainnet tokens use exact 18-decimal amounts, never rounding excess pr
       a.common.expiresAt,
     ),
   )
+})
+test('gas ceiling accepts exact positive wei through 0.001 BNB and identifies invalid input', () => {
+  assert.equal(strategyGasLimitWei('0.000000000000000001'), '1')
+  assert.equal(strategyGasLimitWei('0.001'), '1000000000000000')
+  for (const value of ['0', '0.001000000000000001', '0.005', '1e-3', ' 0.001', 'NaN']) {
+    assert.throws(
+      () => strategyGasLimitWei(value),
+      (error: unknown) => error instanceof StrategyFieldError && error.field === 'gasLimitBnb',
+    )
+  }
+})
+test('all strategy forms disclose the gas ceiling and associate its error with the input', () => {
+  for (const kind of ['yield', 'grid', 'lp'] as const) {
+    const html = renderToStaticMarkup(
+      createElement(PolicyForm, {
+        kind,
+        values: { ...filledValues(kind), gasLimitBnb: '0.005' },
+        rungs: [],
+        onValues: () => {},
+        onRungs: () => {},
+        onSubmit: () => {},
+        busy: false,
+        blocked: false,
+        problem: {
+          field: 'gasLimitBnb',
+          message: 'Choose a network gas ceiling up to 0.001 BNB.',
+        },
+      }),
+    )
+    assert.match(html, /Maximum 0\.001 BNB\./)
+    assert.match(html, /<input[^>]*id="strategy-gasLimitBnb"[^>]*aria-invalid="true"/)
+    assert.match(html, /aria-describedby="strategy-gasLimitBnb-error"/)
+    assert.match(html, /id="strategy-gasLimitBnb-error" role="alert"/)
+  }
 })
 test('grid input preserves token-specific quantities and bounds rung count/integer ticks', () => {
   const rung = { buyTick: '-100', sellTick: '100', lot0: '1.25', lot1: '0.0005', initialSell: true }

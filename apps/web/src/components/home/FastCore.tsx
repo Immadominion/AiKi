@@ -9,6 +9,7 @@ import { agentHref, registryHref } from '@/lib/routes'
 import type { Task } from '@/lib/tasks'
 import { AskField } from './AskField'
 import { FastChat } from './FastChat'
+import { FastChatHeader } from './FastChatHeader'
 import { HistoryRail } from './HistoryRail'
 import { liveShards } from './live-shards'
 import { ShardField } from './ShardField'
@@ -28,6 +29,7 @@ export function FastCore({
   userName,
   footer,
   landmark = false,
+  fullScreen = false,
 }: {
   frame: Frame
   connected: boolean
@@ -42,6 +44,8 @@ export function FastCore({
    * duplicate id and a nested landmark.
    */
   landmark?: boolean
+  /** The overlay also has a floating navigation control in its left corner. */
+  fullScreen?: boolean
 }) {
   const account = useAccount()
   /*
@@ -126,7 +130,7 @@ export function FastCore({
   if (chat !== null && account.authenticated)
     return (
       <div className="absolute inset-0 z-30 flex min-h-0 flex-col px-[18px] pt-[18px] pb-[108px] md:pb-[54px]">
-        <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+        <FastChatHeader fullScreen={fullScreen}>
           <button
             type="button"
             onClick={() => openChat(null)}
@@ -141,7 +145,7 @@ export function FastCore({
             onResume={(id) => openChat({ id })}
             onNew={() => openChat({ id: crypto.randomUUID(), create: true })}
           />
-        </div>
+        </FastChatHeader>
         <FastChat
           key={chat.id}
           id={chat.id}

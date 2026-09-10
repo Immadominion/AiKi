@@ -45,6 +45,7 @@ import {
   rawAmount,
   STRATEGY_COPY,
   StrategyFieldError,
+  strategyGasLimitWei,
 } from './policy'
 import {
   address,
@@ -336,13 +337,7 @@ export function ConnectedStrategySetup({
           BigInt(Math.floor(Date.now() / 1000)),
           prior?.expiresAt,
         )
-        gasLimitWei = rawAmount(
-          values.gasLimitBnb ?? '',
-          'Network gas ceiling',
-          18,
-          false,
-          'gasLimitBnb',
-        )
+        gasLimitWei = strategyGasLimitWei(values.gasLimitBnb ?? '')
       } catch (error) {
         if (error instanceof StrategyFieldError) {
           setFieldError({ field: error.field, message: error.message })

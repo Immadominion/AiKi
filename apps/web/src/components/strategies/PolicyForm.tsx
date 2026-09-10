@@ -232,7 +232,7 @@ export function PolicyForm({
               [
                 'gasLimitBnb',
                 'Maximum network gas per operation (BNB)',
-                'Separate from invested capital and AiKi points. This is a ceiling, not a charge or reserved balance.',
+                'Maximum 0.001 BNB. A gas ceiling, not a charge; separate from invested capital and AiKi points.',
                 'decimal',
               ],
             ] as const

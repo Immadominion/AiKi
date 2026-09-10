@@ -85,6 +85,7 @@ export function AskPanel() {
 
       <FastCore
         frame={full ? SCREEN : PANEL}
+        fullScreen={full}
         connected={connected}
         footer={
           authenticated ? null : (

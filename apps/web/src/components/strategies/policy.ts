@@ -359,6 +359,13 @@ export function rawAmount(
     )
   return raw.toString()
 }
+/** Match setup admission's fixed ceiling before any API or wallet request. */
+export function strategyGasLimitWei(value: string): string {
+  const raw = rawAmount(value, 'Network gas ceiling', 18, false, 'gasLimitBnb')
+  if (BigInt(raw) > 10n ** 15n)
+    throw new StrategyFieldError('gasLimitBnb', 'Choose a network gas ceiling up to 0.001 BNB.')
+  return raw
+}
 function integer(value: string, key: string, min: number, max: number) {
   if (!/^-?(0|[1-9][0-9]*)$/.test(value) || value === '-0')
     throw new StrategyFieldError(key, 'Use a whole number, without spaces or scientific notation.')
