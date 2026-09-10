@@ -61,6 +61,7 @@ import { StrategySetupService } from './setup.js'
 import { PostgresStrategySetupStore } from './setup-store.js'
 import { isVerifiedStrategySimulation, quoteStrategyOperation } from './simulation.js'
 import { PostgresStrategyStore } from './store.js'
+import { runLocalRevertDiagnostic } from './strategy-journey-diagnostics.test-support.js'
 
 const rpcUrl = process.env.STRATEGY_JOURNEY_RPC
 const databaseUrl = process.env.STRATEGY_JOURNEY_DATABASE_URL
@@ -155,7 +156,7 @@ describe.skipIf(!requested)('actual customer strategy setup on an isolated Anvil
           data: e.cause?.data,
         }),
       )
-      try {
+      const diagnostic = await runLocalRevertDiagnostic(error, async () => {
         const trace = await raw('debug_traceCall', [
           { from: args.account, to: args.to, data: args.data, value: '0x0' },
           typeof args.blockNumber === 'bigint' ? `0x${args.blockNumber.toString(16)}` : 'latest',
@@ -171,9 +172,10 @@ describe.skipIf(!requested)('actual customer strategy setup on an isolated Anvil
           }
         }
         console.info(JSON.stringify({ component: 'local-revert-trace', trace: compact(trace) }))
-      } catch {
-        console.info('Local revert trace unavailable.')
-      }
+      })
+      if (diagnostic === 'unavailable') console.info('Local revert trace unavailable.')
+      else if (diagnostic === 'skipped')
+        console.info('Local revert trace skipped: no confirmed EVM revert.')
       throw error
     }
   }) as typeof reader.call
