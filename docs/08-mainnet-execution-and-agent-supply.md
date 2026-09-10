@@ -1,6 +1,6 @@
 # Mainnet execution and agent supply
 
-Status checked on 9 September 2026. This is an engineering handoff, not a claim that all trading features are live.
+Mainnet cutover observations are dated 9 September 2026. The strategy implementation checkpoint below was updated on 10 September 2026. This is an engineering handoff, not a claim that all trading features are live.
 
 ## Product requirement
 
@@ -9,6 +9,8 @@ AiKi must let someone find and activate real BSC agents in four equally develope
 ## Current gap
 
 All four first-party agent identities exist on BSC mainnet. Venus #315943 supports in-app one-time report hiring. Rebalancer #315944, Grid #315945 and Yield #315946 now implement the same `aiki.task/v1` hiring protocol, with explicit input hints and real on-chain report results. Those three report endpoints do not trade, rebalance liquidity or move deposits.
+
+Separate yield, grid and LP vault execution, owner setup and scheduler integration are pushed to main in `fb0a834`. BSC transaction preparation and Fast reservation messages were corrected in `90788a4`; header clearance and inline strategy gas validation followed in `1855936`. All three releases reached Vercel and Railway API, worker and web. They do not turn the paid report endpoints into trading endpoints. The new strategy infrastructure still requires reviewed mainnet deployment and configuration before its public setup can become available.
 
 The previous production executor used the pinned chain97 mandate suite. A direct mainnet `eth_getCode` check returned no code at its configured manager and registry addresses. Do not reuse those addresses as a mainnet deployment or substitute MetaMask's manager: its delegation tuple differs from AiKi's, including AiKi's extra epoch field.
 
@@ -49,7 +51,39 @@ The verified Guardian registration now offers automatic repayment setup separate
 
 Manual setup persists an owner/network-scoped operation key before any deployment or authorization request. Authorization creation is idempotent per wallet and key, with changed terms rejected and signatures, revocation and spent limits preserved on replay. Retries retain the original absolute expiry and authorization and reuse the job key after an uncertain response. Unavailable browser storage fails closed. A pending setup must currently resume with its original limits; automatic cancellation and replacement are not implemented.
 
-These repairs do not add a hosted MCP transport, fund mandate accounts or implement automated activation for the other three categories. They do not establish that a real lending position was funded, approved and protected through the public wallet journey. That remains a release gate.
+These Guardian repairs do not add a hosted MCP transport or fund mandate accounts. The separate strategy workflow below is not an extension of Guardian's scalar repayment mandate. Neither implementation establishes that a real lending position was funded, approved and protected through the public wallet journey. That remains a release gate.
+
+## Strategy setup and scheduler: implementation and release checkpoint
+
+The approved [strategy vault plan](superpowers/specs/2026-09-09-strategy-vaults-design.md) distinguishes implemented code, local test evidence and deployment gates. The new contracts have not been published as reviewed mainnet deployments at this checkpoint. Never copy fork addresses or mock runtime hashes into production configuration.
+
+`STRATEGY_DEPLOYMENT_CONFIG` is server-owned JSON, not a filename. It pins the existing reviewed chain56 manager/account runtime, new binding enforcer and three factories, canonical protocol code, proxy implementations and pool identities. Missing or invalid configuration makes public `GET /v1/strategies/config` report unavailable without invented factory addresses. Configuration availability is not owner readiness or proof that an operation has run. API and scheduler must receive the same reviewed configuration digest.
+
+The unsigned-only `strategies/deployment-cli.ts` supports `infrastructure`, `prepare`, `finalize` and `verify-config`. From `apps/api`, `pnpm exec tsx src/strategies/deployment-cli.ts infrastructure --owner OWNER_ADDRESS --rpc HTTPS_RPC_URL` prints the four reviewed CREATE requests for owner review. It does not load a key, guess a deployed address, sign, send, write configuration or create a user's mandate account. Review each eventual finalized receipt, runtime and constructor binding, then use `verify-config` with the actual reviewed JSON before publishing it. Passing a simulation is not deployment evidence.
+
+Apply additive migrations `031_strategy_operations.sql`, `032_strategy_setups.sql` and `033_strategy_runner.sql` before the matching API and worker serve strategies. The scheduler launches the separate `strategies/runner-cli.ts` loop. `STRATEGY_RUN_INTERVAL_MS` defaults to 15,000 and is bounded to 5,000 through 60,000; `STRATEGY_RUNNER_LIMIT` defaults to five and is bounded to one through twenty per pass. Readiness requires verified deployments, the configured executor and gas, and a ready heartbeat no older than 120 seconds for the exact configuration digest. An unavailable or unconfigured worker cannot advertise new execution as ready. Recovery inspects only existing persisted transaction hashes, without replacing them or restarting stopped watches.
+
+Owner setup is deliberately separate from report hiring:
+
+1. Sign in with the current owner and use an existing verified mandate account or its explicit account-deployment step.
+2. Prepare and review an immutable policy. Send the reviewed factory deployment from the owner's wallet and reconcile that same hash.
+3. Review one exact approval/reset, funding or NFT enrollment transaction per click. Funding does not enable automation. An uncertain wallet send remains unresolved until its original hash can be checked; do not send it again to clear the interface.
+4. Review and sign the exact ordered expiry-plus-strategy-binding grant. Signing atomically records the authorization, job and paused watch, not a running strategy.
+5. Explicitly enable the vault on chain and then start the service. Start rereads current owner, permission, vault state, pending actions, funding, executor gas and scheduler readiness. Service pause and owner on-chain pause/revocation are separate controls.
+
+Planner observations are durable and compare-and-swap protected. Fresh complete custody and mandate checks precede each pass. `ACTIVE` is a recorded service state, not proof of a trade, profit or uninterrupted future service. The setup page exposes the latest decision and next check; its completed transaction link comes only from a verified finalized attempt. A receipt watermark is not reused as a complete post-operation snapshot.
+
+Fast has four read-only strategy tools: configuration, safe setup navigation, owner list and owner status. A navigation link is allowed only for the exact configured registry identity with a current live reciprocal passport. It opens `/strategy/yield`, `/strategy/grid` or `/strategy/lp`; it cannot prepare, approve, fund, sign or start anything. Unavailable deployments remain labelled unavailable. The MCP integration has not gained these new strategy tools in this batch.
+
+Evidence available on 10 September: the full API suite, including explicit BSC legacy-fee preparation and accurate Fast reservation messages, passed 1,917 tests with three opt-in fork tests skipped; the latest web run passed 215, MCP passed 46 and SDK passed one. All five workspace typechecks, repository lint and the production web build passed. The configured full Solidity run passed 264 tests with no failures or skips. Deployment/artifact checks passed 74 and actual setup route checks passed 38; those overlap the API suite and are not added to its count. Production migrations `031` through `033` are applied with verified checksums. All ten live points-ledger checks passed again after the production Fast checks and transaction-fee release. Strategy configuration is still absent; a fresh worker heartbeat correctly reports unavailable and no strategy watches exist.
+
+The extended three-test local Anvil journey at BSC block `121004566` passed using public fixture keys, local funds and the unchanged real manager. All three owner deployments finalized. Yield funded, signed, started and actually moved 10 USDT into Venus through the durable execution path; exact receipt settlement updated PostgreSQL atomically and rejected the previous snapshot. Grid established its baseline, observed a real bounded local pool swap across its trigger, sold exactly 1 USDT and settled the resulting WBNB inventory and turnover. LP minted, approved and enrolled a real fork NFT, then ran its planner and manager execution to replace the position with the approved narrower range. Both full runner paths settled finalized transactions and did not replay on the immediate next pass. The LP next pass may be in cooldown; it does not prove a later healthy-position decision.
+
+The journey calls setup services, not HTTP authentication or the deployed worker process. Yield supplies an exact verified move rather than testing automatic economic selection. Anvil historical reads are serialized only in this local fixture. The fixture maintains an actual local base fee of 0.05 gwei and checks both signed maximum gas cost and receipt cost against the unchanged 0.001 BNB owner ceiling. No oracle timestamp, protocol guard or production gas cap is weakened. The maintained CI workflow runs these opt-in tests on loopback nodes with public test keys; it remains manual-only under the existing GitHub billing decision. A successful local run is not a claimed GitHub Actions run.
+
+Native Chrome verified the signed-in production setup page and its unavailable-state financial controls. A Fast availability request was blocked before tools or charges: 644 points were required and 525 were available. It did not produce a successful setup navigation. The corrected refusal quotes the confirmed post-refund balance and removes misleading shortening advice. A request above the 2,000-point per-turn cap never recommends adding funds to bypass that cap. Pricing and reservation behavior are unchanged. Component browser checks use mocked API/wallet calls; funded customer-wallet journeys remain release gates.
+
+The Fast header now reserves clearance for fullscreen controls while preserving the draft, history focus and existing design. Isolated component browser checks passed at 375, 768 and 1280 pixels in panel and fullscreen layouts. Native signed-in Chrome then confirmed the live header clearance in panel and fullscreen layouts, and opened the real wallet-scoped conversation history. The three strategy forms expose the existing 0.001 BNB maximum beside the gas field and reject a larger value inline before submission. These checks do not constitute a funded native-wallet journey.
 
 ## Mainnet points purchases
 
@@ -129,9 +163,9 @@ The 8004scan Pro key was verified against current source quota headers. API-only
 
 ## Remaining release gates
 
-1. Fund the separate mainnet executor and account-deployment wallets. Both were checked at zero BNB; deploying the enforcement suite did not fund these roles. Never substitute the deployment key to bypass role separation.
+1. Recheck funding of the separate mainnet executor and account-deployment wallets before activation. Earlier zero-BNB observations are not current balance evidence, and deploying an enforcement suite does not fund these roles. Never substitute the deployment key to bypass role separation.
 2. Provide wallet onboarding, funding, allowances, revocation and visible runner health for an actual lending position. A watch must not guarantee protection against all market moves or RPC failures.
-3. Complete the normal buyer flow for the other three categories. Reports are useful, but must not be renamed as trading or allocation execution.
+3. Deploy and verify the new strategy infrastructure, publish matching API/worker configuration, and complete all three user-funded strategy journeys. The report buyer flows below do not establish trading or allocation execution.
 4. Integrate external providers' real authentication, prices, signed actions and task lifecycle. Never expose arbitrary discovered tools as approved financial actions.
 5. Verify mainnet billing and all four activation flows in the normal wallet browser before claiming production completion.
 

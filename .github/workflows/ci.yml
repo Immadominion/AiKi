@@ -9,28 +9,35 @@ name: CI
 # is always red is a badge nobody reads, and it hides the run that genuinely
 # fails later.
 #
-# The workflow is correct and kept ready. When billing clears, put the push and
-# pull_request triggers back and this starts working with no other change. Until
-# then it can be run by hand with `gh workflow run ci.yml`, which fails for the
-# same reason but does not mark the branch.
+# Keep the billing decision separate from workflow maintenance. Restoring push
+# or pull_request triggers requires an explicit decision after billing clears.
+# A manual run still needs an available GitHub Actions billing account.
 on:
   workflow_dispatch:
 
-# A second push supersedes the first. Nobody needs the results for a commit that
-# has already been replaced.
+# A newer manual run on the same ref supersedes the previous run.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    env:
+      # Ephemeral CI service only. Never use a deployment database or signing key.
+      DATABASE_URL: postgres://aiki:aiki@127.0.0.1:5432/aiki
+      BSC_FORK_RPC: https://bnb-mainnet.g.alchemy.com/public
+      BSC_FORK_BLOCK: '121004566'
+      NEXT_TELEMETRY_DISABLED: '1'
+
     services:
-      # The SQL is the only thing these tests cannot check without a database,
-      # and it is the part most worth checking: nine tests skip silently without
-      # DATABASE_URL, and they are the ones guarding the queries.
+      # DATABASE_URL enables the real SQL and concurrency regressions. Apply
+      # every migration before tests that expect the shared public schema.
       postgres:
         image: postgres:17-alpine
         env:
@@ -49,7 +56,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 11.22.0
 
       - uses: actions/setup-node@v4
         with:
@@ -59,29 +66,71 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+
+      # API deployment/artifact-drift tests load onchain/out from this build.
+      # Keep the compiler/EVM settings in foundry.toml unchanged.
+      - name: Build contract artifacts
+        run: forge build
+        working-directory: onchain
+
       - name: Lint
         run: pnpm lint
+
+      - name: Generate web route types
+        run: pnpm --filter @aiki/web exec next typegen
 
       - name: Typecheck
         run: pnpm -r typecheck
 
-      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Apply local database migrations
+        run: pnpm --filter @aiki/api db:migrate
 
-      # Two of the chain tests deploy from different anvil accounts on purpose,
-      # because sharing a deployer made their nonces race under vitest's
-      # parallelism and one silently skipped. They skip entirely without a node.
-      - name: Start anvil
-        run: anvil --port 8545 &
-
-      - name: API tests
-        run: pnpm --filter @aiki/api test
+      # Both transaction endpoints are loopback Anvil nodes with public test
+      # accounts. The remote RPC supplies historical reads only. The fork
+      # journey also checks Anvil identity, chain, fork block and test accounts.
+      - name: API tests, including local strategy fork journey
         env:
-          DATABASE_URL: postgres://aiki:aiki@127.0.0.1:5432/aiki
+          STRATEGY_JOURNEY_RPC: http://127.0.0.1:18545
+          STRATEGY_JOURNEY_DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          anvil --host 127.0.0.1 --port 8545 --chain-id 31337 --silent &
+          anvil_pids=("$!")
+          trap 'kill "${anvil_pids[@]}" 2>/dev/null || true' EXIT
+          anvil --host 127.0.0.1 --port 18545 \
+            --fork-url "$BSC_FORK_RPC" --fork-block-number "$BSC_FORK_BLOCK" \
+            --chain-id 56 --hardfork cancun --slots-in-an-epoch 1 \
+            --gas-price 50000000 --disable-min-priority-fee --block-base-fee-per-gas 50000000 \
+            --transaction-block-keeper 10000 --max-persisted-states 10000 --silent &
+          anvil_pids+=("$!")
+          for attempt in {1..60}; do
+            if [ "$(timeout 2s cast chain-id --rpc-url http://127.0.0.1:8545 2>/dev/null)" = '31337' ] &&
+               [ "$(timeout 2s cast chain-id --rpc-url "$STRATEGY_JOURNEY_RPC" 2>/dev/null)" = '56' ]; then
+              break
+            fi
+            kill -0 "${anvil_pids[@]}"
+            sleep 1
+          done
+          test "$(timeout 2s cast chain-id --rpc-url http://127.0.0.1:8545)" = '31337'
+          test "$(timeout 2s cast chain-id --rpc-url "$STRATEGY_JOURNEY_RPC")" = '56'
+          pnpm --filter @aiki/api test
 
-      # Includes the fork tests, which reach a public BSC archive endpoint and
-      # redeem through MetaMask's deployed manager. If they start failing here
-      # for rate limits rather than for code, point foundry.toml at a keyed RPC
-      # rather than deleting the tests.
+      - name: Web tests
+        run: pnpm --filter @aiki/web test
+
+      - name: MCP tests
+        run: pnpm --filter @aiki/mcp test
+
+      - name: SDK tests
+        run: pnpm --filter @aiki/sdk test
+
+      # Both strategy opt-in variables are set above, so those fork suites run.
+      # The legacy real-manager test separately pins block 118000000 and the
+      # existing bsc alias in foundry.toml. Public-RPC failures fail this run;
+      # they are not converted into passing skips. Forge never broadcasts here.
       - name: Contract tests
         run: forge test
         working-directory: onchain
