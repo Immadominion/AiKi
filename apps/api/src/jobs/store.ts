@@ -95,6 +95,25 @@ export interface CreditPaymentClaim {
   status: 'FUNDED' | 'SETTLED'
 }
 
+export interface JobFundingInput {
+  jobId: string
+  buyer: string
+  agentId: string
+  /** Server-reviewed published price in settlement base units. Omit for readback only. */
+  price?: bigint
+}
+
+export interface JobFundingResult {
+  jobId: string
+  agentId: string
+  held: number
+  buyerBalance: number
+  status: 'FUNDED'
+  alreadyFunded: boolean
+  /** Existing FUNDED rows may be acknowledged, never promoted into atomic proofs. */
+  historicalReadback?: true
+}
+
 /**
  * Where authorizations, jobs, and receipts actually live.
  *
@@ -127,6 +146,11 @@ export interface ApprovalRequest {
 }
 
 export interface JobStore {
+  /** Null means a pristine unfunded job needs a fresh, server-reviewed price. */
+  fundCreditJob?(
+    input: JobFundingInput,
+    evaluate: (authorization: AuthorizationRecord, outlay: bigint) => SpendVerdict,
+  ): Promise<JobFundingResult | null>
   /** Refund, release the exact reservation and cancel in one ledger transaction. */
   refundFundedJob?(input: JobRefundInput): Promise<JobRefundResult | null>
   /** Claim a money state only against exact, original, unrefunded funding. */

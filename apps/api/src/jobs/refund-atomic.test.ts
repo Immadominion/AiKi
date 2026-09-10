@@ -11,6 +11,7 @@ import { applyMigrations, readMigrations } from '../db/migrate.js'
 import { materializeObservation } from '../evidence/store.js'
 import { createApiServer } from '../http/server.js'
 import { fundJob, refundJob } from '../settlement/ledger.js'
+import { SETTLEMENT } from '../settlement/pricing.js'
 import { PostgresJobStore } from './postgres-store.js'
 import { JobService } from './service.js'
 import { InMemoryJobStore, type JobRecord } from './store.js'
@@ -22,11 +23,13 @@ const BUYER = `0x${'ab'.repeat(20)}`,
   OTHER = `0x${'cd'.repeat(20)}`,
   TREASURY = `0x${'ef'.repeat(20)}`,
   POINTS = 102,
-  OUTLAY = 42n,
+  PRICE = 10n ** 16n,
+  OUTLAY = (PRICE * 1025n) / 1000n,
   OTHER_SPEND = 100n
 const signer = new SessionSigner('atomic-refund-local-test-secret-only')
 const constraints: Constraint[] = [
-  { kind: 'session_total_cap', value: '1000', tier: 'T2', label: 'Test cap' },
+  { kind: 'asset_scope', value: [SETTLEMENT.address], tier: 'T2', label: 'Settlement asset' },
+  { kind: 'session_total_cap', value: (OUTLAY * 10n).toString(), tier: 'T2', label: 'Test cap' },
 ]
 const apps: ReturnType<typeof createApiServer>[] = []
 afterEach(async () => {
@@ -147,25 +150,31 @@ describe.skipIf(!databaseUrl)('atomic legacy job refunds in isolated PostgreSQL'
       owner: BUYER,
       status: 'active',
       policy: compilePolicy(constraints),
-      spent: OUTLAY + OTHER_SPEND,
+      spent: OTHER_SPEND,
       createdAt: new Date().toISOString(),
     })
     await store.createJob({
       id: jobId,
       authorizationId,
-      status: 'FUNDED',
+      status: 'AUTHORIZED',
       events: [],
       idempotencyKey: randomUUID(),
       createdAt: new Date().toISOString(),
     })
-    await store.recordSale(jobId, {
-      agentId: '1',
-      pricePoints: 100,
-      totalPoints: POINTS,
-      outlay: OUTLAY,
-    })
     await credits.deposit({ owner: payer, points: 1000, reason: 'test', reference: randomUUID() })
-    await fundJob({ credits, jobId, buyer: payer, totalPoints: POINTS })
+    if (payer === BUYER) {
+      await jobs.fundCreditJob({ jobId, buyer: BUYER, agentId: '1', price: PRICE })
+    } else {
+      // Deliberately inconsistent legacy payer, only used by refusal cases.
+      await store.recordSale(jobId, {
+        agentId: '1',
+        pricePoints: 100,
+        totalPoints: POINTS,
+        outlay: OUTLAY,
+      })
+      await fundJob({ credits, jobId, buyer: payer, totalPoints: POINTS })
+      await store.claim(jobId, ['AUTHORIZED'], 'FUNDED', 'Legacy funding')
+    }
     return { jobId, authorizationId }
   }
   const attempt = (jobId: string) => store.refundFundedJob({ jobId, buyer: BUYER, because: 'test' })
@@ -345,7 +354,10 @@ describe.skipIf(!databaseUrl)('atomic legacy job refunds in isolated PostgreSQL'
       before = await state(f.jobId, f.authorizationId)
     const reserve = vi.spyOn(jobs, 'attemptPurchase'),
       release = vi.spyOn(jobs, 'releaseSpend')
-    expect((await payment(app, f.jobId, 'fund')).json().error.code).toBe('JOB_ALREADY_FUNDED')
+    expect((await payment(app, f.jobId, 'fund')).json()).toMatchObject({
+      alreadyFunded: true,
+      status: 'FUNDED',
+    })
     expect(reserve).not.toHaveBeenCalled()
     expect(release).not.toHaveBeenCalled()
     expect(await state(f.jobId, f.authorizationId)).toEqual(before)
@@ -371,10 +383,10 @@ describe.skipIf(!databaseUrl)('atomic legacy job refunds in isolated PostgreSQL'
   it('a duplicate funding request that read FUNDED cannot reopen a concurrent refund', async () => {
     const f = await fixture(),
       app = api(jobs, credits),
-      real = store.claimCreditPayment.bind(store)
-    vi.spyOn(store, 'claimCreditPayment').mockImplementationOnce(async (input) => {
+      real = store.fundCreditJob.bind(store)
+    vi.spyOn(store, 'fundCreditJob').mockImplementationOnce(async (input, evaluate) => {
       await attempt(f.jobId)
-      return real(input)
+      return real(input, evaluate)
     })
     expect((await payment(app, f.jobId, 'fund')).json().error.code).toBe('JOB_NOT_FUNDABLE')
     expect(await state(f.jobId, f.authorizationId)).toMatchObject({

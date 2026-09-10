@@ -2,10 +2,11 @@ import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
 import postgres from 'postgres'
 import type { CompiledPolicy } from '../authority/policy.js'
+import { pointsForSettlement } from '../credits/pricing.js'
 import { ESCROW_ACCOUNT } from '../credits/store.js'
 import type { ExecutionAttempt, ExecutionState } from '../execution/attempts.js'
 import { ClientError } from '../http/errors.js'
-import { priceJob } from '../settlement/pricing.js'
+import { priceJob, SETTLEMENT } from '../settlement/pricing.js'
 import { authorizationReplay } from './authorization-retry.js'
 import type {
   ApprovalRequest,
@@ -13,6 +14,8 @@ import type {
   AuthorizationStatus,
   CreditPaymentClaim,
   JobEvent,
+  JobFundingInput,
+  JobFundingResult,
   JobRecord,
   JobRefundInput,
   JobRefundResult,
@@ -22,6 +25,29 @@ import type {
 } from './store.js'
 
 const iso = (value: string | Date): string => (value instanceof Date ? value.toISOString() : value)
+
+const fundingMarker = (input: {
+  jobId: string
+  authorizationId: string
+  buyer: string
+  agentId: string
+  pricePoints: bigint
+  totalPoints: bigint
+  outlay: bigint
+  policyHash: string
+}) =>
+  JSON.stringify({
+    kind: 'atomic_job_funding_v1',
+    jobId: input.jobId,
+    authorizationId: input.authorizationId,
+    buyer: input.buyer,
+    agentId: input.agentId,
+    pricePoints: input.pricePoints.toString(),
+    totalPoints: input.totalPoints.toString(),
+    outlay: input.outlay.toString(),
+    asset: SETTLEMENT.address.toLowerCase(),
+    policyHash: input.policyHash,
+  })
 
 interface ExecutionRow {
   id: string
@@ -364,6 +390,243 @@ export class PostgresJobStore implements JobStore {
     `
   }
 
+  async fundCreditJob(
+    input: JobFundingInput,
+    evaluate: (authorization: AuthorizationRecord, outlay: bigint) => SpendVerdict,
+  ): Promise<JobFundingResult | null> {
+    const review = () =>
+      new ClientError('This job needs a ledger review before funding can be confirmed.', {
+        statusCode: 409,
+        code: 'JOB_FUNDING_REVIEW_REQUIRED',
+      })
+    return this.sql.begin(async (tx) => {
+      // NO KEY UPDATE serializes sale/state changes without conflicting with
+      // execution's job FK check while that path holds the authorization lock.
+      const [job] = await tx<JobRow[]>`
+        SELECT * FROM jobs WHERE id = ${input.jobId} FOR NO KEY UPDATE
+      `
+      if (!job) throw new ClientError('Job not found.', { statusCode: 404, code: 'NOT_FOUND' })
+      if (!['AUTHORIZED', 'FUNDED'].includes(job.status))
+        throw new ClientError('This job cannot be funded or reopened.', {
+          statusCode: 409,
+          code: 'JOB_NOT_FUNDABLE',
+        })
+      const buyer = input.buyer.toLowerCase()
+      if (!/^0x[0-9a-f]{40}$/.test(buyer) || /^0x0{40}$/.test(buyer) || !input.agentId)
+        throw review()
+      const rejectStrategy = async () => {
+        const rows = await tx`
+          SELECT id FROM strategy_watches WHERE authorization_id = ${job.authorization_id} LIMIT 1
+        `
+        if (rows.length)
+          throw new ClientError('Use the strategy controls for this mandate.', {
+            code: 'STRATEGY_EXECUTION_REQUIRED',
+            statusCode: 409,
+          })
+      }
+      await rejectStrategy()
+      const owners = [buyer, ESCROW_ACCOUNT].sort()
+      // Readbacks never create balance rows. Cold funding initializes and locks
+      // them in the same order as every other credit transfer.
+      if (input.price !== undefined && job.status === 'AUTHORIZED')
+        for (const owner of owners)
+          await tx`
+            INSERT INTO credit_balances (owner, balance) VALUES (${owner}, 0)
+            ON CONFLICT (owner) DO NOTHING
+          `
+      const balances = await tx<{ owner: string; balance: string }[]>`
+        SELECT owner, balance::text FROM credit_balances
+        WHERE owner = ANY(${owners}) ORDER BY owner FOR UPDATE
+      `
+      const [authorization] = await tx<AuthorizationRow[]>`
+        SELECT * FROM authorizations WHERE id = ${job.authorization_id} FOR UPDATE
+      `
+      if (!authorization || authorization.owner?.toLowerCase() !== buyer)
+        throw new ClientError('This job belongs to another owner.', {
+          code: 'FORBIDDEN',
+          statusCode: 403,
+        })
+      await rejectStrategy()
+      const funding = `job:${job.id}:funding`
+      const entries = await tx<
+        {
+          owner: string
+          delta: string
+          reason: string
+          reference: string
+          detail: Record<string, unknown>
+        }[]
+      >`
+        SELECT owner, delta::text, reason, reference, detail FROM credit_entries
+        WHERE reference = ANY(${[
+          funding,
+          `${funding}:out`,
+          `${funding}:in`,
+          ...['refund', 'job_earnings', 'platform_fee'].flatMap((reason) =>
+            ['', ':out', ':in'].map((suffix) => `job:${job.id}:${reason}${suffix}`),
+          ),
+        ]})
+      `
+      const events = await tx<{ detail: string }[]>`
+        SELECT detail FROM job_events WHERE job_id = ${job.id} AND type = 'spend'
+      `
+      const payerBalance = BigInt(balances.find((row) => row.owner === buyer)?.balance ?? '0'),
+        escrowBalance = BigInt(
+          balances.find((row) => row.owner === ESCROW_ACCOUNT)?.balance ?? '0',
+        ),
+        spent = BigInt(authorization.spent)
+      if (
+        payerBalance < 0n ||
+        payerBalance > BigInt(Number.MAX_SAFE_INTEGER) ||
+        escrowBalance < 0n ||
+        escrowBalance > BigInt(Number.MAX_SAFE_INTEGER) ||
+        spent < 0n ||
+        spent >= 1n << 256n
+      )
+        throw review()
+      const markerFor = (pricePoints: bigint, totalPoints: bigint, outlay: bigint) =>
+        fundingMarker({
+          jobId: job.id,
+          authorizationId: job.authorization_id,
+          buyer,
+          agentId: input.agentId,
+          pricePoints,
+          totalPoints,
+          outlay,
+          policyHash: authorization.policy.hash,
+        })
+      const hasSale = [
+        job.sold_agent_id,
+        job.sold_price_points,
+        job.sold_total_points,
+        job.sold_outlay,
+      ].some((value) => value !== null)
+      if (job.status === 'FUNDED' || hasSale || entries.length || events.length) {
+        // A prior AUTHORIZED sale or credit movement cannot prove which cap
+        // reservation survived. Only a completed atomic funding is recoverable.
+        if (
+          job.status !== 'FUNDED' ||
+          job.sold_agent_id === null ||
+          job.sold_price_points === null ||
+          job.sold_total_points === null ||
+          job.sold_outlay === null
+        )
+          throw review()
+        if (job.sold_agent_id !== input.agentId)
+          throw new ClientError('This retry does not match the recorded sale.', {
+            code: 'JOB_ALREADY_SOLD',
+            statusCode: 409,
+          })
+        const price = BigInt(job.sold_price_points),
+          total = BigInt(job.sold_total_points),
+          outlay = BigInt(job.sold_outlay)
+        const exact = (reference: string, owner: string, delta: bigint) =>
+          entries.some(
+            (entry) =>
+              entry.reference === reference &&
+              entry.owner === owner &&
+              BigInt(entry.delta) === delta &&
+              entry.reason === 'job_funding',
+          )
+        if (
+          price <= 0n ||
+          total > BigInt(Number.MAX_SAFE_INTEGER) ||
+          priceJob(price).total !== total ||
+          outlay <= 0n ||
+          outlay >= 1n << 256n ||
+          balances.length !== 2 ||
+          escrowBalance < total ||
+          entries.length !== 2 ||
+          !exact(`${funding}:out`, buyer, -total) ||
+          !exact(`${funding}:in`, ESCROW_ACCOUNT, total)
+        )
+          throw review()
+        const marker = markerFor(price, total, outlay)
+        const marked =
+          events.some((event) => event.detail.includes('atomic_job_funding_v1')) ||
+          entries.some((entry) => entry.detail.atomicFundingVersion !== undefined)
+        if (
+          marked &&
+          (events.length !== 1 ||
+            events[0]?.detail !== marker ||
+            spent < outlay ||
+            entries.some(
+              (entry) => entry.detail.jobId !== job.id || entry.detail.atomicFundingVersion !== 1,
+            ))
+        )
+          throw review()
+        // Harmless historical FUNDED readback remains compatible. It does not
+        // create a marker, transition state, or assert reservation ownership.
+        return {
+          jobId: job.id,
+          agentId: job.sold_agent_id,
+          held: Number(total),
+          buyerBalance: Number(payerBalance),
+          status: 'FUNDED',
+          alreadyFunded: true,
+          ...(!marked ? { historicalReadback: true as const } : {}),
+        }
+      }
+      if (input.price === undefined) return null
+      if (typeof input.price !== 'bigint' || input.price <= 0n || input.price >= 1n << 256n)
+        throw review()
+      const pricePoints = pointsForSettlement(input.price, SETTLEMENT.decimals)
+      if (!Number.isSafeInteger(pricePoints) || pricePoints <= 0) throw review()
+      const points = priceJob(BigInt(pricePoints)).total,
+        outlay = priceJob(input.price).total
+      if (
+        points > BigInt(Number.MAX_SAFE_INTEGER) ||
+        outlay >= 1n << 256n ||
+        spent + outlay >= 1n << 256n
+      )
+        throw review()
+      const verdict = evaluate(toAuthorization(authorization), outlay)
+      if (!verdict.allow)
+        throw new ClientError(verdict.reason, { statusCode: 403, code: 'MANDATE_REFUSED' })
+      if (verdict.spend !== outlay) throw review()
+      if (payerBalance < points)
+        throw new ClientError(
+          `This job costs ${points} points and the balance is ${payerBalance}.`,
+          {
+            statusCode: 402,
+            code: 'INSUFFICIENT_POINTS',
+          },
+        )
+      if (balances.length !== 2 || escrowBalance + points > BigInt(Number.MAX_SAFE_INTEGER))
+        throw review()
+      const detail = tx.json({ jobId: job.id, atomicFundingVersion: 1 })
+      await tx`
+        INSERT INTO credit_entries (id, owner, delta, reason, reference, detail) VALUES
+          (${randomUUID()}, ${buyer}, ${(-points).toString()}, 'job_funding', ${`${funding}:out`}, ${detail}),
+          (${randomUUID()}, ${ESCROW_ACCOUNT}, ${points.toString()}, 'job_funding', ${`${funding}:in`}, ${detail})
+      `
+      await tx`
+        UPDATE credit_balances SET balance = balance + CASE WHEN owner = ${buyer}
+          THEN ${(-points).toString()}::bigint ELSE ${points.toString()}::bigint END, updated_at = now()
+        WHERE owner = ANY(${owners})
+      `
+      await tx`UPDATE authorizations SET spent = spent + ${outlay.toString()}::numeric WHERE id = ${job.authorization_id}`
+      await tx`
+        UPDATE jobs SET status = 'FUNDED', sold_agent_id = ${input.agentId},
+          sold_price_points = ${pricePoints}, sold_total_points = ${points.toString()},
+          sold_outlay = ${outlay.toString()}, updated_at = now() WHERE id = ${job.id}
+      `
+      await tx`
+        INSERT INTO job_events (job_id, type, detail, at) VALUES
+          (${job.id}, 'spend', ${markerFor(BigInt(pricePoints), points, outlay)}, now()),
+          (${job.id}, 'status', 'Original funding committed atomically.', now())
+      `
+      return {
+        jobId: job.id,
+        agentId: input.agentId,
+        held: Number(points),
+        buyerBalance: Number(payerBalance - points),
+        status: 'FUNDED',
+        alreadyFunded: false,
+      }
+    })
+  }
+
   async refundFundedJob(input: JobRefundInput): Promise<JobRefundResult | null> {
     const review = () =>
       new ClientError('This job needs a ledger review before any refund can be confirmed.', {
@@ -406,9 +669,15 @@ export class PostgresJobStore implements JobStore {
           outlay: outlay.toString(),
         })
       const entries = await tx<
-        { owner: string; delta: string; reason: string; reference: string }[]
+        {
+          owner: string
+          delta: string
+          reason: string
+          reference: string
+          detail: Record<string, unknown>
+        }[]
       >`
-        SELECT owner, delta::text, reason, reference FROM credit_entries
+        SELECT owner, delta::text, reason, reference, detail FROM credit_entries
         WHERE reference = ANY(${[
           `${funding}:out`,
           `${funding}:in`,
@@ -439,8 +708,8 @@ export class PostgresJobStore implements JobStore {
         SELECT owner, balance::text FROM credit_balances
         WHERE owner = ANY(${owners}) ORDER BY owner FOR UPDATE
       `
-      const [authorization] = await tx<{ owner: string | null; spent: string }[]>`
-        SELECT owner, spent::text FROM authorizations WHERE id = ${job.authorization_id} FOR UPDATE
+      const [authorization] = await tx<AuthorizationRow[]>`
+        SELECT * FROM authorizations WHERE id = ${job.authorization_id} FOR UPDATE
       `
       if (authorization?.owner?.toLowerCase() !== buyer) throw review()
       const markers = await tx`
@@ -458,6 +727,30 @@ export class PostgresJobStore implements JobStore {
           throw review()
         return { refunded: 0, alreadyRefunded: true }
       }
+      // A global spent total cannot identify this job's original reservation:
+      // old lost-COMMIT compensation could have already released it. Releasing
+      // again would subtract some other job's allowance. Require the proof that
+      // funding and this reservation committed together before any new refund.
+      const originalMarker = fundingMarker({
+        jobId: job.id,
+        authorizationId: job.authorization_id,
+        buyer,
+        agentId: job.sold_agent_id,
+        pricePoints: price,
+        totalPoints: points,
+        outlay,
+        policyHash: authorization.policy.hash,
+      })
+      const original = await tx`
+        SELECT seq FROM job_events WHERE job_id=${job.id} AND type='spend' AND detail=${originalMarker}
+      `
+      if (
+        original.length !== 1 ||
+        entries.some(
+          (entry) => entry.detail.jobId !== job.id || entry.detail.atomicFundingVersion !== 1,
+        )
+      )
+        throw review()
       const escrow = balances.find((balance) => balance.owner === ESCROW_ACCOUNT),
         payer = balances.find((balance) => balance.owner === buyer)
       if (

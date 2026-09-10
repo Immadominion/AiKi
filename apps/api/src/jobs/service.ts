@@ -14,12 +14,14 @@ import {
   normalizeExecutionSender,
 } from '../execution/attempts.js'
 import { ClientError } from '../http/errors.js'
+import { SETTLEMENT } from '../settlement/pricing.js'
 import { authorizationOperationId } from './authorization-retry.js'
 import {
   type AuthorizationRecord,
   type CreditPaymentClaim,
   InMemoryJobStore,
   type JobEvent,
+  type JobFundingInput,
   type JobRecord,
   type JobRefundInput,
   type JobStatus,
@@ -327,6 +329,31 @@ export class JobService {
         code: 'JOB_REFUND_UNAVAILABLE',
       })
     return this.store.refundFundedJob(input)
+  }
+
+  async fundCreditJob(input: JobFundingInput) {
+    if (!this.store.fundCreditJob)
+      throw new ClientError('This deployment cannot atomically fund this job.', {
+        statusCode: 503,
+        code: 'JOB_FUNDING_UNAVAILABLE',
+      })
+    return this.store.fundCreditJob(input, (auth, outlay) => {
+      if (auth.status !== 'active')
+        return {
+          allow: false,
+          rule: 'authorization_status',
+          reason: `This mandate is ${auth.status}, so it cannot pay for anything.`,
+          spend: 0n,
+        }
+      // Called only after the store acquired the authorization lock. A request
+      // that waited past expiry must not use its earlier arrival timestamp.
+      const decision = evaluatePurchase(
+        auth.policy,
+        { amount: outlay, at: new Date().toISOString(), asset: SETTLEMENT.address },
+        auth.spent,
+      )
+      return { ...decision, spend: decision.allow ? outlay : 0n }
+    })
   }
 
   requireCreditPaymentStore() {
