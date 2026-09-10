@@ -85,6 +85,7 @@ export async function runStrategySweep(input: StrategyRunnerInput): Promise<Stra
     scheduler.heartbeat({
       instanceId,
       configurationHash,
+      ...(nonzeroAddress(input.executor) ? { executor: input.executor } : {}),
       ready,
       reason: ready
         ? 'Strategy runner is ready.'

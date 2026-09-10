@@ -395,6 +395,7 @@ describe.skipIf(!requested)('actual customer strategy setup on an isolated Anvil
     await scheduler.heartbeat({
       instanceId: randomUUID(),
       configurationHash: strategyDeploymentConfigDigest(config),
+      executor: EXECUTOR,
       ready: true,
       reason: 'Local fork journey test worker.',
     })

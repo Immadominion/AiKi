@@ -97,8 +97,8 @@ export class PostgresStrategyStore {
   listForOwner(owner: Hex) {
     return new PostgresStrategyRunnerStore(this.sql).listForOwner(owner)
   }
-  schedulerStatus(configurationHash: Hex) {
-    return new PostgresStrategyRunnerStore(this.sql).schedulerStatus(configurationHash)
+  schedulerStatus(configurationHash: Hex, executor: Hex) {
+    return new PostgresStrategyRunnerStore(this.sql).schedulerStatus(configurationHash, executor)
   }
 
   /** Recovery can inspect one already-prepared attempt, but cannot change or resend its intent. */

@@ -282,23 +282,54 @@ describe.skipIf(!databaseUrl)('durable strategy scheduling in isolated PostgreSQ
     ).toBe(1)
   })
   it('requires a fresh ready heartbeat for the exact deployed configuration', async () => {
-    expect((await scheduler.schedulerStatus(h('11'))).ready).toBe(false)
+    expect((await scheduler.schedulerStatus(h('11'), a('66'))).ready).toBe(false)
     const input = {
       instanceId: randomUUID(),
       configurationHash: h('11'),
+      executor: a('66'),
       ready: true,
       reason: 'Ready.',
     }
     await scheduler.heartbeat(input)
-    expect((await scheduler.schedulerStatus(h('11'))).ready).toBe(true)
+    expect((await scheduler.schedulerStatus(h('11'), a('66'))).ready).toBe(true)
     for (const invalid of [undefined, null, '0x', h('00')]) {
-      expect((await scheduler.schedulerStatus(invalid as ReturnType<typeof h>)).ready).toBe(false)
+      expect(
+        (await scheduler.schedulerStatus(invalid as ReturnType<typeof h>, a('66'))).ready,
+      ).toBe(false)
     }
-    expect((await scheduler.schedulerStatus(h('12'))).ready).toBe(false)
+    expect((await scheduler.schedulerStatus(h('12'), a('66'))).ready).toBe(false)
     await sql`UPDATE strategy_runner_heartbeat SET seen_at=now()-interval '121 seconds'`
-    expect((await scheduler.schedulerStatus(h('11'))).ready).toBe(false)
+    expect((await scheduler.schedulerStatus(h('11'), a('66'))).ready).toBe(false)
     await scheduler.heartbeat({ ...input, ready: false })
-    expect((await scheduler.schedulerStatus(h('11'))).ready).toBe(false)
+    expect((await scheduler.schedulerStatus(h('11'), a('66'))).ready).toBe(false)
+  })
+  it('binds readiness to the same canonical executor across independent store instances', async () => {
+    const api = new PostgresStrategyRunnerStore(sql)
+    await scheduler.heartbeat({
+      instanceId: randomUUID(),
+      configurationHash: h('11'),
+      executor: a('AB'),
+      ready: true,
+      reason: 'Ready.',
+    })
+    expect((await api.schedulerStatus(h('11'), a('ab'))).ready).toBe(true)
+    expect((await api.schedulerStatus(h('11'), a('cd'))).ready).toBe(false)
+    for (const invalid of [undefined, null, '0x', a('00')]) {
+      expect((await api.schedulerStatus(h('11'), invalid as ReturnType<typeof a>)).ready).toBe(
+        false,
+      )
+    }
+  })
+  it('fails closed for a legacy ready heartbeat without a bound executor', async () => {
+    await sql`INSERT INTO strategy_runner_heartbeat(chain_id,instance_id,configuration_hash,ready,reason)
+      VALUES (56,${randomUUID()},${h('11')},true,'Legacy worker.')`
+    expect((await scheduler.schedulerStatus(h('11'), a('66'))).ready).toBe(false)
+  })
+  it('allows unavailable recovery-only heartbeats but never ready ones without an executor', async () => {
+    const input = { instanceId: randomUUID(), configurationHash: h('11'), reason: 'Unavailable.' }
+    await expect(scheduler.heartbeat({ ...input, ready: true })).rejects.toThrow()
+    await scheduler.heartbeat({ ...input, ready: false })
+    expect((await scheduler.schedulerStatus(h('11'), a('66'))).ready).toBe(false)
   })
   it('checks bounds rather than running unbounded claims or recovery', async () => {
     await expect(scheduler.claimDue(51)).rejects.toThrow()

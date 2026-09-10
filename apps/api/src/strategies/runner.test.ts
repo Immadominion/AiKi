@@ -148,6 +148,15 @@ describe('strategy worker orchestration (no wallet or broadcast)', () => {
     )
     expect(t.execute).not.toHaveBeenCalled()
   })
+  it('publishes the actual executor identity with every ready heartbeat', async () => {
+    const t = await harness()
+    expect((await runStrategySweep(t.input)).ready).toBe(true)
+    for (const [heartbeat] of t.scheduler.heartbeat.mock.calls as unknown as [
+      { ready: boolean; executor?: string },
+    ][]) {
+      expect(heartbeat).toMatchObject({ ready: true, executor: t.input.executor })
+    }
+  })
   it('refuses incorrect or unavailable deployment pins before claiming work', async () => {
     const t = await harness()
     mock.verifyConfig.mockRejectedValue(new Error('RPC contains sensitive details'))

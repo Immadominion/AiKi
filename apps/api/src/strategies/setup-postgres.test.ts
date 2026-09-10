@@ -387,6 +387,7 @@ describe.skipIf(!databaseUrl)('owner strategy setup in isolated PostgreSQL', () 
     await runner.heartbeat({
       instanceId: randomUUID(),
       configurationHash: strategyDeploymentConfigDigest(f.d.config),
+      executor,
       ready: true,
       reason: 'Local fixture ready.',
     })
@@ -399,6 +400,48 @@ describe.skipIf(!databaseUrl)('owner strategy setup in isolated PostgreSQL', () 
     expect(paused.status).toBe('PAUSED')
     expect(paused.readiness.ready).toBe(false)
   })
+  it.each(['different executor', 'legacy unbound'] as const)(
+    'keeps deployment availability but refuses to start for a %s heartbeat',
+    async (mode) => {
+      const f = await fixture(),
+        { view } = await f.sign(),
+        runner = new PostgresStrategyRunnerStore(sql),
+        configurationHash = strategyDeploymentConfigDigest(f.d.config)
+      f.f.setVault('paused', false)
+      f.f.setVault('operationNonce', 8n)
+      const heartbeat = {
+        instanceId: randomUUID(),
+        configurationHash,
+        ready: true,
+        reason: 'Local worker ready.',
+      }
+      if (mode === 'different executor') await runner.heartbeat({ ...heartbeat, executor: other })
+      else
+        await sql`INSERT INTO strategy_runner_heartbeat(chain_id,instance_id,configuration_hash,ready,reason)
+      VALUES (56,${heartbeat.instanceId},${configurationHash},true,'Legacy worker.')`
+      expect(await f.service.publicConfig()).toMatchObject({
+        available: true,
+        configurationHash,
+        executor,
+        schedulerReady: false,
+      })
+      await expect(f.service.start(f.owner, view.id)).rejects.toThrow('scheduler')
+      expect((await f.service.get(f.owner, view.id)).status).toBe('PAUSED')
+      expect(
+        (
+          await sql`SELECT count(*)::int AS n FROM job_events WHERE detail='Strategy started with the owner-approved limits.'`
+        )[0]?.n,
+      ).toBe(0)
+      await runner.heartbeat({ ...heartbeat, executor })
+      expect(await f.service.publicConfig()).toMatchObject({
+        available: true,
+        configurationHash,
+        executor,
+        schedulerReady: true,
+      })
+      expect((await f.service.start(f.owner, view.id)).status).toBe('ACTIVE')
+    },
+  )
   it('enforces immutable SQL setup identities and reviewed wallet intent amounts', async () => {
     const f = await fixture(),
       view = await f.deploy()
@@ -467,6 +510,7 @@ describe.skipIf(!databaseUrl)('owner strategy setup in isolated PostgreSQL', () 
     await new PostgresStrategyRunnerStore(sql).heartbeat({
       instanceId: randomUUID(),
       configurationHash: strategyDeploymentConfigDigest(f.d.config),
+      executor,
       ready: true,
       reason: 'Local fixture ready.',
     })
@@ -488,6 +532,7 @@ describe.skipIf(!databaseUrl)('owner strategy setup in isolated PostgreSQL', () 
     await new PostgresStrategyRunnerStore(sql).heartbeat({
       instanceId: randomUUID(),
       configurationHash: strategyDeploymentConfigDigest(f.d.config),
+      executor,
       ready: true,
       reason: 'Local fixture ready.',
     })

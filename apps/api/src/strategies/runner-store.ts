@@ -4,6 +4,7 @@ import type postgres from 'postgres'
 import type { Hex } from 'viem'
 import { nonzeroAddress, nonzeroHash } from './operation.js'
 import { strategyJSON } from './runner-policy.js'
+import { strategyRunnerReadinessDigest } from './runner-readiness.js'
 
 export interface StrategyWatchView {
   id: string
@@ -134,16 +135,21 @@ export class PostgresStrategyRunnerStore {
 
   async schedulerStatus(
     configurationHash: Hex,
+    executor: Hex,
   ): Promise<{ ready: boolean; lastSeenAt: string | null; reason: string }> {
-    if (!nonzeroHash(configurationHash))
-      return { ready: false, lastSeenAt: null, reason: 'Strategy configuration is unavailable.' }
+    if (!nonzeroHash(configurationHash) || !nonzeroAddress(executor))
+      return {
+        ready: false,
+        lastSeenAt: null,
+        reason: 'Strategy configuration or executor is unavailable.',
+      }
+    const readinessHash = strategyRunnerReadinessDigest(configurationHash, executor)
     const [row] = await this.sql<
       { ready: boolean; seen_at: Date; reason: string; configuration_hash: Hex; fresh: boolean }[]
     >`
       SELECT *, (seen_at <= now() AND seen_at >= now() - interval '120 seconds') AS fresh
       FROM strategy_runner_heartbeat WHERE chain_id = 56`
-    const ready =
-      !!row?.ready && row.fresh && row.configuration_hash === configurationHash.toLowerCase()
+    const ready = !!row?.ready && row.fresh && row.configuration_hash === readinessHash
     return {
       ready,
       lastSeenAt: row?.seen_at.toISOString() ?? null,
@@ -156,20 +162,29 @@ export class PostgresStrategyRunnerStore {
   async heartbeat(input: {
     instanceId: string
     configurationHash: Hex
+    executor?: Hex
     ready: boolean
     reason: string
   }): Promise<void> {
     if (
       !uuid(input.instanceId) ||
       !nonzeroHash(input.configurationHash) ||
+      (input.executor !== undefined && !nonzeroAddress(input.executor)) ||
+      (input.ready && !nonzeroAddress(input.executor)) ||
       typeof input.ready !== 'boolean' ||
       typeof input.reason !== 'string' ||
       input.reason.length > 240
     )
       throw new Error('Invalid strategy runner heartbeat.')
+    // Existing column now stores the executor-bound readiness identity, NOT the public
+    // deployment digest. Legacy raw-digest heartbeats fail closed without a migration.
+    // Recovery-only unavailable workers may publish without an execution identity.
+    const readinessHash = input.executor
+      ? strategyRunnerReadinessDigest(input.configurationHash, input.executor)
+      : input.configurationHash.toLowerCase()
     await this
       .sql`INSERT INTO strategy_runner_heartbeat(chain_id,instance_id,configuration_hash,ready,reason)
-      VALUES (56,${input.instanceId},${input.configurationHash.toLowerCase()},${input.ready},${input.reason})
+      VALUES (56,${input.instanceId},${readinessHash},${input.ready},${input.reason})
       ON CONFLICT (chain_id) DO UPDATE SET instance_id=EXCLUDED.instance_id,configuration_hash=EXCLUDED.configuration_hash,
         ready=EXCLUDED.ready,reason=EXCLUDED.reason,seen_at=now()`
   }

@@ -115,7 +115,7 @@ export class StrategySetupService {
       await verifyStrategyDeploymentConfiguration(r.deployments, r.reader, {
         nowSeconds: BigInt(this.now()),
       })
-      const scheduler = await this.config.strategies.schedulerStatus(r.digest)
+      const scheduler = await this.config.strategies.schedulerStatus(r.digest, r.executor)
       return {
         available: true,
         chainId: 56,
@@ -273,7 +273,7 @@ export class StrategySetupService {
       snapshot: VerifiedStrategySnapshot | undefined
     try {
       const r = this.runtime(),
-        scheduler = await this.config.strategies.schedulerStatus(r.digest)
+        scheduler = await this.config.strategies.schedulerStatus(r.digest, r.executor)
       schedulerReady = scheduler.ready
       if (!schedulerReady) reasons.push('The strategy scheduler is not ready.')
       if (!row.binding) {
