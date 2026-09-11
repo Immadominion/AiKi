@@ -101,6 +101,52 @@ export function registerTaskRoutes(
   const text = (value: unknown, max: number) =>
     typeof value === 'string' ? value.trim().slice(0, max) : ''
   const activeRequests = new WeakMap<FastifyRequest, string>()
+  const recoverFundingResponse = async (owner: string, statusCode: number, body: unknown) => {
+    // Only the completed, owner/key/body-bound funding failure is recoverable.
+    // An in-progress request or uncertain provider call must never be restarted.
+    if (statusCode !== 503 || !body || typeof body !== 'object' || !('error' in body)) return null
+    const error = body.error
+    if (
+      !error ||
+      typeof error !== 'object' ||
+      !('code' in error) ||
+      error.code !== 'TASK_FUNDING_UNCONFIRMED' ||
+      !('taskId' in error) ||
+      typeof error.taskId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(error.taskId) ||
+      !input.credits?.transferRecorded
+    )
+      return null
+    try {
+      const task = await input.tasks.get(error.taskId)
+      if (
+        !task ||
+        task.poster.toLowerCase() !== owner.toLowerCase() ||
+        !(await input.credits.transferRecorded(fundingTransfer(task)))
+      )
+        return null
+      const terminal = task.status === 'SETTLED' || task.status === 'CANCELLED'
+      const next =
+        task.status === 'OPEN'
+          ? 'You can cancel unclaimed work in Work.'
+          : task.status === 'CLAIMED'
+            ? 'If no work is delivered, you can request cancellation in Work after the original claim deadline.'
+            : 'Check its current delivery and payment status in Work.'
+      return {
+        ...task,
+        outlay: task.outlay.toString(),
+        // Original funding is not a new charge or proof of a terminal payout.
+        // Preserve Hire's response shape without claiming a terminal refund.
+        originalFundingConfirmed: true,
+        heldPoints: terminal ? 0 : task.totalPoints,
+        workUrl: `/work?task=${task.id}`,
+        recoveryNote: `The original task funding is confirmed. Current task status: ${task.status}. No new work was sent by this retry. ${next}`,
+      }
+    } catch {
+      // Keep the saved failure when either exact read is still unavailable.
+      return null
+    }
+  }
   const finalizePayment = async (
     task: TaskRecord,
     actor: string,
@@ -321,11 +367,17 @@ export function registerTaskRoutes(
                 retryable: true,
               },
             })
-        if (claim.kind === 'replayed')
+        if (claim.kind === 'replayed') {
+          const recovered = await recoverFundingResponse(
+            session.address,
+            claim.statusCode,
+            claim.body,
+          )
           return reply
             .header('idempotency-replayed', 'true')
-            .code(claim.statusCode)
-            .send(claim.body)
+            .code(recovered ? 200 : claim.statusCode)
+            .send(recovered ?? claim.body)
+        }
         activeRequests.set(request, claim.id)
         reply.header('idempotency-replayed', 'false')
       },

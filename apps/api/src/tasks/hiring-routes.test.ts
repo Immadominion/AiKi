@@ -518,7 +518,16 @@ describe.skipIf(!process.env.DATABASE_URL)(
           settlementForPoints(512, SETTLEMENT.decimals),
         )
         expect(await h.credits.balance(h.owner)).toBe(4_488)
-        expect((await h.request()).json()).toEqual(first.json())
+        const recovered = await h.request()
+        expect(recovered.statusCode).toBe(200)
+        expect(recovered.json()).toMatchObject({
+          id: task?.id,
+          status: 'CLAIMED',
+          originalFundingConfirmed: true,
+          heldPoints: 512,
+          workUrl: `/work?task=${task?.id}`,
+        })
+        expect(recovered.json().dispatchedAt).toBeUndefined()
         expect(mocked).toHaveBeenCalledTimes(1)
         expect(fetched).not.toHaveBeenCalled()
       } finally {
