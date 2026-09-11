@@ -7,6 +7,7 @@
  * being a bad citizen would be both rude and a fast route to being blocked.
  */
 
+import { publicFetch } from '../catalog/transport.js'
 import { guardedFetch } from '../net/guard.js'
 import {
   classify,
@@ -17,6 +18,7 @@ import {
   type ProbeSample,
   type ProbeVerdict,
 } from './detect.js'
+import { canonicalProbeEndpoint, isMcpService, probeMcpEndpoint } from './mcp.js'
 
 export const USER_AGENT = 'AiKi-Prober/0.1 (+https://github.com/Immadominion/AiKi)'
 
@@ -202,6 +204,76 @@ export async function probeAgent(input: ProbeAgentInput): Promise<ProbeAgentResu
     (s) => /^https?:\/\//i.test(s.endpoint) && s.transport !== 'stdio',
   )
 
+  // The registry declares protocols, not necessarily GET-able identity URLs.
+  // Inspect at most two distinct remote MCP endpoints, with the same per-host
+  // courtesy queue. The strict connector pins DNS/TLS and follows no redirects.
+  // Existing injected reads retain their operator/test outbound restrictions.
+  const mcpRead: typeof guardedFetch =
+    input.read ?? ((url, init) => publicFetch(new URL(url), init ?? {}))
+  const allMcpEndpoints = new Map<string, string>()
+  for (const service of network.filter(isMcpService)) {
+    const key = canonicalProbeEndpoint(service.endpoint)
+    if (!allMcpEndpoints.has(key)) allMcpEndpoints.set(key, service.endpoint)
+  }
+  const mcpEndpoints = [...allMcpEndpoints.values()].slice(0, 2)
+  const isGeneric = (service: DeclaredService) =>
+    !allMcpEndpoints.has(canonicalProbeEndpoint(service.endpoint))
+  let mcpResult: ProbeAgentResult | undefined
+  const rank = (result: ProbeAgentResult) =>
+    result.verdict.evidence?.protocolAvailable === true
+      ? Number(result.verdict.evidence.toolCount) > 0
+        ? 3
+        : 2
+      : result.verdict.state === 'DEGRADED'
+        ? 1
+        : 0
+  for (const endpoint of mcpEndpoints) {
+    const verdict = await perHost(endpoint, () => probeMcpEndpoint(endpoint, mcpRead))
+    let reciprocal: ProbeAgentResult['reciprocal']
+    if (verdict.evidence?.protocolAvailable === true) {
+      try {
+        const origin = new URL(endpoint).origin
+        const wk = await fetchOnce(`${origin}/.well-known/agent-registration.json`, mcpRead)
+        reciprocal =
+          wk.status >= 200 && wk.status < 300
+            ? d8_reciprocalProof(JSON.parse(wk.body), {
+                agentId: input.agentId,
+                agentRegistry: input.registry,
+              })
+            : {
+                verified: false,
+                detail: 'No reciprocal identity proof was served by the MCP origin.',
+              }
+      } catch {
+        reciprocal = {
+          verified: false,
+          detail: 'The MCP reciprocal identity proof could not be verified.',
+        }
+      }
+      if (reciprocal.verified && Number(verdict.evidence.toolCount) > 0) {
+        verdict.state = 'LIVE'
+        verdict.rule = 'MCP-D8'
+        verdict.detail =
+          'MCP capability discovery succeeded and the endpoint origin acknowledges this registered identity. No tool was called; this does not establish hiring or financial authority.'
+      }
+    }
+    const result = {
+      agentId: input.agentId,
+      verdict,
+      samples: [],
+      registrationWasZeroCost,
+      probedAt,
+      ...(reciprocal ? { reciprocal } : {}),
+    }
+    if (verdict.state === 'LIVE') return result
+    if (!mcpResult || rank(result) > rank(mcpResult)) mcpResult = result
+  }
+  if (mcpResult?.verdict.evidence?.protocolAvailable === true) return mcpResult
+  // A failed MCP check cannot be "rescued" by GET on that same MCP URL. A
+  // separately declared HTTP service may still be evaluated by the old rules.
+  const genericNetwork = mcpEndpoints.length ? network.filter(isGeneric) : network
+  if (mcpResult && genericNetwork.length === 0) return mcpResult
+
   // Static rules can decide without touching the network.
   if (network.length === 0) {
     return {
@@ -213,7 +285,7 @@ export async function probeAgent(input: ProbeAgentInput): Promise<ProbeAgentResu
     }
   }
 
-  const primary = network[0]
+  const primary = genericNetwork[0]
   if (!primary) {
     return {
       agentId: input.agentId,
@@ -244,11 +316,12 @@ export async function probeAgent(input: ProbeAgentInput): Promise<ProbeAgentResu
   }
 
   const verdict = classify({
-    services: input.services,
+    services: mcpEndpoints.length ? input.services.filter(isGeneric) : input.services,
     samples,
     primaryBody,
     sharedWithOtherAgents: input.sharedWithOtherAgents ?? 0,
   })
+  if (mcpResult) verdict.evidence = { ...verdict.evidence, mcp: mcpResult.verdict.evidence }
 
   // D8 - only worth checking when there is a real host to check against.
   let reciprocal: ProbeAgentResult['reciprocal']
