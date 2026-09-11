@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { accountHeadline, agentWalletLine, balanceView, explorerAccountUrl } from './agent-account'
+import { accountHeadline, balanceView, explorerAccountUrl } from './agent-account'
 
 const usdt = (raw: string) => ({
   address: '0x55d398326f99059ff775485246999027b3197955',
@@ -84,23 +84,4 @@ test('the explorer link follows the execution chain, and is absent when unknown'
   assert.equal(explorerAccountUrl(56, '0xabc'), 'https://bscscan.com/address/0xabc')
   assert.equal(explorerAccountUrl(97, '0xabc'), 'https://testnet.bscscan.com/address/0xabc')
   assert.equal(explorerAccountUrl(1, '0xabc'), null)
-})
-
-test('the header line tells none, some and unreadable apart', () => {
-  assert.equal(agentWalletLine(undefined), 'Agent wallet')
-  assert.equal(agentWalletLine(null), 'Agent wallet: balance unreadable')
-  assert.equal(
-    agentWalletLine({ native: '9000000000000000000', tokens: [usdt('0')] }),
-    'Agent wallet: nothing to spend',
-  )
-  assert.equal(agentWalletLine({ native: '0', tokens: [usdt('2500000000000000000')] }), '2.5 USDT')
-})
-
-test('the header never counts native BNB as something to spend', () => {
-  // An account full of BNB has nothing an agent can move, and a header saying
-  // otherwise would send somebody off to debug a mandate that is working.
-  assert.match(
-    agentWalletLine({ native: '100000000000000000000', tokens: [usdt('0')] }),
-    /nothing to spend/,
-  )
 })

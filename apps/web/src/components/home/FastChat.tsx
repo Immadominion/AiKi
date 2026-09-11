@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { AiKiActivity } from '@/components/ui/AiKiActivity'
-import { agentWalletLine } from '@/lib/agent-account'
-import { type AccountBalances, type AssistantStep, api, type CreditBalance } from '@/lib/api'
+import { type AssistantStep, api, type CreditBalance } from '@/lib/api'
 import { FastMandateAction } from './FastMandateAction'
 import { FastMessage } from './FastMessage'
 import {
@@ -107,17 +106,6 @@ export function FastChat({
     controller.getSnapshot,
   )
   const [credits, setCredits] = useState<CreditBalance | null>(null)
-  /*
-   * The agent's spending account, in the header where the conversation is.
-   *
-   * It used to appear only in Settings, which meant the one screen where
-   * somebody asks an agent to spend money never showed how much money it had.
-   * `undefined` here is "not loaded yet", `null` is "no account", and a null
-   * balance inside the object is "could not read", which is not empty.
-   */
-  const [wallet, setWallet] = useState<
-    { address: string; balances: AccountBalances | null } | null | undefined
-  >(undefined)
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastMessage = messages.at(-1)
   const refusalInHistory =
@@ -131,14 +119,6 @@ export function FastChat({
       // Not signed in, or this deployment has no Fast mode. Either way the
       // header simply says nothing rather than showing a broken number.
       setCredits(null)
-    }
-    try {
-      const account = await api.account()
-      setWallet(
-        account.address ? { address: account.address, balances: account.balances ?? null } : null,
-      )
-    } catch {
-      setWallet(null)
     }
   }, [])
 
@@ -175,24 +155,6 @@ export function FastChat({
             >
               Points and limits
             </a>
-            {/*
-              Points buy Fast turns and marketplace work. The agent wallet is a
-              different pot entirely, and it is the one an agent spends on chain,
-              so the screen where somebody asks an agent to spend has to show it.
-            */}
-            {wallet !== undefined ? (
-              <div className="mt-[6px] border-t border-[rgb(26_26_25_/_0.08)] pt-[6px]">
-                <div className="text-[12px] font-bold tabular-nums">
-                  {agentWalletLine(wallet?.balances)}
-                </div>
-                <a
-                  href="/settings#agent-account"
-                  className="text-faint inline-flex min-h-10 items-center text-[11.5px] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-orange-app"
-                >
-                  {wallet ? 'Agent wallet' : 'Create an agent wallet'}
-                </a>
-              </div>
-            ) : null}
           </div>
         ) : null}
       </header>

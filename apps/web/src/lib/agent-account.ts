@@ -131,20 +131,3 @@ export function explorerAccountUrl(chainId: number, address: string): string | n
   if (chainId === 97) return `https://testnet.bscscan.com/address/${address}`
   return null
 }
-
-/**
- * One line for a header: what the agent can actually spend.
- *
- * Deliberately not a full balance list. The question this answers is "does the
- * agent have anything to work with", and the three answers are none, some, and
- * we could not tell. The third is never rendered as the first.
- */
-export function agentWalletLine(balances: AccountBalances | null | undefined): string {
-  if (balances === undefined) return 'Agent wallet'
-  if (!balances) return 'Agent wallet: balance unreadable'
-  const spendable = balances.tokens.filter((token) => !isZeroAmount(token.raw))
-  if (spendable.length === 0) return 'Agent wallet: nothing to spend'
-  return spendable
-    .map((token) => `${formatUnits(token.raw, token.decimals)} ${token.symbol}`)
-    .join(', ')
-}
