@@ -57,3 +57,39 @@ export function withDiscoveryEvidence<T extends { ok: boolean; body: unknown }>(
   delete body.discoveryEvidence
   return { ...result, body: { discoveryEvidence, ...body } }
 }
+
+/**
+ * getAccountLiquidity reports excess liquidity / shortfall, not position inventory.
+ * Reference: https://docs-v4.venus.io/technical-reference/reference-core-pool/comptroller/diamond/facets/policy-facet#getaccountliquidity
+ * No provider amounts, error codes or units are parsed or independently verified here.
+ */
+export function withLiquidityInterpretation<T extends { ok: boolean; body: unknown }>(
+  requestedAgentId: string,
+  result: T,
+): T {
+  if (
+    requestedAgentId !== '43129' ||
+    !record(result.body) ||
+    result.body.agentId !== '43129' ||
+    result.body.tool !== 'getAccountLiquidity' ||
+    result.body.chainId !== 56
+  )
+    return result
+  const body = { ...result.body }
+  const liquidityInterpretation = {
+    scope: 'venus_account_liquidity_only',
+    zeroValues: 'do_not_prove_empty_position_or_zero_debt; may_be_at_threshold_or_rounded',
+    notEstablished: [
+      'supplied_collateral',
+      'outstanding_debt',
+      'health_factor',
+      'liquidation_safety',
+    ],
+    validity: 'missing_or_nonzero_error_code_or_unknown_units_prevent_risk_inference',
+    verification: 'provider_report_not_independently_verified',
+  }
+  // This reserved server field precedes excerpts; original provider text,
+  // structured content, charge, status and errors remain untouched.
+  delete body.liquidityInterpretation
+  return { ...result, body: { liquidityInterpretation, ...body } }
+}

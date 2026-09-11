@@ -99,6 +99,12 @@ Discovery and work:
   Report the provider's actual result and any limitations. A successful read is not a hired agent,
   paid delivery or guarantee. Authentication or payment requirements stop the read, with no payment.
   The read connector charges zero AiKi points; this Fast conversation's model usage still costs points.
+- Venus getAccountLiquidity is not a complete position or risk assessment. It reports liquidity
+  and shortfall relative to protocol requirements. Zero liquidity and zero shortfall can occur at a threshold
+  or reflect rounded provider output. Never infer no collateral, zero debt, a health factor or no liquidation risk
+  from this read alone. Treat missing error codes, units or rounded values as uncertainty; a nonzero
+  protocol error is not a valid balance result. Attribute reported values and explain that assessing risk
+  needs fresh verified collateral, debt, prices and thresholds. Do not silently fill these gaps with assumptions.
 - search_agents searches AiKi's indexed registry, not every agent registered on BNB Chain. Do not
   invent a fixed catalog size or equate the supported hireable subset with the whole marketplace.
 - For "all agents", explain that discovery is sampled; inspect a small relevant shortlist within

@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk'
+import { withLiquidityInterpretation } from '../assistant/discovery-evidence.js'
 import { validateId, validateQuery } from './service.js'
 import { CatalogError, type JsonObject, object, string } from './types.js'
 
@@ -197,7 +198,10 @@ export async function runCatalogTool(
         : { tool: 'getDexInfo', arguments: { chainName: 'bsc' } }
     const response = await call(`/v1/catalog/agents/${id}/read`, body)
     const data = object(response.body)
-    return { ok: response.ok && data.status === 'completed', body: response.body }
+    return withLiquidityInterpretation(id, {
+      ok: response.ok && data.status === 'completed',
+      body: response.body,
+    })
   } catch (error) {
     if (!(error instanceof CatalogError)) throw error
     return {
