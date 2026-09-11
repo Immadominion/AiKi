@@ -10,8 +10,8 @@ import {
   probeCurrentCandidate,
   readCurrentRegistration,
 } from './current-registration.js'
-import type { probeAgent } from './probe.js'
-import type { resolveRegistration } from './registration.js'
+import { probeAgent } from './probe.js'
+import { resolveRegistration } from './registration.js'
 import type { ProbeCandidate } from './sweep.js'
 
 const owner = `0x${'ab'.repeat(20)}`
@@ -326,5 +326,114 @@ describe('scheduled probe current finalized registration', () => {
           entry.subject.registry === candidate.registry.toLowerCase(),
       ),
     ).toBe(true)
+  })
+  it.each(['unreachable', 'unsupported', 'invalid'] as const)(
+    'records unknown resolution, not no-endpoint/provider liveness, for %s metadata',
+    async (status) => {
+      const f = fixture()
+      f.resolve.mockResolvedValue({
+        uri,
+        scheme: 'ipfs',
+        status,
+        zeroCost: false,
+        fetchedAt: new Date().toISOString(),
+        detail: status === 'unreachable' ? 'HTTP 429' : 'No readable manifest.',
+      })
+      expect(await f.run()).toBe(4)
+      expect(f.probe).not.toHaveBeenCalled()
+      expect(
+        f.store.observations.find((o) => o.predicate === 'agent.liveness_verdict')?.value,
+      ).toMatchObject({
+        state: 'UNPROBED',
+        evidence: { registrationStatus: status, uriScheme: 'ipfs', endpointChecked: false },
+      })
+      expect(
+        f.store.observations.find((o) => o.predicate === 'erc8004.registration_resolution')?.value,
+      ).toMatchObject({
+        status,
+        currentIdentity: { owner, agentUri: uri },
+      })
+    },
+  )
+  it('does not infer missing endpoints from an invalid empty manifest', async () => {
+    const f = fixture()
+    f.resolve.mockResolvedValue({
+      uri,
+      scheme: 'https',
+      status: 'invalid',
+      zeroCost: false,
+      fetchedAt: new Date().toISOString(),
+      manifest: { services: [], registrations: [], supportedTrust: [] },
+    })
+    await f.run()
+    expect(f.probe).not.toHaveBeenCalled()
+    expect(
+      f.store.observations.find((o) => o.predicate === 'agent.liveness_verdict')?.value.state,
+    ).toBe('UNPROBED')
+  })
+  it('persists a real IPFS gateway-throttle attempt as UNPROBED with current-URI provenance and no endpoint calls', async () => {
+    const f = fixture()
+    const ipfsUri = `ipfs://bafy${'a'.repeat(55)}`
+    f.reader.readContract.mockImplementation(async (input) =>
+      input.functionName === 'ownerOf' ? owner : ipfsUri,
+    )
+    const read = vi.fn(async () => new Response(null, { status: 429 }))
+    f.resolve.mockImplementation((value) => resolveRegistration(value, undefined, read))
+    expect(await f.run()).toBe(4)
+    expect(read).toHaveBeenCalledTimes(2)
+    expect(f.probe).not.toHaveBeenCalled()
+    expect(
+      f.store.observations.find((o) => o.predicate === 'agent.liveness_verdict')?.value,
+    ).toMatchObject({
+      state: 'UNPROBED',
+      evidence: { registrationStatus: 'unreachable', uriScheme: 'ipfs', endpointChecked: false },
+    })
+    expect(
+      f.store.observations.find((o) => o.predicate === 'erc8004.registration_resolution')?.value,
+    ).toMatchObject({
+      uri: ipfsUri,
+      status: 'unreachable',
+      detail: expect.stringContaining('rate limited'),
+      currentIdentity: { owner, agentUri: ipfsUri },
+    })
+    expect(f.store.observations.some((o) => o.predicate === 'agent.capability_probe')).toBe(false)
+    expect(
+      f.store.observations.find((o) => o.predicate === 'marketplace.readiness')?.value.status,
+    ).toBe('not_ready')
+  })
+  it('keeps an explicitly resolved empty service declaration distinct from unreadable metadata', async () => {
+    const f = fixture()
+    f.resolve.mockResolvedValue({
+      uri,
+      scheme: 'https',
+      status: 'resolved',
+      zeroCost: false,
+      fetchedAt: new Date().toISOString(),
+      manifest: { services: [], registrations: [], supportedTrust: [] },
+    })
+    f.probe.mockImplementation(probeAgent)
+    await f.run()
+    expect(
+      f.store.observations.find((o) => o.predicate === 'agent.liveness_verdict')?.value.state,
+    ).toBe('DECLARED_ONLY')
+  })
+  it('can probe endpoints actually present in an inspectable but schema-invalid manifest', async () => {
+    const f = fixture()
+    f.resolve.mockResolvedValue({
+      uri,
+      scheme: 'https',
+      status: 'invalid',
+      zeroCost: false,
+      fetchedAt: new Date().toISOString(),
+      manifest: {
+        services: [{ name: 'MCP', endpoint: 'https://new.example/mcp' }],
+        registrations: [],
+        supportedTrust: [],
+      },
+    })
+    await f.run()
+    expect(f.probe).toHaveBeenCalledWith(
+      expect.objectContaining({ services: [{ name: 'MCP', endpoint: 'https://new.example/mcp' }] }),
+    )
   })
 })

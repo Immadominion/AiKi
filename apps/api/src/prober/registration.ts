@@ -60,6 +60,23 @@ export interface RegistrationResolution {
 
 const MAX_BYTES = 512 * 1024
 const REGISTRATION_TYPE = 'https://eips.ethereum.org/EIPS/eip-8004#registration-v1'
+const DEFAULT_IPFS_GATEWAY = 'https://ipfs.io/ipfs/'
+const FALLBACK_IPFS_GATEWAY = 'https://dweb.link/ipfs/'
+const IPFS_ATTEMPT_MS = 5_000
+const IPFS_TOTAL_MS = 10_000
+// Fixed gateway hosts only; separate injected transports do not share state.
+// This is process-local courtesy, not a distributed quota or availability claim.
+const gatewayCooldowns = new WeakMap<typeof guardedFetch, Map<string, number>>()
+
+class RegistrationReadError extends Error {}
+class GatewayHttpError extends RegistrationReadError {
+  constructor(
+    readonly status: number,
+    readonly retryAfter: string | null,
+  ) {
+    super(`HTTP ${status}`)
+  }
+}
 
 function schemeFor(uri: string): RegistrationScheme {
   if (uri.startsWith('data:')) return 'data'
@@ -169,38 +186,127 @@ function ipfsGatewayPath(uri: string): string {
   const rest = uri.slice('ipfs://'.length)
   const segments = rest.split('/')
   const cid = segments[0] ?? ''
-  if (!/^[A-Za-z0-9]{20,}$/.test(cid)) throw new Error('Malformed ipfs CID.')
+  if (!/^[A-Za-z0-9]{20,}$/.test(cid)) throw new RegistrationReadError('Malformed ipfs CID.')
   for (const seg of segments.slice(1)) {
-    if (!/^[A-Za-z0-9._-]+$/.test(seg) || seg === '..') throw new Error('Malformed ipfs path.')
+    if (!/^[A-Za-z0-9._-]+$/.test(seg) || seg === '..' || seg === '.')
+      throw new RegistrationReadError('Malformed ipfs path.')
   }
   return segments.join('/')
 }
 
-async function fetchText(url: string, read: typeof guardedFetch): Promise<string> {
+async function fetchText(
+  url: string,
+  read: typeof guardedFetch,
+  timeoutMs = 15_000,
+): Promise<string> {
   // guardedFetch validates every hop against private address space; the
   // registry is permissionless, so this URL is attacker input by definition.
-  const response = await read(url, {
-    headers: { accept: 'application/json, application/ld+json;q=0.9' },
-    signal: AbortSignal.timeout(15_000),
-  })
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  // Enforce the cap while reading. Buffering first and checking after would
-  // let one hostile endpoint hold gigabytes of our memory before the check.
-  const reader = response.body?.getReader()
-  if (!reader) return ''
-  const chunks: Uint8Array[] = []
-  let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    total += value.byteLength
-    if (total > MAX_BYTES) {
-      await reader.cancel()
-      throw new Error(`Registration exceeds ${MAX_BYTES} byte limit.`)
-    }
-    chunks.push(value)
+  const controller = new AbortController()
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadlineError = () => new RegistrationReadError('Registration fetch deadline exceeded.')
+  const active = () => {
+    if (controller.signal.aborted) throw deadlineError()
   }
-  return new TextDecoder().decode(Buffer.concat(chunks))
+  if (timeoutMs <= 0) throw deadlineError()
+  try {
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort()
+        reject(deadlineError())
+      }, timeoutMs)
+      timer.unref?.()
+    })
+    return await Promise.race([
+      (async () => {
+        const response = await read(url, {
+          headers: { accept: 'application/json, application/ld+json;q=0.9' },
+          signal: controller.signal,
+        })
+        if (controller.signal.aborted || !response.ok) {
+          void response.body?.cancel().catch(() => {})
+          active()
+          throw new GatewayHttpError(response.status, response.headers.get('retry-after'))
+        }
+        reader = response.body?.getReader()
+        if (!reader) return ''
+        const chunks: Uint8Array[] = []
+        let total = 0
+        for (;;) {
+          active()
+          const { done, value } = await reader.read()
+          active()
+          if (done) break
+          total += value.byteLength
+          if (total > MAX_BYTES)
+            throw new RegistrationReadError(`Registration exceeds ${MAX_BYTES} byte limit.`)
+          chunks.push(value)
+        }
+        return new TextDecoder().decode(Buffer.concat(chunks))
+      })(),
+      timeout,
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+    controller.abort()
+    void reader?.cancel().catch(() => {})
+  }
+}
+
+function retryAt(header: string | null): number {
+  const now = Date.now()
+  const seconds = header && /^\d+$/.test(header.trim()) ? Number(header) : NaN
+  const requested = Number.isFinite(seconds) ? now + seconds * 1_000 : Date.parse(header ?? '')
+  // Missing, invalid or past Retry-After still gets at least a minute of relief.
+  return Number.isFinite(requested) ? Math.max(now + 60_000, requested) : now + 60_000
+}
+
+async function fetchIpfs(
+  uri: string,
+  gateway: string,
+  read: typeof guardedFetch,
+): Promise<{ text: string; detail?: string }> {
+  const path = ipfsGatewayPath(uri)
+  const deadline = Date.now() + IPFS_TOTAL_MS
+  // IPFS path gateway format: https://docs.ipfs.tech/how-to/address-ipfs-on-web/
+  // Both fixed public gateways receive exactly the same CID/path. This is HTTP
+  // retrieval, not independent content-hash verification or provider evidence.
+  const gateways =
+    gateway === DEFAULT_IPFS_GATEWAY ? [DEFAULT_IPFS_GATEWAY, FALLBACK_IPFS_GATEWAY] : [gateway]
+  let cooldowns = gatewayCooldowns.get(read)
+  if (!cooldowns) {
+    cooldowns = new Map()
+    gatewayCooldowns.set(read, cooldowns)
+  }
+  for (const current of gateways) {
+    const host = new URL(current).origin
+    if ((cooldowns.get(host) ?? 0) > Date.now()) continue
+    try {
+      const text = await fetchText(
+        `${current.replace(/\/$/, '')}/${path}`,
+        read,
+        Math.min(IPFS_ATTEMPT_MS, deadline - Date.now()),
+      )
+      return {
+        text,
+        ...(gateways.length === 2 && current === FALLBACK_IPFS_GATEWAY
+          ? {
+              detail:
+                'Registration retrieved via dweb.link after ipfs.io rate limiting. This fetch is not provider endpoint availability evidence.',
+            }
+          : {}),
+      }
+    } catch (error) {
+      // Only explicit gateway throttling permits the fixed alternate. In
+      // particular, do not bypass authentication, SSRF blocks, malformed JSON,
+      // oversized bodies, timeouts, or ambiguous transport failures.
+      if (!(error instanceof GatewayHttpError) || error.status !== 429) throw error
+      cooldowns.set(host, retryAt(error.retryAfter))
+    }
+  }
+  throw new RegistrationReadError(
+    'IPFS gateways are rate limited; registration remains unresolved.',
+  )
 }
 
 /**
@@ -209,7 +315,7 @@ async function fetchText(url: string, read: typeof guardedFetch): Promise<string
  */
 export async function resolveRegistration(
   uri: string,
-  ipfsGateway = 'https://ipfs.io/ipfs/',
+  ipfsGateway = DEFAULT_IPFS_GATEWAY,
   read: typeof guardedFetch = guardedFetch,
 ): Promise<RegistrationResolution> {
   const fetchedAt = new Date().toISOString()
@@ -225,14 +331,20 @@ export async function resolveRegistration(
       detail: 'Only https, ipfs, and data registration URIs are supported.',
     }
   try {
-    const text =
+    const retrieval =
       scheme === 'data'
-        ? decodeDataUri(uri)
-        : await fetchText(
-            scheme === 'ipfs' ? `${ipfsGateway.replace(/\/$/, '')}/${ipfsGatewayPath(uri)}` : uri,
-            read,
-          )
-    return { uri, scheme, fetchedAt, zeroCost, ...parseManifest(text) }
+        ? { text: decodeDataUri(uri) }
+        : scheme === 'ipfs'
+          ? await fetchIpfs(uri, ipfsGateway, read)
+          : { text: await fetchText(uri, read) }
+    return {
+      uri,
+      scheme,
+      fetchedAt,
+      zeroCost,
+      ...('detail' in retrieval ? { detail: retrieval.detail } : {}),
+      ...parseManifest(retrieval.text),
+    }
   } catch (error) {
     return {
       uri,
@@ -240,7 +352,10 @@ export async function resolveRegistration(
       status: 'unreachable',
       fetchedAt,
       zeroCost,
-      detail: error instanceof Error ? error.message : String(error),
+      detail:
+        error instanceof RegistrationReadError
+          ? error.message
+          : 'Registration content could not be fetched or decoded safely.',
     }
   }
 }

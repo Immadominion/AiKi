@@ -3,7 +3,7 @@ import { bsc } from 'viem/chains'
 import { BSC_MAINNET } from '../config/chains.js'
 import type { EvidenceStore } from '../evidence/types.js'
 import { type CurrentRegistrationIdentity, persistVerification } from './evidence-sink.js'
-import { probeAgent } from './probe.js'
+import { type ProbeAgentResult, probeAgent } from './probe.js'
 import { resolveRegistration } from './registration.js'
 import type { ProbeCandidate } from './sweep.js'
 
@@ -175,12 +175,38 @@ export async function probeCurrentCandidate(
 ): Promise<number> {
   const currentIdentity = await readCurrentRegistration(candidate, reader)
   const registration = await (dependencies.resolve ?? resolveRegistration)(currentIdentity.agentUri)
-  const probe = await (dependencies.probe ?? probeAgent)({
-    agentId: currentIdentity.agentId,
-    registry: `eip155:${currentIdentity.chainId}:${currentIdentity.registry}`,
-    services: registration.manifest?.services ?? [],
-    agentUri: currentIdentity.agentUri,
-  })
+  const manifest = registration.manifest
+  // An unavailable document says nothing about its endpoint declarations. A
+  // partially valid document can still supply inspectable endpoints, but only
+  // a resolved document can establish that it declares none.
+  const inspectable =
+    manifest &&
+    (registration.status === 'resolved' ||
+      (registration.status === 'invalid' && manifest.services.length > 0))
+  const probe: ProbeAgentResult = inspectable
+    ? await (dependencies.probe ?? probeAgent)({
+        agentId: currentIdentity.agentId,
+        registry: `eip155:${currentIdentity.chainId}:${currentIdentity.registry}`,
+        services: manifest.services,
+        agentUri: currentIdentity.agentUri,
+      })
+    : {
+        agentId: currentIdentity.agentId,
+        probedAt: new Date().toISOString(),
+        registrationWasZeroCost: registration.zeroCost,
+        samples: [],
+        verdict: {
+          state: 'UNPROBED',
+          rule: 'registration-resolution-unknown',
+          detail:
+            'The current registration could not be read as an endpoint declaration. No provider endpoint was checked.',
+          evidence: {
+            registrationStatus: registration.status,
+            uriScheme: registration.scheme,
+            endpointChecked: false,
+          },
+        },
+      }
   return (
     await persistVerification(store, {
       chainId: currentIdentity.chainId,
