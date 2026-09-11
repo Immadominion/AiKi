@@ -29,6 +29,7 @@ const mandateStep: AssistantStep = {
   mutating: true,
   action: {
     kind: 'sign_mandate',
+    scope: 'venus_repay',
     authorizationId: '12345678-1234-4123-8123-123456789012',
     chainId: 97,
     account: `0x${'56'.repeat(20)}`,

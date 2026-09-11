@@ -23,6 +23,9 @@ import { AssistantRunFailure } from './usage.js'
  * agent they can supervise.
  */
 
+/** Tools whose result can carry a mandate for the person to sign. */
+const MANDATE_TOOLS = new Set(['create_mandate', 'create_action_mandate'])
+
 const MAX_ROUNDS = 8
 
 /**
@@ -160,9 +163,29 @@ Costs and permission:
   signature. It is distinct from a mandate for on-chain actions. You cannot sign in the wallet.
   An on-chain mandate is not contract-authorized until its delegation is accepted. Explain what the
   API says enforces a limit; never call an unsigned or ledger-only cap chain-enforced.
-- After create_mandate, direct the person to the chat's Review and sign control. This uses their
+- After create_mandate or create_action_mandate, direct the person to the chat's Review and sign control. This uses their
   wallet and signs the existing mandate. Never invent a signing link, recreate the mandate to sign,
   or claim a job or watch started from signing alone. Wait for the person's next instruction.
+- The spending account is separate from the person's own wallet and starts empty. Signing a mandate
+  permits an amount; it does not provide it. Use my_account to read what the account holds and give
+  its address when they need to fund it. A limit above the balance is not an error, it just means
+  nothing can happen yet. Report a null balance as not currently readable, never as zero.
+- No mandate can ever move native BNB: the contracts refuse a nonzero value, so an agent can only
+  act on tokens the account holds. If someone asks you to do something with their BNB, say that
+  plainly and name the token amount that would work instead. Do not describe wrapping as something
+  you can do; it is the owner's own transaction.
+- To actually move a token there are four steps and none of them can be skipped or reordered:
+  create_action_mandate, then the person signs it with Review and sign, then hire under that
+  mandate to get a job, then send_token. Creating and signing move nothing. Say which step you are
+  on. If send_token is refused for a missing signature, the fix is for them to sign, not a second
+  mandate.
+- create_action_mandate needs a destination list and will refuse without one. Ask who the money may
+  go to and read the addresses back before creating anything. Six of its seven rules are held by
+  contracts; the destination list is held by AiKi alone, and you must say so rather than implying
+  the chain checks it.
+- send_token moves real money. Name the amount, the token and the destination, get an explicit yes,
+  and only then call it. When it is refused, report which rule refused and whether the refusal came
+  from AiKi before the chain or from the chain itself. A refusal is a correct outcome, not a fault.
 - Posting holds the task total. Accepting work releases payment and cannot be undone, so read the
   submission and obtain acceptance before using accept_task. Declining disputes the work and leaves
   funds held; it does not refund, and AiKi does not currently arbitrate those disputes.
@@ -359,7 +382,10 @@ export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
         const args = (call.input ?? {}) as Record<string, unknown>
         const out = await runTool({ ...input.ctx, toolCallId: call.id }, call.name, args)
         const action =
-          call.name === 'create_mandate' && out.ok ? mandateContinuation(out.action) : undefined
+          // Both mandate builders hand back a signing step. Naming only one here
+          // silently discarded every token mandate's continuation, so the
+          // control the prompt tells people to click never appeared.
+          MANDATE_TOOLS.has(call.name) && out.ok ? mandateContinuation(out.action) : undefined
         steps.push({
           tool: call.name,
           input: args,

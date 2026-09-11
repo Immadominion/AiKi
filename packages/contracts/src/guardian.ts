@@ -81,14 +81,14 @@ export function parseExecutionNetwork(value: unknown): ExecutionNetwork {
 }
 
 /** Exact expansion of a JSON number, including scientific notation, never float multiplication. */
-function amountUnits(value: number, decimals: number): string {
+export function amountUnits(value: number, decimals: number, symbol = 'USDT'): string {
   if (
     typeof value !== 'number' ||
     !Number.isFinite(value) ||
     value <= 0 ||
     value > Number.MAX_SAFE_INTEGER
   )
-    throw new Error('Enter a positive USDT cap within the supported number range.')
+    throw new Error(`Enter a positive ${symbol} cap within the supported number range.`)
   const [coefficient = '', exponent = '0'] = value.toString().toLowerCase().split('e')
   const [whole = '', fraction = ''] = coefficient.split('.')
   const digits = BigInt(`${whole}${fraction}`)
@@ -96,7 +96,7 @@ function amountUnits(value: number, decimals: number): string {
   if (scale < 0) {
     const divisor = 10n ** BigInt(-scale)
     if (digits % divisor !== 0n)
-      throw new Error(`USDT caps on this network support at most ${decimals} decimal places.`)
+      throw new Error(`${symbol} caps on this network support at most ${decimals} decimal places.`)
     return (digits / divisor).toString()
   }
   return (digits * 10n ** BigInt(scale)).toString()
@@ -150,6 +150,48 @@ export function guardianConstraints(input: {
       value: total,
       tier: 'T0',
       label: `${input.totalUsdt} USDT in total`,
+    },
+  ]
+}
+
+/**
+ * A token worth naming when reporting what a mandate account holds.
+ *
+ * Deliberately a short, per-chain, reviewed list rather than a discovery sweep.
+ * An account's balance is shown to a person deciding whether to fund it, and a
+ * list assembled from transfer logs would show every token anybody had ever
+ * pushed into it, including the ones sent to make a scam look plausible. What
+ * is not on this list is not hidden, it is simply not something AiKi names.
+ */
+export interface AccountToken {
+  address: `0x${string}`
+  symbol: string
+  decimals: number
+}
+
+/**
+ * What to report for a mandate account on a given execution chain.
+ *
+ * USDT first because it is what every shipped mandate is denominated in. WBNB
+ * is named on mainnet for one blunt reason: native BNB can never move under a
+ * delegation, because the manager and the account both refuse a nonzero value,
+ * so wrapped is the only form of BNB an agent can ever act on. Showing it beside
+ * the native balance is how somebody learns that without reading Solidity.
+ */
+export function accountTokensFor(chainId: number): AccountToken[] {
+  const guardian = guardianFor(chainId)
+  const usdt: AccountToken = {
+    address: guardian.asset,
+    symbol: 'USDT',
+    decimals: guardian.decimals,
+  }
+  if (chainId !== 56) return [usdt]
+  return [
+    usdt,
+    {
+      address: '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c',
+      symbol: 'WBNB',
+      decimals: 18,
     },
   ]
 }

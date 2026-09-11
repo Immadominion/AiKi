@@ -9,6 +9,7 @@ import {
   ROOT_AUTHORITY,
 } from '@aiki/contracts'
 import Fastify from 'fastify'
+import { readAccountBalances } from '../accounts/balances.js'
 import type { AccountDeployer } from '../accounts/deploy.js'
 import type { AccountStore } from '../accounts/store.js'
 import { registerConversationRoutes } from '../assistant/conversations-routes.js'
@@ -894,11 +895,24 @@ export function createApiServer(input: {
         },
       })
     const account = await input.accounts.store.find(session.address, input.enforcers.chainId)
+    /*
+     * Balances travel with the address, because the address on its own is not
+     * actionable. `null` means the chain could not be read, which is not the
+     * same as holding nothing, and the two must not render alike.
+     */
+    const balances = account
+      ? await readAccountBalances({
+          ...(input.chain ? { chain: input.chain } : {}),
+          chainId: input.enforcers.chainId,
+          account: account.address as `0x${string}`,
+        })
+      : null
     return {
       address: account?.address ?? null,
       chainId: input.enforcers.chainId,
       network: input.enforcers.network,
       ...(account ? { deployedTx: account.deployedTx, createdAt: account.createdAt } : {}),
+      ...(account ? { balances } : {}),
     }
   })
   app.post('/v1/account', async (request, reply) => {

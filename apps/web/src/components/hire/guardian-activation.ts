@@ -175,7 +175,19 @@ const REQUIRED_ONCHAIN: Record<string, string> = {
   per_action_cap: 'PerActionCapEnforcer',
   session_total_cap: 'SessionTotalCapEnforcer',
 }
-export function assertGuardianEnforcement(enforcement: Enforcement, network: ExecutionNetwork) {
+/**
+ * The six rules a contract must be holding, whatever the mandate is for.
+ *
+ * Nothing here is specific to repaying a loan: it checks that each kind arrived
+ * at T0 naming the enforcer the deployment registered. `what` only names the
+ * kind of mandate in the refusal, so a person is not told a token mandate
+ * failed its "repayment" checks.
+ */
+export function assertOnchainEnforcement(
+  enforcement: Enforcement,
+  network: ExecutionNetwork,
+  what = 'repayment',
+) {
   if (
     enforcement.network !== network.network ||
     Object.entries(REQUIRED_ONCHAIN).some(
@@ -186,8 +198,12 @@ export function assertGuardianEnforcement(enforcement: Enforcement, network: Exe
     )
   )
     throw new Error(
-      'The required on-chain repayment limits are unavailable. No mandate was activated.',
+      `The required on-chain ${what} limits are unavailable. No mandate was activated.`,
     )
+}
+
+export function assertGuardianEnforcement(enforcement: Enforcement, network: ExecutionNetwork) {
+  assertOnchainEnforcement(enforcement, network)
 }
 
 export function guardianMandateConstraints(input: MandateInput, network: ExecutionNetwork) {

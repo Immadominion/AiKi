@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { AgentAccountPanel } from '@/components/shell/AgentAccountPanel'
 import { PageCard } from '@/components/shell/PageCard'
 import { useAccount, useModeNavigation } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
@@ -78,6 +79,7 @@ export function SettingsView() {
   return (
     <PageCard title="Settings" count="" headerSlot={header} tabs={[]} tabHint="">
       <div className="max-w-[860px]">
+        <AgentAccountPanel />
         <Section
           id="wallet"
           title="Wallet"

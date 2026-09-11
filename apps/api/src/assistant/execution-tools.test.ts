@@ -144,6 +144,7 @@ it.each(rails)(
     expect(result.ok).toBe(true)
     expect(result.action).toEqual({
       kind: 'sign_mandate',
+      scope: 'venus_repay',
       authorizationId,
       chainId: rail.chainId,
       account: accountAddress,

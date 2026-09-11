@@ -138,6 +138,15 @@ export interface ApprovalRequest {
   selector: string
   asset: string
   amount: bigint
+  /**
+   * Where the money was going, when the call names somewhere.
+   *
+   * Null for a call that names nobody, such as a Venus repayment, and null is a
+   * distinct value rather than a wildcard: approving a repayment must not
+   * satisfy a transfer. Without this, one yes authorised any destination at the
+   * same amount, and the screen never showed the field that decides the answer.
+   */
+  recipient?: string | null
   /** Why the agent wants to, in its own words. */
   reason: string
   status: 'pending' | 'approved' | 'declined' | 'used'
@@ -213,7 +222,13 @@ export interface JobStore {
    */
   approvalFor(
     jobId: string,
-    action: { target: string; selector: string; asset: string; amount: bigint },
+    action: {
+      target: string
+      selector: string
+      asset: string
+      amount: bigint
+      recipient?: string | null
+    },
   ): Promise<ApprovalRequest | null>
   /** What is waiting on this job. Newest first. */
   approvals(jobId: string): Promise<ApprovalRequest[]>
@@ -359,6 +374,7 @@ export class InMemoryJobStore implements JobStore {
     selector: string
     asset: string
     amount: bigint
+    recipient?: string | null
   }) {
     return [
       a.jobId,
@@ -366,6 +382,10 @@ export class InMemoryJobStore implements JobStore {
       a.selector.toLowerCase(),
       a.asset.toLowerCase(),
       a.amount.toString(),
+      // Part of the key, so a yes for one destination is not a yes for another
+      // at the same amount. Empty stands for a call that names nobody and is a
+      // distinct value, never a wildcard.
+      (a.recipient ?? '').toLowerCase(),
     ].join('|')
   }
 
@@ -389,7 +409,13 @@ export class InMemoryJobStore implements JobStore {
 
   async approvalFor(
     jobId: string,
-    action: { target: string; selector: string; asset: string; amount: bigint },
+    action: {
+      target: string
+      selector: string
+      asset: string
+      amount: bigint
+      recipient?: string | null
+    },
   ) {
     const key = InMemoryJobStore.actionKey({ jobId, ...action })
     const found = this.pendingApprovals.find(

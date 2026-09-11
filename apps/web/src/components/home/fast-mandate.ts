@@ -1,12 +1,12 @@
-import type { ExecutionNetwork } from '@aiki/contracts/guardian'
+import { accountTokensFor, type ExecutionNetwork } from '@aiki/contracts/guardian'
 import { formatUnits } from 'viem'
 import { api, type MandateContinuation } from '@/lib/api'
 import { readInjectedAccount, signMandate } from '@/lib/wallet'
 import { walletSession } from '@/lib/wallet-session'
 import {
   assertExecutionNetwork,
-  assertGuardianEnforcement,
   assertMandateAccount,
+  assertOnchainEnforcement,
   assertPreparedDelegation,
   assertWalletReady,
   loadExecutionNetwork,
@@ -21,11 +21,19 @@ const object = (value: unknown): Record<string, unknown> | null =>
 const address = (value: unknown): value is string =>
   typeof value === 'string' && /^0x[0-9a-f]{40}$/i.test(value) && !/^0x0{40}$/i.test(value)
 
+/** Tools whose step can carry a mandate to sign. Both, or token mandates never render. */
+const MANDATE_TOOLS = new Set(['create_mandate', 'create_action_mandate'])
+
 /** History contains data, not authority. Revalidate selected fields before offering a control. */
 export function parseMandateContinuation(value: unknown): MandateContinuation | null {
   const action = object(value)
+  // Absent means the Venus scope, which is what every continuation stored
+  // before token mandates existed carries. Defaulting to the stricter shape
+  // fails safe.
+  const scope = action?.scope === undefined ? 'venus_repay' : action.scope
   if (
     action?.kind !== 'sign_mandate' ||
+    (scope !== 'venus_repay' && scope !== 'token_transfer') ||
     typeof action.authorizationId !== 'string' ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
       action.authorizationId,
@@ -37,6 +45,7 @@ export function parseMandateContinuation(value: unknown): MandateContinuation | 
     return null
   return {
     kind: 'sign_mandate',
+    scope,
     authorizationId: action.authorizationId.toLowerCase(),
     chainId: action.chainId,
     account: action.account.toLowerCase(),
@@ -49,7 +58,7 @@ export function mandateContinuations(steps: unknown): MandateContinuation[] {
   for (const value of Array.isArray(steps) ? steps : []) {
     const step = object(value)
     const action =
-      step?.ok === true && step.tool === 'create_mandate'
+      step?.ok === true && MANDATE_TOOLS.has(String(step.tool))
         ? parseMandateContinuation(step.action)
         : null
     if (action) actions.set(action.authorizationId, action)
@@ -80,6 +89,17 @@ interface Review {
   totalUsdt: string
   expiresAt: string
   network: ExecutionNetwork
+  /**
+   * Present only for a token mandate. Its absence means the Venus repayment
+   * scope, which names no destination at all.
+   *
+   * `canApprove` is carried separately from `canSend` because an approval is a
+   * materially different thing to authorise: it lets the named address pull the
+   * tokens later, to anywhere it likes, and the allowance outlives this
+   * mandate's expiry and its revocation. Rendering the two identically under the
+   * words "only to" would understate the one that is harder to take back.
+   */
+  token?: { symbol: string; recipients: string[]; canSend: boolean; canApprove: boolean }
 }
 interface Snapshot {
   phase: 'idle' | 'loading' | 'review' | 'signing' | 'signed' | 'blocked' | 'uncertain'
@@ -98,12 +118,116 @@ const sameList = (value: unknown, expected: string) =>
   typeof value[0] === 'string' &&
   value[0].toLowerCase() === expected.toLowerCase()
 
+interface Caps {
+  perAction: bigint
+  total: bigint
+  expiry: string
+}
+
+/** The one lending call. Its scope is fixed by the network, not by the mandate. */
+function venusReview(
+  constraints: Map<string, unknown>,
+  caps: Caps,
+  network: ExecutionNetwork,
+): Review {
+  if (
+    !sameList(constraints.get('asset_scope'), network.guardian.asset) ||
+    !sameList(constraints.get('contract_allowlist'), network.guardian.market) ||
+    !sameList(constraints.get('selector_allowlist'), network.guardian.repayBorrowSelector)
+  )
+    throw new Error('The saved limits do not match the supported Venus repayment scope.')
+  return {
+    perActionUsdt: formatUnits(caps.perAction, network.guardian.decimals),
+    totalUsdt: formatUnits(caps.total, network.guardian.decimals),
+    expiresAt: new Date(caps.expiry).toISOString(),
+    network,
+  }
+}
+
+/**
+ * Moving one token to addresses the person named.
+ *
+ * The token has to be one this network reviewed, and the contract called has to
+ * be that same token: `transfer` and `approve` are calls on the token itself, so
+ * a mandate naming any other target is not the shape it claims to be. The
+ * destinations are read back so they can be shown, because they are the only
+ * rule here AiKi holds alone and the person is the last check on them.
+ */
+function tokenReview(
+  constraints: Map<string, unknown>,
+  caps: Caps,
+  network: ExecutionNetwork,
+  limits: { kind?: unknown; tier?: unknown }[],
+): Review {
+  const token = accountTokensFor(network.chainId).find((candidate) =>
+    sameList(constraints.get('asset_scope'), candidate.address),
+  )
+  if (!token || !sameList(constraints.get('contract_allowlist'), token.address))
+    throw new Error('This mandate names a token this network has not reviewed.')
+
+  const selectors = constraints.get('selector_allowlist')
+  if (
+    !Array.isArray(selectors) ||
+    selectors.length === 0 ||
+    selectors.length > 2 ||
+    selectors.some(
+      (selector) =>
+        typeof selector !== 'string' ||
+        !['0xa9059cbb', '0x095ea7b3'].includes(selector.toLowerCase()),
+    )
+  )
+    throw new Error('This mandate permits a call that is not a token transfer or approval.')
+
+  const recipients = constraints.get('recipient_allowlist')
+  if (
+    !Array.isArray(recipients) ||
+    recipients.length === 0 ||
+    recipients.length > 32 ||
+    recipients.some((entry) => !address(entry))
+  )
+    throw new Error('This mandate does not name where the money may go.')
+
+  // The destination rule must arrive as AiKi's, never dressed as the chain's.
+  if (
+    !limits.some((limit) => limit.kind === 'recipient_allowlist' && limit.tier === 'T2') ||
+    limits.some((limit) => limit.kind === 'recipient_allowlist' && limit.tier === 'T0')
+  )
+    throw new Error('The destination rule is misreported. No signature was requested.')
+
+  const permitted = (selectors as string[]).map((selector) => selector.toLowerCase())
+  return {
+    perActionUsdt: formatUnits(caps.perAction, token.decimals),
+    totalUsdt: formatUnits(caps.total, token.decimals),
+    expiresAt: new Date(caps.expiry).toISOString(),
+    network,
+    token: {
+      symbol: token.symbol,
+      recipients: (recipients as string[]).map((entry) => entry.toLowerCase()),
+      canSend: permitted.includes('0xa9059cbb'),
+      canApprove: permitted.includes('0x095ea7b3'),
+    },
+  }
+}
+
+/**
+ * Verify the saved mandate against the shape it claims to be, before anybody is
+ * asked to sign.
+ *
+ * There are two shapes and they are checked separately on purpose. Loosening the
+ * Venus checks until they also admitted a token mandate would mean one verifier
+ * that accepts a union of structures, and a union is exactly what an attacker
+ * picks from. Each scope states its own expected structure and refuses anything
+ * else, and an unrecognised scope refuses outright.
+ */
 function inspectPreparation(
   prep: PreparedDelegation,
   action: MandateContinuation,
   owner: string,
   network: ExecutionNetwork,
 ): PreparedReview {
+  // A token mandate carries one rule more than it has caveats: the destination
+  // list, which no contract holds.
+  const expectedConstraints = action.scope === 'token_transfer' ? 7 : 6
   const auth = prep.authorization
   if (
     !auth ||
@@ -111,22 +235,32 @@ function inspectPreparation(
     auth.owner?.toLowerCase() !== owner.toLowerCase() ||
     !/^[0-9a-f]{64}$/i.test(auth.policyHash) ||
     !Array.isArray(auth.constraints) ||
-    auth.constraints.length !== 6
+    auth.constraints.length !== expectedConstraints
   )
     throw new Error('The saved mandate could not be verified. No signature was requested.')
   const limits = prep.limits
   const caveats = prep.unsigned.caveats
   if (
     !Array.isArray(limits) ||
-    limits.length !== 6 ||
+    limits.length !== expectedConstraints ||
     limits.some((limit) => !object(limit) || typeof limit.kind !== 'string') ||
-    new Set(limits.map((limit) => limit.kind)).size !== 6 ||
+    new Set(limits.map((limit) => limit.kind)).size !== expectedConstraints ||
     !Array.isArray(caveats) ||
     caveats.length !== 6 ||
     new Set(caveats.map((caveat) => String(object(caveat)?.enforcer).toLowerCase())).size !== 6
   )
-    throw new Error('All six on-chain limits must be verified before this mandate can be signed.')
-  assertGuardianEnforcement(
+    /*
+     * Says what this actually establishes, which is that six distinct rules
+     * arrived at T0 naming the enforcers the deployment registered. It does NOT
+     * decode each caveat's terms or check an enforcer address against a pinned
+     * deployment, so it must not claim the limits themselves were verified.
+     * Doing that properly needs the enforcer addresses published and pinned, and
+     * is tracked separately.
+     */
+    throw new Error(
+      'This mandate does not carry the six separate on-chain limits AiKi expects, so no signature was requested.',
+    )
+  assertOnchainEnforcement(
     {
       network: network.network,
       audited: network.audited,
@@ -134,6 +268,7 @@ function inspectPreparation(
       limits: limits.map((limit) => ({ ...limit, why: '' })),
     },
     network,
+    action.scope === 'token_transfer' ? 'spending' : 'repayment',
   )
   const constraints = new Map(
     auth.constraints.map((constraint) => [constraint.kind, constraint.value]),
@@ -153,21 +288,18 @@ function inspectPreparation(
   const total = units('session_total_cap')
   const expiry = constraints.get('expiry')
   if (
-    constraints.size !== 6 ||
+    constraints.size !== expectedConstraints ||
     perAction > total ||
-    !sameList(constraints.get('asset_scope'), network.guardian.asset) ||
-    !sameList(constraints.get('contract_allowlist'), network.guardian.market) ||
-    !sameList(constraints.get('selector_allowlist'), network.guardian.repayBorrowSelector) ||
     typeof expiry !== 'string' ||
     !Number.isFinite(Date.parse(expiry))
   )
-    throw new Error('The saved limits do not match the supported Venus repayment scope.')
-  const review: Review = {
-    perActionUsdt: formatUnits(perAction, network.guardian.decimals),
-    totalUsdt: formatUnits(total, network.guardian.decimals),
-    expiresAt: new Date(expiry).toISOString(),
-    network,
-  }
+    throw new Error('The saved limits could not be verified. No signature was requested.')
+
+  const review: Review =
+    action.scope === 'token_transfer'
+      ? tokenReview(constraints, { perAction, total, expiry }, network, limits)
+      : venusReview(constraints, { perAction, total, expiry }, network)
+
   if (auth.status === 'revoked')
     return {
       prep,

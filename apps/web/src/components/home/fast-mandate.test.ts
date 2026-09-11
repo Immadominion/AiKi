@@ -23,6 +23,7 @@ const enforcement = [
 ] as const
 const action = {
   kind: 'sign_mandate' as const,
+  scope: 'venus_repay' as const,
   authorizationId: id,
   chainId: 56 as const,
   account,

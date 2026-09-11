@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./delegation": "./src/delegation.ts",
     "./guardian": "./src/guardian.ts",
+    "./mandates": "./src/mandates.ts",
     "./probe-freshness": "./src/probe-freshness.ts",
     "./strategies": "./src/strategies/index.ts",
     "./fixtures": "./src/fixtures.ts"

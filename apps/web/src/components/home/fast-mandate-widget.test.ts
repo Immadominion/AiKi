@@ -10,6 +10,7 @@ test('History renders only a review control, never a signing prompt or automatic
       owner: `0x${'11'.repeat(20)}`,
       action: {
         kind: 'sign_mandate',
+        scope: 'venus_repay',
         authorizationId: '12345678-1234-4123-8123-123456789012',
         chainId: 56,
         account: `0x${'22'.repeat(20)}`,

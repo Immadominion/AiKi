@@ -1,7 +1,15 @@
-import { type ExecutionNetwork, guardianConstraints, parseExecutionNetwork } from '@aiki/contracts'
+import {
+  actionMandateConstraints,
+  amountUnits,
+  type ExecutionNetwork,
+  guardianConstraints,
+  parseExecutionNetwork,
+  tokenFor,
+} from '@aiki/contracts'
 import type Anthropic from '@anthropic-ai/sdk'
 import { CATALOG_TOOLS, runCatalogTool } from '../catalog/assistant-tools.js'
 import { settlementForPoints } from '../credits/pricing.js'
+import { erc20TransferCall } from '../execution/executor.js'
 import { SETTLEMENT } from '../settlement/pricing.js'
 import { type MandateContinuation, mandateContinuation } from './continuation.js'
 import { withDiscoveryEvidence } from './discovery-evidence.js'
@@ -42,6 +50,7 @@ export interface ToolCallResult {
   action?: MandateContinuation
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const refused = (code: string, message: string): ToolCallResult => ({
   ok: false,
   body: { error: { code, message } },
@@ -177,7 +186,13 @@ export const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'my_account',
-    description: 'The account this person’s mandates spend from, if they have one.',
+    description:
+      'The account this person’s mandates spend from, if they have one, and what it holds. ' +
+      '`balances` gives native BNB in wei and each token in base units; read `decimals` before ' +
+      'stating any amount. `balances: null` means the chain could not be read, which is NOT the ' +
+      'same as empty, so say it is unknown rather than reporting zero. An agent can only ever ' +
+      'spend tokens from this account, never native BNB, so an account holding only BNB has ' +
+      'nothing an agent can use and needs USDT sent to its address.',
     input_schema: { type: 'object', properties: {} },
   },
   {
@@ -195,6 +210,64 @@ export const TOOLS: Anthropic.Tool[] = [
         expires_in_days: { type: 'number' },
       },
       required: ['per_action_usdt', 'total_usdt'],
+    },
+  },
+  {
+    name: 'create_action_mandate',
+    description:
+      'Create limits that let an agent move ONE token to addresses you name. Different from ' +
+      'create_mandate, which only ever permits repaying a Venus loan. The token, the contract, ' +
+      'the function and both caps are held by contracts on chain. The destination list is held ' +
+      'by AiKi, which reads it out of the call and refuses to relay anything else; say that ' +
+      'plainly and never call the destination rule chain-enforced. Like create_mandate this does ' +
+      'NOT sign: tell them to use the Review and sign control. Naming no destination is refused, ' +
+      'because a token mandate with no destination lets the full cap go anywhere.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        token: {
+          type: 'string',
+          description: 'Symbol, for example USDT. Ask my_account for what this network holds.',
+        },
+        to: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Addresses the agent may send to. Required, at least one, at most 32.',
+        },
+        can: {
+          type: 'array',
+          items: { type: 'string', enum: ['send', 'approve'] },
+          description: 'send permits transfer. approve permits letting a contract take the token.',
+        },
+        per_action: {
+          type: 'number',
+          description: 'Most it may move in one action, in whole tokens.',
+        },
+        total: { type: 'number', description: 'Most it may move in total, in whole tokens.' },
+        expires_in_days: { type: 'number' },
+      },
+      required: ['token', 'to', 'can', 'per_action', 'total'],
+    },
+  },
+  {
+    name: 'send_token',
+    description:
+      'Move tokens out of the spending account under a signed mandate, to an address that ' +
+      'mandate names. This is the one tool that actually moves money on chain, so state the ' +
+      'amount, the token and the destination and get explicit agreement before calling it. ' +
+      'Needs a job started from a SIGNED action mandate. AiKi checks the mandate first and the ' +
+      'chain checks it again; a refusal from either is a real answer worth reporting, including ' +
+      'which rule refused. Never call this to "test" anything.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'A job started under the action mandate.' },
+        token: { type: 'string', description: 'Symbol, for example USDT.' },
+        to: { type: 'string', description: 'Destination address. Must be one the mandate names.' },
+        amount: { type: 'number', description: 'Whole tokens, not base units.' },
+        why: { type: 'string', description: 'One line, shown to the person and stored.' },
+      },
+      required: ['job_id', 'token', 'to', 'amount'],
     },
   },
   {
@@ -441,6 +514,9 @@ export const TOOLS: Anthropic.Tool[] = [
 /** Tools that change something. Named so the runner can say what it is about to do. */
 export const MUTATING = new Set([
   'create_mandate',
+  'create_action_mandate',
+  // The only tool that moves a token out of the spending account.
+  'send_token',
   'create_spending_mandate',
   'hire',
   'watch_position',
@@ -611,6 +687,114 @@ export async function runTool(
             })
           : undefined
       return { ...created, ...(action ? { action } : {}) }
+    }
+    case 'create_action_mandate': {
+      const execution = await executionNetwork()
+      if ('error' in execution) return execution.error
+      const { chainId } = execution.network
+      let constraints: ReturnType<typeof actionMandateConstraints>
+      try {
+        constraints = actionMandateConstraints({
+          chainId,
+          symbol: typeof args.token === 'string' ? args.token : '',
+          recipients: Array.isArray(args.to) ? args.to.map((entry) => String(entry)) : [],
+          can: (Array.isArray(args.can) ? args.can : []).map((entry) => String(entry)) as (
+            | 'send'
+            | 'approve'
+          )[],
+          perAction: typeof args.per_action === 'number' ? args.per_action : Number.NaN,
+          total: typeof args.total === 'number' ? args.total : Number.NaN,
+          expiresInDays:
+            args.expires_in_days === undefined
+              ? 30
+              : typeof args.expires_in_days === 'number'
+                ? args.expires_in_days
+                : Number.NaN,
+        })
+      } catch (error) {
+        // Builder errors are fixed validation guidance, safe to relay verbatim.
+        return refused(
+          'ACTION_MANDATE_INVALID',
+          error instanceof Error
+            ? error.message
+            : 'Choose a reviewed token, a destination and valid limits.',
+        )
+      }
+      const account = await accountRequest()
+      if (!account.ok) return account
+      const held = mandateAccount(account.body, chainId)
+      if (!held) return unverifiedAccount()
+      let accountAddress = held.address
+      if (accountAddress === null) {
+        const deployment = await accountRequest(true)
+        if (!deployment.ok) return deployment
+        accountAddress = mandateAccount(deployment.body, chainId)?.address ?? null
+        if (!accountAddress) return unverifiedAccount()
+      }
+      const created = await post('/v1/authorizations', { constraints })
+      const authorization = created.body as { id?: unknown; owner?: unknown } | null
+      const action =
+        created.ok &&
+        typeof authorization?.owner === 'string' &&
+        authorization.owner.toLowerCase() === ctx.sessionAddress?.toLowerCase()
+          ? mandateContinuation({
+              kind: 'sign_mandate',
+              // A different shape from the guardian one, so the review screen
+              // checks it against what this builder actually produced rather
+              // than against the Venus scope.
+              scope: 'token_transfer',
+              authorizationId: authorization.id,
+              chainId,
+              account: accountAddress,
+              manager: execution.network.manager,
+            })
+          : undefined
+      return { ...created, ...(action ? { action } : {}) }
+    }
+    case 'send_token': {
+      const execution = await executionNetwork()
+      if ('error' in execution) return execution.error
+      const { chainId } = execution.network
+      let token: ReturnType<typeof tokenFor>
+      let amount: string
+      let to: string
+      try {
+        token = tokenFor(chainId, typeof args.token === 'string' ? args.token : '')
+        amount = amountUnits(
+          typeof args.amount === 'number' ? args.amount : Number.NaN,
+          token.decimals,
+          token.symbol,
+        )
+        const candidate = typeof args.to === 'string' ? args.to.toLowerCase() : ''
+        if (!/^0x[0-9a-f]{40}$/.test(candidate) || /^0x0+$/.test(candidate))
+          throw new Error('Give a destination address the mandate names.')
+        to = candidate
+      } catch (error) {
+        return refused(
+          'SEND_INVALID',
+          error instanceof Error
+            ? error.message
+            : 'Choose a reviewed token, a destination and an amount.',
+        )
+      }
+      if (typeof args.job_id !== 'string' || !UUID.test(args.job_id))
+        return refused(
+          'SEND_INVALID',
+          'Give the id of a job started under a signed action mandate.',
+        )
+      /*
+       * The calldata is built here from named parts, never supplied by the
+       * model. An amount the model states and calldata the model writes are two
+       * different numbers, and the one the chain executes is the calldata.
+       */
+      return post(`/v1/jobs/${args.job_id}/actions`, {
+        target: token.address,
+        selector: '0xa9059cbb',
+        asset: token.address,
+        amount,
+        callData: erc20TransferCall(to as `0x${string}`, BigInt(amount)),
+        ...(typeof args.why === 'string' ? { why: args.why.slice(0, 300) } : {}),
+      })
     }
     case 'my_account':
       return call('/v1/account')

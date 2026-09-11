@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { guardianFor } from '@aiki/contracts'
-import { formatUnits } from 'viem'
+import { amountUnits, guardianFor, tokenFor } from '@aiki/contracts'
+import { encodeFunctionData, formatUnits, parseAbi } from 'viem'
 import { z } from 'zod'
 import { type AikiClient, AikiError } from '../client.js'
 import { executionAccount, executionNetwork } from '../execution.js'
@@ -54,6 +54,104 @@ export function registerWorkTools(server: Registrar, client: AikiClient, session
         `Job ${job.id} is ${job.status} under mandate ${mandate_id}. ` +
           'Nothing has been spent. To have it act on its own, put it on watch.',
       )
+    },
+  )
+
+  server.registerTool(
+    'send_token',
+    {
+      title: 'Send a token under a mandate',
+      description:
+        'Move tokens out of the spending account, to an address the mandate names. This is the ' +
+        'one tool here that moves money on chain. Needs a job started from a SIGNED action ' +
+        'mandate. AiKi checks the mandate, then the chain checks it again, and a refusal from ' +
+        'either is reported as itself. Ask the person before calling it.',
+      inputSchema: {
+        job_id: z.string(),
+        token: z.string().describe('Symbol, for example USDT.'),
+        to: z.string().describe('Destination address. Must be one the mandate names.'),
+        amount: z.number().positive().describe('Whole tokens, not base units.'),
+        why: z.string().max(300).optional().describe('One line, shown to the person and stored.'),
+      },
+    },
+    async ({
+      job_id,
+      token,
+      to,
+      amount,
+      why,
+    }: {
+      job_id: string
+      token: string
+      to: string
+      amount: number
+      why?: string
+    }) => {
+      const network = await executionNetwork(client)
+      const resolved = tokenFor(network.chainId, token)
+      const units = amountUnits(amount, resolved.decimals, resolved.symbol)
+      const destination = to.toLowerCase()
+      if (!/^0x[0-9a-f]{40}$/.test(destination) || /^0x0+$/.test(destination))
+        throw new Error('Give a destination address the mandate names.')
+      await session.require(network.chainId)
+
+      /*
+       * The calldata is built here from named parts, never taken from the
+       * caller. An amount somebody states and calldata somebody supplies are
+       * two different numbers, and the chain executes the calldata.
+       */
+      const callData = encodeFunctionData({
+        abi: parseAbi(['function transfer(address to, uint256 amount) returns (bool)']),
+        functionName: 'transfer',
+        args: [destination as `0x${string}`, BigInt(units)],
+      })
+      const outcome = await client.post<{
+        policy: { allow: boolean; rule: string; reason: string }
+        chain?: { status: string; transactionHash?: string; revertReason?: string }
+        heldBy?: string
+      }>(`/v1/jobs/${encodeURIComponent(job_id)}/actions`, {
+        target: resolved.address,
+        selector: '0xa9059cbb',
+        asset: resolved.address,
+        amount: units,
+        callData,
+        ...(why ? { why } : {}),
+      })
+
+      const lines = [`${amount} ${resolved.symbol} to ${destination}, under job ${job_id}.`, '']
+      if (!outcome.policy?.allow) {
+        lines.push(
+          `Refused by AiKi before it reached the chain: ${outcome.policy?.rule} - ${outcome.policy?.reason}`,
+          'Nothing was sent and nothing was spent.',
+          ...(outcome.policy?.rule === 'unsigned'
+            ? ['Sign the mandate, then try this again. Do not create a second mandate.']
+            : []),
+        )
+        return text(lines.join('\n'))
+      }
+      const chain = outcome.chain
+      if (!chain) {
+        lines.push(
+          'Allowed by the mandate, but this deployment is not configured to reach a chain, so',
+          'nothing was submitted and AiKi was the only thing holding the limit.',
+          'This is a deployment setting, not something the mandate or the signature can fix.',
+        )
+        return text(lines.join('\n'))
+      }
+      if (chain.status === 'landed')
+        lines.push(`Landed on BNB ${network.network}: ${chain.transactionHash}`)
+      else if (chain.status === 'refused')
+        lines.push(
+          `The chain would not accept it: ${chain.revertReason ?? 'refused'}`,
+          'No transaction exists, so there is no hash to look up. Nothing was spent.',
+        )
+      else if (chain.status === 'reverted')
+        lines.push(
+          `The chain rejected it: ${chain.revertReason ?? 'reverted'}`,
+          `Transaction ${chain.transactionHash} exists and cost gas. Nothing moved.`,
+        )
+      else lines.push(`Outcome is ${chain.status}. Do not assume it failed; check the job record.`)
+      return text(lines.join('\n'))
     },
   )
 

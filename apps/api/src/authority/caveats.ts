@@ -328,6 +328,25 @@ export function compileCaveats(
       continue
     }
 
+    if (constraint.kind === 'recipient_allowlist') {
+      /*
+       * T2, and this one is worth saying out loud rather than folding into the
+       * generic message below. The suite bounds how much a call may move and
+       * what it may call, and nothing on chain bounds where the money lands.
+       * Somebody reading "only these addresses" beside a T0 badge would believe
+       * the chain was holding it. It is not. AiKi decodes the destination and
+       * declines to relay, which holds against a confused or injected agent and
+       * does not hold against a compromised AiKi.
+       */
+      outcomes.push(
+        soft(
+          constraint,
+          'AiKi reads the destination out of the call and refuses to relay anything else. No contract checks this one.',
+        ),
+      )
+      continue
+    }
+
     // `condition` and anything added later: no enforcer exists, so it is counted
     // by AiKi before relaying and must never render as T0.
     outcomes.push(

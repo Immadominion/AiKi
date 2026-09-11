@@ -25,9 +25,11 @@ and agreement contracts.
 
 | Tool | What it does |
 | --- | --- |
-| `whoami` | Who you are acting as, and the account mandates spend from |
+| `whoami` | Who you are acting as, the account mandates spend from, and what that account holds |
 | `create_wallet` | Makes a key on this machine and tells you the address |
 | `create_mandate` | Creates Guardian limits, deploys a spending account if configured, and attempts to sign the delegation |
+| `create_action_mandate` | Creates limits for moving one token to addresses you name, deploys a spending account if needed, and attempts to sign |
+| `send_token` | Moves tokens out of the spending account under a signed action mandate, to an address that mandate names |
 | `hire` | Creates a v1 job under an existing mandate; it does not buy a priced offer or fund escrow |
 | `watch_position` | Schedules the supported Venus USDT watch under a signed, capped mandate |
 | `watch_status` | When it last looked, when it last acted, what it decided |
@@ -118,6 +120,28 @@ When the API's account deployer is configured and funded, it pays account
 deployment gas. The configured runner pays transaction gas for its actions. The
 spending account still needs the correct asset and protocol setup on its execution network for
 the authorized action. Creating a mandate or job does not fund that account.
+
+## Moving a token
+
+Four steps, in order, and none can be skipped:
+
+1. `create_action_mandate` names one token, what may be done with it, where it may
+   go and both caps, then signs with the local key.
+2. `hire` starts a job under that mandate.
+3. `send_token` moves the tokens.
+
+Creating and signing move nothing. `send_token` is refused until the mandate is
+signed, and refused again by the chain if the action falls outside it.
+
+Six of the seven rules in an action mandate are held by contracts: the token, the
+contract called, the function, both caps and the expiry. **The destination list is
+not.** No deployed enforcer reads a recipient, so AiKi decodes the destination out
+of each call and declines to relay anything else. That holds against a confused or
+injected agent. It does not hold against a compromised AiKi, and it must never be
+described as though the chain were checking it.
+
+A mandate can never move native BNB. Both the manager and the account revert on a
+nonzero value, so an account holding only BNB has nothing an agent can spend.
 
 ## Access and spending boundaries
 

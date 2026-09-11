@@ -24,6 +24,8 @@ interface Waiting {
   selector: string
   asset: string
   amount: string
+  /** Where it was going, when the call names somewhere. Null for a repayment. */
+  recipient?: string | null
   reason: string
   status: 'pending' | 'approved' | 'declined' | 'used'
   requestedAt: string
@@ -112,6 +114,12 @@ export function Approvals({ jobId }: { jobId: string }) {
             <p className="text-muted mt-[4px] mb-0 text-[12.5px] leading-[1.45] text-pretty">
               {a.reason}
             </p>
+            {/* The destination, on the line above the technical detail, because
+                it is the field that decides the answer for a payment and the
+                approval used to be matched and rendered without it. */}
+            {a.recipient ? (
+              <p className="mt-[4px] mb-0 font-mono text-[11.5px] break-all">to {a.recipient}</p>
+            ) : null}
             <p className="text-faint mt-[4px] mb-0 font-mono text-[11px] break-all">
               {a.selector} on {a.target}
             </p>

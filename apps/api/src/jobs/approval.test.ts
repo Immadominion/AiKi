@@ -161,3 +161,99 @@ it('does not ask on behalf of a revoked mandate', async () => {
   expect(verdict.rule).toBe('authorization_status')
   expect(await jobs.approvals(job.id)).toHaveLength(0)
 })
+
+/*
+ * Where the money goes is part of the question.
+ *
+ * The match used to key on (job, target, selector, asset, amount) and nothing
+ * else, which was fine while the only approvable action was a Venus repayment,
+ * because a repayment names nobody. Once an agent could be authorised to send a
+ * token, one yes for a payment to a supplier also authorised the same amount to
+ * anywhere else, and the approval screen never showed the deciding field.
+ */
+
+const TOKEN = '0x55d398326f99059ff775485246999027b3197955'
+const SUPPLIER = `0x${'aa'.repeat(20)}`
+const SOMEWHERE_ELSE = `0x${'ff'.repeat(20)}`
+
+const sendTo = (to: string, amount = TENTH): Action => ({
+  target: TOKEN,
+  selector: '0xa9059cbb',
+  asset: TOKEN,
+  amount,
+  at: '2026-09-01T12:00:00.000Z',
+  recipient: to as `0x${string}`,
+})
+
+const sendScope: Constraint[] = [
+  { kind: 'contract_allowlist', value: [TOKEN], tier: 'T0', label: 'the token' },
+  { kind: 'selector_allowlist', value: ['0xa9059cbb'], tier: 'T0', label: 'send only' },
+  { kind: 'asset_scope', value: [TOKEN], tier: 'T0', label: 'USDT only' },
+  {
+    kind: 'session_total_cap',
+    value: (TENTH * 100n).toString(),
+    tier: 'T0',
+    label: 'Plenty of room',
+  },
+]
+
+it('records where an approved send was going', async () => {
+  const { jobs, job } = await jobUnder([...sendScope, approval('approve_every')])
+  await jobs.attempt(job.id, sendTo(SUPPLIER), 'Paying the supplier.')
+  const waiting = await jobs.approvals(job.id)
+  expect(waiting[0]?.recipient).toBe(SUPPLIER)
+})
+
+it('does not let a yes for one destination pay a different one', async () => {
+  const { jobs, job } = await jobUnder([...sendScope, approval('approve_every')])
+
+  await jobs.attempt(job.id, sendTo(SUPPLIER), 'Paying the supplier.')
+  const pending = (await jobs.approvals(job.id))[0]
+  expect(pending).toBeDefined()
+  await jobs.decideApproval(pending?.id as string, 'approved')
+
+  // Same token, same amount, different destination. Under the old key this was
+  // the same row and went straight through on the standing yes.
+  const elsewhere = await jobs.attempt(job.id, sendTo(SOMEWHERE_ELSE), 'Somewhere else.')
+  expect(elsewhere.allow).toBe(false)
+  expect(elsewhere.rule).toBe('approval_required')
+
+  // The original destination still goes through, once.
+  const intended = await jobs.attempt(job.id, sendTo(SUPPLIER), 'Paying the supplier.')
+  expect(intended.allow).toBe(true)
+})
+
+it('asks separately about two destinations rather than folding them into one', async () => {
+  const { jobs, job } = await jobUnder([...sendScope, approval('approve_every')])
+  await jobs.attempt(job.id, sendTo(SUPPLIER), 'One.')
+  await jobs.attempt(job.id, sendTo(SOMEWHERE_ELSE), 'Two.')
+  const waiting = await jobs.approvals(job.id)
+  expect(waiting).toHaveLength(2)
+  expect(new Set(waiting.map((request) => request.recipient))).toEqual(
+    new Set([SUPPLIER, SOMEWHERE_ELSE]),
+  )
+})
+
+it('keeps a repayment approval distinct from a send of the same amount', async () => {
+  // A repayment names nobody, so its recipient is null. Null must be a value,
+  // not a wildcard that any destination satisfies.
+  const { jobs, job } = await jobUnder([
+    { kind: 'contract_allowlist', value: [MARKET, TOKEN], tier: 'T0', label: 'both' },
+    { kind: 'selector_allowlist', value: ['0x0e752702', '0xa9059cbb'], tier: 'T0', label: 'both' },
+    { kind: 'asset_scope', value: [ASSET], tier: 'T0', label: 'USDT only' },
+    {
+      kind: 'session_total_cap',
+      value: (TENTH * 100n).toString(),
+      tier: 'T0',
+      label: 'Plenty of room',
+    },
+    approval('approve_every'),
+  ])
+  await jobs.attempt(job.id, action(TENTH), 'Repaying.')
+  const pending = (await jobs.approvals(job.id))[0]
+  await jobs.decideApproval(pending?.id as string, 'approved')
+
+  const send = await jobs.attempt(job.id, sendTo(SUPPLIER), 'Sending.')
+  expect(send.allow).toBe(false)
+  expect(send.rule).toBe('approval_required')
+})

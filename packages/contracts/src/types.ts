@@ -439,6 +439,8 @@ export interface Quote {
 export type ConstraintKind =
   | 'contract_allowlist'
   | 'selector_allowlist'
+  /** Where a permitted call may send value. Held by AiKi; no enforcer reads it. */
+  | 'recipient_allowlist'
   | 'asset_scope'
   | 'per_action_cap'
   | 'session_total_cap'

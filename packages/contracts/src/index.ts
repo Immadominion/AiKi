@@ -1,4 +1,5 @@
 export * from './delegation.js'
 export * from './guardian.js'
+export * from './mandates.js'
 export * from './probe-freshness.js'
 export * from './types.js'

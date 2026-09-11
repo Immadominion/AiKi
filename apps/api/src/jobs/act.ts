@@ -1,5 +1,6 @@
 import type { SignedDelegation } from '@aiki/contracts'
 import type { Address, Hex } from 'viem'
+import { recipientOf, selectorOf } from '../authority/calldata.js'
 import type { Action } from '../authority/policy.js'
 import { executeJobAction } from '../execution/job-execution.js'
 import { ClientError } from '../http/errors.js'
@@ -75,12 +76,42 @@ export async function act(input: {
    * of them fits under.
    */
   const delegation = authorization.delegation as SignedDelegation | undefined
-  if (!delegation || !config) {
-    // Nothing was signed, or this deployment cannot reach a chain. The action is
-    // permitted and AiKi is the only thing that held the limit, which is a real
-    // answer and has to be reported as itself.
+  /*
+   * An unsigned mandate on a chain-capable deployment is a refusal, not an
+   * allow.
+   *
+   * These two used to be one branch, and collapsing them was wrong in the worst
+   * direction: on production, where a chain IS configured, an unsigned mandate
+   * returned `allow` with no chain leg, charged the full amount against the
+   * lifetime cap, and submitted nothing. Three sends in a row read as three
+   * successes, moved nothing, and burned the cap. The caller could not tell that
+   * from a real spend because the only difference was an absent field.
+   *
+   * Refused BEFORE `attempt`, so nothing is charged for an action that was never
+   * going to be sent. This mirrors WATCH_UNSIGNED on the watch route, which has
+   * always refused for the same reason.
+   */
+  if (config && !delegation)
+    return {
+      policy: {
+        allow: false,
+        rule: 'unsigned',
+        reason:
+          'This mandate has not been signed, so nothing on chain is holding its limits and no action can be submitted under it. Sign it first.',
+      },
+      heldBy: 'aiki',
+    }
+  if (!config) {
+    /*
+     * This deployment cannot reach a chain at all. The action is permitted and
+     * AiKi is the only thing that held the limit, which is a real answer and has
+     * to be reported as itself rather than as a chain outcome.
+     */
     return { policy: await jobs.attempt(jobId, action, input.why), heldBy: 'aiki' }
   }
+  // Narrowed by the two branches above; kept explicit so a later edit that
+  // reorders them fails to compile rather than silently redeeming nothing.
+  if (!delegation) throw new Error('Unreachable: a chain-configured action needs a delegation.')
 
   const { policy, outcome, inFlight } = await executeJobAction({
     jobs,
@@ -184,8 +215,38 @@ export function parseAction(body: {
   if (typeof body.callData !== 'string' || !/^0x[0-9a-fA-F]*$/.test(body.callData))
     throw new ClientError('Call data must be 0x-prefixed hex.', { code: 'ACTION_MALFORMED' })
 
+  /*
+   * The selector that decides everything is the one in the calldata.
+   *
+   * A caller supplies both a selector and the calldata, and until these were
+   * compared the policy engine checked the stated selector against the allowlist
+   * while the chain executed whatever the calldata said. That is survivable for
+   * the rules an enforcer also checks. It is not survivable for the destination
+   * rule, which has no contract behind it and reads its argument at an offset
+   * chosen by the selector: state `transfer` and send `transferFrom` calldata and
+   * the "recipient" read out is the source address.
+   *
+   * Empty calldata carries no selector to compare against. It is left alone here
+   * and refused on chain, where a call with no selector matches no allowlist.
+   */
+  const carried = selectorOf(body.callData)
+  if (carried && carried !== selector)
+    throw new ClientError(
+      'The selector does not match the call being sent. Nothing was submitted.',
+      { code: 'ACTION_SELECTOR_MISMATCH' },
+    )
+
   return {
-    action: { target, selector, asset, amount, at: new Date().toISOString() },
+    action: {
+      target,
+      selector,
+      asset,
+      amount,
+      at: new Date().toISOString(),
+      // Read out of the calldata that will actually be executed, never taken
+      // from the request, and at the offset that calldata's own selector names.
+      recipient: recipientOf(carried ?? selector, body.callData),
+    },
     callData: body.callData as Hex,
   }
 }

@@ -45,6 +45,8 @@ const TOOL_LABEL: Record<string, string> = {
   preview_limits: 'priced your limits',
   my_account: 'looked up your account',
   create_mandate: 'created a mandate',
+  create_action_mandate: 'created a spending mandate',
+  send_token: 'sent tokens',
   create_spending_mandate: 'set your work budget',
   hire: 'started a job',
   hire_agent: 'created a task for the agent',

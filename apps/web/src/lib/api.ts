@@ -129,6 +129,27 @@ export interface AuthorizationResponse {
   enforcement?: Enforcement
 }
 
+/**
+ * What a mandate account holds, in base units.
+ *
+ * Never a float and never pre-divided: the caller formats with `decimals` at the
+ * point of display. An absent `balances` means the chain could not be read, and
+ * the difference between that and an empty account matters to somebody who has
+ * just sent money to this address.
+ */
+export interface TokenBalance {
+  address: string
+  symbol: string
+  decimals: number
+  raw: string
+}
+
+export interface AccountBalances {
+  /** Wei. The owner can move this; no agent ever can. */
+  native: string
+  tokens: TokenBalance[]
+}
+
 export interface Watch {
   jobId: string
   account: string
@@ -155,8 +176,12 @@ export interface AssistantStep {
   action?: MandateContinuation
 }
 
+/** Which structure the review screen must verify before asking anyone to sign. */
+export type MandateScope = 'venus_repay' | 'token_transfer'
+
 export interface MandateContinuation {
   kind: 'sign_mandate'
+  scope: MandateScope
   authorizationId: string
   chainId: 56 | 97
   account: string
@@ -394,9 +419,19 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ constraints }),
     }),
-  /** The account this person's mandates spend from, or null if they have none. */
+  /**
+   * The account this person's mandates spend from, or null if they have none.
+   *
+   * `balances` is null when the chain could not be read. That is not the same as
+   * an empty account and must never be rendered as a zero.
+   */
   account: () =>
-    req<{ address: string | null; chainId: number; network: string | null }>('/v1/account'),
+    req<{
+      address: string | null
+      chainId: number
+      network: string | null
+      balances?: AccountBalances | null
+    }>('/v1/account'),
   /** Deploys one. AiKi pays the gas; the account belongs to the caller. */
   createAccount: () =>
     req<{ address: string; chainId: number; created: boolean }>('/v1/account', {
@@ -633,6 +668,7 @@ export const api = {
         selector: string
         asset: string
         amount: string
+        recipient?: string | null
         reason: string
         status: 'pending' | 'approved' | 'declined' | 'used'
         requestedAt: string

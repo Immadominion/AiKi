@@ -14,6 +14,9 @@ vi.mock('./tools.js', () => ({
 const { runAssistant } = await import('./run.js')
 const action = {
   kind: 'sign_mandate',
+  // Absent on the wire and defaulted by the validator, which is how every
+  // continuation stored before scopes existed keeps working.
+  scope: 'venus_repay',
   authorizationId: '12345678-1234-4123-8123-123456789012',
   chainId: 56,
   account: `0x${'12'.repeat(20)}`,

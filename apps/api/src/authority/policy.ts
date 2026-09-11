@@ -5,6 +5,7 @@ export interface Constraint {
   kind:
     | 'contract_allowlist'
     | 'selector_allowlist'
+    | 'recipient_allowlist'
     | 'asset_scope'
     | 'per_action_cap'
     | 'session_total_cap'
@@ -21,6 +22,13 @@ export interface Action {
   asset: string
   amount: bigint
   at: string
+  /**
+   * Where this call sends value, decoded from its calldata rather than supplied
+   * alongside it. Null when the call shape names nobody, and null when it should
+   * but could not be read. A caller who provides both sides of a comparison is
+   * not being checked by it, which is why this is never taken from a request.
+   */
+  recipient?: `0x${string}` | null
 }
 export interface CompiledPolicy {
   id: string
@@ -89,6 +97,22 @@ export function evaluatePolicy(
       return { allow: false, rule: c.kind, reason: 'Target is not allowlisted.' }
     if (c.kind === 'selector_allowlist' && !values.includes(action.selector.toLowerCase()))
       return { allow: false, rule: c.kind, reason: 'Function selector is not allowlisted.' }
+    /*
+     * Fail closed on an unreadable destination. "The recipient could not be
+     * decoded, so it passes" would make the rule vanish for exactly the calls
+     * whose shape we do not recognise, which is the set an attacker chooses
+     * from. No enforcer holds this on chain, so this refusal is the only one.
+     */
+    if (c.kind === 'recipient_allowlist') {
+      if (!action.recipient)
+        return {
+          allow: false,
+          rule: c.kind,
+          reason: 'This call does not name a destination AiKi can read.',
+        }
+      if (!values.includes(action.recipient.toLowerCase()))
+        return { allow: false, rule: c.kind, reason: 'Recipient is not allowlisted.' }
+    }
     if (c.kind === 'asset_scope' && !values.includes(action.asset.toLowerCase()))
       return { allow: false, rule: c.kind, reason: 'Asset is outside mandate scope.' }
     if (c.kind === 'per_action_cap' && action.amount > BigInt(String(c.value)))

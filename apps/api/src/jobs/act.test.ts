@@ -138,12 +138,18 @@ it('records the refusal against the job, not only the success', async () => {
   expect(events.some((e) => e.detail.includes('chain refused'))).toBe(true)
 })
 
-it('says AiKi held the limit when nothing was ever signed', async () => {
-  // An unsigned mandate is a real mandate; the difference is who enforces it,
-  // and claiming the chain did would be the one lie this product cannot tell.
+it('refuses an unsigned mandate on a deployment that can reach a chain', async () => {
+  /*
+   * This used to answer `allow`, charge the cap, and submit nothing, so three
+   * sends in a row read as three successes while the money never moved and the
+   * lifetime cap drained. On a chain-configured deployment an unsigned mandate
+   * is a refusal: there is nothing on chain holding its limits and nothing to
+   * redeem.
+   */
   executeMock.mockReset()
   const { jobs, job, id } = await setup(false)
   const authorization = await jobs.getAuthorization(id)
+  const before = (await jobs.getAuthorization(id)).spent
   const out = await act({
     jobs,
     jobId: job.id,
@@ -152,6 +158,21 @@ it('says AiKi held the limit when nothing was ever signed', async () => {
     authorization,
     config: CONFIG,
   })
+  expect(out.policy.allow).toBe(false)
+  expect(out.policy.rule).toBe('unsigned')
+  expect(out.policy.reason).toMatch(/has not been signed/)
+  expect(executeMock).not.toHaveBeenCalled()
+  // Refused before the cap is touched, so a refusal costs nothing.
+  expect((await jobs.getAuthorization(id)).spent).toBe(before)
+})
+
+it('says AiKi held the limit when this deployment cannot reach a chain at all', async () => {
+  // Without enforcers or an agent key there is no chain to ask, so an allowed
+  // action is genuinely held by AiKi and has to be reported as itself.
+  executeMock.mockReset()
+  const { jobs, job, id } = await setup(false)
+  const authorization = await jobs.getAuthorization(id)
+  const out = await act({ jobs, jobId: job.id, action: action(4n), callData: '0x', authorization })
   expect(out.policy.allow).toBe(true)
   expect(out.heldBy).toBe('aiki')
   expect(executeMock).not.toHaveBeenCalled()
@@ -200,4 +221,54 @@ it('does not cite a transaction that was never sent', async () => {
   expect((await jobs.getAuthorization(id)).spent).toBe(0n)
   const events = (await jobs.getJob(job.id)).events
   expect(events.some((e) => e.detail.includes('would not accept'))).toBe(true)
+})
+
+/*
+ * The selector that decides the rules has to be the one the chain will run.
+ *
+ * A caller states a selector and supplies calldata separately. The policy engine
+ * checked the stated one against the allowlist and read the destination at the
+ * offset that selector implies, while the chain executed the calldata. For the
+ * rules an enforcer also checks that is survivable. The destination rule has no
+ * contract behind it, so declaring `transfer` and sending `transferFrom` made it
+ * read the source address and call it the recipient.
+ */
+it('refuses calldata whose selector is not the one declared', () => {
+  const transferFrom = `0x23b872dd${'0'.repeat(24)}${'aa'.repeat(20)}${'0'.repeat(24)}${'ff'.repeat(20)}${'0'.repeat(63)}1`
+  expect(() =>
+    parseAction({
+      target: TOKEN,
+      selector: '0xa9059cbb',
+      asset: TOKEN,
+      amount: '1',
+      callData: transferFrom,
+    }),
+  ).toThrow(/does not match the call being sent/)
+})
+
+it('reads the destination at the offset the calldata itself implies', () => {
+  const from = `0x${'aa'.repeat(20)}`
+  const to = `0x${'ff'.repeat(20)}`
+  const transferFrom = `0x23b872dd${'0'.repeat(24)}${from.slice(2)}${'0'.repeat(24)}${to.slice(2)}${'0'.repeat(63)}1`
+  const { action } = parseAction({
+    target: TOKEN,
+    selector: '0x23b872dd',
+    asset: TOKEN,
+    amount: '1',
+    callData: transferFrom,
+  })
+  // Argument one, the destination, not argument zero, the source.
+  expect(action.recipient).toBe(to)
+})
+
+it('leaves an empty call alone, since there is no selector to disagree with', () => {
+  const { action } = parseAction({
+    target: TOKEN,
+    selector: '0xa9059cbb',
+    asset: TOKEN,
+    amount: '1',
+    callData: '0x',
+  })
+  expect(action.selector).toBe('0xa9059cbb')
+  expect(action.recipient).toBeNull()
 })

@@ -1,3 +1,4 @@
+import type { AccountToken } from '@aiki/contracts'
 import { createPublicClient, http, parseAbi } from 'viem'
 
 /**
@@ -30,12 +31,40 @@ export interface ChainReader {
     digest: `0x${string}`,
     signature: `0x${string}`,
   ): Promise<boolean>
+
+  /**
+   * What a mandate account holds, so a person can be told whether funding it
+   * worked.
+   *
+   * Optional because it is the only method here that is not load-bearing for a
+   * refusal: a deployment that cannot reach an RPC must still be able to store
+   * and check delegations, and an unknown balance is reported as unknown rather
+   * than as zero. Zero and "could not read" look identical on a screen and mean
+   * opposite things to somebody who has just sent money.
+   */
+  balances?(account: `0x${string}`, tokens: AccountToken[]): Promise<AccountBalances>
+}
+
+/** Base units as decimal strings. A balance is money; it never becomes a float. */
+export interface TokenBalance {
+  address: `0x${string}`
+  symbol: string
+  decimals: number
+  raw: string
+}
+
+export interface AccountBalances {
+  /** Wei. Spendable by the owner only: no delegation can move native value. */
+  native: string
+  tokens: TokenBalance[]
 }
 
 const ACCOUNT_ABI = parseAbi([
   'function owner() view returns (address)',
   'function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)',
 ])
+
+const ERC20_ABI = parseAbi(['function balanceOf(address owner) view returns (uint256)'])
 
 /** ERC-1271's accept value. Anything else, including a revert, is a refusal. */
 const MAGIC = '0x1626ba7e'
@@ -70,6 +99,31 @@ export function viemChainReader(rpcUrl: string): ChainReader {
         // different account may revert, and a revert is a no.
         return false
       }
+    },
+    /*
+     * All of it, or none of it. A partial list reads as complete to whoever is
+     * looking at it, so one unreadable token is reported by failing the whole
+     * call and letting the caller say "unknown" rather than by quietly dropping
+     * a row somebody's money might be sitting in.
+     */
+    async balances(account, tokens) {
+      const [native, held] = await Promise.all([
+        client.getBalance({ address: account }),
+        Promise.all(
+          tokens.map(async (token) => ({
+            ...token,
+            raw: (
+              await client.readContract({
+                address: token.address,
+                abi: ERC20_ABI,
+                functionName: 'balanceOf',
+                args: [account],
+              })
+            ).toString(),
+          })),
+        ),
+      ])
+      return { native: native.toString(), tokens: held }
     },
   }
 }

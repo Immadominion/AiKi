@@ -194,6 +194,9 @@ export class JobService {
         selector: action.selector,
         asset: action.asset,
         amount: action.amount,
+        // Part of the question, so part of the match. A yes for one destination
+        // is not a yes for another at the same amount.
+        recipient: action.recipient ?? null,
       })
       if (standing) {
         /*
@@ -211,6 +214,7 @@ export class JobService {
           selector: action.selector,
           asset: action.asset,
           amount: action.amount,
+          recipient: action.recipient ?? null,
           reason: why,
         })
         await this.store.appendEvents(jobId, [

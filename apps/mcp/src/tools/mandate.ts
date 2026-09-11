@@ -1,8 +1,11 @@
 import {
+  actionMandateConstraints,
   DELEGATION_DOMAIN_NAME,
   DELEGATION_DOMAIN_VERSION,
   DELEGATION_TYPES,
+  type ExecutionNetwork,
   guardianConstraints,
+  tokenFor,
 } from '@aiki/contracts'
 import { z } from 'zod'
 import type { AikiClient } from '../client.js'
@@ -36,6 +39,67 @@ const describeTier = (tier: string) =>
       : tier === 'T2'
         ? 'counted by AiKi before each action'
         : 'checked after the fact'
+
+/**
+ * Sign a stored mandate with the local key, and say honestly whether it worked.
+ *
+ * Extracted so both mandate shapes go through one set of checks. Two copies of
+ * a signing verifier is two places for one of them to quietly stop checking the
+ * manager address, and the whole value of this step is that it refuses to sign
+ * anything the deployment did not just tell us to sign.
+ *
+ * Never throws. A mandate that failed to sign still exists and AiKi still
+ * honours it; what changes is who holds the limit, and reporting "signed" when
+ * nothing was signed is the one thing this must not get wrong.
+ */
+async function signStoredMandate(input: {
+  client: AikiClient
+  identity: { account: { signTypedData: (args: never) => Promise<`0x${string}`> } }
+  network: ExecutionNetwork
+  account: `0x${string}`
+  authorizationId: string
+}): Promise<{ signed: boolean; error: string | null }> {
+  const path = `/v1/authorizations/${encodeURIComponent(input.authorizationId)}/delegation`
+  try {
+    const prep = await input.client.get<{
+      domain: Record<string, unknown>
+      types: Record<string, unknown>
+      primaryType: string
+      message: Record<string, unknown>
+      unsigned: Record<string, unknown>
+    }>(`${path}?delegator=${input.account}`)
+    /*
+     * The API compiles the caveats, but its returned signing domain and account
+     * must still match the selected deployment and the account just read.
+     */
+    if (
+      prep.domain?.chainId !== input.network.chainId ||
+      typeof prep.domain.verifyingContract !== 'string' ||
+      prep.domain.verifyingContract.toLowerCase() !== input.network.manager.toLowerCase() ||
+      prep.domain.name !== DELEGATION_DOMAIN_NAME ||
+      prep.domain.version !== DELEGATION_DOMAIN_VERSION ||
+      prep.primaryType !== 'Delegation' ||
+      JSON.stringify(prep.types) !== JSON.stringify(DELEGATION_TYPES) ||
+      typeof prep.message?.delegator !== 'string' ||
+      prep.message.delegator.toLowerCase() !== input.account.toLowerCase() ||
+      typeof prep.unsigned?.delegator !== 'string' ||
+      prep.unsigned.delegator.toLowerCase() !== input.account.toLowerCase()
+    )
+      throw new Error(
+        'The signing request does not match the verified execution network, manager and mandate account.',
+      )
+    const signature = await input.identity.account.signTypedData({
+      domain: prep.domain,
+      types: prep.types,
+      primaryType: prep.primaryType,
+      message: prep.message,
+    } as never)
+    await input.client.post(path, { delegation: { ...prep.unsigned, signature } })
+    return { signed: true, error: null }
+  } catch (error) {
+    return { signed: false, error: (error as Error).message }
+  }
+}
 
 export function registerMandateTools(server: Registrar, client: AikiClient, session: Session) {
   server.registerTool(
@@ -127,57 +191,16 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
         throw new Error(
           'AiKi did not return a valid mandate identifier. No signature was submitted.',
         )
-      const authorizationPath = `/v1/authorizations/${encodeURIComponent(authorization.id)}/delegation`
-
-      /*
-       * Signing is attempted, never assumed. If it fails the mandate still
-       * exists and AiKi still honours it - what changes is who is holding the
-       * limit, and saying "signed" when nothing was signed is the one thing
-       * this product may not get wrong.
-       */
-      let signed = false
-      let signingError: string | null = null
-      try {
-        const prep = await client.get<{
-          domain: Record<string, unknown>
-          types: Record<string, unknown>
-          primaryType: string
-          message: Record<string, unknown>
-          unsigned: Record<string, unknown>
-        }>(`${authorizationPath}?delegator=${account.address}`)
-        /*
-         * The API compiles caveats, but its returned signing domain and account
-         * must still match the selected deployment and the account just read.
-         */
-        if (
-          prep.domain?.chainId !== network.chainId ||
-          typeof prep.domain.verifyingContract !== 'string' ||
-          prep.domain.verifyingContract.toLowerCase() !== network.manager.toLowerCase() ||
-          prep.domain.name !== DELEGATION_DOMAIN_NAME ||
-          prep.domain.version !== DELEGATION_DOMAIN_VERSION ||
-          prep.primaryType !== 'Delegation' ||
-          JSON.stringify(prep.types) !== JSON.stringify(DELEGATION_TYPES) ||
-          typeof prep.message?.delegator !== 'string' ||
-          prep.message.delegator.toLowerCase() !== account.address?.toLowerCase() ||
-          typeof prep.unsigned?.delegator !== 'string' ||
-          prep.unsigned.delegator.toLowerCase() !== account.address?.toLowerCase()
-        )
-          throw new Error(
-            'The signing request does not match the verified execution network, manager and mandate account.',
-          )
-        const signature = await identity.account.signTypedData({
-          domain: prep.domain,
-          types: prep.types,
-          primaryType: prep.primaryType,
-          message: prep.message,
-        } as Parameters<typeof identity.account.signTypedData>[0])
-        await client.post(authorizationPath, {
-          delegation: { ...prep.unsigned, signature },
-        })
-        signed = true
-      } catch (error) {
-        signingError = (error as Error).message
-      }
+      // Signing is attempted, never assumed: see signStoredMandate.
+      const outcome = await signStoredMandate({
+        client,
+        identity,
+        network,
+        account: account.address as `0x${string}`,
+        authorizationId: authorization.id,
+      })
+      const signed = outcome.signed
+      const signingError = outcome.error
 
       return text(
         [
@@ -189,6 +212,111 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
             ? `Signed for BNB ${network.network} (${network.chainId}). AiKi accepted the delegation for this account${network.audited ? '.' : '; the enforcer deployment is not audited.'}`
             : `NOT signed${signingError ? `: ${signingError}` : ''}. The limits are real and AiKi will enforce them, but nothing on chain is holding them, so an agent cannot be put on duty under this mandate until it is signed.`,
           '',
+          'The total cap does not refill.',
+        ].join('\n'),
+      )
+    },
+  )
+
+  server.registerTool(
+    'create_action_mandate',
+    {
+      title: 'Create a mandate for moving a token',
+      description:
+        'Limits that let an agent move ONE token to addresses you name, and sign them onto the ' +
+        'chain. Different from create_mandate, which only ever permits repaying a Venus loan. ' +
+        'Deploys the spending account if there is not one; AiKi pays that gas. The token, the ' +
+        'contract, the function and both caps end up held by contracts. The destination list is ' +
+        'held by AiKi alone. Naming no destination is refused.',
+      inputSchema: {
+        token: z.string().describe('Symbol, for example USDT.'),
+        to: z
+          .array(z.string())
+          .min(1)
+          .max(32)
+          .describe('Addresses the agent may send to. Required: a list of none is unbounded.'),
+        can: z
+          .array(z.enum(['send', 'approve']))
+          .min(1)
+          .default(['send'])
+          .describe('send permits transfer. approve permits letting a contract take the token.'),
+        per_action: z
+          .number()
+          .positive()
+          .describe('Most it may move in one action, in whole tokens.'),
+        total: z.number().positive().describe('Most it may move in total, in whole tokens.'),
+        expires_in_days: z.number().int().min(1).max(365).default(30),
+      },
+    },
+    /*
+     * Annotated because `Registrar` types every handler argument as `never`,
+     * which is fine while a tool only passes its arguments along and stops
+     * compiling the moment one calls a method on them.
+     */
+    async ({
+      token,
+      to,
+      can,
+      per_action,
+      total,
+      expires_in_days,
+    }: {
+      token: string
+      to: string[]
+      can: ('send' | 'approve')[]
+      per_action: number
+      total: number
+      expires_in_days: number
+    }) => {
+      const network = await executionNetwork(client)
+      // Validate the whole shape before deploying an account or signing.
+      const constraints = actionMandateConstraints({
+        chainId: network.chainId,
+        symbol: token,
+        recipients: to,
+        can,
+        perAction: per_action,
+        total,
+        expiresInDays: expires_in_days,
+      })
+      const resolved = tokenFor(network.chainId, token)
+      const identity = await session.require(network.chainId)
+
+      let account = executionAccount(await client.get<unknown>('/v1/account'), network)
+      let deployed = false
+      if (!account.address) {
+        account = executionAccount(await client.post<unknown>('/v1/account'), network, true)
+        deployed = true
+      }
+
+      const authorization = await client.post<{ id: string }>('/v1/authorizations', { constraints })
+      if (typeof authorization.id !== 'string' || !authorization.id)
+        throw new Error(
+          'AiKi did not return a valid mandate identifier. No signature was submitted.',
+        )
+      const outcome = await signStoredMandate({
+        client,
+        identity,
+        network,
+        account: account.address as `0x${string}`,
+        authorizationId: authorization.id,
+      })
+
+      return text(
+        [
+          `Mandate ${authorization.id} created.`,
+          `  at most ${per_action} ${resolved.symbol} per action, ${total} ${resolved.symbol} in total, for ${expires_in_days} days`,
+          `  may ${can.join(' and ')} only ${resolved.symbol}`,
+          `  only to ${to.map((entry) => entry.toLowerCase()).join(', ')}`,
+          `  spending from ${account.address}${deployed ? ' (just deployed for you; AiKi paid the gas)' : ''}`,
+          '',
+          outcome.signed
+            ? `Signed for BNB ${network.network} (${network.chainId}). AiKi accepted the delegation for this account${network.audited ? '.' : '; the enforcer deployment is not audited.'}`
+            : `NOT signed${outcome.error ? `: ${outcome.error}` : ''}. The limits are real and AiKi will enforce them, but nothing on chain is holding them, so send_token will be refused until it is signed.`,
+          '',
+          'The token, the contract, the function and both caps are held by contracts on chain.',
+          'The destination list is NOT. AiKi reads the destination out of each call and refuses to',
+          'relay anything else, which holds against a confused agent and not against a compromised AiKi.',
           'The total cap does not refill.',
         ].join('\n'),
       )

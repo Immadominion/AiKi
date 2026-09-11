@@ -91,6 +91,7 @@ test('a fresh explicit ask persists actual replies, while restored History never
 test('a signing continuation survives History reload without opening a wallet or sending a new turn', async () => {
   const action = {
     kind: 'sign_mandate' as const,
+    scope: 'venus_repay' as const,
     authorizationId: id,
     chainId: 56 as const,
     account: `0x${'12'.repeat(20)}`,
@@ -439,6 +440,7 @@ test('settlement uncertainty still reveals a saved signing continuation without 
   const load = h.transport.load
   const action = {
     kind: 'sign_mandate' as const,
+    scope: 'venus_repay' as const,
     authorizationId: id,
     chainId: 56 as const,
     account: `0x${'12'.repeat(20)}`,

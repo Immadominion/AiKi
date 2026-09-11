@@ -93,6 +93,7 @@ interface ApprovalRow {
   selector: string
   asset: string
   amount: string
+  recipient: string | null
   reason: string
   status: ApprovalRequest['status']
   requested_at: Date | string
@@ -111,6 +112,7 @@ const toApproval = (row: ApprovalRow): ApprovalRequest => ({
   // Read as a string and parsed. A uint256 amount loses precision through
   // Number, and this one is shown to a person who is about to agree to it.
   amount: BigInt(row.amount),
+  recipient: row.recipient ?? null,
   reason: row.reason,
   status: row.status,
   requestedAt: asIso(row.requested_at),
@@ -879,10 +881,11 @@ export class PostgresJobStore implements JobStore {
      */
     const inserted = await this.sql<ApprovalRow[]>`
       INSERT INTO job_approvals
-        (id, job_id, authorization_id, target, selector, asset, amount, reason, status)
+        (id, job_id, authorization_id, target, selector, asset, amount, recipient, reason, status)
       VALUES (${randomUUID()}, ${request.jobId}, ${request.authorizationId},
               ${request.target}, ${request.selector}, ${request.asset},
-              ${request.amount.toString()}, ${request.reason}, 'pending')
+              ${request.amount.toString()}, ${request.recipient ?? null},
+              ${request.reason}, 'pending')
       ON CONFLICT DO NOTHING
       RETURNING *
     `
@@ -895,6 +898,7 @@ export class PostgresJobStore implements JobStore {
          AND lower(selector) = lower(${request.selector})
          AND lower(asset) = lower(${request.asset})
          AND amount = ${request.amount.toString()}
+         AND COALESCE(lower(recipient), '') = ${(request.recipient ?? '').toLowerCase()}
        LIMIT 1
     `
     const row = waiting[0]
@@ -904,7 +908,13 @@ export class PostgresJobStore implements JobStore {
 
   async approvalFor(
     jobId: string,
-    action: { target: string; selector: string; asset: string; amount: bigint },
+    action: {
+      target: string
+      selector: string
+      asset: string
+      amount: bigint
+      recipient?: string | null
+    },
   ): Promise<ApprovalRequest | null> {
     const rows = await this.sql<ApprovalRow[]>`
       SELECT * FROM job_approvals
@@ -913,6 +923,7 @@ export class PostgresJobStore implements JobStore {
          AND lower(selector) = lower(${action.selector})
          AND lower(asset) = lower(${action.asset})
          AND amount = ${action.amount.toString()}
+         AND COALESCE(lower(recipient), '') = ${(action.recipient ?? '').toLowerCase()}
        ORDER BY requested_at DESC LIMIT 1
     `
     const row = rows[0]

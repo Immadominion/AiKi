@@ -21,6 +21,59 @@ import type { Session } from '../session.js'
  * and everything an agent may do with that account is bounded by caveats a
  * contract enforces. It is not defensible as a place to keep anything else.
  */
+/** Base units to something readable, split on the digits so no balance goes through a float. */
+function formatAmount(raw: string, decimals: number): string {
+  if (!/^\d+$/.test(raw)) return '0'
+  const padded = raw.padStart(decimals + 1, '0')
+  const whole = padded.slice(0, padded.length - decimals) || '0'
+  const fraction = padded
+    .slice(padded.length - decimals)
+    .slice(0, 6)
+    .replace(/0+$/, '')
+  if (fraction) return `${whole}.${fraction}`
+  // Too small to show is not the same as nothing there.
+  if (whole === '0' && !/^0*$/.test(raw)) return '<0.000001'
+  return whole
+}
+
+/**
+ * What the spending account holds, said carefully.
+ *
+ * Null is not zero. A balance the chain could not be read for is reported as
+ * unknown, because telling somebody who has just funded this address that it
+ * holds nothing is by far the worse of the two errors. Native BNB is listed
+ * with the reason no mandate can move it, since an account funded only with BNB
+ * looks ready and is not.
+ */
+export function holdings(value: unknown): string[] {
+  const account = value as {
+    balances?: {
+      native?: unknown
+      tokens?: { symbol?: unknown; decimals?: unknown; raw?: unknown }[]
+    } | null
+  } | null
+  const balances = account?.balances
+  if (!balances || typeof balances.native !== 'string' || !Array.isArray(balances.tokens))
+    return ['  holdings: could not be read just now, which is not the same as empty']
+  const tokens = balances.tokens.filter(
+    (token): token is { symbol: string; decimals: number; raw: string } =>
+      typeof token?.symbol === 'string' &&
+      typeof token?.decimals === 'number' &&
+      typeof token?.raw === 'string',
+  )
+  const lines = [
+    `  holds: ${formatAmount(balances.native, 18)} BNB (no mandate can move this)` +
+      tokens.map((t) => `, ${formatAmount(t.raw, t.decimals)} ${t.symbol}`).join(''),
+  ]
+  if (tokens.every((token) => /^0*$/.test(token.raw)))
+    lines.push(
+      `  no ${tokens.map((token) => token.symbol).join(' or ')} here, so nothing an agent can spend yet.`,
+      '  Send some to the address above. Only reviewed tokens are read, so other holdings are not',
+      '  listed, and native BNB is not spendable under any mandate.',
+    )
+  return lines
+}
+
 export function registerWalletTools(
   server: Registrar,
   client: AikiClient,
@@ -67,12 +120,17 @@ export function registerWalletTools(
             `  mandate execution is on BNB ${network.network} (${network.chainId}); the wallet RPC reports a different network.`,
           )
         await session.require(network.chainId)
-        const account = executionAccount(await client.get<unknown>('/v1/account'), network)
+        const raw = await client.get<unknown>('/v1/account')
+        // Validated first, then read for holdings: the network check is what
+        // makes the address safe to print, and it must not be skipped just
+        // because we also want the balances off the same response.
+        const account = executionAccount(raw, network)
         lines.push(
           account.address
             ? `  mandates spend from: ${account.address} (BNB ${network.network}, chain ${account.chainId})`
             : '  no mandate account yet; one is deployed the first time you create a mandate, and AiKi pays that gas',
         )
+        if (account.address) lines.push(...holdings(raw))
       } catch (error) {
         lines.push(`  AiKi account or network could not be verified: ${(error as Error).message}`)
       }
