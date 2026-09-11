@@ -36,7 +36,7 @@ export const CATALOG_TOOLS: Anthropic.Tool[] = [
   {
     name: 'catalog_capabilities',
     description:
-      'Check an external registration using MCP initialize and tools/list, without running provider actions. Reports readTools that AiKi explicitly enables, and authentication/payment requirements. Available discovery is not a paid-hire guarantee. No arbitrary MCP tool execution.',
+      "Check one external registration using MCP initialize and tools/list, without running provider actions. Inspect before assessing its protocol availability. readTools is AiKi's allowlist, not the provider's full capabilities; empty does not mean offline. Unsupported means this connector cannot check it. No hire, payment, arbitrary execution or trading authority.",
     input_schema: {
       type: 'object',
       properties: { agent_id: { type: 'string' } },

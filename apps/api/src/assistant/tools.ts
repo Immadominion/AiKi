@@ -4,6 +4,7 @@ import { CATALOG_TOOLS, runCatalogTool } from '../catalog/assistant-tools.js'
 import { settlementForPoints } from '../credits/pricing.js'
 import { SETTLEMENT } from '../settlement/pricing.js'
 import { type MandateContinuation, mandateContinuation } from './continuation.js'
+import { withDiscoveryEvidence } from './discovery-evidence.js'
 import { runStrategyTool, STRATEGY_TOOLS } from './strategy-tools.js'
 
 /**
@@ -120,7 +121,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'agent_task_support',
     description:
-      'Check whether a specific agent currently accepts AiKi tasks before offering to hire it. Returns availability, input guidance when declared, minimum buyer offer and the platform fee. A live passport alone does not establish task compatibility.',
+      'Check whether a specific agent currently accepts AiKi tasks before offering to hire it. Returns availability, input guidance when declared, minimum buyer offer and the platform fee. This checks AiKi task integration, not every capability the provider offers elsewhere.',
     input_schema: {
       type: 'object',
       properties: { agent_id: { type: 'string' } },
@@ -156,8 +157,7 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'ecosystem_stats',
     description:
-      'How much of the registry AiKi has indexed and probed, and how those probes came out. Use ' +
-      'this to judge how much any single score is worth.',
+      'AiKi index and probe coverage, not a census of working BNB agents. probed.byState includes stale last verdicts; probed.currentByState contains fresh checks. Missing fresh data is unknown, not zero or provider failure.',
     input_schema: { type: 'object', properties: {} },
   },
   {
@@ -529,7 +529,7 @@ export async function runTool(
   const catalog = await runCatalogTool(name, args, ctx.sessionAddress, (path, body) =>
     body === undefined ? call(path) : post(path, body),
   )
-  if (catalog) return catalog
+  if (catalog) return withDiscoveryEvidence(name, catalog)
   const strategy = await runStrategyTool(name, args, ctx.sessionAddress, (path) =>
     call(path, { cache: 'no-store' }),
   )
@@ -537,16 +537,25 @@ export async function runTool(
 
   switch (name) {
     case 'agent_task_support':
-      return call(`/v1/agents/${encodeURIComponent(String(args.agent_id))}/task-support`)
+      return withDiscoveryEvidence(
+        name,
+        await call(`/v1/agents/${encodeURIComponent(String(args.agent_id))}/task-support`),
+      )
     case 'search_agents':
-      return post('/v1/search', {
-        ...(args.query ? { query: args.query } : {}),
-        limit: Math.min(Number(args.limit ?? 8), 25),
-      })
+      return withDiscoveryEvidence(
+        name,
+        await post('/v1/search', {
+          ...(args.query ? { query: args.query } : {}),
+          limit: Math.min(Number(args.limit ?? 8), 25),
+        }),
+      )
     case 'agent_passport':
-      return call(`/v1/agents/${encodeURIComponent(String(args.agent_id))}/passport`)
+      return withDiscoveryEvidence(
+        name,
+        await call(`/v1/agents/${encodeURIComponent(String(args.agent_id))}/passport`),
+      )
     case 'ecosystem_stats':
-      return call('/v1/stats')
+      return withDiscoveryEvidence(name, await call('/v1/stats'))
     case 'preview_limits':
     case 'create_mandate': {
       const execution = await executionNetwork()
