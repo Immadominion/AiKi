@@ -29,9 +29,9 @@ export default function ErrorBoundary({
           </div>
 
           <p className="text-muted mt-[10px] mb-0 text-[13.5px] leading-[1.55] text-pretty">
-            Nothing was changed and nothing was spent. This is a read that failed, not an action.
-            Your agents keep running to the limits you already set, whether or not this screen
-            works.
+            The screen failed before it could confirm the latest result. Check Work or Points before
+            repeating a payment or signed action. Your existing agents keep running to the limits
+            you already set.
           </p>
 
           {error.digest ? (
@@ -49,10 +49,16 @@ export default function ErrorBoundary({
               Try again
             </button>
             <a
-              href="/activity"
+              href="/work"
               className="text-ink-app flex h-[42px] items-center rounded-xl bg-[rgb(26_26_25_/_0.055)] px-[18px] text-[13.5px] font-bold hover:bg-[rgb(26_26_25_/_0.09)]"
             >
-              See what agents did
+              Check your work
+            </a>
+            <a
+              href="/credits"
+              className="text-muted flex h-[42px] items-center px-2 text-[13px] font-semibold underline underline-offset-4"
+            >
+              Check points
             </a>
           </div>
         </div>

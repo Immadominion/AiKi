@@ -79,8 +79,9 @@ function notesFrom(state: MockState): Note[] {
 
 export function TopBar({ onMenu }: { onMenu: () => void }) {
   const router = useRouter()
-  const { state, authenticated, connect } = useMock()
+  const { state, authenticated, connectionPhase, connect } = useMock()
   const connected = state.connected
+  const connecting = connectionPhase !== 'idle'
   const [open, setOpen] = useState(false)
   const [bell, setBell] = useState(false)
   const [read, setRead] = useState<Record<string, boolean>>({})
@@ -126,22 +127,34 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
       ) : (
         <button
           type="button"
+          disabled={connecting}
+          aria-busy={connecting}
           onClick={() => {
             void connect().then((outcome) => say(CONNECT_TOAST[outcome]))
           }}
-          className="bg-ink-app hover:bg-orange-app hidden h-11 flex-none items-center rounded-[15px] px-4 text-[13.5px] font-bold whitespace-nowrap text-white transition-colors sm:flex"
+          className="bg-ink-app hover:bg-orange-app hidden h-11 flex-none items-center rounded-[15px] px-4 text-[13.5px] font-bold whitespace-nowrap text-white transition-colors disabled:cursor-wait disabled:opacity-65 sm:flex"
         >
-          Connect wallet
+          {connectionPhase === 'choosing'
+            ? 'Choose wallet'
+            : connecting
+              ? 'Waiting for wallet'
+              : 'Connect wallet'}
         </button>
       )}
 
       {connected && state.walletKind === 'injected' && !authenticated ? (
         <button
           type="button"
+          disabled={connecting}
+          aria-busy={connecting}
           onClick={() => void connect().then((outcome) => say(CONNECT_TOAST[outcome]))}
-          className="bg-ink-app hidden h-11 items-center rounded-[15px] px-4 text-[13px] font-bold text-white sm:flex"
+          className="bg-ink-app hidden h-11 items-center rounded-[15px] px-4 text-[13px] font-bold text-white disabled:cursor-wait disabled:opacity-65 sm:flex"
         >
-          Sign in
+          {connectionPhase === 'signing'
+            ? 'Check your wallet'
+            : connecting
+              ? 'Connecting'
+              : 'Sign in'}
         </button>
       ) : null}
 
@@ -249,12 +262,17 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
                 <button
                   type="button"
                   onClick={() => {
-                    pause(a.key)
-                    say(`${a.name} paused. It stops within seconds and it costs nothing.`)
+                    if (state.walletKind === 'simulated') {
+                      pause(a.key)
+                      say(`${a.name} paused in this local preview.`)
+                    } else {
+                      setOpen(false)
+                      router.push(`/jobs/${a.jobId}`)
+                    }
                   }}
                   className="h-8 flex-none rounded-[10px] border-0 bg-[rgb(26_26_25_/_0.055)] px-[13px] text-[12.5px] font-semibold hover:bg-[rgb(26_26_25_/_0.09)]"
                 >
-                  Pause
+                  {state.walletKind === 'simulated' ? 'Pause' : 'Open job'}
                 </button>
               </div>
             ))}

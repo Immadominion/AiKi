@@ -91,11 +91,14 @@ export function AgentTaskFields({
 }: {
   passport: ProjectedPassport
   support: AgentTaskSupport
-  account: ReturnType<typeof useAccount>
+  account: Pick<
+    ReturnType<typeof useAccount>,
+    'connected' | 'authenticated' | 'address' | 'connectionPhase' | 'connecting' | 'connect'
+  >
 }) {
   const router = useRouter()
   const say = useToast()
-  const { connected, authenticated, address, connect } = account
+  const { connected, authenticated, address, connectionPhase, connecting, connect } = account
   const kinds = TASK_TYPES.filter(
     ([value]) => !support.kinds?.length || support.kinds.includes(value),
   )
@@ -112,7 +115,6 @@ export function AgentTaskFields({
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [recovering, setRecovering] = useState(false)
-  const [signingIn, setSigningIn] = useState(false)
   const inFlight = useRef(false)
   const [pendingAttempt, setPendingAttempt] = useState<TaskAttempt | null>(null)
   const active = useRef(true)
@@ -281,18 +283,27 @@ export function AgentTaskFields({
           </p>
           <button
             type="button"
-            disabled={signingIn}
+            disabled={connecting}
+            aria-busy={connecting}
             onClick={async () => {
-              setSigningIn(true)
+              if (connecting) return
               try {
                 say(CONNECT_TOAST[await connect()])
-              } finally {
-                setSigningIn(false)
+              } catch {
+                say('The wallet connection did not finish. Try again.')
               }
             }}
             className={`bg-ink-app min-h-11 rounded-xl px-5 text-sm font-bold text-white disabled:opacity-50 ${FOCUS}`}
           >
-            {signingIn ? 'Connecting…' : connected ? 'Sign in' : 'Connect wallet'}
+            {connectionPhase === 'choosing'
+              ? 'Choose a wallet'
+              : connectionPhase === 'signing'
+                ? 'Check your wallet to sign in'
+                : connecting
+                  ? 'Waiting for your wallet'
+                  : connected
+                    ? 'Sign in'
+                    : 'Connect wallet'}
           </button>
         </section>
       ) : (

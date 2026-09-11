@@ -196,7 +196,16 @@ export function Sidebar({
   const { layout, switchMode } = useModeNavigation()
   const onPhone = useIsPhone()
   const [accountOpen, setAccountOpen] = useState(false)
-  const { connected, authenticated, connect, disconnect, address, walletKind } = useAccount()
+  const {
+    connected,
+    authenticated,
+    connectionPhase,
+    connecting,
+    connect,
+    disconnect,
+    address,
+    walletKind,
+  } = useAccount()
   const { replay } = useTour(layout)
 
   // The collapse preference belongs to the desktop column. In the drawer the
@@ -370,13 +379,15 @@ export function Sidebar({
               {!authenticated && walletKind === 'injected' ? (
                 <button
                   type="button"
+                  disabled={connecting}
+                  aria-busy={connecting}
                   onClick={() => {
                     setAccountOpen(false)
                     void connect().then((outcome) => say(CONNECT_TOAST[outcome]))
                   }}
-                  className="block w-full border-t border-black/5 px-[14px] py-[10px] text-left text-[13px] font-semibold hover:bg-[#FAFAF9]"
+                  className="block w-full border-t border-black/5 px-[14px] py-[10px] text-left text-[13px] font-semibold hover:bg-[#FAFAF9] disabled:cursor-wait disabled:opacity-60"
                 >
-                  Sign in with this wallet
+                  {connectionPhase === 'signing' ? 'Check your wallet' : 'Sign in with this wallet'}
                 </button>
               ) : null}
               {[
@@ -454,6 +465,8 @@ export function Sidebar({
         ) : (
           <button
             type="button"
+            disabled={connecting}
+            aria-busy={connecting}
             onClick={() => {
               void connect().then((outcome) => say(CONNECT_TOAST[outcome]))
               onNavigate()
@@ -468,9 +481,15 @@ export function Sidebar({
             </span>
             {collapsed ? null : (
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13.5px] font-bold">Connect a wallet</span>
+                <span className="block truncate text-[13.5px] font-bold">
+                  {connectionPhase === 'choosing'
+                    ? 'Choose a wallet'
+                    : connecting
+                      ? 'Waiting for your wallet'
+                      : 'Connect a wallet'}
+                </span>
                 <span className="text-muted mt-px block text-[11.5px]">
-                  Reads only. Grants nothing.
+                  {connecting ? 'Finish the prompt to continue.' : 'Reads only. Grants nothing.'}
                 </span>
               </span>
             )}

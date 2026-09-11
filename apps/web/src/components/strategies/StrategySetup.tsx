@@ -96,8 +96,7 @@ export function StrategySetup({
     () => `${walletSession().revision}:${walletSession().address ?? ''}`,
     () => '',
   )
-  const [connecting, setConnecting] = useState(false),
-    [problem, setProblem] = useState<string | null>(null)
+  const [problem, setProblem] = useState<string | null>(null)
   const copy = STRATEGY_COPY[kind]
   return (
     <PageCard
@@ -128,9 +127,10 @@ export function StrategySetup({
             <button
               className={PRIMARY}
               type="button"
-              disabled={connecting}
+              disabled={account.connecting}
+              aria-busy={account.connecting}
               onClick={async () => {
-                setConnecting(true)
+                if (account.connecting) return
                 setProblem(null)
                 try {
                   const result = await account.connect()
@@ -140,12 +140,18 @@ export function StrategySetup({
                     )
                 } catch (error) {
                   setProblem(explanation(error))
-                } finally {
-                  setConnecting(false)
                 }
               }}
             >
-              {connecting ? 'Connecting…' : account.connected ? 'Sign in' : 'Connect wallet'}
+              {account.connectionPhase === 'choosing'
+                ? 'Choose a wallet'
+                : account.connectionPhase === 'signing'
+                  ? 'Check your wallet to sign in'
+                  : account.connecting
+                    ? 'Waiting for your wallet'
+                    : account.connected
+                      ? 'Sign in'
+                      : 'Connect wallet'}
             </button>
             {problem ? (
               <p role="alert" className="text-work-ink text-sm">
@@ -502,8 +508,8 @@ export function ConnectedStrategySetup({
         <p className="text-muted m-0 text-sm">
           Checking deployment configuration and your existing setups…
         </p>
-        <div aria-hidden className="h-11 rounded-xl bg-tray motion-safe:animate-pulse" />
-        <div aria-hidden className="h-40 rounded-xl bg-tray motion-safe:animate-pulse" />
+        <div aria-hidden className="aiki-skeleton h-11 rounded-xl bg-tray" />
+        <div aria-hidden className="aiki-skeleton h-40 rounded-xl bg-tray" />
       </section>
     )
 

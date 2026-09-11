@@ -13,11 +13,17 @@ const HINTS: readonly [string, ...string[]] = [
 export function AskField({
   onSubmit,
   onPick,
+  initialValue = '',
+  onValueChange,
+  disabled = false,
 }: {
   onSubmit: (q: string) => void
   onPick: (task: Task) => void
+  initialValue?: string
+  onValueChange?: (value: string) => void
+  disabled?: boolean
 }) {
-  const [q, setQ] = useState('')
+  const [q, setQ] = useState(initialValue)
   const [focused, setFocused] = useState(false)
   const [hintI, setHintI] = useState(0)
   const blurTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -29,6 +35,9 @@ export function AskField({
       clearTimeout(blurTimer.current)
     }
   }, [])
+  useEffect(() => {
+    if (initialValue) setQ((current) => current || initialValue)
+  }, [initialValue])
 
   const hint = HINTS[hintI % HINTS.length] ?? HINTS[0]
 
@@ -39,7 +48,7 @@ export function AskField({
       .map((x) => x.t)
   }, [q])
 
-  const panelOpen = focused && q.trim().length > 1
+  const panelOpen = !disabled && focused && q.trim().length > 1
 
   return (
     <div className="relative mt-7 w-full">
@@ -58,13 +67,19 @@ export function AskField({
         <span className="relative flex h-full min-w-0 flex-1 items-center">
           <input
             value={q}
+            readOnly={disabled}
+            aria-busy={disabled}
             aria-label="What do you need done?"
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value)
+              onValueChange?.(e.target.value)
+            }}
             onFocus={() => setFocused(true)}
             onBlur={() => {
               blurTimer.current = setTimeout(() => setFocused(false), 150)
             }}
             onKeyDown={(e) => {
+              if (disabled) return
               if (e.key === 'Tab' && !q) {
                 e.preventDefault()
                 setQ(hint)
@@ -90,10 +105,12 @@ export function AskField({
         <button
           type="button"
           title="Find agents"
+          disabled={disabled}
+          aria-busy={disabled}
           onClick={() => onSubmit(q.trim())}
-          className="flex size-[46px] flex-none items-center justify-center rounded-full border-0 bg-[linear-gradient(135deg,#FF4D00,#FF7A2E)] text-[19px] text-white shadow-[0_14px_28px_-12px_rgb(255_77_0_/_0.7)] transition-transform duration-150 hover:scale-105 active:scale-[0.97] md:size-[54px]"
+          className="flex size-[46px] flex-none items-center justify-center rounded-full border-0 bg-[linear-gradient(135deg,#FF4D00,#FF7A2E)] text-[19px] text-white shadow-[0_14px_28px_-12px_rgb(255_77_0_/_0.7)] transition-transform duration-150 hover:scale-105 active:scale-[0.97] disabled:cursor-wait disabled:opacity-70 disabled:hover:scale-100 md:size-[54px]"
         >
-          →
+          {disabled ? '···' : '→'}
         </button>
       </div>
 

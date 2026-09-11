@@ -2,6 +2,7 @@
 
 import { History, Plus, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Bar } from '@/components/ui/Skeleton'
 import { api, type FastConversationSummary } from '@/lib/api'
 
 export function HistoryRail({
@@ -136,11 +137,7 @@ export function HistoryRail({
                 Sign in with your wallet to see your conversations.
               </p>
             ) : null}
-            {loading && items.length === 0 ? (
-              <p role="status" className="px-2 text-[13px] text-muted">
-                Loading conversations…
-              </p>
-            ) : null}
+            {loading && items.length === 0 ? <ConversationSkeleton /> : null}
             {error ? (
               <div role="alert" className="px-2 text-[13px]">
                 <p>{error}</p>
@@ -211,5 +208,23 @@ export function HistoryRail({
         </div>
       </dialog>
     </>
+  )
+}
+
+const CONVERSATION_SKELETONS = ['conversation-a', 'conversation-b', 'conversation-c'] as const
+
+function ConversationSkeleton() {
+  return (
+    <div role="status" aria-label="Loading conversations" className="space-y-1 px-1">
+      {CONVERSATION_SKELETONS.map((id, index) => (
+        <div key={id} aria-hidden className="rounded-[16px] px-3 py-3">
+          <Bar w={index === 1 ? '86%' : '68%'} h={11} />
+          <span className="mt-2 flex items-center justify-between">
+            <Bar w={74} h={9} />
+            <Bar w={44} h={9} />
+          </span>
+        </div>
+      ))}
+    </div>
   )
 }

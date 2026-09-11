@@ -6,6 +6,11 @@ import { useEffect, useState } from 'react'
 import { useAccount } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
 import { api } from '@/lib/api'
+import {
+  claimPendingFastAsk,
+  parsePendingFastAsk,
+  serializePendingFastAsk,
+} from '@/lib/fast-pending-ask'
 import { agentHref, registryHref } from '@/lib/routes'
 import type { Task } from '@/lib/tasks'
 import { useProbeExpiry } from '@/lib/use-probe-expiry'
@@ -16,6 +21,8 @@ import { HistoryRail } from './HistoryRail'
 import { liveShards } from './live-shards'
 import { ShardField } from './ShardField'
 import type { Frame } from './shards'
+
+const PENDING_ASK_KEY = 'aiki.fast.pending-ask'
 
 /**
  * Fast mode's actual content, independent of the box it sits in.
@@ -58,6 +65,7 @@ export function FastCore({
    * come here to do.
    */
   const [chat, setChat] = useState<{ id: string; opening?: string; create?: boolean } | null>(null)
+  const [restoredAsk, setRestoredAsk] = useState('')
   const say = useToast()
   const router = useRouter()
   useEffect(() => {
@@ -80,6 +88,25 @@ export function FastCore({
     window.history.replaceState(null, '', url)
     setChat(next)
   }
+  useEffect(() => {
+    try {
+      const stored = parsePendingFastAsk(sessionStorage.getItem(PENDING_ASK_KEY))
+      const pending = stored
+        ? claimPendingFastAsk(stored, account.connected ? account.address : null)
+        : null
+      if (!pending) return
+      if (pending.owner !== stored?.owner) {
+        sessionStorage.setItem(PENDING_ASK_KEY, serializePendingFastAsk(pending))
+      }
+      setRestoredAsk((current) => current || pending.text)
+      if (account.authenticated) {
+        sessionStorage.removeItem(PENDING_ASK_KEY)
+        say('Signed in. Your question is ready to send.')
+      }
+    } catch {
+      /* A blocked session store should never block Fast mode. */
+    }
+  }, [account.authenticated, account.connected, account.address, say])
 
   /*
    * The cards are the registry, not a picture of one.
@@ -123,10 +150,39 @@ export function FastCore({
       return
     }
     if (!account.authenticated) {
+      try {
+        sessionStorage.setItem(
+          PENDING_ASK_KEY,
+          serializePendingFastAsk({
+            text: q,
+            owner: account.connected ? account.address : null,
+          }),
+        )
+      } catch {
+        /* The field still stays visible while this component remains mounted. */
+      }
       say('Sign in with your wallet, then send your message.')
-      void account.connect().catch((error: Error) => say(error.message))
+      void account
+        .connect()
+        .then((outcome) => {
+          if (outcome === 'injected') return
+          say(
+            outcome === 'unsigned'
+              ? 'Your question is still here. Sign in when you are ready to send it.'
+              : 'Your question is still here. Connect a wallet when you are ready.',
+          )
+        })
+        .catch((error: Error) => {
+          say(error.message)
+        })
       return
     }
+    try {
+      sessionStorage.removeItem(PENDING_ASK_KEY)
+    } catch {
+      /* Sending does not depend on clearing convenience state. */
+    }
+    setRestoredAsk('')
     openChat({ id: crypto.randomUUID(), opening: q, create: true })
   }
 
@@ -223,6 +279,30 @@ export function FastCore({
         <AskField
           onSubmit={submit}
           onPick={(t: Task) => say(`Finding agents for “${t.intent}”.`)}
+          initialValue={restoredAsk}
+          onValueChange={(value) => {
+            setRestoredAsk(value)
+            try {
+              const pending = parsePendingFastAsk(sessionStorage.getItem(PENDING_ASK_KEY))
+              if (!pending) return
+              const claimed = claimPendingFastAsk(
+                pending,
+                account.connected ? account.address : null,
+              )
+              if (!claimed) return
+              if (value.trim()) {
+                sessionStorage.setItem(
+                  PENDING_ASK_KEY,
+                  serializePendingFastAsk({ ...claimed, text: value }),
+                )
+              } else {
+                sessionStorage.removeItem(PENDING_ASK_KEY)
+              }
+            } catch {
+              /* Editing remains local if the session store is blocked. */
+            }
+          }}
+          disabled={account.connecting}
         />
 
         {/*

@@ -62,24 +62,36 @@ export function AgentsView() {
           <RowActions
             key="e"
             actions={[
+              ...(state.walletKind === 'simulated'
+                ? [
+                    {
+                      label: h.action,
+                      onClick: () => {
+                        if (h.action === 'Pause') {
+                          pause(h.key)
+                          say(`${h.name} paused in this local preview.`)
+                        } else {
+                          resume(h.key)
+                          say(`${h.name} resumed in this local preview.`)
+                        }
+                      },
+                    },
+                  ]
+                : []),
               {
-                label: h.action,
-                onClick: () => {
-                  if (h.action === 'Pause') {
-                    pause(h.key)
-                    say(`${h.name} paused. It stops within seconds and it costs nothing.`)
-                  } else {
-                    resume(h.key)
-                    say(`${h.name} resumed under the same limits.`)
-                  }
-                },
+                label: state.walletKind === 'injected' ? 'Open job controls' : 'Open',
+                primary: true,
+                onClick: () => router.push(jobHref(h.jobId)),
               },
-              { label: 'Open', primary: true, onClick: () => router.push(jobHref(h.jobId)) },
             ]}
           />,
         ],
       }))}
-      footnote="Caps are yours: an agent cannot exceed them, and pausing never costs gas. Where a contract holds the limit rather than AiKi, the agent page says so."
+      footnote={
+        state.walletKind === 'simulated'
+          ? 'This local preview changes only browser state. Open a job to see its controls.'
+          : 'Open the job before pausing or resuming it. That page checks the recorded status before it confirms the change.'
+      }
     />
   )
 

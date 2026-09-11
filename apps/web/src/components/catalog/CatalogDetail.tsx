@@ -99,7 +99,7 @@ function ProviderResult({ result }: { result: CatalogReadResult }) {
 }
 
 export function CatalogDetail({ agentId }: { agentId: string }) {
-  const { authenticated, address, connect } = useAccount()
+  const { authenticated, address, connectionPhase, connecting, connect } = useAccount()
   const [agent, setAgent] = useState<CatalogAgent | null>(null)
   const [capabilities, setCapabilities] = useState<CatalogCapabilities | null>(null)
   const [hireHref, setHireHref] = useState<string | null>(null)
@@ -110,7 +110,6 @@ export function CatalogDetail({ agentId }: { agentId: string }) {
   const [result, setResult] = useState<CatalogReadResult | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [connecting, setConnecting] = useState(false)
   const inFlight = useRef(false)
   const readController = useRef<AbortController | null>(null)
   const resultPanel = useRef<HTMLDivElement>(null)
@@ -188,15 +187,12 @@ export function CatalogDetail({ agentId }: { agentId: string }) {
   }
   const signIn = async () => {
     if (connecting) return
-    setConnecting(true)
     setProblem(null)
     try {
       const outcome = await connect()
       if (outcome !== 'injected') setProblem(CONNECT_TOAST[outcome])
     } catch {
       setProblem('The wallet connection did not finish. Try again.')
-    } finally {
-      setConnecting(false)
     }
   }
 
@@ -226,8 +222,8 @@ export function CatalogDetail({ agentId }: { agentId: string }) {
           aria-label="Loading agent"
           className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,380px)]"
         >
-          <div className="h-80 rounded-2xl bg-surface-sunk motion-safe:animate-pulse" />
-          <div className="h-64 rounded-2xl bg-surface-sunk motion-safe:animate-pulse" />
+          <div className="aiki-skeleton h-80 rounded-2xl bg-surface-sunk" />
+          <div className="aiki-skeleton h-64 rounded-2xl bg-surface-sunk" />
         </div>
       ) : (
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,380px)]">
@@ -356,7 +352,7 @@ export function CatalogDetail({ agentId }: { agentId: string }) {
                       <p className="text-sm text-body">
                         Checking its connection and available actions…
                       </p>
-                      <div className="h-11 rounded-xl bg-surface-sunk motion-safe:animate-pulse" />
+                      <div className="aiki-skeleton h-11 rounded-xl bg-surface-sunk" />
                     </div>
                   ) : tool && capabilities?.status === 'available' ? (
                     <form onSubmit={submit} className="mt-4 space-y-4">
@@ -424,7 +420,13 @@ export function CatalogDetail({ agentId }: { agentId: string }) {
                           onClick={() => void signIn()}
                           className={`min-h-11 w-full rounded-xl bg-ink-app px-4 text-sm font-bold text-surface disabled:opacity-60 ${FOCUS}`}
                         >
-                          {connecting ? 'Waiting for your wallet…' : 'Connect and sign in'}
+                          {connectionPhase === 'choosing'
+                            ? 'Choose a wallet'
+                            : connectionPhase === 'signing'
+                              ? 'Check your wallet to sign in'
+                              : connecting
+                                ? 'Waiting for your wallet'
+                                : 'Connect and sign in'}
                         </button>
                       )}
                       <p className="m-0 text-xs leading-relaxed text-body">

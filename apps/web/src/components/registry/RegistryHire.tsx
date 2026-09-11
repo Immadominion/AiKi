@@ -139,19 +139,10 @@ export function RegistryHire({ agentId }: { agentId: string }) {
         >
           <div className="space-y-5 rounded-2xl border border-black/10 p-5">
             <p className="text-muted m-0 text-sm">Checking this agent’s task connection…</p>
-            <div
-              aria-hidden="true"
-              className="h-12 rounded-xl bg-black/5 motion-safe:animate-pulse"
-            />
-            <div
-              aria-hidden="true"
-              className="h-40 rounded-xl bg-black/5 motion-safe:animate-pulse"
-            />
+            <div aria-hidden="true" className="aiki-skeleton h-12 rounded-xl bg-black/5" />
+            <div aria-hidden="true" className="aiki-skeleton h-40 rounded-xl bg-black/5" />
           </div>
-          <div
-            aria-hidden="true"
-            className="h-64 rounded-2xl bg-black/5 motion-safe:animate-pulse"
-          />
+          <div aria-hidden="true" className="aiki-skeleton h-64 rounded-2xl bg-black/5" />
         </div>
       )}
     </PageCard>

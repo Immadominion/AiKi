@@ -10,7 +10,7 @@ export function Bar({ w = '100%', h = 12 }: { w?: string | number; h?: number })
   return (
     <span
       aria-hidden
-      className="block rounded-full bg-[rgb(26_26_25_/_0.07)]"
+      className="aiki-skeleton block rounded-full bg-[rgb(26_26_25_/_0.07)]"
       style={{ width: w, height: h }}
     />
   )
@@ -19,7 +19,7 @@ export function Bar({ w = '100%', h = 12 }: { w?: string | number; h?: number })
 export function RowSkeleton() {
   return (
     <div className="flex items-center gap-[14px] border-b border-[rgb(26_26_25_/_0.06)] px-[14px] py-[15px] last:border-b-0">
-      <span className="size-9 flex-none rounded-xl bg-[rgb(26_26_25_/_0.07)]" />
+      <span className="aiki-skeleton size-9 flex-none rounded-xl bg-[rgb(26_26_25_/_0.07)]" />
       <span className="flex min-w-0 flex-1 flex-col gap-[7px]">
         <Bar w="42%" h={11} />
         <Bar w="26%" h={9} />

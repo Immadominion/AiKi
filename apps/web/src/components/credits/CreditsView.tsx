@@ -33,10 +33,17 @@ const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visi
 const BUTTON = `min-h-11 rounded-xl bg-ink-app px-4 py-3 text-sm font-bold text-surface disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`
 const SECONDARY = `min-h-11 rounded-xl bg-surface-sunk px-4 py-3 text-sm font-bold text-ink-app ring-1 ring-ink-app/10 disabled:opacity-50 ${FOCUS}`
 
+interface PaymentReceipt {
+  transactionHash: string
+  rail: CreditRail
+  /** Already-credited responses do not establish the original number of points. */
+  creditedPoints: number | null
+}
+
 export function CreditsView() {
-  const { ready, authenticated, walletKind, address, connect } = useAccount()
+  const { ready, authenticated, walletKind, address, connectionPhase, connecting, connect } =
+    useAccount()
   const say = useToast()
-  const [connecting, setConnecting] = useState(false)
   return (
     <PageCard
       title="Points"
@@ -68,16 +75,15 @@ export function CreditsView() {
             className={BUTTON}
             disabled={connecting}
             aria-busy={connecting}
-            onClick={async () => {
-              setConnecting(true)
-              try {
-                say(CONNECT_TOAST[await connect()])
-              } finally {
-                setConnecting(false)
-              }
-            }}
+            onClick={() => void connect().then((outcome) => say(CONNECT_TOAST[outcome]))}
           >
-            {connecting ? 'Waiting for your wallet...' : 'Connect and sign in'}
+            {connectionPhase === 'choosing'
+              ? 'Choose a wallet'
+              : connectionPhase === 'signing'
+                ? 'Check your wallet to sign in'
+                : connecting
+                  ? 'Waiting for your wallet'
+                  : 'Connect and sign in'}
           </button>
         </section>
       )}
@@ -88,9 +94,9 @@ export function CreditsView() {
 function Loading() {
   return (
     <div role="status" aria-label="Loading your points" className="max-w-4xl space-y-4 py-4">
-      <div className="h-28 rounded-2xl bg-surface-sunk" />
-      <div className="h-44 rounded-2xl bg-surface-sunk" />
-      <span className="text-muted text-sm">Loading your points...</span>
+      <div className="aiki-skeleton h-28 rounded-2xl bg-surface-sunk" />
+      <div className="aiki-skeleton h-44 rounded-2xl bg-surface-sunk" />
+      <span className="sr-only">Loading your points</span>
     </div>
   )
 }
@@ -111,7 +117,12 @@ function CreditsAccount({ address }: { address: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [railError, setRailError] = useState(false)
+  // A confirmed payment outlives its form and subsequent account-data failures.
+  // CreditsAccount is keyed by wallet/session, so private receipts never cross accounts.
+  const [receipt, setReceipt] = useState<PaymentReceipt | null>(null)
+  const receiptPanelRef = useRef<HTMLElement>(null)
   const alive = useRef(true)
+  const accountSession = useRef(walletSession())
   const generation = useRef(0)
   const load = useCallback(async () => {
     const request = ++generation.current
@@ -132,6 +143,20 @@ function CreditsAccount({ address }: { address: string }) {
     setRailError(config.status === 'rejected')
     setLoading(false)
   }, [])
+  const onVerified = useCallback(
+    async (confirmed: PaymentReceipt) => {
+      const currentSession = walletSession()
+      if (
+        !alive.current ||
+        currentSession.revision !== accountSession.current.revision ||
+        currentSession.address !== accountSession.current.address
+      )
+        return
+      setReceipt(confirmed)
+      await load()
+    },
+    [load],
+  )
   useEffect(() => {
     if (typeof window !== 'undefined') setReturnHref(fastReturnHref(window.location.search))
     alive.current = true
@@ -141,19 +166,85 @@ function CreditsAccount({ address }: { address: string }) {
       generation.current++
     }
   }, [load])
-  if (loading && !credits) return <Loading />
+  useEffect(() => {
+    if (receipt) receiptPanelRef.current?.focus()
+  }, [receipt])
+  const receiptPanel = receipt ? (
+    <section
+      ref={receiptPanelRef}
+      tabIndex={-1}
+      aria-labelledby="credit-receipt-title"
+      className="space-y-3 rounded-2xl border border-ink-app/10 p-5"
+    >
+      <h2 id="credit-receipt-title" className="m-0 text-base font-bold">
+        Payment credited
+      </h2>
+      <p role="status" className="m-0 text-sm font-semibold text-good-ink">
+        {receipt.creditedPoints === null
+          ? 'This payment was already credited.'
+          : `${points(receipt.creditedPoints)} points added.`}
+      </p>
+      <p className="m-0 text-xs text-muted">{creditNetworkLabel(receipt.rail)}</p>
+      <div>
+        <p className="m-0 text-xs font-semibold">Verified transaction hash</p>
+        <code className="mt-1 block break-all font-mono text-xs">{receipt.transactionHash}</code>
+        <a
+          href={`${creditExplorer(receipt.rail)}/tx/${receipt.transactionHash}`}
+          target="_blank"
+          rel="noreferrer"
+          className={`inline-flex min-h-11 items-center text-xs font-semibold underline underline-offset-4 ${FOCUS}`}
+        >
+          View verified payment
+        </a>
+      </div>
+      <p className="m-0 text-sm leading-relaxed">
+        Do not send it again. Refreshing only reloads your balance and payment details.
+      </p>
+      {loading || error || railError || !rail ? (
+        <div className="space-y-3">
+          {!loading ? (
+            <p className="m-0 text-sm leading-relaxed text-muted">
+              Account details could not be refreshed. This payment remains credited.
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className={SECONDARY}
+            onClick={() => void load()}
+            disabled={loading}
+            aria-busy={loading}
+          >
+            {loading ? 'Refreshing account details…' : 'Refresh account details'}
+          </button>
+        </div>
+      ) : null}
+    </section>
+  ) : null
+  if (loading && !credits)
+    return (
+      <div className="max-w-4xl space-y-4">
+        {receiptPanel}
+        <Loading />
+      </div>
+    )
   if (error || !credits)
     return (
-      <section role="alert" className="max-w-xl space-y-4 py-6">
-        <h2 className="text-lg font-bold">Your balance is unavailable</h2>
-        <p className="text-muted text-sm">{error ?? 'Try loading your points again.'}</p>
-        <button type="button" className={BUTTON} onClick={() => void load()} disabled={loading}>
-          Try again
-        </button>
-      </section>
+      <div className="max-w-4xl space-y-4">
+        {receiptPanel}
+        <section role="alert" className="max-w-xl space-y-4 py-6">
+          <h2 className="text-lg font-bold">Your balance is unavailable</h2>
+          <p className="text-muted text-sm">{error ?? 'Try loading your points again.'}</p>
+          {!receipt ? (
+            <button type="button" className={BUTTON} onClick={() => void load()} disabled={loading}>
+              Try again
+            </button>
+          ) : null}
+        </section>
+      </div>
     )
   return (
     <div className="max-w-4xl space-y-8 pb-4">
+      {receiptPanel}
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-surface-sunk p-5">
         <div>
           <p className="text-muted m-0 text-sm">Available to use</p>
@@ -202,7 +293,7 @@ function CreditsAccount({ address }: { address: string }) {
               <Payment
                 key={`${rail.chainId}:${rail.token}:${rail.treasury}`}
                 rail={rail}
-                onVerified={load}
+                onVerified={onVerified}
                 refreshing={loading}
               />
             ) : (
@@ -319,14 +410,13 @@ function Payment({
   refreshing,
 }: {
   rail: CreditRail
-  onVerified: () => Promise<void>
+  onVerified: (receipt: PaymentReceipt) => Promise<void>
   refreshing: boolean
 }) {
   const say = useToast()
   const [hash, setHash] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
   const input = useRef<HTMLInputElement>(null)
   const inFlight = useRef(false)
   const alive = useRef(true)
@@ -340,7 +430,6 @@ function Payment({
     event.preventDefault()
     if (inFlight.current || refreshing) return
     setError(null)
-    setSuccess(null)
     let transactionHash: string
     try {
       transactionHash = paymentHash(hash)
@@ -353,19 +442,13 @@ function Payment({
     setBusy(true)
     try {
       const result = await api.depositCredits(transactionHash)
-      if (!alive.current) return
-      setSuccess(
-        `${points(result.points)} points added. Your updated balance is ${points(result.balance)} points.`,
-      )
-      await onVerified()
+      // A rail refresh can replace this form while the wallet account stays live.
+      // Only the parent account/session decides whether confirmation is still valid.
+      await onVerified({ transactionHash, rail, creditedPoints: result.points })
     } catch (problem) {
-      if (!alive.current) return
       if (problem instanceof ApiError && problem.code === 'DEPOSIT_ALREADY_CREDITED') {
-        setSuccess(
-          'This payment was already credited. Your balance has been refreshed. Do not send it again.',
-        )
-        await onVerified()
-      } else
+        await onVerified({ transactionHash, rail, creditedPoints: null })
+      } else if (alive.current)
         setError(
           problem instanceof Error
             ? problem.message
@@ -471,11 +554,6 @@ function Payment({
               className="text-work-ink text-sm leading-relaxed"
             >
               {error}
-            </p>
-          ) : null}
-          {success ? (
-            <p role="status" className="text-good-ink text-sm leading-relaxed">
-              {success}
             </p>
           ) : null}
           <button type="submit" className={BUTTON} disabled={busy || refreshing}>

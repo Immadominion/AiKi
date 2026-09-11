@@ -108,12 +108,14 @@ export function useModeNavigation() {
  * changes; nothing that calls it does.
  */
 export function useAccount() {
-  const { state, ready, authenticated, connect, disconnect } = useMock()
+  const { state, ready, authenticated, connectionPhase, connect, disconnect } = useMock()
   return {
     connected: state.connected,
     address: state.address,
     walletKind: state.walletKind,
     authenticated,
+    connectionPhase,
+    connecting: connectionPhase !== 'idle',
     ready,
     connect,
     disconnect,

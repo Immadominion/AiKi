@@ -143,7 +143,7 @@ test('payment retries preserve the same hash and refresh an already-credited pay
   assert.match(rendered(), /Do not send it again/)
 })
 
-test('double submits cannot duplicate a payment check and new rail configuration clears its form', async () => {
+test('double submits cannot duplicate a payment check and new rails clear only the form', async () => {
   api.credits = async () => balance
   api.treasury = async () => mainnet
   let complete: (value: Awaited<ReturnType<typeof api.depositCredits>>) => void = () => {}
@@ -170,7 +170,189 @@ test('double submits cannot duplicate a payment check and new rail configuration
   await act(async () => button('Refresh balance')?.props.onClick())
   await act(async () => {})
   assert.equal(renderer?.root.findByType('input').props.value, '')
+  assert.match(rendered(), /10,000 points added/)
+  assert.match(rendered(), new RegExp(hash))
+  assert.ok(
+    renderer?.root
+      .findAllByType('a')
+      .some((link) => link.props.href === `https://bscscan.com/tx/${hash}`),
+  )
+})
+
+for (const failure of ['balance', 'configuration', 'invalid configuration', 'both'] as const) {
+  test(`confirmed payment and hash survive a failed ${failure} refresh; retry is read-only`, async () => {
+    api.credits = async () => balance
+    api.treasury = async () => mainnet
+    let deposits = 0
+    api.depositCredits = async () => {
+      deposits++
+      if (failure === 'balance' || failure === 'both')
+        api.credits = async () => {
+          throw new Error('Balance temporarily unavailable.')
+        }
+      if (failure === 'configuration' || failure === 'both')
+        api.treasury = async () => {
+          throw new Error('Payment details temporarily unavailable.')
+        }
+      if (failure === 'invalid configuration')
+        api.treasury = async () => ({ available: false as const })
+      return { points: 10000, balance: 15000, amount: '1 USDT' }
+    }
+    await mount()
+    await act(async () =>
+      renderer?.root.findByType('input').props.onChange({ target: { value: hash } }),
+    )
+    await act(async () => renderer?.root.findByType('form').props.onSubmit({ preventDefault() {} }))
+    assert.match(rendered(), /10,000 points added/)
+    assert.match(rendered(), new RegExp(hash))
+    assert.match(rendered(), /Do not send it again/)
+    assert.equal(renderer?.root.findAllByType('form').length, 0)
+    const retry = button('Refresh account details')
+    assert.ok(retry)
+    let refreshBalance: (value: CreditBalance) => void = () => {}
+    api.credits = async () =>
+      new Promise((resolve) => {
+        refreshBalance = resolve
+      })
+    api.treasury = async () => mainnet
+    await act(async () => {
+      void retry.props.onClick()
+    })
+    assert.match(rendered(), /10,000 points added/)
+    assert.match(rendered(), new RegExp(hash))
+    assert.equal(button('Refreshing account details…')?.props.disabled, true)
+    assert.equal(deposits, 1)
+    await act(async () => refreshBalance({ ...balance, balance: 15000 }))
+    assert.match(rendered(), /15,000/)
+    assert.match(rendered(), /10,000 points added/)
+    assert.equal(deposits, 1)
+  })
+}
+
+test('already-credited receipt survives refresh failure without claiming a refreshed balance', async () => {
+  api.credits = async () => balance
+  api.treasury = async () => mainnet
+  api.depositCredits = async () => {
+    api.credits = async () => {
+      throw new Error('Balance temporarily unavailable.')
+    }
+    throw new ApiError(409, 'DEPOSIT_ALREADY_CREDITED', 'Already credited.', false)
+  }
+  await mount()
+  await act(async () =>
+    renderer?.root.findByType('input').props.onChange({ target: { value: hash } }),
+  )
+  await act(async () => renderer?.root.findByType('form').props.onSubmit({ preventDefault() {} }))
+  assert.match(rendered(), /This payment was already credited/)
+  assert.match(rendered(), new RegExp(hash))
+  assert.doesNotMatch(rendered(), /Your balance has been refreshed/)
+  assert.ok(button('Refresh account details'))
+})
+
+for (const refresh of ['new rail', 'balance failure', 'configuration failure'] as const) {
+  for (const outcome of ['credited', 'already credited'] as const) {
+    test(`pending verification survives ${refresh} unmount and preserves its ${outcome} receipt`, async () => {
+      api.credits = async () => balance
+      api.treasury = async () => mainnet
+      let finish: () => void = () => {}
+      let deposits = 0
+      api.depositCredits = async () => {
+        deposits++
+        return new Promise((resolve, reject) => {
+          finish = () =>
+            outcome === 'credited'
+              ? resolve({ points: 10000, balance: 15000, amount: '1 USDT' })
+              : reject(new ApiError(409, 'DEPOSIT_ALREADY_CREDITED', 'Already credited.', false))
+        })
+      }
+      await mount()
+      await act(async () =>
+        renderer?.root.findByType('input').props.onChange({ target: { value: hash } }),
+      )
+      await act(async () => {
+        void renderer?.root.findByType('form').props.onSubmit({ preventDefault() {} })
+      })
+      if (refresh === 'new rail')
+        api.treasury = async () => ({
+          ...mainnet,
+          chainId: 97,
+          decimals: 6,
+          finality: 'confirmations',
+          token: `0x${'33'.repeat(20)}`,
+        })
+      if (refresh === 'balance failure')
+        api.credits = async () => {
+          throw new Error('Balance temporarily unavailable.')
+        }
+      if (refresh === 'configuration failure')
+        api.treasury = async () => {
+          throw new Error('Payment details temporarily unavailable.')
+        }
+      await act(async () => button('Refresh balance')?.props.onClick())
+      if (refresh === 'new rail') {
+        assert.match(rendered(), /Verify a testnet deposit/)
+        assert.equal(renderer?.root.findByType('input').props.value, '')
+      } else assert.equal(renderer?.root.findAllByType('form').length, 0)
+      assert.doesNotMatch(rendered(), /Payment credited/)
+      await act(async () => finish())
+      assert.match(rendered(), /Payment credited/)
+      assert.match(
+        rendered(),
+        outcome === 'credited' ? /10,000 points added/ : /This payment was already credited/,
+      )
+      const receipt = renderer?.root
+        .findAllByType('section')
+        .find((node) => node.props['aria-labelledby'] === 'credit-receipt-title')
+      assert.ok(receipt)
+      assert.equal(receipt.findByType('code').children.join(''), hash)
+      assert.equal(receipt.findByType('a').props.href, `https://bscscan.com/tx/${hash}`)
+      assert.match(
+        JSON.stringify(receipt.findAllByType('p').map((node) => node.children)),
+        /BNB Smart Chain Mainnet/,
+      )
+      assert.equal(deposits, 1)
+    })
+  }
+}
+
+test('wallet invalidation clears a confirmed receipt and its transaction hash', async () => {
+  api.credits = async () => balance
+  api.treasury = async () => mainnet
+  api.depositCredits = async () => ({ points: 10000, balance: 15000, amount: '1 USDT' })
+  await mount()
+  await act(async () =>
+    renderer?.root.findByType('input').props.onChange({ target: { value: hash } }),
+  )
+  await act(async () => renderer?.root.findByType('form').props.onSubmit({ preventDefault() {} }))
+  assert.match(rendered(), /10,000 points added/)
+  await act(async () => {
+    invalidateWalletSession()
+  })
   assert.doesNotMatch(rendered(), /10,000 points added/)
+  assert.doesNotMatch(rendered(), new RegExp(hash))
+})
+
+test('late payment response cannot publish a receipt after the wallet session changes', async () => {
+  api.credits = async () => balance
+  api.treasury = async () => mainnet
+  let complete: (value: Awaited<ReturnType<typeof api.depositCredits>>) => void = () => {}
+  api.depositCredits = async () =>
+    new Promise((resolve) => {
+      complete = resolve
+    })
+  await mount()
+  await act(async () =>
+    renderer?.root.findByType('input').props.onChange({ target: { value: hash } }),
+  )
+  await act(async () => {
+    void renderer?.root.findByType('form').props.onSubmit({ preventDefault() {} })
+  })
+  await act(async () => {
+    invalidateWalletSession()
+  })
+  await act(async () => complete({ points: 10000, balance: 15000, amount: '1 USDT' }))
+  assert.doesNotMatch(rendered(), /10,000 points added/)
+  assert.doesNotMatch(rendered(), new RegExp(hash))
 })
 
 test('wallet invalidation discards private balances and late responses from the previous session', async () => {

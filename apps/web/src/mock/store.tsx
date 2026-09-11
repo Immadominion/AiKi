@@ -51,6 +51,7 @@ interface MockApi {
   state: MockState
   ready: boolean
   authenticated: boolean
+  connectionPhase: 'idle' | 'choosing' | 'connecting' | 'signing'
   connect: () => Promise<ConnectOutcome>
   disconnect: () => void
   hire: (input: {
@@ -135,11 +136,15 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<MockState>(EMPTY)
   const [ready, setReady] = useState(false)
   const [authenticated, setAuthenticated] = useState(false)
+  const [connectionPhase, setConnectionPhase] = useState<
+    'idle' | 'choosing' | 'connecting' | 'signing'
+  >('idle')
   const [wallets, setWallets] = useState<WalletOption[]>([])
   const [choosingWallet, setChoosingWallet] = useState(false)
   const walletChoice = useRef<((wallet: WalletOption | null) => void) | null>(null)
+  const connectionPromise = useRef<Promise<ConnectOutcome> | null>(null)
   const connectAttempt = useRef(0)
-  const requestingConnection = useRef(false)
+  const requestingConnection = useRef<number | null>(null)
   const bootstrapped = useRef(false)
   const stateRef = useRef(state)
   stateRef.current = state
@@ -231,7 +236,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
         if (current.walletKind !== 'injected') return
         const address = accounts[0]
         if (address?.toLowerCase() === current.address.toLowerCase()) return
-        if (!requestingConnection.current) ++connectAttempt.current
+        if (requestingConnection.current !== connectAttempt.current) ++connectAttempt.current
         // Invalidates local credentials immediately, before the logout request settles.
         void signOut()
         setAuthenticated(false)
@@ -246,7 +251,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
       (chainId) => {
         const current = stateRef.current
         if (current.walletKind !== 'injected' || current.chainId === chainId) return
-        if (!requestingConnection.current) ++connectAttempt.current
+        if (requestingConnection.current !== connectAttempt.current) ++connectAttempt.current
         void signOut()
         setAuthenticated(false)
         commit({ ...current, chainId })
@@ -268,50 +273,72 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
       state,
       ready,
       authenticated,
+      connectionPhase,
 
-      connect: async () => {
-        if (walletChoice.current) return 'rejected'
-        if (wallets.length) {
-          const chosen = await new Promise<WalletOption | null>((resolve) => {
-            walletChoice.current = resolve
-            setChoosingWallet(true)
+      connect: () => {
+        if (connectionPromise.current) return connectionPromise.current
+        const request = (async (): Promise<ConnectOutcome> => {
+          if (walletChoice.current) return 'rejected'
+          if (wallets.length) {
+            setConnectionPhase('choosing')
+            const chosen = await new Promise<WalletOption | null>((resolve) => {
+              walletChoice.current = resolve
+              setChoosingWallet(true)
+            })
+            if (!chosen) return 'rejected'
+            selectWallet(chosen)
+          }
+          setConnectionPhase('connecting')
+          const attempt = ++connectAttempt.current
+          void signOut()
+          setAuthenticated(false)
+          requestingConnection.current = attempt
+          const result = await connectInjected().finally(() => {
+            if (requestingConnection.current === attempt) requestingConnection.current = null
           })
-          if (!chosen) return 'rejected'
-          selectWallet(chosen)
-        }
-        const attempt = ++connectAttempt.current
-        void signOut()
-        setAuthenticated(false)
-        requestingConnection.current = true
-        const result = await connectInjected().finally(() => {
-          requestingConnection.current = false
-        })
-        if (attempt !== connectAttempt.current) return 'unsigned'
-        if (result.kind === 'connected') {
-          patch((s) => ({
-            ...(s.address.toLowerCase() === result.address.toLowerCase() ? s : EMPTY),
-            connected: true,
-            walletKind: 'injected',
-            address: result.address,
-            chainId: result.chainId,
-          }))
-          // Reading an address is not proving it. Declining the signature
-          // still leaves you connected, just unable to authorize anything.
-          const proof = await signIn(result.address, result.chainId)
           if (attempt !== connectAttempt.current) return 'unsigned'
-          setAuthenticated(proof === 'signed-in')
-          setReady(true)
-          return proof === 'signed-in' ? ('injected' as const) : ('unsigned' as const)
-        }
-        if (result.kind === 'no_wallet') {
-          commit({ ...EMPTY, address: '' })
-          return 'no_wallet' as const
-        }
-        // A rejection is an answer; nothing changes and nothing pretends.
-        return 'rejected' as const
+          if (result.kind === 'connected') {
+            patch((s) => ({
+              ...(s.address.toLowerCase() === result.address.toLowerCase() ? s : EMPTY),
+              connected: true,
+              walletKind: 'injected',
+              address: result.address,
+              chainId: result.chainId,
+            }))
+            // Reading an address is not proving it. Declining the signature
+            // still leaves you connected, just unable to authorize anything.
+            setConnectionPhase('signing')
+            const proof = await signIn(result.address, result.chainId)
+            if (attempt !== connectAttempt.current) return 'unsigned'
+            setAuthenticated(proof === 'signed-in')
+            setReady(true)
+            return proof === 'signed-in' ? ('injected' as const) : ('unsigned' as const)
+          }
+          if (result.kind === 'no_wallet') {
+            commit({ ...EMPTY, address: '' })
+            return 'no_wallet' as const
+          }
+          // A rejection is an answer; nothing changes and nothing pretends.
+          return 'rejected' as const
+        })()
+        const tracked = request.finally(() => {
+          if (connectionPromise.current === tracked) {
+            connectionPromise.current = null
+            setConnectionPhase('idle')
+          }
+        })
+        connectionPromise.current = tracked
+        return tracked
       },
       disconnect: () => {
         ++connectAttempt.current
+        requestingConnection.current = null
+        connectionPromise.current = null
+        setConnectionPhase('idle')
+        const finishChoice = walletChoice.current
+        walletChoice.current = null
+        setChoosingWallet(false)
+        finishChoice?.(null)
         void signOut()
         setAuthenticated(false)
         commit({ ...EMPTY, address: '' })
@@ -618,7 +645,7 @@ export function MockProvider({ children }: { children: React.ReactNode }) {
         commit(mode === 'demo' ? demoState() : mode === 'fresh' ? freshState() : EMPTY)
       },
     }
-  }, [state, ready, authenticated, wallets, patch, commit])
+  }, [state, ready, authenticated, connectionPhase, wallets, patch, commit])
 
   const finishWalletChoice = (wallet: WalletOption | null) => {
     const resolve = walletChoice.current

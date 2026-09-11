@@ -118,3 +118,20 @@ test('expired commissioned work exposes the existing refund route to its poster'
   assert.equal(button('Cancel expired task & refund'), undefined)
   assert.equal(button('Submit delivery')?.props.disabled, true)
 })
+
+test('another task in flight locks this card without giving it a false action label', async () => {
+  await act(async () => {
+    renderer = create(
+      createElement(WorkCard, {
+        ...props({ status: 'CLAIMED' }, worker),
+        locked: true,
+        actionError: 'The delivery could not be saved.',
+      }),
+    )
+  })
+
+  assert.equal(button('Submit delivery')?.props.disabled, true)
+  assert.equal(button('Submitting…'), undefined)
+  const alert = renderer?.root.findByProps({ role: 'alert' })
+  assert.ok(JSON.stringify(alert?.children).includes('The delivery could not be saved.'))
+})

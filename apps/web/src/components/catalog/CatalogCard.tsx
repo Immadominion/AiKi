@@ -62,16 +62,16 @@ export function CatalogSkeleton({ count = 6 }: { count?: number }) {
           className="min-h-60 space-y-5 rounded-2xl border border-ink-app/10 p-5"
         >
           <div className="flex gap-3">
-            <div className="size-12 rounded-xl bg-surface-sunk motion-safe:animate-pulse" />
+            <div className="aiki-skeleton size-12 rounded-xl bg-surface-sunk" />
             <div className="flex-1 space-y-2 pt-1">
-              <div className="h-4 w-3/4 rounded bg-surface-sunk motion-safe:animate-pulse" />
-              <div className="h-3 w-1/2 rounded bg-surface-sunk motion-safe:animate-pulse" />
+              <div className="aiki-skeleton h-4 w-3/4 rounded bg-surface-sunk" />
+              <div className="aiki-skeleton h-3 w-1/2 rounded bg-surface-sunk" />
             </div>
           </div>
           <div className="space-y-2">
-            <div className="h-3 rounded bg-surface-sunk motion-safe:animate-pulse" />
-            <div className="h-3 w-4/5 rounded bg-surface-sunk motion-safe:animate-pulse" />
-            <div className="h-3 w-2/3 rounded bg-surface-sunk motion-safe:animate-pulse" />
+            <div className="aiki-skeleton h-3 rounded bg-surface-sunk" />
+            <div className="aiki-skeleton h-3 w-4/5 rounded bg-surface-sunk" />
+            <div className="aiki-skeleton h-3 w-2/3 rounded bg-surface-sunk" />
           </div>
         </div>
       ))}

@@ -19,8 +19,6 @@ const short = (address: string) => `${address.slice(0, 6)}…${address.slice(-4)
 export function People() {
   const account = useAccount()
   const say = useToast()
-  const connecting = useRef(false)
-  const [connectBusy, setConnectBusy] = useState(false)
   const [people, setPeople] = useState<Seller[]>([])
   const [kinds, setKinds] = useState<Record<string, string>>({})
   const [pricing, setPricing] = useState<PersonTaskPricing | null>(null)
@@ -35,16 +33,10 @@ export function People() {
   const [filter, setFilter] = useState('all')
   const [notice, setNotice] = useState<string | null>(null)
   const signIn = async () => {
-    if (connecting.current) return
-    connecting.current = true
-    setConnectBusy(true)
     try {
       say(CONNECT_TOAST[await account.connect()])
     } catch (error) {
       say(error instanceof Error ? error.message : 'Sign-in did not complete. Try again.')
-    } finally {
-      connecting.current = false
-      setConnectBusy(false)
     }
   }
   // biome-ignore lint/correctness/useExhaustiveDependencies: revision explicitly retries the two reads.
@@ -107,8 +99,10 @@ export function People() {
             ? mine
               ? 'Edit your listing'
               : 'Offer your skills'
-            : connectBusy
-              ? 'Signing in…'
+            : account.connecting
+              ? account.connectionPhase === 'signing'
+                ? 'Check your wallet'
+                : 'Connecting…'
               : 'Sign in to offer your skills'
       }
       onPrimary={() => {
@@ -193,7 +187,7 @@ export function People() {
           {['first', 'second'].map((key) => (
             <div
               key={key}
-              className="h-44 rounded-2xl bg-black/5 motion-safe:animate-pulse"
+              className="aiki-skeleton h-44 rounded-2xl bg-black/5"
               aria-hidden="true"
             />
           ))}
@@ -255,7 +249,7 @@ export function People() {
                   <PersonRequestAction
                     ownListing={seller.address.toLowerCase() === account.address.toLowerCase()}
                     authenticated={account.authenticated}
-                    connecting={connectBusy}
+                    connecting={account.connecting}
                     onSignIn={() => void signIn()}
                     onRequest={() => setHiring(seller)}
                   />

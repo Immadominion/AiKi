@@ -7,6 +7,7 @@ import { FastMessage } from '@/components/home/FastMessage'
 import { PageCard } from '@/components/shell/PageCard'
 import { useAccount } from '@/components/shell/prefs'
 import { AgentAvatar, UserAvatar } from '@/components/ui/Avatar'
+import { Bar } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/Toast'
 import { api, type TaskSummary } from '@/lib/api'
 import { briefText } from '@/lib/identity'
@@ -31,6 +32,8 @@ export function WorkCard({
   owner,
   openJob,
   busy,
+  locked = busy,
+  actionError,
   selected,
   onAction,
   onConnect,
@@ -39,6 +42,8 @@ export function WorkCard({
   owner: string | null
   openJob?: boolean
   busy: boolean
+  locked?: boolean
+  actionError?: string | undefined
   selected: boolean
   onAction: (run: () => Promise<unknown>, done: string) => void
   onConnect: () => void
@@ -116,6 +121,14 @@ export function WorkCard({
           {briefText(task.brief, 170)}
         </p>
       )}
+      {actionError ? (
+        <p
+          role="alert"
+          className="text-work-ink mt-3 mb-0 rounded-xl bg-work-bg px-3.5 py-3 text-[12px] leading-relaxed"
+        >
+          {actionError} Check this job before trying the action again.
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11.5px]">
         <span className="font-semibold tabular-nums">
           {task.pricePoints.toLocaleString()} points{' '}
@@ -202,7 +215,7 @@ export function WorkCard({
           />
           <button
             type="submit"
-            disabled={busy || !draft.trim() || deadlinePassed(task.claimExpiresAt)}
+            disabled={locked || !draft.trim() || deadlinePassed(task.claimExpiresAt)}
             className={primary}
           >
             {busy ? 'Submitting…' : 'Submit delivery'}
@@ -216,7 +229,7 @@ export function WorkCard({
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={busy}
+            disabled={locked}
             onClick={() => {
               setConfirm('accept')
               setExpanded(true)
@@ -227,7 +240,7 @@ export function WorkCard({
           </button>
           <button
             type="button"
-            disabled={busy}
+            disabled={locked}
             onClick={() => setConfirm('decline')}
             className={secondary}
           >
@@ -243,7 +256,7 @@ export function WorkCard({
         (task.status === 'CLAIMED' && deadlinePassed(task.claimExpiresAt))) ? (
         <button
           type="button"
-          disabled={busy}
+          disabled={locked}
           className={`${secondary} mt-3`}
           onClick={() =>
             onAction(
@@ -262,7 +275,7 @@ export function WorkCard({
       {claimant && inReview && deadlinePassed(task.reviewExpiresAt) ? (
         <button
           type="button"
-          disabled={busy}
+          disabled={locked}
           className={`${primary} mt-3`}
           onClick={() =>
             onAction(() => api.releaseTask(task.id), 'Payment released to your points balance.')
@@ -279,7 +292,7 @@ export function WorkCard({
       {openJob && !posted ? (
         <button
           type="button"
-          disabled={busy}
+          disabled={locked}
           className={`${primary} mt-3`}
           onClick={() => (owner ? setConfirm('claim') : onConnect())}
         >
@@ -334,7 +347,7 @@ export function WorkCard({
           <div className="flex flex-wrap gap-2">
             <button
               type="submit"
-              disabled={busy || (confirm === 'decline' && !reason.trim())}
+              disabled={locked || (confirm === 'decline' && !reason.trim())}
               className={primary}
             >
               {busy
@@ -347,7 +360,7 @@ export function WorkCard({
             </button>
             <button
               type="button"
-              disabled={busy}
+              disabled={locked}
               onClick={() => setConfirm(null)}
               className={secondary}
             >
@@ -362,14 +375,17 @@ export function WorkCard({
 
 export function WorkBoard() {
   const say = useToast()
-  const { address, authenticated, connect } = useAccount()
+  const { address, authenticated, connectionPhase, connecting, connect } = useAccount()
   const owner = authenticated ? address.toLowerCase() : null
   const [open, setOpen] = useState<TaskSummary[]>([])
   const [mine, setMine] = useState<TaskSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<{
+    taskId: string | null
+    message: string
+  } | null>(null)
   const [filter, setFilter] = useState<WorkFilter>('all')
   const [period, setPeriod] = useState<WorkPeriod>('all')
   const [focusTask, setFocusTask] = useState<string | null>(null)
@@ -440,7 +456,7 @@ export function WorkBoard() {
   const signIn = () => {
     void connect()
       .then((result) => say(CONNECT_TOAST[result]))
-      .catch((failure: Error) => setActionError(failure.message))
+      .catch((failure: Error) => setActionError({ taskId: null, message: failure.message }))
   }
   const act = async (id: string, run: () => Promise<unknown>, done: string) => {
     if (actionLock.current) return
@@ -455,11 +471,13 @@ export function WorkBoard() {
       }
     } catch (failure) {
       if (currentOwner.current === owner)
-        setActionError(
-          failure instanceof Error
-            ? failure.message
-            : 'That action did not complete. Refresh before trying again.',
-        )
+        setActionError({
+          taskId: id,
+          message:
+            failure instanceof Error
+              ? failure.message
+              : 'That action did not complete. Refresh before trying again.',
+        })
     } finally {
       actionLock.current = false
       setBusy(null)
@@ -475,7 +493,9 @@ export function WorkBoard() {
           owner={owner}
           openJob={openJob}
           selected={focusTask === task.id}
-          busy={busy !== null}
+          busy={busy === task.id}
+          locked={busy !== null}
+          actionError={actionError?.taskId === task.id ? actionError.message : undefined}
           onConnect={signIn}
           onAction={(run, done) => {
             void act(task.id, run, done)
@@ -516,9 +536,9 @@ export function WorkBoard() {
           </button>
         </div>
       ) : null}
-      {actionError ? (
+      {actionError?.taskId === null ? (
         <p role="alert" className="mb-3 rounded-xl border border-orange-app/20 p-3 text-[12px]">
-          {actionError}
+          {actionError.message}
         </p>
       ) : null}
     </>
@@ -585,14 +605,22 @@ export function WorkBoard() {
               <p className="text-muted mt-2 mb-4 text-[13px]">
                 Sign in with your wallet to see your jobs and deliveries.
               </p>
-              <button type="button" onClick={signIn} className={primary}>
-                Connect & sign in
+              <button
+                type="button"
+                disabled={connecting}
+                aria-busy={connecting}
+                onClick={signIn}
+                className={primary}
+              >
+                {connectionPhase === 'signing'
+                  ? 'Check your wallet'
+                  : connecting
+                    ? 'Connecting…'
+                    : 'Connect & sign in'}
               </button>
             </div>
           ) : loading && !mine.length ? (
-            <p role="status" className="text-muted py-10 text-center text-[13px]">
-              Loading your work…
-            </p>
+            <WorkListSkeleton label="Loading your work" />
           ) : visible.length ? (
             list(visible)
           ) : !error ? (
@@ -609,9 +637,7 @@ export function WorkBoard() {
         <div key="open" className="mx-auto max-w-[1060px]">
           {feedback}
           {loading && !open.length ? (
-            <p role="status" className="text-muted py-10 text-center text-[13px]">
-              Loading open jobs…
-            </p>
+            <WorkListSkeleton label="Loading open jobs" />
           ) : open.length ? (
             list(open, true)
           ) : !error ? (
@@ -621,6 +647,35 @@ export function WorkBoard() {
         </div>,
       ]}
     />
+  )
+}
+
+const WORK_SKELETONS = ['work-a', 'work-b', 'work-c'] as const
+
+function WorkListSkeleton({ label }: { label: string }) {
+  return (
+    <div role="status" aria-label={label} className="grid gap-3">
+      {WORK_SKELETONS.map((id, index) => (
+        <div key={id} aria-hidden className="rounded-[18px] border border-black/[.08] p-4 md:p-5">
+          <div className="flex items-center gap-3">
+            <span className="aiki-skeleton size-[42px] flex-none rounded-xl bg-surface-sunk" />
+            <span className="flex min-w-0 flex-1 flex-col gap-2">
+              <Bar w={index === 1 ? '58%' : '43%'} h={12} />
+              <Bar w="24%" h={9} />
+            </span>
+            <Bar w={64} h={22} />
+          </div>
+          <div className="mt-4 space-y-2">
+            <Bar w="94%" h={10} />
+            <Bar w={index === 2 ? '52%' : '72%'} h={10} />
+          </div>
+          <div className="mt-4 flex items-center justify-between">
+            <Bar w={90} h={10} />
+            <Bar w={82} h={30} />
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 

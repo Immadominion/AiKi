@@ -97,7 +97,13 @@ after(() => {
 function wallet(name: string, address = A) {
   const calls: string[] = []
   const listeners = new Map<string, Set<(payload: unknown) => void>>()
-  const state = { address, chainId: 56, rejectConnection: false, sign: async () => '0x1234' }
+  const state = {
+    address,
+    chainId: 56,
+    rejectConnection: false,
+    requestAccounts: null as null | (() => Promise<string[]>),
+    sign: async () => '0x1234',
+  }
   const option: WalletOption = {
     uuid: name,
     name,
@@ -108,7 +114,9 @@ function wallet(name: string, address = A) {
         calls.push(method)
         if (method === 'eth_requestAccounts' && state.rejectConnection)
           throw new Error('User rejected connection')
-        if (method === 'eth_accounts' || method === 'eth_requestAccounts') return [state.address]
+        if (method === 'eth_requestAccounts')
+          return state.requestAccounts ? state.requestAccounts() : [state.address]
+        if (method === 'eth_accounts') return [state.address]
         if (method === 'eth_chainId') return `0x${state.chainId.toString(16)}`
         if (method === 'personal_sign') return state.sign()
         return null
@@ -271,6 +279,127 @@ test('declining a connection during bootstrap still finishes loading', async () 
   })
   assert.equal(mounted.ready, true)
   assert.equal(mounted.authenticated, false)
+})
+
+test('connection progress is shared and duplicate triggers join the same wallet handoff', async () => {
+  const selected = wallet('MetaMask')
+  let finishSignature: ((signature: string) => void) | undefined
+  selected.state.sign = () =>
+    new Promise((resolve) => {
+      finishSignature = resolve
+    })
+  selectWallet(selected.option)
+  authServer()
+  await mountAccount()
+
+  let first: Promise<unknown> | undefined
+  let second: Promise<unknown> | undefined
+  await act(async () => {
+    first = mounted.connect()
+    second = mounted.connect()
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+
+  assert.equal(first, second)
+  assert.equal(mounted.connectionPhase, 'signing')
+  assert.equal(selected.calls.filter((method) => method === 'eth_requestAccounts').length, 1)
+  assert.equal(selected.calls.filter((method) => method === 'personal_sign').length, 1)
+
+  await act(async () => {
+    finishSignature?.('0x1234')
+    assert.equal(await first, 'injected')
+  })
+  assert.equal(mounted.connectionPhase, 'idle')
+})
+
+test('disconnect releases a stalled signature so another wallet can connect', async () => {
+  const firstWallet = wallet('First wallet')
+  let finishFirstSignature: ((signature: string) => void) | undefined
+  firstWallet.state.sign = () =>
+    new Promise((resolve) => {
+      finishFirstSignature = resolve
+    })
+  selectWallet(firstWallet.option)
+  authServer()
+  await mountAccount()
+
+  let firstConnection: Promise<unknown> | undefined
+  await act(async () => {
+    firstConnection = mounted.connect()
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+  assert.equal(mounted.connectionPhase, 'signing')
+
+  const secondWallet = wallet('Second wallet')
+  await act(async () => {
+    mounted.disconnect()
+    selectWallet(secondWallet.option)
+  })
+  await act(async () => {
+    assert.equal(await mounted.connect(), 'injected')
+  })
+  assert.equal(mounted.authenticated, true)
+  assert.equal(mounted.connectionPhase, 'idle')
+
+  await act(async () => {
+    finishFirstSignature?.('0x1234')
+    assert.equal(await firstConnection, 'unsigned')
+  })
+  assert.equal(mounted.authenticated, true)
+  assert.equal(mounted.connectionPhase, 'idle')
+  assert.equal(secondWallet.calls.filter((method) => method === 'personal_sign').length, 1)
+})
+
+test('an old connection prompt cannot cancel a newer wallet handoff', async () => {
+  const firstWallet = wallet('First wallet')
+  let finishFirstAccounts: ((accounts: string[]) => void) | undefined
+  firstWallet.state.requestAccounts = () =>
+    new Promise((resolve) => {
+      finishFirstAccounts = resolve
+    })
+  selectWallet(firstWallet.option)
+  authServer()
+  await mountAccount()
+
+  let firstConnection: Promise<unknown> | undefined
+  await act(async () => {
+    firstConnection = mounted.connect()
+    await Promise.resolve()
+  })
+  assert.equal(mounted.connectionPhase, 'connecting')
+
+  const secondWallet = wallet('Second wallet')
+  let finishSecondAccounts: ((accounts: string[]) => void) | undefined
+  secondWallet.state.requestAccounts = () =>
+    new Promise((resolve) => {
+      finishSecondAccounts = resolve
+    })
+  await act(async () => {
+    mounted.disconnect()
+    selectWallet(secondWallet.option)
+  })
+
+  let secondConnection: Promise<unknown> | undefined
+  await act(async () => {
+    secondConnection = mounted.connect()
+    await Promise.resolve()
+  })
+  assert.equal(mounted.connectionPhase, 'connecting')
+
+  await act(async () => {
+    finishFirstAccounts?.([firstWallet.state.address])
+    assert.equal(await firstConnection, 'unsigned')
+  })
+  assert.equal(mounted.connectionPhase, 'connecting')
+
+  await act(async () => {
+    finishSecondAccounts?.([secondWallet.state.address])
+    assert.equal(await secondConnection, 'injected')
+  })
+  assert.equal(mounted.authenticated, true)
+  assert.equal(mounted.connectionPhase, 'idle')
 })
 
 for (const outcome of ['injected', 'unsigned'] as const) {

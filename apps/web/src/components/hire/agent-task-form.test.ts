@@ -34,6 +34,8 @@ const support = { available: true, minimumPricePoints: 10, feeBasisPoints: 250 }
 const account = {
   connected: true,
   authenticated: true,
+  connectionPhase: 'idle' as const,
+  connecting: false,
   ready: true,
   address: owner,
   walletKind: 'injected' as const,

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { AiKiActivity } from '@/components/ui/AiKiActivity'
 import { type AssistantStep, api, type CreditBalance } from '@/lib/api'
 import { FastMandateAction } from './FastMandateAction'
 import { FastMessage } from './FastMessage'
@@ -185,9 +186,7 @@ export function FastChat({
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-[4px] pb-2"
       >
         {loading ? (
-          <p role="status" className="text-muted text-[13px]">
-            Loading your conversation…
-          </p>
+          <AiKiActivity label="Opening your conversation" elapsed={false} compact />
         ) : null}
         {!loading && messages.length === 0 && !pending ? (
           <p className="text-faint mt-[8px] mb-0 text-[13px] leading-[1.6] text-pretty">
@@ -239,9 +238,17 @@ export function FastChat({
             <p className="m-0 max-w-[520px] rounded-[16px] bg-[rgb(26_26_25_/_0.055)] px-[14px] py-[10px] text-[13px] leading-[1.55] whitespace-pre-wrap [overflow-wrap:anywhere]">
               {pending.messages.at(-1)?.content}
             </p>
-            <p role="status" className="text-muted m-0 text-[12px]">
-              {busy ? 'Working…' : 'Waiting for the reply'}
-            </p>
+            {busy ? (
+              <AiKiActivity
+                label="AiKi is working"
+                detail="This request stays attached to this conversation."
+                compact
+              />
+            ) : (
+              <p role="status" className="text-muted m-0 text-[12px]">
+                Reply still pending. Check this same request when you are ready.
+              </p>
+            )}
           </div>
         ) : null}
       </div>
@@ -282,7 +289,7 @@ export function FastChat({
             disabled={loading || busy || (!pending && !draft.trim())}
             className="bg-ink-app hover:bg-orange-app h-[44px] flex-none rounded-[14px] border-0 px-[16px] text-[13.5px] font-bold text-white transition-colors duration-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-app disabled:opacity-40 motion-reduce:transition-none"
           >
-            {busy ? 'Working…' : pending ? 'Check reply' : 'Ask'}
+            {busy ? 'Working' : pending ? 'Check reply' : 'Ask'}
           </button>
         </div>
       </form>
@@ -322,7 +329,7 @@ function Steps({ steps }: { steps: AssistantStep[] }) {
           />
           <span>
             {TOOL_LABEL[s.tool] ?? s.tool}
-            {s.ok ? '' : ' (refused)'}
+            {s.ok ? '' : ' (did not complete)'}
           </span>
           {s.ok && fastToolAgentHref(s.tool, s.input.agent_id) ? (
             <a

@@ -33,7 +33,7 @@ import { PANEL, SCREEN } from './shards'
  * destroyed. The `{full && …}` holes below keep every child at a fixed index.
  */
 export function AskPanel() {
-  const { connected, authenticated, connect } = useAccount()
+  const { connected, authenticated, connectionPhase, connecting, connect } = useAccount()
   const say = useToast()
   const [full, setFull] = useState(false)
 
@@ -91,14 +91,26 @@ export function AskPanel() {
           authenticated ? null : (
             <button
               type="button"
+              disabled={connecting}
+              aria-busy={connecting}
               onClick={() => {
                 void connect().then((outcome) => say(CONNECT_TOAST[outcome]))
               }}
-              className="mt-[14px] border-0 bg-none text-[12.5px] font-medium text-[#767676] hover:text-[#141414]"
+              className="mt-[14px] border-0 bg-none text-[12.5px] font-medium text-[#767676] hover:text-[#141414] disabled:cursor-wait"
             >
-              {connected ? 'Your wallet is connected. ' : 'New here? '}
+              {connecting
+                ? connectionPhase === 'signing'
+                  ? 'One last step. '
+                  : 'Connecting. '
+                : connected
+                  ? 'Your wallet is connected. '
+                  : 'New here? '}
               <span className="font-bold underline underline-offset-[3px]">
-                {connected ? 'Sign in to continue' : 'Connect a wallet'}
+                {connecting
+                  ? 'Check your wallet'
+                  : connected
+                    ? 'Sign in to continue'
+                    : 'Connect a wallet'}
               </span>
             </button>
           )
