@@ -4,6 +4,21 @@ import type { ProbeAgentResult } from './probe.js'
 import { type MarketplaceReadiness, marketplaceReadiness } from './readiness.js'
 import type { RegistrationResolution } from './registration.js'
 
+/** Point-in-time current identity, distinct from the historical Registered event. */
+export interface CurrentRegistrationIdentity {
+  readonly chainId: 56
+  readonly registry: string
+  readonly agentId: string
+  readonly owner: string
+  readonly agentUri: string
+  readonly block: Readonly<{
+    number: string
+    hash: string
+    timestamp: string
+    finality: 'finalized'
+  }>
+}
+
 export interface VerificationInput {
   chainId: number
   registry: string
@@ -11,6 +26,7 @@ export interface VerificationInput {
   registration: RegistrationResolution
   probe: ProbeAgentResult
   identityVerified: boolean
+  currentIdentity?: CurrentRegistrationIdentity
 }
 
 export interface VerificationPersisted {
@@ -54,6 +70,7 @@ export async function persistVerification(
         zeroCost: input.registration.zeroCost,
         detail: input.registration.detail,
         manifest: input.registration.manifest,
+        ...(input.currentIdentity ? { currentIdentity: input.currentIdentity } : {}),
       },
       dedupeKey: `prober:${runId}:registration`,
     },
