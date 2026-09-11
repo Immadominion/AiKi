@@ -1,3 +1,4 @@
+import { sha256, stringToBytes } from 'viem'
 import type { TaskRequest } from '@/lib/api'
 
 export const TASK_TYPES = [
@@ -74,6 +75,11 @@ export function buildAgentTask(draft: AgentTaskDraft): TaskRequest {
 export interface TaskAttempt {
   fingerprint: string
   key: string
+}
+
+/** Same SHA-256 encoding as existing saved attempts, without persisting a private brief. */
+export function taskRequestFingerprint(request: TaskRequest): string {
+  return sha256(stringToBytes(JSON.stringify(request))).slice(2)
 }
 
 /** Reuse the same operation after a lost response, never for changed work. */

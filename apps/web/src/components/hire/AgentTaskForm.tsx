@@ -18,6 +18,7 @@ import {
   taskCreationMessage,
   taskPrice,
   taskRejectedBeforeCharge,
+  taskRequestFingerprint,
 } from './agent-task'
 
 const FIELD =
@@ -33,6 +34,37 @@ const HOURS = [
   [168, 'Within 1 week'],
 ] as const
 
+function readAttempt(storageKey: string, fallback: TaskAttempt | null): TaskAttempt | null {
+  try {
+    const stored: unknown = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null')
+    if (
+      stored &&
+      typeof stored === 'object' &&
+      'fingerprint' in stored &&
+      typeof stored.fingerprint === 'string' &&
+      /^[a-f0-9]{64}$/.test(stored.fingerprint) &&
+      'key' in stored &&
+      typeof stored.key === 'string' &&
+      /^[\x21-\x7e]{1,200}$/.test(stored.key)
+    )
+      return { fingerprint: stored.fingerprint, key: stored.key }
+  } catch {
+    /* Keep the in-memory key when storage is unavailable. */
+  }
+  return fallback
+}
+
+function clearAttempt(storageKey: string, completed: TaskAttempt | null) {
+  if (!completed) return
+  try {
+    const stored = readAttempt(storageKey, null)
+    if (stored?.key === completed.key && stored.fingerprint === completed.fingerprint)
+      sessionStorage.removeItem(storageKey)
+  } catch {
+    /* Retain the key if storage cannot be updated; the server still deduplicates it. */
+  }
+}
+
 export function AgentTaskForm({
   passport,
   support,
@@ -40,9 +72,30 @@ export function AgentTaskForm({
   passport: ProjectedPassport
   support: AgentTaskSupport
 }) {
+  const account = useAccount()
+  return (
+    <AgentTaskFields
+      key={`${account.address.toLowerCase()}:${account.authenticated}:${passport.agentId}`}
+      passport={passport}
+      support={support}
+      account={account}
+    />
+  )
+}
+
+/** Wallet changes start a separate form and cannot inherit another account's pending request. */
+export function AgentTaskFields({
+  passport,
+  support,
+  account,
+}: {
+  passport: ProjectedPassport
+  support: AgentTaskSupport
+  account: ReturnType<typeof useAccount>
+}) {
   const router = useRouter()
   const say = useToast()
-  const { connected, authenticated, address, connect } = useAccount()
+  const { connected, authenticated, address, connect } = account
   const kinds = TASK_TYPES.filter(
     ([value]) => !support.kinds?.length || support.kinds.includes(value),
   )
@@ -58,19 +111,34 @@ export function AgentTaskForm({
   const [priceError, setPriceError] = useState<string | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [recovering, setRecovering] = useState(false)
   const [signingIn, setSigningIn] = useState(false)
   const inFlight = useRef(false)
-  const retry = useRef<TaskAttempt | null>(null)
+  const [pendingAttempt, setPendingAttempt] = useState<TaskAttempt | null>(null)
+  const active = useRef(true)
+  const balanceSequence = useRef(0)
   const errorPanel = useRef<HTMLDivElement>(null)
   const name = passport.name ?? `Agent ${passport.agentId}`
+  const storageKey = `aiki.task-attempt:${address.toLowerCase()}:${passport.agentId}`
+
+  useEffect(() => {
+    active.current = true
+    setPendingAttempt(readAttempt(storageKey, null))
+    return () => {
+      active.current = false
+    }
+  }, [storageKey])
 
   const loadBalance = useCallback(async () => {
     if (!authenticated) return
+    const sequence = ++balanceSequence.current
     setBalanceError(false)
     try {
       const credits = await api.credits()
+      if (!active.current || sequence !== balanceSequence.current) return
       setBalance(credits.balance)
     } catch {
+      if (!active.current || sequence !== balanceSequence.current) return
       setBalance(null)
       setBalanceError(true)
     }
@@ -91,20 +159,34 @@ export function AgentTaskForm({
   }
   const notEnough = balance !== null && price !== null && price.total > balance
   const descriptionLimit = includeWallet ? 1_920 : 2_000
+  let fingerprint: string | null = null
+  if (price) {
+    try {
+      fingerprint = taskRequestFingerprint(
+        buildAgentTask({
+          agentId: passport.agentId,
+          title,
+          brief,
+          kind,
+          pricePoints: price.offer,
+          workHours,
+          ...(includeWallet ? { walletAddress } : {}),
+        }),
+      )
+    } catch {
+      /* Incomplete or changed work cannot use a saved recovery key. */
+    }
+  }
+  const checkingOriginal = pendingAttempt !== null && pendingAttempt.fingerprint === fingerprint
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (inFlight.current || !authenticated || !support.available) return
     setProblem(null)
     setPriceError(null)
-    const storageKey = `aiki.task-attempt:${address.toLowerCase()}:${passport.agentId}`
+    let sentAttempt: TaskAttempt | null = null
     try {
       const priced = taskPrice(offer, support.minimumPricePoints, support.feeBasisPoints)
-      if (balance === null) throw new Error('Refresh your balance before sending this request.')
-      if (priced.total > balance)
-        throw new Error(
-          `This request needs ${priced.total.toLocaleString()} points. Your balance is ${balance.toLocaleString()}.`,
-        )
       const request = buildAgentTask({
         agentId: passport.agentId,
         title,
@@ -114,56 +196,43 @@ export function AgentTaskForm({
         workHours,
         ...(includeWallet ? { walletAddress } : {}),
       })
+      const fingerprint = taskRequestFingerprint(request)
+      const previous = readAttempt(storageKey, pendingAttempt)
+      // An uncertain original request may already have taken these points. Only
+      // its exact body/key may bypass the new-request balance preflight.
+      if (previous?.fingerprint !== fingerprint) {
+        if (balance === null) throw new Error('Refresh your balance before sending this request.')
+        if (priced.total > balance)
+          throw new Error(
+            `This request needs ${priced.total.toLocaleString()} points. Your balance is ${balance.toLocaleString()}.`,
+          )
+      }
       inFlight.current = true
+      setRecovering(previous?.fingerprint === fingerprint)
       setBusy(true)
       // Store only a digest and random operation key, never the private brief.
-      const digest = await crypto.subtle.digest(
-        'SHA-256',
-        new TextEncoder().encode(JSON.stringify(request)),
-      )
-      const fingerprint = Array.from(new Uint8Array(digest), (byte) =>
-        byte.toString(16).padStart(2, '0'),
-      ).join('')
-      let previous = retry.current
-      try {
-        const stored: unknown = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null')
-        if (
-          stored &&
-          typeof stored === 'object' &&
-          'fingerprint' in stored &&
-          'key' in stored &&
-          typeof stored.fingerprint === 'string' &&
-          typeof stored.key === 'string'
-        )
-          previous = { fingerprint: stored.fingerprint, key: stored.key }
-      } catch {
-        /* The in-memory key still protects retries when storage is unavailable. */
-      }
       const attempt = taskAttempt(previous, fingerprint, () => crypto.randomUUID())
-      retry.current = attempt
+      sentAttempt = attempt
+      setPendingAttempt(attempt)
       try {
         sessionStorage.setItem(storageKey, JSON.stringify(attempt))
       } catch {
         /* Continue with the in-memory key. */
       }
       const task = await api.postTask(request, attempt.key)
-      try {
-        sessionStorage.removeItem(storageKey)
-      } catch {
-        /* The server still deduplicates this key. */
-      }
+      // A newer form may now own this slot. An old response cannot erase its key.
+      clearAttempt(storageKey, attempt)
+      if (!active.current) return
+      setPendingAttempt(null)
       say(taskCreationMessage(task))
       router.push(`/work?task=${encodeURIComponent(task.id)}`)
     } catch (error) {
       if (taskRejectedBeforeCharge(error)) {
-        retry.current = null
-        try {
-          sessionStorage.removeItem(storageKey)
-        } catch {
-          /* The in-memory attempt has still been cleared. */
-        }
-        void loadBalance()
+        if (active.current) setPendingAttempt(null)
+        clearAttempt(storageKey, sentAttempt)
       }
+      if (!active.current) return
+      if (inFlight.current) void loadBalance()
       setProblem(
         error instanceof Error
           ? error.message
@@ -455,11 +524,24 @@ export function AgentTaskForm({
                   Refresh balance
                 </button>
               ) : null}
-              {notEnough ? (
-                <p className="mt-2 mb-0 text-red-700">
-                  Your balance is below this total. Choose a smaller offer or add points before
-                  continuing.
+              {checkingOriginal && !busy ? (
+                <p className="mt-2 mb-0">
+                  We could not confirm the earlier response. Check the original request using the
+                  same request key, not a new purchase.
                 </p>
+              ) : notEnough && !checkingOriginal ? (
+                <>
+                  <p className="mt-2 mb-0 text-red-700">
+                    Your balance is below this total. Choose a smaller offer or add points before
+                    continuing.
+                  </p>
+                  <Link
+                    href="/credits#credit-add-title"
+                    className={`mt-2 inline-flex min-h-11 items-center rounded-lg px-2 font-semibold underline underline-offset-4 ${FOCUS}`}
+                  >
+                    Add points
+                  </Link>
+                </>
               ) : null}
             </div>
 
@@ -482,14 +564,18 @@ export function AgentTaskForm({
 
             <button
               type="submit"
-              disabled={busy || !price || balance === null || notEnough}
+              disabled={busy || !price || (!checkingOriginal && (balance === null || notEnough))}
               className={`bg-ink-app hover:bg-orange-app mt-5 min-h-12 w-full rounded-xl px-4 py-3 text-sm font-bold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${FOCUS}`}
             >
               {busy
-                ? 'Sending your request…'
-                : price
-                  ? `Request work for ${price.total.toLocaleString()} points`
-                  : 'Set your offer to continue'}
+                ? recovering
+                  ? 'Checking your request…'
+                  : 'Sending your request…'
+                : checkingOriginal
+                  ? 'Check original request'
+                  : price
+                    ? `Request work for ${price.total.toLocaleString()} points`
+                    : 'Set your offer to continue'}
             </button>
             <p className="text-muted mt-3 mb-0 text-xs leading-relaxed">
               The total is held when you send this request. Review the delivery in Work before
