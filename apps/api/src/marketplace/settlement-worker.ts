@@ -300,27 +300,13 @@ export class PostgresMarketplaceSettlementWorker {
     const row = await this.claimPreparedSubmission()
     if (!row) return null
 
-    let submission: Awaited<ReturnType<SettlementSubmitter['submit']>>
     try {
-      submission = await submitter.submit(row.prepared_transaction)
-    } catch (error) {
-      await this.sql`
-        UPDATE settlement_operations
-        SET status = 'PREPARED',
-            failure_code = 'SUBMIT_REFUSED',
-            failure_detail = ${isoError(error)},
-            updated_at = now()
-        WHERE id = ${row.operation_id}
-          AND status = 'SUBMITTING'
-          AND transaction_hash IS NULL
-      `
-      throw error
-    }
+      const submission = await submitter.submit(row.prepared_transaction)
 
-    const hash = submission.transactionHash.toLowerCase() as `0x${string}`
-    if (!TX_HASH.test(hash)) throw new Error(`Submitter returned an invalid transaction hash.`)
-    const updated = await this.sql.begin(async (tx) => {
-      const operationRows = await tx<{ id: string }[]>`
+      const hash = submission.transactionHash.toLowerCase() as `0x${string}`
+      if (!TX_HASH.test(hash)) throw new Error(`Submitter returned an invalid transaction hash.`)
+      const updated = await this.sql.begin(async (tx) => {
+        const operationRows = await tx<{ id: string }[]>`
         UPDATE settlement_operations
         SET status = 'SUBMITTED',
             transaction_hash = ${hash},
@@ -333,8 +319,8 @@ export class PostgresMarketplaceSettlementWorker {
           AND transaction_hash IS NULL
         RETURNING id
       `
-      if (operationRows.length && row.operation_type === 'FUND') {
-        const jobRows = await tx<{ aggregate_version: string }[]>`
+        if (operationRows.length && row.operation_type === 'FUND') {
+          const jobRows = await tx<{ aggregate_version: string }[]>`
           UPDATE marketplace_jobs
           SET settlement_state = 'FUNDING_SUBMITTED',
               aggregate_version = aggregate_version + 1,
@@ -343,9 +329,9 @@ export class PostgresMarketplaceSettlementWorker {
             AND settlement_state = 'UNFUNDED'
           RETURNING aggregate_version
         `
-        const aggregateVersion = jobRows[0]?.aggregate_version
-        if (aggregateVersion) {
-          await tx`
+          const aggregateVersion = jobRows[0]?.aggregate_version
+          if (aggregateVersion) {
+            await tx`
             INSERT INTO marketplace_events (
               id, job_id, aggregate_version, event_type, payload, correlation_id
             ) VALUES (
@@ -357,10 +343,10 @@ export class PostgresMarketplaceSettlementWorker {
               ${row.operation_id}
             )
           `
+          }
         }
-      }
-      if (operationRows.length && row.operation_type === 'SUBMIT_WORK') {
-        const jobRows = await tx<{ aggregate_version: string }[]>`
+        if (operationRows.length && row.operation_type === 'SUBMIT_WORK') {
+          const jobRows = await tx<{ aggregate_version: string }[]>`
           UPDATE marketplace_jobs
           SET aggregate_version = aggregate_version + 1,
               updated_at = now()
@@ -369,10 +355,12 @@ export class PostgresMarketplaceSettlementWorker {
             AND settlement_state = 'FUNDED'
           RETURNING aggregate_version
         `
-        const aggregateVersion = jobRows[0]?.aggregate_version
-        if (!aggregateVersion)
-          throw new Error(`Submit operation ${row.operation_id} could not record submission send.`)
-        await tx`
+          const aggregateVersion = jobRows[0]?.aggregate_version
+          if (!aggregateVersion)
+            throw new Error(
+              `Submit operation ${row.operation_id} could not record submission send.`,
+            )
+          await tx`
           INSERT INTO marketplace_events (
             id, job_id, aggregate_version, event_type, payload, correlation_id
           ) VALUES (
@@ -384,9 +372,9 @@ export class PostgresMarketplaceSettlementWorker {
             ${row.operation_id}
           )
         `
-      }
-      if (operationRows.length && row.operation_type === 'RELEASE') {
-        const jobRows = await tx<{ aggregate_version: string }[]>`
+        }
+        if (operationRows.length && row.operation_type === 'RELEASE') {
+          const jobRows = await tx<{ aggregate_version: string }[]>`
           UPDATE marketplace_jobs
           SET settlement_state = 'RELEASE_SUBMITTED',
               aggregate_version = aggregate_version + 1,
@@ -397,9 +385,9 @@ export class PostgresMarketplaceSettlementWorker {
             AND payout_state = 'HOLD'
           RETURNING aggregate_version
         `
-        const aggregateVersion = jobRows[0]?.aggregate_version
-        if (aggregateVersion) {
-          await tx`
+          const aggregateVersion = jobRows[0]?.aggregate_version
+          if (aggregateVersion) {
+            await tx`
             INSERT INTO marketplace_events (
               id, job_id, aggregate_version, event_type, payload, correlation_id
             ) VALUES (
@@ -411,18 +399,43 @@ export class PostgresMarketplaceSettlementWorker {
               ${row.operation_id}
             )
           `
+          }
         }
+        return operationRows
+      })
+      if (!updated.length)
+        throw new Error(`Settlement operation ${row.operation_id} changed during submission.`)
+      return {
+        operationId: row.operation_id,
+        jobId: row.job_id,
+        agreementId: row.agreement_id,
+        transactionHash: hash,
+        transactionNonce: submission.transactionNonce,
       }
-      return operationRows
-    })
-    if (!updated.length)
-      throw new Error(`Settlement operation ${row.operation_id} changed during submission.`)
-    return {
-      operationId: row.operation_id,
-      jobId: row.job_id,
-      agreementId: row.agreement_id,
-      transactionHash: hash,
-      transactionNonce: submission.transactionNonce,
+    } catch {
+      // The SUBMITTING claim committed before transport. Neither a send error
+      // nor a failed hash-recording acknowledgement proves no broadcast. Keep
+      // the original bytes and claim durable, including across worker restarts.
+      // There is no proven pre-broadcast refusal type in this interface, so a
+      // generic error can never restore PREPARED or authorize another send.
+      const detail =
+        'Settlement submission is unconfirmed. Automatic resubmission is blocked; operator reconciliation is required.'
+      try {
+        await this.sql`
+          UPDATE settlement_operations
+          SET failure_code = 'SUBMISSION_UNCONFIRMED',
+              failure_detail = ${detail},
+              updated_at = now()
+          WHERE id = ${row.operation_id}
+            AND status = 'SUBMITTING'
+            AND transaction_hash IS NULL
+        `
+      } catch {
+        // Diagnostic failure must not reset the claim or expose database/RPC
+        // errors. A successful but unacknowledged SUBMITTED commit is also left
+        // untouched by the guarded update above.
+      }
+      throw new Error(detail)
     }
   }
 
