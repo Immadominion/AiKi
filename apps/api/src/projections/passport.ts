@@ -54,7 +54,7 @@ function deriveRisks(input: {
   if (input.state === 'IMPOSTOR_STATIC')
     risks.push({
       code: 'impostor_static',
-      label: 'Static page posing as an agent',
+      label: 'Identical responses across checked URLs',
       severity: 'critical',
       detail: probeDetail,
     })
@@ -68,14 +68,14 @@ function deriveRisks(input: {
   if (input.state === 'DECLARED_ONLY')
     risks.push({
       code: 'declared_only',
-      label: 'Declares a service it has never answered for',
+      label: 'No service endpoint declared',
       severity: 'warn',
       detail: probeDetail,
     })
   if (input.state === 'UNREACHABLE')
     risks.push({
       code: 'unreachable',
-      label: 'Declared endpoint does not respond',
+      label: 'Endpoint did not answer this check',
       severity: 'warn',
       detail: probeDetail,
     })
@@ -89,9 +89,10 @@ function deriveRisks(input: {
   if (input.zeroCost === true)
     risks.push({
       code: 'zero_cost_registration',
-      label: 'Registration cost nothing',
+      label: 'Inline registration metadata',
       severity: 'info',
-      detail: 'A data: URI registration is free to mint, so identities like this are sybil-cheap.',
+      detail:
+        'This metadata needs no remote fetch. Its storage format does not establish minting cost, service availability or authenticity.',
     })
   // Only meaningful when something answered: a dead endpoint failing to point
   // back at its token is noise, a live one failing to is a real gap. The claim

@@ -5,10 +5,10 @@
  * ERC-8004 registry, not from theory. See
  * research/02-ecosystem/01-erc8004-reality-on-bsc.md
  *
- * The headline rule is D1: an endpoint that returns byte-identical responses for a
- * valid id, a nonsense id and a non-numeric id is a static page, not an agent. That
- * single check reclassified 141 of 147 apparently-"live" endpoints in our sample,
- * and it is why "HTTP 200" must never render as LIVE anywhere in this product.
+ * D1 detects byte-identical responses across different identifier inputs. That
+ * does not establish agent-specific behavior at the checked URLs, but shared
+ * metadata can also produce this result. It is not proof a provider is fake.
+ * HTTP 200 alone must never render as LIVE.
  */
 
 import { createHash } from 'node:crypto'
@@ -128,8 +128,8 @@ export function d1_impostorStatic(samples: ProbeSample[]): ProbeVerdict | null {
     rule: 'D1',
     detail:
       `Returned byte-identical responses (MD5 ${ok[0]?.bodyHash.slice(0, 8)}…) for ` +
-      `${ok.length} different inputs including a nonsense id. This is a static page, ` +
-      'not an agent service.',
+      `${ok.length} different inputs including a nonsense id. This does not establish ` +
+      'agent-specific behavior at these URLs; a shared metadata endpoint can also return identical content.',
     evidence: {
       sharedHash: ok[0]?.bodyHash,
       inputsTried: ok.map((s) => s.label),
