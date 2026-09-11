@@ -9,6 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
+import { fastReturnHref } from '@/components/home/FastPoints'
 import { PageCard } from '@/components/shell/PageCard'
 import { useAccount } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
@@ -104,6 +105,7 @@ export function ConnectedCredits({ address }: { address: string }) {
 }
 
 function CreditsAccount({ address }: { address: string }) {
+  const [returnHref, setReturnHref] = useState('/app')
   const [credits, setCredits] = useState<CreditBalance | null>(null)
   const [rail, setRail] = useState<CreditRail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -131,6 +133,7 @@ function CreditsAccount({ address }: { address: string }) {
     setLoading(false)
   }, [])
   useEffect(() => {
+    if (typeof window !== 'undefined') setReturnHref(fastReturnHref(window.location.search))
     alive.current = true
     void load()
     return () => {
@@ -180,6 +183,10 @@ function CreditsAccount({ address }: { address: string }) {
         <h2 id="credit-add-title" className="m-0 text-base font-bold">
           Add points
         </h2>
+        <p className="text-muted m-0 max-w-prose text-sm leading-relaxed">
+          Buy AiKi points with USDT at checkout. Holding USDT in your wallet does not add points.
+          Your points are added after you verify the payment below.
+        </p>
         {rail ? (
           <>
             <p className="text-muted m-0 max-w-prose text-sm leading-relaxed">
@@ -258,10 +265,10 @@ function CreditsAccount({ address }: { address: string }) {
           still browse the marketplace.
         </p>
         <Link
-          href={route('/app')}
+          href={route(returnHref)}
           className={`inline-flex min-h-11 items-center text-sm font-bold text-ink-app underline underline-offset-4 ${FOCUS}`}
         >
-          Back to Fast mode
+          {returnHref === '/app' ? 'Back to Fast mode' : 'Back to this conversation'}
         </Link>
       </section>
 

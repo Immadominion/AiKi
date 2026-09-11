@@ -25,6 +25,7 @@ export interface FastConversationState {
   busy: boolean
   loading: boolean
   error: string | null
+  errorCode?: string | undefined
 }
 
 export const conversationStorageKey = (owner: string, id: string) =>
@@ -72,7 +73,11 @@ export class FastConversationController {
     }
   }
   private update(patch: Partial<FastConversationState>) {
-    this.state = { ...this.state, ...patch }
+    this.state = {
+      ...this.state,
+      ...(patch.error === null ? { errorCode: undefined } : {}),
+      ...patch,
+    }
     this.listeners.forEach((listener) => {
       listener()
     })
@@ -224,6 +229,7 @@ export class FastConversationController {
             pending: uncertain ? pending : null,
             draft: uncertain ? (pending.messages.at(-1)?.content ?? '') : '',
             error: failure.message,
+            errorCode: failure.code,
           })
           this.save()
           return
@@ -231,7 +237,7 @@ export class FastConversationController {
           if (generation !== this.generation) return
           // Even a known 402 may have recorded a reply. Do not permit a new
           // request with stale context until that result can be retrieved.
-          this.update({ busy: false, error: failure.message })
+          this.update({ busy: false, error: failure.message, errorCode: failure.code })
           this.save()
           return
         }
@@ -246,7 +252,12 @@ export class FastConversationController {
           'CONVERSATION_UNAVAILABLE',
           'ASSISTANT_UNAVAILABLE',
         ].includes(failure.code ?? '')
-      this.update({ busy: false, error: failure.message, ...(refused ? { pending: null } : {}) })
+      this.update({
+        busy: false,
+        error: failure.message,
+        errorCode: failure.code,
+        ...(refused ? { pending: null } : {}),
+      })
       this.save()
     }
   }

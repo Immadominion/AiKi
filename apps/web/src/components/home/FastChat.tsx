@@ -4,6 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { type AssistantStep, api, type CreditBalance } from '@/lib/api'
 import { FastMandateAction } from './FastMandateAction'
 import { FastMessage } from './FastMessage'
+import {
+  addPointsHref,
+  errorNeedsPoints,
+  FastPointsRecovery,
+  fastCostSummary,
+  messageNeedsPoints,
+} from './FastPoints'
 import { FastConversationController } from './fast-conversation'
 import { fastToolAgentHref } from './fast-links'
 import { mandateContinuations } from './fast-mandate'
@@ -90,13 +97,17 @@ export function FastChat({
       storage,
     )
   }, [id, owner])
-  const { messages, draft, busy, loading, error, pending } = useSyncExternalStore(
+  const { messages, draft, busy, loading, error, errorCode, pending } = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
     controller.getSnapshot,
   )
   const [credits, setCredits] = useState<CreditBalance | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const lastMessage = messages.at(-1)
+  const refusalInHistory =
+    !pending && lastMessage?.content === error && messageNeedsPoints(lastMessage)
+  const needsPoints = !pending && Boolean(error && errorNeedsPoints(errorCode, error))
 
   const loadCredits = useCallback(async () => {
     try {
@@ -136,7 +147,7 @@ export function FastChat({
             </div>
             <div className="text-faint text-[11.5px]">{credits.model}</div>
             <a
-              href="/credits"
+              href={addPointsHref(id)}
               className="inline-flex min-h-10 items-center text-[11.5px] text-muted underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-orange-app"
             >
               Points and limits
@@ -145,18 +156,19 @@ export function FastChat({
         ) : null}
       </header>
 
-      {error ? (
+      {error && !refusalInHistory ? (
         <div
           role="alert"
           id="fast-chat-error"
           className="mx-[4px] mb-[12px] rounded-[14px] border border-[rgb(26_26_25_/_0.12)] px-[14px] py-[11px] text-[12.5px] leading-[1.5]"
         >
           <p className="m-0">{error}</p>
+          {needsPoints ? <FastPointsRecovery id={id} /> : null}
           {pending ? (
             <p className="mt-1 mb-0 text-muted">
               Check reply retrieves this same request. It does not submit a new one.
             </p>
-          ) : (
+          ) : !needsPoints ? (
             <button
               type="button"
               onClick={() => void controller.initialize(create)}
@@ -164,7 +176,7 @@ export function FastChat({
             >
               Reload conversation
             </button>
-          )}
+          ) : null}
         </div>
       ) : null}
 
@@ -194,6 +206,7 @@ export function FastChat({
                 <div className="max-w-[620px]">
                   {m.steps?.length ? <Steps steps={m.steps} /> : null}
                   <FastMessage text={m.content} />
+                  {messageNeedsPoints(m) ? <FastPointsRecovery id={id} /> : null}
                   {mandateContinuations(m.steps).map((action) => (
                     <FastMandateAction key={action.authorizationId} action={action} owner={owner} />
                   ))}
@@ -210,15 +223,10 @@ export function FastChat({
                   ) : null}
                   {m.cost ? (
                     <p
-                      className="text-faint mt-[8px] mb-0 text-[11.5px] leading-[1.45]"
+                      className="text-muted mt-[8px] mb-0 text-[11.5px] leading-[1.45]"
                       title={m.cost.explanation}
                     >
-                      {m.cost.points} points · {m.cost.balance.toLocaleString()} left
-                      {m.cost.pendingPoints
-                        ? ` · ${m.cost.pendingPoints.toLocaleString()} points still held pending reconciliation`
-                        : m.cost.held > m.cost.points
-                          ? ` · ${(m.cost.held - m.cost.points).toLocaleString()} of the ${m.cost.held.toLocaleString()} held went back`
-                          : ''}
+                      {fastCostSummary(m.cost)}
                     </p>
                   ) : null}
                 </div>
@@ -252,7 +260,7 @@ export function FastChat({
         <div className="flex items-end gap-[8px]">
           <textarea
             id={`fast-message-${id}`}
-            aria-describedby={error ? 'fast-chat-error' : undefined}
+            aria-describedby={error && !refusalInHistory ? 'fast-chat-error' : undefined}
             value={draft}
             readOnly={Boolean(pending)}
             disabled={loading}
