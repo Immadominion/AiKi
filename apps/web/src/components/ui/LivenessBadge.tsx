@@ -6,32 +6,32 @@ import { StatusPill } from './StatusPill'
 /**
  * Liveness in plain language.
  *
- * Seven answers to "is it online", and the difference between them is the most
- * valuable thing we know - so none of them reaches a user as an enum. The one
- * that matters most is IMPOSTOR_STATIC: an endpoint returning 200 with the same
- * bytes whatever you ask it. A third of the BSC registry does this, and every
- * other explorer shows those agents as healthy.
+ * Describe the check, not the provider's entire business. A shared server can
+ * return identical metadata for different registered identities. Missing
+ * identity proof, authentication and latency can all need review; none alone
+ * proves that an agent is fake or cannot work through another integration.
  */
 export const LIVENESS_LABEL: Record<LivenessState, string> = {
   LIVE: 'Answering',
-  DEGRADED: 'Slow and patchy',
+  DEGRADED: 'Requires review',
   UNREACHABLE: 'Not answering',
-  IMPOSTOR_STATIC: 'Not a real agent',
-  PLACEHOLDER_URL: 'Address is not real',
-  NOT_REMOTE: 'Cannot be called',
-  DECLARED_ONLY: 'Nothing to call',
+  IMPOSTOR_STATIC: 'Identical responses',
+  PLACEHOLDER_URL: 'Placeholder address',
+  NOT_REMOTE: 'Local connection',
+  DECLARED_ONLY: 'No remote service',
   UNPROBED: 'Not tested yet',
 }
 
 export const LIVENESS_DETAIL: Record<LivenessState, string> = {
-  LIVE: 'It answers, and it answers differently depending on what you ask.',
-  DEGRADED: 'It answers, but some probes time out or take seconds to come back.',
-  UNREACHABLE: 'Nothing answered at the address it published.',
+  LIVE: 'The published service answered AiKi’s checks. This does not confirm support for every job or permission to use your funds.',
+  DEGRADED:
+    'The service responded, but some connection or identity checks remain incomplete. Open the agent for details.',
+  UNREACHABLE: 'AiKi could not complete a connection check at the published address.',
   IMPOSTOR_STATIC:
-    'It returns the same bytes whatever you ask it, including for positions that do not exist. It is a page, not an agent.',
+    'The checked URLs returned identical responses. That may be static metadata or a shared endpoint; it does not establish whether the provider’s other services work.',
   PLACEHOLDER_URL: 'The address it registered is a placeholder like localhost or example.com.',
-  NOT_REMOTE: 'It declared a local transport. There is nothing to call over the network.',
-  DECLARED_ONLY: 'It registered an identity but published no endpoint at all.',
+  NOT_REMOTE: 'It declared a local transport, not a remote service AiKi can connect to.',
+  DECLARED_ONLY: 'This registration has no remote service AiKi can check.',
   UNPROBED: 'We have not run our own checks against this one yet.',
 }
 

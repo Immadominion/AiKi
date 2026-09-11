@@ -92,7 +92,7 @@ test('an expired verdict stays historical, never green or newly unreachable', ()
     tone: 'good',
   })
   assert.deepEqual(livenessPresentation('DEGRADED', new Date(now).toISOString(), now), {
-    label: 'Slow and patchy',
+    label: 'Requires review',
     tone: 'warn',
   })
   for (const value of [null, undefined, 'not-a-time', new Date(now + 1).toISOString()])

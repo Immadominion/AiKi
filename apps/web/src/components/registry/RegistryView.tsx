@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { AgentCell, Cell, DataTable, RowActions } from '@/components/shell/DataTable'
 import { PageCard } from '@/components/shell/PageCard'
-import { LIVENESS_LABEL, LivenessBadge } from '@/components/ui/LivenessBadge'
+import { LivenessBadge } from '@/components/ui/LivenessBadge'
 import { api } from '@/lib/api'
 import { useRegistryCoverage } from '@/lib/live'
 import { route } from '@/lib/routes'
@@ -20,9 +20,8 @@ type State =
 /**
  * The registry as we measured it: only the agents that answered at all.
  *
- * Defaulting to the full 1,100-row graveyard would bury the eleven real rows
- * under a thousand dead ones; the graveyard is still counted, on this page and
- * in every coverage block, because hiding it would be the other kind of lie.
+ * This is a measured subset, not the complete BNB Chain marketplace. Missing
+ * or stale observations do not establish that another provider is offline.
  */
 export function RegistryView() {
   const router = useRouter()
@@ -121,7 +120,7 @@ export function RegistryView() {
                 />,
               ],
             }))}
-            footnote={`Ranked by what answered, then by how often we probed it. ${LIVENESS_LABEL.DEGRADED} means it answered, slowly.`}
+            footnote="Connection checks are not hiring or trading permissions. Open an agent to see its available services."
           />
           <p className="text-muted mt-[14px] mb-0 text-[12.5px] leading-[1.55] text-pretty">
             The other <b className="text-ink-app font-bold">{notCurrent.toLocaleString()}</b> probed
