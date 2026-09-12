@@ -64,6 +64,33 @@ const COMPARE_MAX = 10
 const clampLimit = (raw: number | undefined): number =>
   typeof raw === 'number' && Number.isFinite(raw) ? Math.min(Math.max(Math.floor(raw), 1), 100) : 20
 
+/**
+ * Why an agent cannot be hired, in terms its operator could act on.
+ *
+ * Three failures share one gate and need three different responses. An endpoint
+ * that never answered is a dead agent. A placeholder URL is a registration
+ * nobody finished. DEGRADED is neither: the endpoint answered its protocol and
+ * has not proven it belongs to this registered identity, which is a file the
+ * operator can publish. Collapsing all of them into "not currently available"
+ * tells the buyer nothing and tells the operator there is nothing to fix.
+ */
+function livenessReason(passport: { liveness?: string | null }): string {
+  switch (passport.liveness) {
+    case 'DEGRADED':
+      return 'This agent answers, but its endpoint has not proven it belongs to this registered identity, so AiKi will not send it paid work yet. Its operator fixes that by publishing the reciprocal proof.'
+    case 'IMPOSTOR_STATIC':
+      return 'This endpoint returns the same bytes whatever it is asked, so there is nobody there to do the work.'
+    case 'PLACEHOLDER_URL':
+      return 'This registration points at a placeholder rather than a working endpoint.'
+    case 'UNREACHABLE':
+      return 'This endpoint did not answer when AiKi last checked.'
+    case 'UNPROBED':
+      return 'AiKi has not checked this agent recently enough to send it paid work.'
+    default:
+      return 'This agent is not currently available for hire.'
+  }
+}
+
 export function createApiServer(input: {
   observations: () => Observation[] | Promise<Observation[]>
   /**
@@ -278,7 +305,23 @@ export function createApiServer(input: {
           registration?.value as { manifest?: { services?: { endpoint?: unknown }[] } } | undefined
         )?.manifest?.services
         if (!hasCurrentLiveness(passport))
-          return { owner, endpoint: '', live: false, compatible: false }
+          /*
+           * Say WHICH check failed, because the three reasons need three
+           * different actions and "not currently available" hides all of them.
+           *
+           * DEGRADED is the one worth naming. It means the endpoint answered
+           * its protocol and simply has not proven it belongs to this
+           * registered identity, which is a file its operator can publish. A
+           * buyer told only "unavailable" cannot tell that from a dead agent,
+           * and the operator never learns there is something to fix.
+           */
+          return {
+            owner,
+            endpoint: '',
+            live: false,
+            compatible: false,
+            reason: livenessReason(passport),
+          }
         return { owner, live: true, ...(await resolveTaskEndpoint(services)) }
       },
       ...(input.publicUrl ? { publicUrl: input.publicUrl } : {}),

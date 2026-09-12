@@ -232,7 +232,7 @@ export function registerTaskRoutes(
       return {
         ...base,
         available: false,
-        reason: 'This agent is not currently available for hire.',
+        reason: contact.reason ?? 'This agent is not currently available for hire.',
       }
     if (!contact.endpoint || contact.compatible === false)
       return {
@@ -538,7 +538,10 @@ export function registerTaskRoutes(
           return reply.code(422).send({
             error: {
               code: 'AGENT_NOT_LIVE',
-              message: 'This agent is not currently available for hire. Nothing was charged.',
+              // The specific reason when there is one. A buyer cannot tell a
+              // dead agent from one whose operator has simply not published a
+              // proof file, and only one of those is worth waiting for.
+              message: `${contact.reason ?? 'This agent is not currently available for hire.'} Nothing was charged.`,
               retryable: false,
             },
           })
