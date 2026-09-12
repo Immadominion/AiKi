@@ -80,7 +80,9 @@ it('does not treat an MCP endpoint with no tools as hireable', async () => {
     s.connect as never,
   )
   expect(contact.compatible).toBe(false)
-  expect(contact.reason).toMatch(/does not answer AiKi task delivery or an MCP handshake/)
+  expect(contact.reason).toMatch(
+    /does not answer AiKi task delivery, an MCP handshake or an A2A card/,
+  )
 })
 
 it('reports honestly when the handshake fails', async () => {

@@ -15,6 +15,7 @@ import { PLATFORM_FEE_BPS, priceJob, SETTLEMENT } from '../settlement/pricing.js
 import {
   DISPATCH_PROTOCOL,
   deliveryToken,
+  dispatchOverA2A,
   dispatchOverMcp,
   dispatchToAgent,
   tokenMatches,
@@ -241,7 +242,11 @@ export function registerTaskRoutes(
         reason: contact.reason ?? 'This agent does not support AiKi task delivery.',
       }
     // Only the native envelope needs somewhere to call back to.
-    if (contact.protocol !== 'mcp' && (!input.publicUrl || !input.deliverySecret))
+    if (
+      contact.protocol !== 'mcp' &&
+      contact.protocol !== 'a2a' &&
+      (!input.publicUrl || !input.deliverySecret)
+    )
       return {
         ...base,
         available: false,
@@ -250,7 +255,10 @@ export function registerTaskRoutes(
     return {
       ...base,
       available: true,
-      protocol: contact.protocol === 'mcp' ? 'mcp' : DISPATCH_PROTOCOL,
+      protocol:
+        contact.protocol === 'mcp' || contact.protocol === 'a2a'
+          ? contact.protocol
+          : DISPATCH_PROTOCOL,
       ...(contact.inputHint ? { inputHint: contact.inputHint } : {}),
       ...(contact.kinds?.length ? { kinds: contact.kinds } : {}),
       /*
@@ -258,9 +266,22 @@ export function registerTaskRoutes(
        * capability they are paying for. Read live rather than remembered: a
        * tool list from last week describes an agent that may no longer exist.
        */
-      ...(contact.protocol === 'mcp' && contact.tools?.length
+      ...((contact.protocol === 'mcp' || contact.protocol === 'a2a') && contact.tools?.length
         ? { tools: contact.tools, toolRequired: true }
         : {}),
+      /*
+       * Said before anybody pays. An endpoint that answers its protocol without
+       * having proven it belongs to this registered identity is hireable and is
+       * not the same thing as one that has, and the buyer decides which they
+       * want rather than having the choice made for them by hiding it.
+       */
+      identityProven: contact.identityProven === true,
+      ...(contact.identityProven === true
+        ? {}
+        : {
+            identityNote:
+              'This endpoint answers, and it has not proven it belongs to this registered identity. Your money is held until you accept the work.',
+          }),
     }
   })
 
@@ -564,9 +585,12 @@ export function registerTaskRoutes(
               retryable: false,
             },
           })
-        const transport = contact.protocol === 'mcp' ? 'mcp' : DISPATCH_PROTOCOL
+        const transport =
+          contact.protocol === 'mcp' || contact.protocol === 'a2a'
+            ? contact.protocol
+            : DISPATCH_PROTOCOL
         let tool: string | undefined
-        if (transport === 'mcp') {
+        if (transport === 'mcp' || transport === 'a2a') {
           /*
            * The tool has to be named, and named from what the agent is
            * advertising right now. A buyer who cannot say which capability they
@@ -756,38 +780,48 @@ export function registerTaskRoutes(
        */
       const dispatchable =
         assigned &&
-        (assigned.transport === 'mcp' || Boolean(input.publicUrl && input.deliverySecret))
+        (assigned.transport === 'mcp' ||
+          assigned.transport === 'a2a' ||
+          Boolean(input.publicUrl && input.deliverySecret))
       if (assigned && dispatchable) {
         const outcome =
-          assigned.transport === 'mcp'
-            ? await dispatchOverMcp({
-                endpoint: assigned.endpoint,
-                tool: assigned.tool ?? '',
-                /*
-                 * The task id is the intent. It exists in the database before
-                 * this call is made and it is the same value on a retry, so a
-                 * timeout cannot buy the same work twice from a provider that
-                 * honours it. The grid agents on this registry key idempotency
-                 * on exactly this field.
-                 */
-                arguments: { intentId: task.id, brief, title },
+          assigned.transport === 'a2a'
+            ? await dispatchOverA2A({
+                url: assigned.endpoint,
+                title,
+                brief,
+                intent: task.id,
+                ...(assigned.tool ? { skill: assigned.tool } : {}),
               })
-            : await dispatchToAgent({
-                endpoint: assigned.endpoint,
-                envelope: {
-                  protocol: DISPATCH_PROTOCOL,
-                  taskId: task.id,
-                  agentId: assigned.agentId,
-                  title,
-                  brief,
-                  pricePoints,
-                  deadline: new Date(Date.now() + workHours * 3_600_000).toISOString(),
-                  callback: {
-                    url: `${input.publicUrl ?? ''}/v1/tasks/${task.id}/deliver`,
-                    token: deliveryToken(input.deliverySecret ?? '', task.id),
+            : assigned.transport === 'mcp'
+              ? await dispatchOverMcp({
+                  endpoint: assigned.endpoint,
+                  tool: assigned.tool ?? '',
+                  /*
+                   * The task id is the intent. It exists in the database before
+                   * this call is made and it is the same value on a retry, so a
+                   * timeout cannot buy the same work twice from a provider that
+                   * honours it. The grid agents on this registry key idempotency
+                   * on exactly this field.
+                   */
+                  arguments: { intentId: task.id, brief, title },
+                })
+              : await dispatchToAgent({
+                  endpoint: assigned.endpoint,
+                  envelope: {
+                    protocol: DISPATCH_PROTOCOL,
+                    taskId: task.id,
+                    agentId: assigned.agentId,
+                    title,
+                    brief,
+                    pricePoints,
+                    deadline: new Date(Date.now() + workHours * 3_600_000).toISOString(),
+                    callback: {
+                      url: `${input.publicUrl ?? ''}/v1/tasks/${task.id}/deliver`,
+                      token: deliveryToken(input.deliverySecret ?? '', task.id),
+                    },
                   },
-                },
-              })
+                })
         if (outcome.declined && !outcome.delivered) {
           try {
             const refunded = await input.tasks.refundDeclinedAssignment(

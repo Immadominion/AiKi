@@ -229,3 +229,109 @@ export async function dispatchOverMcp(input: McpDispatchInput): Promise<Dispatch
     session.close()
   }
 }
+
+/**
+ * Hiring an agent that speaks A2A.
+ *
+ * Seventy-two of the endpoints that answer anything on this chain answer this,
+ * which makes it the largest single group, larger than MCP. The shape is a card
+ * describing the agent and a JSON-RPC url to send work to.
+ *
+ * Two things learned by probing rather than by reading the spec. The registered
+ * endpoint is usually the CARD itself at a per-agent path rather than an origin
+ * with a well-known file, so the card is fetched from where the registration
+ * points and the well-known paths are only a fallback. And the largest A2A
+ * publisher on this chain registered the literal unsubstituted string
+ * `{agentId}` across twelve hundred identities, so a placeholder is refused
+ * rather than fetched.
+ */
+
+/** Every shape an A2A answer can carry text in: a message, a task, an artifact. */
+function a2aText(result: unknown): string {
+  const parts: string[] = []
+  const walk = (node: unknown, depth: number) => {
+    if (!node || typeof node !== 'object' || depth > 6) return
+    const record = node as Record<string, unknown>
+    if (Array.isArray(record.parts))
+      for (const part of record.parts) {
+        const piece = part as { kind?: unknown; type?: unknown; text?: unknown } | null
+        if (
+          piece &&
+          typeof piece.text === 'string' &&
+          (piece.kind ?? piece.type ?? 'text') === 'text'
+        )
+          parts.push(piece.text)
+      }
+    for (const key of ['status', 'message', 'result']) walk(record[key], depth + 1)
+    if (Array.isArray(record.artifacts))
+      for (const artifact of record.artifacts.slice(0, 20)) walk(artifact, depth + 1)
+  }
+  walk(result, 0)
+  return parts.join('\n').trim().slice(0, MAX_DELIVERY_CHARS)
+}
+
+export interface A2ADispatchInput {
+  /** The JSON-RPC url from the card, never the card url itself. */
+  url: string
+  title: string
+  brief: string
+  /** Stable per task. Doubles as the A2A messageId, which the protocol requires. */
+  intent: string
+  /** A skill id from the card, when the buyer named one. */
+  skill?: string
+  fetcher?: typeof guardedFetch
+}
+
+export async function dispatchOverA2A(input: A2ADispatchInput): Promise<DispatchOutcome> {
+  const message = {
+    role: 'user',
+    kind: 'message',
+    messageId: input.intent,
+    parts: [
+      { kind: 'text', text: `${input.title}\n\n${input.brief}` },
+      ...(input.skill ? [{ kind: 'data', data: { skill: input.skill } }] : []),
+    ],
+  }
+
+  let res: Response
+  try {
+    res = await (input.fetcher ?? guardedFetch)(input.url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: input.intent,
+        method: 'message/send',
+        params: { message },
+      }),
+      signal: AbortSignal.timeout(20_000),
+    })
+  } catch (error) {
+    return { note: `Could not reach it over A2A: ${(error as Error).message ?? 'no response'}.` }
+  }
+
+  let body: unknown
+  try {
+    body = JSON.parse((await res.text()).slice(0, MAX_DELIVERY_CHARS * 2))
+  } catch {
+    return { note: 'Answered with something that is not JSON, so it does not speak A2A.' }
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body))
+    return { note: 'Answered, but with nothing this protocol recognises as work.' }
+
+  const envelope = body as { error?: { message?: unknown }; result?: unknown }
+  /*
+   * A JSON-RPC error is the agent declining in the only way this protocol gives
+   * it. Treating that as delivered work is the marketplace paying full price
+   * for an explanation of why the job will not be done.
+   */
+  if (envelope.error) {
+    const reason =
+      typeof envelope.error.message === 'string' ? envelope.error.message.slice(0, 200) : ''
+    return { declined: true, note: `Declined it: ${reason || 'The agent returned an error.'}` }
+  }
+
+  const text = a2aText(envelope.result)
+  if (!text) return { note: 'Answered, but with nothing this protocol recognises as work.' }
+  return { delivered: text, note: 'Answered straight away over A2A.' }
+}

@@ -4,7 +4,7 @@ import { DISPATCH_PROTOCOL } from './dispatch.js'
 import { isTaskKind } from './kinds.js'
 
 /** What a hired agent is reached over. AiKi's own envelope, or plain MCP. */
-export type TaskTransport = typeof DISPATCH_PROTOCOL | 'mcp'
+export type TaskTransport = typeof DISPATCH_PROTOCOL | 'mcp' | 'a2a'
 
 export interface AgentTaskContact {
   owner: string
@@ -14,6 +14,14 @@ export interface AgentTaskContact {
   compatible?: boolean
   reason?: string
   protocol?: string
+  /**
+   * Whether the endpoint has proven it belongs to this registered identity.
+   *
+   * False means it answers its protocol and has not published the reciprocal
+   * proof, which most of this ecosystem has not. It ranks a listing and is said
+   * out loud before anybody pays; it does not remove the listing.
+   */
+  identityProven?: boolean
   inputHint?: string
   kinds?: string[]
   /**
@@ -57,6 +65,74 @@ async function capability(response: Response): Promise<Record<string, unknown> |
   }
 }
 
+/**
+ * The agent card an A2A registration points at, and the url to actually call.
+ *
+ * Probing the registry taught two things the specification does not. The
+ * registered endpoint is usually the CARD, at a per-agent path, so the origin's
+ * well-known files are a fallback rather than the first try. And the largest
+ * A2A publisher here registered the literal unsubstituted string `{agentId}`
+ * across twelve hundred identities, which is a template nobody filled in; every
+ * one of those resolves to nothing, so a placeholder is refused before it
+ * becomes a request.
+ */
+async function resolveA2ACard(
+  endpoint: string,
+  read: typeof guardedFetch,
+): Promise<{ url: string; skills: { name: string; description: string }[] } | null> {
+  if (/[{}]/.test(endpoint)) return null
+  let origin: string
+  try {
+    origin = new URL(endpoint).origin
+  } catch {
+    return null
+  }
+  const candidates = [
+    endpoint,
+    `${origin}/.well-known/agent-card.json`,
+    // Some publishers serve only this older name, so both are tried.
+    `${origin}/.well-known/agent.json`,
+  ]
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      const card = await capability(
+        await read(candidate, {
+          method: 'GET',
+          headers: { accept: 'application/json' },
+          signal: AbortSignal.timeout(6_000),
+        }),
+      )
+      const url = typeof card?.url === 'string' ? card.url : ''
+      if (!url || !/^https:\/\//i.test(url) || /[{}]/.test(url)) continue
+      const skills = Array.isArray(card?.skills)
+        ? card.skills
+            .map((skill) => {
+              const entry = skill as { id?: unknown; name?: unknown; description?: unknown } | null
+              const name =
+                typeof entry?.id === 'string'
+                  ? entry.id
+                  : typeof entry?.name === 'string'
+                    ? entry.name
+                    : ''
+              return {
+                name,
+                description:
+                  typeof entry?.description === 'string' ? entry.description.slice(0, 300) : '',
+              }
+            })
+            .filter((skill) => skill.name)
+            .slice(0, 40)
+        : []
+      // A card with no skills describes nothing that can be bought.
+      if (!skills.length) continue
+      return { url, skills }
+    } catch {
+      // Try the next shape.
+    }
+  }
+  return null
+}
+
 /** Read registered endpoints only; HTTP liveness by itself is not a hiring protocol. */
 export async function resolveTaskEndpoint(
   services: unknown,
@@ -70,7 +146,13 @@ export async function resolveTaskEndpoint(
             .map((service) => service?.endpoint)
             .filter(
               (endpoint): endpoint is string =>
-                typeof endpoint === 'string' && /^https?:\/\//i.test(endpoint),
+                typeof endpoint === 'string' &&
+                /^https?:\/\//i.test(endpoint) &&
+                // An unsubstituted template is not an address. The largest
+                // publisher on this chain registered the literal string
+                // `{agentId}` across twelve hundred identities, and fetching
+                // one is a guaranteed miss on somebody else's server.
+                !/[{}]/.test(endpoint),
             ),
         ),
       ]
@@ -154,12 +236,37 @@ export async function resolveTaskEndpoint(
     }
   }
 
+  /*
+   * A2A is the largest group that answers anything on this chain, larger than
+   * MCP, so it is tried rather than written off.
+   */
+  const a2aEndpoints = Array.isArray(services)
+    ? [
+        ...new Set(
+          services
+            .filter((service) => String(service?.protocol).toUpperCase() === 'A2A')
+            .map((service) => service?.endpoint)
+            .filter(
+              (endpoint): endpoint is string =>
+                typeof endpoint === 'string' && /^https:\/\//i.test(endpoint),
+            ),
+        ),
+      ]
+        .sort()
+        .slice(0, 2)
+    : []
+
+  for (const endpoint of a2aEndpoints) {
+    const card = await resolveA2ACard(endpoint, read)
+    if (card) return { endpoint: card.url, compatible: true, protocol: 'a2a', tools: card.skills }
+  }
+
   return {
     endpoint: '',
     compatible: false,
     reason:
-      endpoints.length || mcpEndpoints.length
-        ? 'This agent does not answer AiKi task delivery or an MCP handshake.'
+      endpoints.length || mcpEndpoints.length || a2aEndpoints.length
+        ? 'This agent does not answer AiKi task delivery, an MCP handshake or an A2A card.'
         : 'This agent has not declared a usable task endpoint.',
   }
 }

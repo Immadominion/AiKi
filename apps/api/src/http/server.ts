@@ -304,7 +304,22 @@ export function createApiServer(input: {
         const services = (
           registration?.value as { manifest?: { services?: { endpoint?: unknown }[] } } | undefined
         )?.manifest?.services
-        if (!hasCurrentLiveness(passport))
+        /*
+         * DEGRADED is hireable, and is shown as what it is.
+         *
+         * Requiring LIVE meant requiring the reciprocal proof file, which about
+         * 0.04% of this ecosystem publishes. Probing the registry directly found
+         * 126 endpoints answering a protocol with real tools while AiKi called
+         * four of them hireable, and the gate produced that number, not the
+         * prober. Verification is supposed to rank a listing, never to remove
+         * it, and the buyer's money is already held in escrow behind a review
+         * window, so the exposure here is a wasted wait rather than a loss.
+         *
+         * What does not change: the endpoint must still answer a protocol now,
+         * the probe must still be fresh, and a buyer is told in plain words
+         * which of the two they are hiring.
+         */
+        if (!hasCurrentLiveness(passport, ['LIVE', 'DEGRADED']))
           /*
            * Say WHICH check failed, because the three reasons need three
            * different actions and "not currently available" hides all of them.
@@ -322,7 +337,14 @@ export function createApiServer(input: {
             compatible: false,
             reason: livenessReason(passport),
           }
-        return { owner, live: true, ...(await resolveTaskEndpoint(services)) }
+        return {
+          owner,
+          live: true,
+          // Whether the endpoint has proven it belongs to this registered
+          // identity. False is a fact to display, not a reason to hide.
+          identityProven: passport.liveness === 'LIVE',
+          ...(await resolveTaskEndpoint(services)),
+        }
       },
       ...(input.publicUrl ? { publicUrl: input.publicUrl } : {}),
       ...(input.deliverySecret ? { deliverySecret: input.deliverySecret } : {}),
