@@ -7,19 +7,51 @@ export function isolatedBuildDirectory(value: string | undefined) {
   return value
 }
 const buildDirectory = isolatedBuildDirectory(process.env.AIKI_BUILD_DIR)
-const withoutPersistentCache: NonNullable<NextConfig['webpack']> = (webpackConfig) => {
+const withoutPersistentCache = (webpackConfig: { cache?: unknown }) => {
   webpackConfig.cache = false
   return webpackConfig
 }
 
+/**
+ * A `.js` specifier in TypeScript source means the TypeScript beside it.
+ *
+ * The contract package ships source rather than a build artifact, and its
+ * source is written for `nodenext`, where a relative import inside an ESM
+ * package must carry the extension the emitted JavaScript would have. Nothing
+ * here ever emits that JavaScript: the API runs through tsx and this app
+ * transpiles the package itself, so `./approval.js` only ever needs to find
+ * `./approval.ts`.
+ *
+ * webpack does not do that on its own, and for a long time nothing noticed,
+ * because every value this app took from the package came from a module with
+ * no relative imports of its own and everything else was imported as a type
+ * and erased. The first relative import on a reachable path failed the
+ * production build after a green typecheck, green lint and a green test run,
+ * none of which use this resolver. Declared here so the next one cannot.
+ */
+const resolveJsToTypeScript = (webpackConfig: {
+  resolve?: { extensionAlias?: Record<string, string[]> }
+}) => {
+  webpackConfig.resolve ??= {}
+  const resolve = webpackConfig.resolve
+  resolve.extensionAlias = {
+    ...resolve.extensionAlias,
+    '.js': ['.ts', '.tsx', '.js'],
+    '.mjs': ['.mts', '.mjs'],
+  }
+  return webpackConfig
+}
+
+export const webpack: NonNullable<NextConfig['webpack']> = (webpackConfig) => {
+  resolveJsToTypeScript(webpackConfig)
+  return buildDirectory ? withoutPersistentCache(webpackConfig) : webpackConfig
+}
+
 const config: NextConfig = {
   ...(buildDirectory
-    ? {
-        distDir: buildDirectory,
-        typescript: { tsconfigPath: 'tsconfig.build-qa.json' },
-        webpack: withoutPersistentCache,
-      }
+    ? { distDir: buildDirectory, typescript: { tsconfigPath: 'tsconfig.build-qa.json' } }
     : {}),
+  webpack,
   // The contract package ships TypeScript source, not a build artifact, so the
   // seam stays a single source of truth rather than something we compile twice.
   transpilePackages: ['@aiki/contracts'],

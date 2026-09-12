@@ -4,7 +4,7 @@ import {
   getRewrittenUrl,
   unstable_getResponseFromNextConfig,
 } from 'next/experimental/testing/server.js'
-import config, { isolatedBuildDirectory } from './next.config.ts'
+import config, { isolatedBuildDirectory, webpack } from './next.config.ts'
 
 function setProxyTarget(t, target) {
   const previous = process.env.API_PROXY_TARGET
@@ -51,5 +51,29 @@ test('isolated build is explicit and cannot target the shared dev output or arbi
   }
   assert.equal(config.distDir, undefined)
   assert.equal(config.typescript, undefined)
-  assert.equal(config.webpack, undefined)
+  // The webpack hook is no longer QA-only, so what has to stay QA-only is what
+  // it does: an ordinary build keeps its cache.
+  const ordinary = webpack({ resolve: {} })
+  assert.equal(ordinary.cache, undefined)
+})
+
+/**
+ * The production build resolves the source this app actually imports.
+ *
+ * A green typecheck, a green lint and a green test run all passed while the
+ * production build could not resolve a module, because none of them use
+ * webpack's resolver. The contract package is written for `nodenext`, so a
+ * relative import inside it carries the `.js` extension its emitted JavaScript
+ * would have, and nothing in this repo ever emits that JavaScript.
+ */
+test('a .js specifier resolves to the TypeScript beside it', () => {
+  const resolve = webpack({ resolve: {} }).resolve
+  assert.deepEqual(resolve.extensionAlias['.js'], ['.ts', '.tsx', '.js'])
+  assert.deepEqual(resolve.extensionAlias['.mjs'], ['.mts', '.mjs'])
+})
+
+test('the alias is added to whatever Next already set, not written over it', () => {
+  const resolve = webpack({ resolve: { extensionAlias: { '.cjs': ['.cts'] } } }).resolve
+  assert.deepEqual(resolve.extensionAlias['.cjs'], ['.cts'])
+  assert.deepEqual(resolve.extensionAlias['.js'], ['.ts', '.tsx', '.js'])
 })
