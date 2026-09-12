@@ -64,33 +64,6 @@ const COMPARE_MAX = 10
 const clampLimit = (raw: number | undefined): number =>
   typeof raw === 'number' && Number.isFinite(raw) ? Math.min(Math.max(Math.floor(raw), 1), 100) : 20
 
-/**
- * Why an agent cannot be hired, in terms its operator could act on.
- *
- * Three failures share one gate and need three different responses. An endpoint
- * that never answered is a dead agent. A placeholder URL is a registration
- * nobody finished. DEGRADED is neither: the endpoint answered its protocol and
- * has not proven it belongs to this registered identity, which is a file the
- * operator can publish. Collapsing all of them into "not currently available"
- * tells the buyer nothing and tells the operator there is nothing to fix.
- */
-function livenessReason(passport: { liveness?: string | null }): string {
-  switch (passport.liveness) {
-    case 'DEGRADED':
-      return 'This agent answers, but its endpoint has not proven it belongs to this registered identity, so AiKi will not send it paid work yet. Its operator fixes that by publishing the reciprocal proof.'
-    case 'IMPOSTOR_STATIC':
-      return 'This endpoint returns the same bytes whatever it is asked, so there is nobody there to do the work.'
-    case 'PLACEHOLDER_URL':
-      return 'This registration points at a placeholder rather than a working endpoint.'
-    case 'UNREACHABLE':
-      return 'This endpoint did not answer when AiKi last checked.'
-    case 'UNPROBED':
-      return 'AiKi has not checked this agent recently enough to send it paid work.'
-    default:
-      return 'This agent is not currently available for hire.'
-  }
-}
-
 export function createApiServer(input: {
   observations: () => Observation[] | Promise<Observation[]>
   /**
@@ -305,37 +278,63 @@ export function createApiServer(input: {
           registration?.value as { manifest?: { services?: { endpoint?: unknown }[] } } | undefined
         )?.manifest?.services
         /*
-         * DEGRADED is hireable, and is shown as what it is.
+         * The handshake IS the liveness check, at the moment it matters.
          *
-         * Requiring LIVE meant requiring the reciprocal proof file, which about
-         * 0.04% of this ecosystem publishes. Probing the registry directly found
-         * 126 endpoints answering a protocol with real tools while AiKi called
-         * four of them hireable, and the gate produced that number, not the
-         * prober. Verification is supposed to rank a listing, never to remove
-         * it, and the buyer's money is already held in escrow behind a review
-         * window, so the exposure here is a wasted wait rather than a loss.
+         * Two conditions used to gate a hire, and both were AiKi talking about
+         * itself. Requiring the LIVE grade meant requiring a reciprocal proof
+         * file that about 0.04% of this ecosystem publishes. Requiring a fresh
+         * stored probe meant refusing an agent because AiKi had not looked at it
+         * lately, and 26,333 of the agents it has indexed are stale. Together
+         * they reported four hireable agents on a chain where probing at source
+         * found 126 endpoints answering a protocol with real tools.
          *
-         * What does not change: the endpoint must still answer a protocol now,
-         * the probe must still be fresh, and a buyer is told in plain words
-         * which of the two they are hiring.
+         * Neither condition is needed here, because resolving a contact already
+         * opens a real conversation with the agent: AiKi's own envelope over
+         * HTTP, an MCP initialize and tools/list, or an A2A card and its call
+         * url. An agent that answers that answered a second ago. An agent that
+         * does not is reported as not answering, which is the honest verdict and
+         * a fresher one than any stored probe.
+         *
+         * The stored grade is kept and carried, because whether an endpoint has
+         * proven it belongs to the identity being paid is worth showing beside a
+         * listing. It ranks. It does not remove.
          */
-        if (!hasCurrentLiveness(passport, ['LIVE', 'DEGRADED']))
-          /*
-           * Say WHICH check failed, because the three reasons need three
-           * different actions and "not currently available" hides all of them.
-           *
-           * DEGRADED is the one worth naming. It means the endpoint answered
-           * its protocol and simply has not proven it belongs to this
-           * registered identity, which is a file its operator can publish. A
-           * buyer told only "unavailable" cannot tell that from a dead agent,
-           * and the operator never learns there is something to fix.
-           */
+        /*
+         * Staleness no longer blocks, but "AiKi has never seen this answer
+         * anything" still does, and that is what keeps a public route from
+         * becoming a way to make AiKi fetch any URL in the registry on demand.
+         *
+         * Only an endpoint whose last verdict was LIVE or DEGRADED is contacted,
+         * which is a bounded set that answered a protocol at least once. A
+         * placeholder, a static brochure, an unreachable host or one nobody has
+         * ever probed is refused from stored evidence without a request. A probe
+         * timestamp in the future is corrupted evidence rather than old
+         * evidence, so it is refused too.
+         */
+        const answeredBefore = passport.liveness === 'LIVE' || passport.liveness === 'DEGRADED'
+        const probedAt = Date.parse(String(passport.lastProbeAt))
+        const notFromTheFuture = Number.isFinite(probedAt) && probedAt <= Date.now()
+        if (!answeredBefore || !notFromTheFuture)
           return {
             owner,
             endpoint: '',
             live: false,
             compatible: false,
-            reason: livenessReason(passport),
+            identityProven: false,
+            reason: answeredBefore
+              ? 'The evidence AiKi holds for this agent is dated in the future, so it cannot be trusted to decide a hire.'
+              : 'AiKi has never seen this endpoint answer a protocol, so it will not send it paid work.',
+          }
+
+        const resolved = await resolveTaskEndpoint(services)
+        if (!resolved.compatible)
+          return {
+            owner,
+            endpoint: '',
+            live: false,
+            compatible: false,
+            identityProven: passport.liveness === 'LIVE',
+            ...(resolved.reason ? { reason: resolved.reason } : {}),
           }
         return {
           owner,
@@ -343,7 +342,7 @@ export function createApiServer(input: {
           // Whether the endpoint has proven it belongs to this registered
           // identity. False is a fact to display, not a reason to hide.
           identityProven: passport.liveness === 'LIVE',
-          ...(await resolveTaskEndpoint(services)),
+          ...resolved,
         }
       },
       ...(input.publicUrl ? { publicUrl: input.publicUrl } : {}),

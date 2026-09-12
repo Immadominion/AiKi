@@ -204,22 +204,40 @@ describe('API historical liveness and current-ready claims', () => {
       expect((await app.inject(`/v1/agents/${agentId}/passport`)).json().liveness).toBe('LIVE')
     },
   )
-  it('requires current evidence before advertising task delivery and never checks stale providers', async () => {
-    const { app, noTaskAccess } = await fixture()
+  it('contacts a stale endpoint that has answered before, rather than refusing it', async () => {
+    /*
+     * This used to refuse a stale agent and deliberately never call it. The
+     * reason it changed: staleness is AiKi failing to look, not the agent
+     * failing to answer, and 26,333 indexed agents are stale. Probing the
+     * registry at source found 126 endpoints answering a protocol while AiKi
+     * called four of them hireable.
+     *
+     * Resolving a contact opens a real conversation, so the handshake IS the
+     * freshness check and a fresher one than any stored probe.
+     */
+    const { app } = await fixture()
     const read = vi
       .spyOn(guardedNetwork, 'guardedFetch')
-      .mockResolvedValue(Response.json({ taskProtocol: 'aiki.task/v1' }))
+      .mockImplementation(async () => Response.json({ taskProtocol: 'aiki.task/v1' }))
     expect((await app.inject('/v1/agents/stale/task-support')).json()).toMatchObject({
-      available: false,
+      available: true,
     })
+    expect(read).toHaveBeenCalled()
+    expect((await app.inject('/v1/agents/fresh/task-support')).json()).toMatchObject({
+      available: true,
+    })
+  })
+
+  it('refuses evidence dated in the future without contacting anybody', async () => {
+    // A probe timestamp ahead of now is corrupted evidence rather than old
+    // evidence, and nothing should be decided from it.
+    const { app } = await fixture()
+    const read = vi
+      .spyOn(guardedNetwork, 'guardedFetch')
+      .mockImplementation(async () => Response.json({ taskProtocol: 'aiki.task/v1' }))
     expect((await app.inject('/v1/agents/future/task-support')).json()).toMatchObject({
       available: false,
     })
     expect(read).not.toHaveBeenCalled()
-    expect((await app.inject('/v1/agents/fresh/task-support')).json()).toMatchObject({
-      available: true,
-    })
-    expect(read).toHaveBeenCalledTimes(1)
-    expect(noTaskAccess).not.toHaveBeenCalled()
   })
 })
