@@ -1,4 +1,5 @@
 import {
+  type AskLevel,
   actionMandateConstraints,
   DELEGATION_DOMAIN_NAME,
   DELEGATION_DOMAIN_VERSION,
@@ -227,7 +228,9 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
         'chain. Different from create_mandate, which only ever permits repaying a Venus loan. ' +
         'Deploys the spending account if there is not one; AiKi pays that gas. The token, the ' +
         'contract, the function and both caps end up held by contracts. The destination list is ' +
-        'held by AiKi alone. Naming no destination is refused.',
+        'held by AiKi alone. Naming no destination is refused. `ask` decides how much the agent ' +
+        'does on its own and has no default: it is a separate question from the caps, which say ' +
+        'how much can ever move rather than who decides each time it does.',
       inputSchema: {
         token: z.string().describe('Symbol, for example USDT.'),
         to: z
@@ -246,6 +249,20 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
           .describe('Most it may move in one action, in whole tokens.'),
         total: z.number().positive().describe('Most it may move in total, in whole tokens.'),
         expires_in_days: z.number().int().min(1).max(365).default(30),
+        ask: z
+          .enum(['every', 'over', 'never'])
+          .describe(
+            'every: asks you before each action. over: asks above ask_over, acts by itself ' +
+              'below it. never: acts inside the caps without asking.',
+          ),
+        ask_over: z
+          .number()
+          .positive()
+          .optional()
+          .describe(
+            'Whole tokens, required by ask=over. Must be below per_action: a threshold at the ' +
+              'cap can never be crossed, so it would never ask.',
+          ),
       },
     },
     /*
@@ -260,6 +277,8 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
       per_action,
       total,
       expires_in_days,
+      ask,
+      ask_over,
     }: {
       token: string
       to: string[]
@@ -267,6 +286,8 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
       per_action: number
       total: number
       expires_in_days: number
+      ask: AskLevel
+      ask_over?: number
     }) => {
       const network = await executionNetwork(client)
       // Validate the whole shape before deploying an account or signing.
@@ -278,6 +299,8 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
         perAction: per_action,
         total,
         expiresInDays: expires_in_days,
+        ask,
+        ...(ask_over === undefined ? {} : { askOver: ask_over }),
       })
       const resolved = tokenFor(network.chainId, token)
       const identity = await session.require(network.chainId)
@@ -308,6 +331,11 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
           `  at most ${per_action} ${resolved.symbol} per action, ${total} ${resolved.symbol} in total, for ${expires_in_days} days`,
           `  may ${can.join(' and ')} only ${resolved.symbol}`,
           `  only to ${to.map((entry) => entry.toLowerCase()).join(', ')}`,
+          ask === 'every'
+            ? '  asks you before every action'
+            : ask === 'over'
+              ? `  asks you over ${ask_over} ${resolved.symbol}, acts by itself below that`
+              : '  acts without asking, inside these limits',
           `  spending from ${account.address}${deployed ? ' (just deployed for you; AiKi paid the gas)' : ''}`,
           '',
           outcome.signed

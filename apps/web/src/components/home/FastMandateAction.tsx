@@ -89,8 +89,28 @@ export function FastMandateAction({
                   transaction you send yourself.
                 </p>
               ) : null}
+              {/*
+                The power line, given its own weight rather than folded into the
+                limits above it. The caps say how much can ever move; this says
+                who decides each time it does, and somebody funding an agent
+                wallet is answering both questions. Before this rule existed the
+                answer was always "without asking" and it was written nowhere.
+              */}
+              <p className="mt-2 mb-0 font-semibold">
+                {state.review.ask?.mode === 'every'
+                  ? 'It asks you before every action. Nothing moves until you answer.'
+                  : state.review.ask?.mode === 'over'
+                    ? `It acts on its own up to ${state.review.ask.threshold} ${state.review.token.symbol}, and asks you above that.`
+                    : 'It acts without asking, inside these limits.'}
+              </p>
               <p className="mt-1 mb-0">
-                AiKi holds that list and refuses to relay anything else. No contract checks it.
+                AiKi holds the destination list
+                {state.review.ask && state.review.ask.mode !== 'never'
+                  ? ' and holds each action until you answer'
+                  : ''}
+                . No contract checks{' '}
+                {state.review.ask && state.review.ask.mode !== 'never' ? 'either' : 'it'}: the chain
+                cannot wait for a person, and no enforcer reads a destination.
               </p>
             </>
           ) : (

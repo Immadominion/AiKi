@@ -446,6 +446,8 @@ export type ConstraintKind =
   | 'session_total_cap'
   | 'expiry'
   | 'condition'
+  /** Whether a person must say yes first. Held by AiKi; no contract can wait for one. */
+  | 'approval'
 
 /**
  * Cap period vocabulary borrowed from Privacy.com, which has shipped this to

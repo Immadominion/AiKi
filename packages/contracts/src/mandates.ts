@@ -25,6 +25,26 @@ import type { ConstraintKind } from './types.js'
 
 export type TokenAction = 'send' | 'approve'
 
+/**
+ * How much the agent may do on its own, inside the caps.
+ *
+ * The caps say how much can ever move. This says who decides each time it does,
+ * and the two are not substitutes: a mandate capped at 50 USDT with no ask is
+ * still 50 USDT the agent spends without a person in the loop. Somebody handing
+ * an agent a funded wallet is choosing both, so both are stated.
+ *
+ * `never` is the honest name. It was the only behaviour this builder had before
+ * this existed, and it was not visible anywhere, which is the thing being fixed.
+ */
+export type AskLevel = 'every' | 'over' | 'never'
+
+/** The vocabulary the policy engine already reads. Mapped here, in one place. */
+const ASK_MODE: Record<AskLevel, 'approve_every' | 'approve_above_threshold' | 'automatic'> = {
+  every: 'approve_every',
+  over: 'approve_above_threshold',
+  never: 'automatic',
+}
+
 /** The selector each named action permits, so nothing infers one from a string. */
 const SELECTOR: Record<TokenAction, `0x${string}`> = {
   send: '0xa9059cbb', // transfer(address,uint256)
@@ -53,6 +73,14 @@ export interface ActionMandateInput {
   perAction: number
   total: number
   expiresInDays: number
+  /**
+   * Whether a person is asked before each action. Required, with no default:
+   * the one answer nobody should arrive at by omission is the one that lets an
+   * agent spend without asking.
+   */
+  ask: AskLevel
+  /** Whole tokens. Required by `over`, meaningless to the other two. */
+  askOver?: number
 }
 
 /**
@@ -126,6 +154,28 @@ export function actionMandateConstraints(input: ActionMandateInput): Authorizati
   )
     throw new Error('Choose an expiry between 1 and 365 whole days.')
 
+  if (!Object.hasOwn(ASK_MODE, input.ask))
+    throw new Error('Say whether the agent asks before every action, over an amount, or never.')
+  let threshold = '0'
+  if (input.ask === 'over') {
+    if (typeof input.askOver !== 'number' || !Number.isFinite(input.askOver) || input.askOver <= 0)
+      throw new Error('Say the amount the agent should start asking over, in whole tokens.')
+    threshold = amountUnits(input.askOver, token.decimals, token.symbol)
+    /*
+     * A threshold at or above the per-action cap never fires.
+     *
+     * The gate asks when the amount is strictly over the threshold, and the cap
+     * already refuses anything over itself, so `over 50` on a mandate capped at
+     * 50 is `never` wearing the word "over". Someone who chose to be asked would
+     * be told they had been, and never would be. Refused rather than silently
+     * accepted, because the failure is invisible until the money has moved.
+     */
+    if (BigInt(threshold) >= BigInt(perAction))
+      throw new Error(
+        `Asking only over ${input.askOver} ${token.symbol} would never ask, because this mandate already refuses anything over ${input.perAction} ${token.symbol} in one action. Choose a lower amount, or ask every time.`,
+      )
+  }
+
   const permitted = actions.map((action) => VERB[action]).join(' and ')
 
   return [
@@ -170,6 +220,24 @@ export function actionMandateConstraints(input: ActionMandateInput): Authorizati
         recipients.length === 1
           ? `only to ${recipients[0]}`
           : `only to ${recipients.length} named addresses`,
+    },
+    {
+      kind: 'approval',
+      value: { mode: ASK_MODE[input.ask], threshold },
+      /*
+       * T2 and it could not be anything else. No contract can wait for a
+       * person: the chain takes a transaction or it does not, so "hold this
+       * until somebody answers" is AiKi declining to relay. This is the control
+       * somebody reaches for when they trust the agent least, which makes
+       * drawing it as chain-held the worst available lie.
+       */
+      tier: 'T2',
+      label:
+        input.ask === 'every'
+          ? 'asks you before every action'
+          : input.ask === 'over'
+            ? `asks you over ${input.askOver} ${token.symbol}`
+            : 'acts without asking, inside these limits',
     },
   ]
 }

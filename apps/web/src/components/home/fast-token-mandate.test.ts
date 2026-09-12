@@ -57,6 +57,7 @@ function harness(
       perAction: 0.5,
       total: 1,
       expiresInDays: 7,
+      ask: 'every' as const,
     })
   const limits: Limit[] =
     over.limits ??
@@ -68,6 +69,7 @@ function harness(
         enforcedBy,
       })),
       { kind: 'recipient_allowlist', label: 'only to one address', tier: 'T2', enforcedBy: null },
+      { kind: 'approval', label: 'asks you before every action', tier: 'T2', enforcedBy: null },
     ] as Limit[])
   const unsigned = {
     delegate: owner,
@@ -152,6 +154,7 @@ test('refuses a token mandate that names nowhere to send', async () => {
     perAction: 0.5,
     total: 1,
     expiresInDays: 7,
+    ask: 'every' as const,
   }).map((constraint) =>
     constraint.kind === 'recipient_allowlist' ? { ...constraint, value: [] } : constraint,
   )
@@ -169,6 +172,7 @@ test('refuses a token this network has not reviewed', async () => {
     perAction: 0.5,
     total: 1,
     expiresInDays: 7,
+    ask: 'every' as const,
   }).map((constraint) =>
     constraint.kind === 'asset_scope' || constraint.kind === 'contract_allowlist'
       ? { ...constraint, value: [`0x${'cc'.repeat(20)}`] }
@@ -188,6 +192,7 @@ test('refuses a call that is neither a transfer nor an approval', async () => {
     perAction: 0.5,
     total: 1,
     expiresInDays: 7,
+    ask: 'every' as const,
   }).map((constraint) =>
     constraint.kind === 'selector_allowlist'
       ? { ...constraint, value: ['0xdeadbeef'] }
@@ -214,6 +219,7 @@ test('refuses a destination rule dressed up as one the chain holds', async () =>
       tier: 'T0',
       enforcedBy: 'AllowedTargetsEnforcer',
     },
+    { kind: 'approval', label: 'asks you before every action', tier: 'T2', enforcedBy: null },
   ]
   const controller = harness({ limits })
   await controller.review()
@@ -225,6 +231,113 @@ test('a token mandate cannot be signed by claiming it is the Venus one', async (
   await controller.review()
   // Seven constraints against the six a Venus mandate carries.
   assert.match(String(controller.getSnapshot().error), /could not be verified/)
+})
+
+test('refuses an approval gate dressed up as one the chain holds', async () => {
+  const limits: Limit[] = [
+    ...ONCHAIN.map(([kind, enforcedBy]) => ({
+      kind,
+      label: kind,
+      tier: 'T0' as const,
+      enforcedBy,
+    })),
+    { kind: 'recipient_allowlist', label: 'only to one address', tier: 'T2', enforcedBy: null },
+    // No contract can wait for a person. Claiming an enforcer holds the gate is
+    // the same lie as claiming one holds the destination, told about the control
+    // somebody picks when they trust the agent least.
+    {
+      kind: 'approval',
+      label: 'asks you before every action',
+      tier: 'T0',
+      enforcedBy: 'ExpiryEnforcer',
+    },
+  ]
+  const controller = harness({ limits })
+  await controller.review()
+  assert.match(String(controller.getSnapshot().error), /approval rule is misreported/)
+})
+
+test('reads back the gate the mandate actually carries', async () => {
+  const controller = harness()
+  await controller.review()
+  assert.deepEqual(controller.getSnapshot().review?.ask, { mode: 'every' })
+})
+
+test('reads back the amount an over-this gate starts at', async () => {
+  const controller = harness({
+    constraints: actionMandateConstraints({
+      chainId: 56,
+      symbol: 'USDT',
+      recipients: [TO],
+      can: ['send'],
+      perAction: 0.5,
+      total: 1,
+      expiresInDays: 7,
+      ask: 'over',
+      askOver: 0.25,
+    }),
+  })
+  await controller.review()
+  assert.deepEqual(controller.getSnapshot().review?.ask, { mode: 'over', threshold: '0.25' })
+})
+
+test('says a mandate made before gates existed never asks, rather than refusing it', async () => {
+  // Seven constraints, which is every token mandate signed before this rule.
+  // It genuinely acts without asking, so that is what the screen says.
+  const controller = harness({
+    constraints: actionMandateConstraints({
+      chainId: 56,
+      symbol: 'USDT',
+      recipients: [TO],
+      can: ['send'],
+      perAction: 0.5,
+      total: 1,
+      expiresInDays: 7,
+      ask: 'every',
+    }).filter((constraint) => constraint.kind !== 'approval'),
+    limits: [
+      ...ONCHAIN.map(([kind, enforcedBy]) => ({
+        kind,
+        label: kind,
+        tier: 'T0' as const,
+        enforcedBy,
+      })),
+      { kind: 'recipient_allowlist', label: 'only to one address', tier: 'T2', enforcedBy: null },
+    ] as Limit[],
+  })
+  await controller.review()
+  const { error, review } = controller.getSnapshot()
+  assert.equal(error, undefined)
+  assert.deepEqual(review?.ask, { mode: 'never' })
+})
+
+test('refuses a gate set above the cap, because it could never fire', async () => {
+  /*
+   * Built by hand: the builder refuses this, so the only way it reaches a
+   * review screen is a mandate stored by something that did not check, and the
+   * screen is the last place to catch it.
+   */
+  const controller = harness({
+    constraints: actionMandateConstraints({
+      chainId: 56,
+      symbol: 'USDT',
+      recipients: [TO],
+      can: ['send'],
+      perAction: 0.5,
+      total: 1,
+      expiresInDays: 7,
+      ask: 'every',
+    }).map((constraint) =>
+      constraint.kind === 'approval'
+        ? {
+            ...constraint,
+            value: { mode: 'approve_above_threshold', threshold: '900000000000000000' },
+          }
+        : constraint,
+    ),
+  })
+  await controller.review()
+  assert.match(String(controller.getSnapshot().error), /never asks/)
 })
 
 test('the reviewed token uses its own decimals, not the guardian default', async () => {
@@ -239,6 +352,7 @@ test('the reviewed token uses its own decimals, not the guardian default', async
       perAction: 0.25,
       total: 0.5,
       expiresInDays: 3,
+      ask: 'every' as const,
     }),
   })
   await controller.review()

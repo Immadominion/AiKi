@@ -20,8 +20,16 @@ import type { AuthorizationRecord } from './store.js'
  */
 
 export interface ActOutcome {
-  /** What the off-chain policy engine said, and why. */
-  policy: { allow: boolean; rule: string; reason: string }
+  /**
+   * What the off-chain policy engine said, and why.
+   *
+   * `approvalId` is declared rather than left to pass through structurally,
+   * because it is the only thing that makes a pause answerable: without it a
+   * caller is told to ask somebody and not told which request to ask about.
+   * Undeclared, a later refactor that rebuilds this object drops the field and
+   * nothing fails.
+   */
+  policy: { allow: boolean; rule: string; reason: string; approvalId?: string }
   /**
    * What the chain did, when it was asked. Absent when it never was.
    *

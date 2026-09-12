@@ -22,6 +22,7 @@ const base = {
   perAction: 0.5,
   total: 1,
   expiresInDays: 7,
+  ask: 'every' as const,
 }
 
 const build = (over: Partial<Parameters<typeof actionMandateConstraints>[0]> = {}) =>
@@ -40,15 +41,50 @@ it('scopes a send to one token, one selector and one destination', () => {
     'per_action_cap',
     'session_total_cap',
     'recipient_allowlist',
+    'approval',
   ])
   expect(byKind(constraints, 'selector_allowlist')?.value).toEqual(['0xa9059cbb'])
   expect(byKind(constraints, 'contract_allowlist')?.value).toEqual([tokenFor(56, 'USDT').address])
   expect(byKind(constraints, 'recipient_allowlist')?.value).toEqual([TO])
 })
 
-it('marks only the destination rule as one the chain does not hold', () => {
+it('marks the two rules the chain does not hold, and only those', () => {
+  // The destination and the approval gate. No enforcer reads a recipient, and
+  // no contract can wait for a person, so neither may ever arrive as T0.
   for (const constraint of build())
-    expect(constraint.tier).toBe(constraint.kind === 'recipient_allowlist' ? 'T2' : 'T0')
+    expect(constraint.tier).toBe(
+      constraint.kind === 'recipient_allowlist' || constraint.kind === 'approval' ? 'T2' : 'T0',
+    )
+})
+
+it('writes the approval gate in the vocabulary the policy engine reads', () => {
+  expect(byKind(build({ ask: 'every' }), 'approval')?.value).toEqual({
+    mode: 'approve_every',
+    threshold: '0',
+  })
+  expect(byKind(build({ ask: 'never' }), 'approval')?.value).toEqual({
+    mode: 'automatic',
+    threshold: '0',
+  })
+  expect(byKind(build({ ask: 'over', askOver: 0.25 }), 'approval')?.value).toEqual({
+    mode: 'approve_above_threshold',
+    threshold: '250000000000000000',
+  })
+})
+
+it('refuses a threshold the per-action cap already makes unreachable', () => {
+  /*
+   * The gate fires strictly above the threshold, and the cap refuses anything
+   * above itself, so "ask me over 0.5" on a mandate capped at 0.5 never asks.
+   * Somebody who chose to be asked would be told they had been.
+   */
+  expect(() => build({ ask: 'over', askOver: 0.5 })).toThrow(/would never ask/)
+  expect(() => build({ ask: 'over', askOver: 0.75 })).toThrow(/would never ask/)
+  expect(() => build({ ask: 'over' })).toThrow(/start asking over/)
+})
+
+it('refuses an approval mode it does not recognise', () => {
+  expect(() => build({ ask: 'sometimes' as never })).toThrow(/asks before every action/)
 })
 
 it('converts caps exactly at eighteen decimals', () => {
@@ -107,7 +143,7 @@ it('refuses more addresses than an enforcer can hold', () => {
   expect(() => build({ recipients: many })).toThrow(/at most 32/)
 })
 
-it('compiles into caveats the deployed suite holds, with the destination left to AiKi', () => {
+it('compiles into caveats the deployed suite holds, with two rules left to AiKi', () => {
   const constraints = build({ can: ['send', 'approve'] }) as Constraint[]
   // It is a mandate the policy engine accepts.
   expect(compilePolicy(constraints).weakestTier).toBe('T2')
@@ -116,9 +152,18 @@ it('compiles into caveats the deployed suite holds, with the destination left to
   // Six rules reach the chain: expiry, targets, selectors, asset, and both caps.
   expect(caveats).toHaveLength(6)
   expect(outcomes.filter((outcome) => outcome.tier === 'T0')).toHaveLength(6)
+  /*
+   * Two do not, and the count is asserted so that adding a soft rule later
+   * cannot quietly pass for a hard one. The approval gate compiles to no caveat
+   * at all, which is the honest outcome: the chain takes a transaction or it
+   * does not, and it cannot hold one until somebody answers.
+   */
   const soft = outcomes.filter((outcome) => outcome.tier === 'T2')
-  expect(soft).toHaveLength(1)
-  expect(soft[0]?.constraint.kind).toBe('recipient_allowlist')
+  expect(soft.map((outcome) => outcome.constraint.kind).sort()).toEqual([
+    'approval',
+    'recipient_allowlist',
+  ])
+  expect(soft.every((outcome) => outcome.enforcer === null)).toBe(true)
 })
 
 it('labels what it permits in words a person can check', () => {

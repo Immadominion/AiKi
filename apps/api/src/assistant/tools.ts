@@ -11,7 +11,11 @@ import { CATALOG_TOOLS, runCatalogTool } from '../catalog/assistant-tools.js'
 import { settlementForPoints } from '../credits/pricing.js'
 import { erc20TransferCall } from '../execution/executor.js'
 import { SETTLEMENT } from '../settlement/pricing.js'
-import { type MandateContinuation, mandateContinuation } from './continuation.js'
+import {
+  type AssistantContinuation,
+  approvalContinuation,
+  mandateContinuation,
+} from './continuation.js'
 import { withDiscoveryEvidence } from './discovery-evidence.js'
 import { runStrategyTool, STRATEGY_TOOLS } from './strategy-tools.js'
 
@@ -47,7 +51,7 @@ export interface ToolContext {
 export interface ToolCallResult {
   ok: boolean
   body: unknown
-  action?: MandateContinuation
+  action?: AssistantContinuation
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -221,7 +225,9 @@ export const TOOLS: Anthropic.Tool[] = [
       'by AiKi, which reads it out of the call and refuses to relay anything else; say that ' +
       'plainly and never call the destination rule chain-enforced. Like create_mandate this does ' +
       'NOT sign: tell them to use the Review and sign control. Naming no destination is refused, ' +
-      'because a token mandate with no destination lets the full cap go anywhere.',
+      'because a token mandate with no destination lets the full cap go anywhere. `ask` decides ' +
+      'how much the agent does on its own and is NOT optional: settle it with the person in ' +
+      'words before calling this, and never pick `never` on their behalf.',
     input_schema: {
       type: 'object',
       properties: {
@@ -245,8 +251,23 @@ export const TOOLS: Anthropic.Tool[] = [
         },
         total: { type: 'number', description: 'Most it may move in total, in whole tokens.' },
         expires_in_days: { type: 'number' },
+        ask: {
+          type: 'string',
+          enum: ['every', 'over', 'never'],
+          description:
+            'How much power the agent has inside these limits. every: it asks before each ' +
+            'action. over: it asks above ask_over and acts by itself below. never: it acts ' +
+            'inside the caps without asking. This is separate from the caps, which say how ' +
+            'much can ever move, not who decides each time.',
+        },
+        ask_over: {
+          type: 'number',
+          description:
+            'Whole tokens. Required by ask=over, and must be below per_action, because a ' +
+            'threshold at the cap can never be crossed.',
+        },
       },
-      required: ['token', 'to', 'can', 'per_action', 'total'],
+      required: ['token', 'to', 'can', 'per_action', 'total', 'ask'],
     },
   },
   {
@@ -720,6 +741,15 @@ export async function runTool(
               : typeof args.expires_in_days === 'number'
                 ? args.expires_in_days
                 : Number.NaN,
+          /*
+           * Absent is not automatic. The schema requires this, and a model can
+           * still omit a required field, so the fallback is the strict end
+           * rather than the convenient one: an agent spending without asking
+           * must be something somebody chose, never something that happened
+           * because a field went missing.
+           */
+          ask: args.ask === 'over' || args.ask === 'never' ? args.ask : 'every',
+          ...(typeof args.ask_over === 'number' ? { askOver: args.ask_over } : {}),
         })
       } catch (error) {
         // Builder errors are fixed validation guidance, safe to relay verbatim.
@@ -797,7 +827,7 @@ export async function runTool(
        * model. An amount the model states and calldata the model writes are two
        * different numbers, and the one the chain executes is the calldata.
        */
-      return post(`/v1/jobs/${args.job_id}/actions`, {
+      const sent = await post(`/v1/jobs/${args.job_id}/actions`, {
         target: token.address,
         selector: '0xa9059cbb',
         asset: token.address,
@@ -805,6 +835,24 @@ export async function runTool(
         callData: erc20TransferCall(to as `0x${string}`, BigInt(amount)),
         ...(typeof args.why === 'string' ? { why: args.why.slice(0, 300) } : {}),
       })
+      /*
+       * A mandate that says to ask first pauses here rather than refusing. The
+       * id of what is waiting comes back so the person can answer it in this
+       * chat: a gate with nowhere to answer stops the agent and helps nobody.
+       * Nothing has been charged and nothing submitted at this point.
+       */
+      const policy = (sent.body as { policy?: { rule?: unknown; approvalId?: unknown } } | null)
+        ?.policy
+      const action =
+        policy?.rule === 'approval_required'
+          ? approvalContinuation({
+              kind: 'answer_approval',
+              jobId: args.job_id,
+              approvalId: policy.approvalId,
+              chainId,
+            })
+          : undefined
+      return { ...sent, ...(action ? { action } : {}) }
     }
     case 'my_account':
       return call('/v1/account')

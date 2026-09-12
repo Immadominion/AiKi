@@ -84,6 +84,12 @@ const dependencies: FastMandateDependencies = {
   session: walletSession,
   readWallet: readInjectedAccount,
 }
+/** What the mandate says about being asked, as the review screen renders it. */
+interface AskRule {
+  mode: 'every' | 'over' | 'never'
+  /** Whole tokens, present only for `over`. */
+  threshold?: string
+}
 interface Review {
   perActionUsdt: string
   totalUsdt: string
@@ -100,6 +106,16 @@ interface Review {
    * words "only to" would understate the one that is harder to take back.
    */
   token?: { symbol: string; recipients: string[]; canSend: boolean; canApprove: boolean }
+  /**
+   * How much the agent does on its own inside these caps.
+   *
+   * Read off the stored mandate rather than assumed, and shown on every token
+   * mandate including the ones made before this rule existed. Those genuinely
+   * never ask, so they say so: leaving the line off where there is no rule would
+   * make the absence of a gate look like an unanswered question instead of an
+   * answer.
+   */
+  ask?: AskRule
 }
 interface Snapshot {
   phase: 'idle' | 'loading' | 'review' | 'signing' | 'signed' | 'blocked' | 'uncertain'
@@ -142,6 +158,48 @@ function venusReview(
     expiresAt: new Date(caps.expiry).toISOString(),
     network,
   }
+}
+
+/**
+ * What the stored mandate says about being asked first.
+ *
+ * Absent is a real answer and means it never asks: that is what every token
+ * mandate made before this rule existed actually does. Present has to be the
+ * shape the policy engine reads, and has to arrive as AiKi's rule, because no
+ * contract can wait for a person. A gate rendered as chain-held would be the
+ * worst version of that mistake, since it is the control somebody reaches for
+ * when they trust the agent least.
+ */
+function askReview(
+  constraints: Map<string, unknown>,
+  decimals: number,
+  limits: { kind?: unknown; tier?: unknown }[],
+): AskRule {
+  const stored = constraints.get('approval')
+  if (stored === undefined) return { mode: 'never' }
+  if (
+    !limits.some((limit) => limit.kind === 'approval' && limit.tier === 'T2') ||
+    limits.some((limit) => limit.kind === 'approval' && limit.tier === 'T0')
+  )
+    throw new Error('The approval rule is misreported. No signature was requested.')
+  const rule = object(stored)
+  const mode = rule?.mode
+  if (mode === 'automatic') return { mode: 'never' }
+  if (mode === 'approve_every') return { mode: 'every' }
+  if (mode !== 'approve_above_threshold')
+    throw new Error('This mandate does not say whether the agent asks before it acts.')
+  const threshold = rule?.threshold
+  if (typeof threshold !== 'string' || !/^\d{1,78}$/.test(threshold) || BigInt(threshold) <= 0n)
+    throw new Error('This mandate says to ask over an amount but does not name a readable one.')
+  /*
+   * The gate fires strictly above the threshold and the cap already refuses
+   * anything above itself, so a threshold at the cap never fires. Shown as
+   * "never asks" would be one lie; accepting it silently is another. Refused.
+   */
+  const perAction = constraints.get('per_action_cap')
+  if (typeof perAction === 'string' && BigInt(threshold) >= BigInt(perAction))
+    throw new Error('This mandate asks over an amount it can never reach, so it never asks.')
+  return { mode: 'over', threshold: formatUnits(BigInt(threshold), decimals) }
 }
 
 /**
@@ -200,6 +258,7 @@ function tokenReview(
     totalUsdt: formatUnits(caps.total, token.decimals),
     expiresAt: new Date(caps.expiry).toISOString(),
     network,
+    ask: askReview(constraints, token.decimals, limits),
     token: {
       symbol: token.symbol,
       recipients: (recipients as string[]).map((entry) => entry.toLowerCase()),
@@ -225,10 +284,22 @@ function inspectPreparation(
   owner: string,
   network: ExecutionNetwork,
 ): PreparedReview {
-  // A token mandate carries one rule more than it has caveats: the destination
-  // list, which no contract holds.
-  const expectedConstraints = action.scope === 'token_transfer' ? 7 : 6
   const auth = prep.authorization
+  /*
+   * A token mandate carries two rules more than it has caveats, and both are
+   * AiKi's: where the money may go, and whether a person is asked first.
+   *
+   * The approval rule is counted only when it is there, because mandates made
+   * before it existed carry seven and are still signable. That is not a union
+   * of structures to pick from: each branch pins an exact count, and the older
+   * shape is rendered for what it is, a mandate that never asks. Widening the
+   * check to "seven or eight" instead would let a rule be dropped from the
+   * newer shape without the count noticing.
+   */
+  const carriesApproval =
+    Array.isArray(auth?.constraints) &&
+    auth.constraints.some((constraint) => object(constraint)?.kind === 'approval')
+  const expectedConstraints = action.scope === 'token_transfer' ? (carriesApproval ? 8 : 7) : 6
   if (
     !auth ||
     auth.id !== action.authorizationId ||

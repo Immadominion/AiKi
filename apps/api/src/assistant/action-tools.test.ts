@@ -78,6 +78,7 @@ const mandateArgs = {
   per_action: 0.5,
   total: 1,
   expires_in_days: 7,
+  ask: 'every',
 }
 
 it('offers both tools and marks both as changing something', () => {
@@ -103,6 +104,94 @@ it('creates a token mandate scoped to the destination it was given', async () =>
   expect(constraints.find((c) => c.kind === 'per_action_cap')?.value).toBe('500000000000000000')
   // The destination rule is the one the chain does not hold.
   expect(constraints.find((c) => c.kind === 'recipient_allowlist')?.tier).toBe('T2')
+})
+
+it('carries the ask level the person chose into the stored mandate', async () => {
+  const h = harness()
+  await runTool(ctx, 'create_action_mandate', { ...mandateArgs, ask: 'over', ask_over: 0.25 })
+  const constraints = h.posted('/v1/authorizations')?.constraints as {
+    kind: string
+    value: unknown
+    tier: string
+  }[]
+  const approval = constraints.find((constraint) => constraint.kind === 'approval')
+  expect(approval?.value).toEqual({
+    mode: 'approve_above_threshold',
+    threshold: '250000000000000000',
+  })
+  // No contract can wait for a person, so this may never arrive as T0.
+  expect(approval?.tier).toBe('T2')
+})
+
+it('asks every time when the model leaves the level out', async () => {
+  /*
+   * The schema requires it and a model can still omit a required field. The
+   * fallback is the strict end: an agent spending without being asked has to be
+   * something somebody chose, never something a missing field produced.
+   */
+  const h = harness()
+  const { ask, ...without } = mandateArgs
+  expect(ask).toBe('every')
+  await runTool(ctx, 'create_action_mandate', without)
+  const constraints = h.posted('/v1/authorizations')?.constraints as {
+    kind: string
+    value: unknown
+  }[]
+  expect(constraints.find((constraint) => constraint.kind === 'approval')?.value).toEqual({
+    mode: 'approve_every',
+    threshold: '0',
+  })
+})
+
+it('refuses a threshold the per-action cap already puts out of reach', async () => {
+  harness()
+  const result = await runTool(ctx, 'create_action_mandate', {
+    ...mandateArgs,
+    ask: 'over',
+    ask_over: 0.5,
+  })
+  expect(result.ok).toBe(false)
+  expect(JSON.stringify(result.body)).toMatch(/would never ask/)
+})
+
+it('hands back an answerable step when a send stops to ask', async () => {
+  const approvalId = 'fedcba98-4321-4321-8321-ba0987654321'
+  harness({
+    action: {
+      policy: {
+        allow: false,
+        rule: 'approval_required',
+        reason: 'This mandate says to ask you first, and nobody has answered yet.',
+        approvalId,
+      },
+      heldBy: 'aiki',
+    },
+  })
+  const result = await runTool(ctx, 'send_token', {
+    job_id: jobId,
+    token: 'USDT',
+    to: TO,
+    amount: 0.25,
+  })
+  // A pause is a 200: the request was understood, and it is waiting.
+  expect(result.ok).toBe(true)
+  expect(result.action).toEqual({
+    kind: 'answer_approval',
+    jobId,
+    approvalId,
+    chainId: 56,
+  })
+})
+
+it('hands back no answerable step for a send that simply went through', async () => {
+  harness()
+  const result = await runTool(ctx, 'send_token', {
+    job_id: jobId,
+    token: 'USDT',
+    to: TO,
+    amount: 0.25,
+  })
+  expect(result.action).toBeUndefined()
 })
 
 it('hands back a signing step the browser can tell apart from the Venus one', async () => {

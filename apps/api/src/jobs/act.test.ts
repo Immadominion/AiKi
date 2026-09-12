@@ -272,3 +272,63 @@ it('leaves an empty call alone, since there is no selector to disagree with', ()
   expect(action.selector).toBe('0xa9059cbb')
   expect(action.recipient).toBeNull()
 })
+
+it('hands back which request is waiting, and submits nothing, when the mandate asks first', async () => {
+  /*
+   * The whole point of a pause is that somebody can answer it. An outcome that
+   * says "ask them" without saying which request to ask about leaves the caller
+   * with a screen it cannot draw, so the id is asserted here at the layer the
+   * HTTP route actually returns rather than only where it is created.
+   */
+  executeMock.mockReset()
+  const store = new InMemoryJobStore()
+  const jobs = new JobService(store)
+  const authorization = await jobs.authorize(
+    [
+      { kind: 'session_total_cap', value: '10', tier: 'T2', label: '10 in total' },
+      {
+        kind: 'approval',
+        value: { mode: 'approve_every', threshold: '0' },
+        tier: 'T2',
+        label: 'asks you before every action',
+      },
+    ],
+    OWNER,
+  )
+  await store.attachDelegation(
+    authorization.id,
+    {
+      delegate: `0x${'44'.repeat(20)}`,
+      delegator: `0x${'55'.repeat(20)}`,
+      authority: `0x${'ff'.repeat(32)}`,
+      caveats: [],
+      salt: '1',
+      epoch: '0',
+      signature: `0x${'66'.repeat(65)}`,
+    },
+    `0x${'55'.repeat(20)}`,
+    97,
+    new Date().toISOString(),
+  )
+  const job = await jobs.createJob(authorization.id, `k-${Math.random()}`)
+
+  const out = await act({
+    jobs,
+    jobId: job.id,
+    action: action(1n),
+    callData: '0x',
+    authorization: await jobs.getAuthorization(authorization.id),
+    config: CONFIG,
+    why: 'Paying the invoice you named.',
+  })
+  expect(out.policy.allow).toBe(false)
+  expect(out.policy.rule).toBe('approval_required')
+  const [waiting] = await jobs.approvals(job.id)
+  expect(out.policy.approvalId).toBe(waiting?.id)
+  // Nothing was submitted, and nothing was charged against the cap.
+  expect(executeMock).not.toHaveBeenCalled()
+  expect((await jobs.getAuthorization(authorization.id)).spent).toBe(0n)
+  // And the execution claim was released, or the next attempt would be told the
+  // signer is busy with a transaction that never existed.
+  expect(await jobs.pendingExecution(authorization.id)).toBeFalsy()
+})

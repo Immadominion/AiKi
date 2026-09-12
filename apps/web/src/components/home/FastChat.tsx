@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { AiKiActivity } from '@/components/ui/AiKiActivity'
 import { type AssistantStep, api, type CreditBalance } from '@/lib/api'
+import { FastApprovalAction } from './FastApprovalAction'
 import { FastMandateAction } from './FastMandateAction'
 import { FastMessage } from './FastMessage'
 import {
@@ -12,6 +13,7 @@ import {
   fastCostSummary,
   messageNeedsPoints,
 } from './FastPoints'
+import { approvalContinuations } from './fast-approval'
 import { FastConversationController } from './fast-conversation'
 import { fastToolAgentHref } from './fast-links'
 import { mandateContinuations } from './fast-mandate'
@@ -210,6 +212,9 @@ export function FastChat({
                   {messageNeedsPoints(m) ? <FastPointsRecovery id={id} /> : null}
                   {mandateContinuations(m.steps).map((action) => (
                     <FastMandateAction key={action.authorizationId} action={action} owner={owner} />
+                  ))}
+                  {approvalContinuations(m.steps).map((action) => (
+                    <FastApprovalAction key={action.approvalId} action={action} />
                   ))}
                   {m.steps?.some(
                     (step) =>

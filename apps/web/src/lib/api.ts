@@ -173,7 +173,7 @@ export interface AssistantStep {
   ok: boolean
   /** Did it change something, or only look? */
   mutating: boolean
-  action?: MandateContinuation
+  action?: AssistantContinuation
 }
 
 /** Which structure the review screen must verify before asking anyone to sign. */
@@ -187,6 +187,22 @@ export interface MandateContinuation {
   account: string
   manager: string
 }
+
+/**
+ * One action the agent stopped to ask about.
+ *
+ * Ids and a network only. What is being agreed to is read back from the API by
+ * the control that renders it, never carried here, because a figure that came
+ * through the model is a figure the model could have changed.
+ */
+export interface ApprovalContinuation {
+  kind: 'answer_approval'
+  jobId: string
+  approvalId: string
+  chainId: 56 | 97
+}
+
+export type AssistantContinuation = MandateContinuation | ApprovalContinuation
 
 export interface DelegationReview {
   id: string

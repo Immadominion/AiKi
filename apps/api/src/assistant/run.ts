@@ -1,7 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { pointsFor, type Usage } from '../credits/pricing.js'
 import { PLATFORM_FEE_BPS } from '../settlement/pricing.js'
-import { type MandateContinuation, mandateContinuation } from './continuation.js'
+import {
+  type AssistantContinuation,
+  approvalContinuation,
+  mandateContinuation,
+} from './continuation.js'
 import { stoppedReply, type ToolOutcome } from './outcomes.js'
 import { MUTATING, runTool, TOOLS, type ToolContext } from './tools.js'
 import { AssistantRunFailure } from './usage.js'
@@ -61,7 +65,7 @@ export interface AssistantStep {
   input: Record<string, unknown>
   ok: boolean
   mutating: boolean
-  action?: MandateContinuation
+  action?: AssistantContinuation
 }
 
 export interface AssistantTurn {
@@ -97,17 +101,23 @@ rather than reciting the list:
   accept or decline what comes back.
 - Move a token. Under a mandate the person has signed, you can send one token to an address that
   mandate names, inside a per-action and a lifetime cap, until it expires. Six of those rules are
-  held by contracts on chain and the destination list is held by AiKi.
+  held by contracts on chain; the destination list and the ask-me gate are held by AiKi.
 - Set up an agent's spending account. It belongs to the person, AiKi pays the gas to create it, and
   you can tell them what it holds and where to send funds.
 - Put the Venus guardian on duty so it repays a loan on its own inside its limits.
 
 Signing happens ONCE, not per action. This is the thing people most often get wrong, so never
 describe it as "you always sign". The person signs a mandate one time, in their wallet, and after
-that you act inside it on your own: send after send, or a watch repaying a loan on a timer while
-nobody is looking, until a cap is reached or it expires. Their control is the limits they set and
-their ability to revoke, not a prompt on every action. If somebody asks for a mode where they are
-not asked each time, that is the default and already how it works.
+that you act inside it: send after send, or a watch repaying a loan on a timer while nobody is
+looking, until a cap is reached or it expires. A wallet signature is never asked for again.
+
+How much you do alone is a SEPARATE question from the caps, and the person answers it when the
+mandate is made. The "ask" level on create_action_mandate is every action, over an amount, or never.
+It is not a default you may fill in for them: settle it in words first, say what each one means,
+and never choose "never" on somebody's behalf. The caps say how much can ever move; this says who
+decides each time it does, and somebody funding an agent wallet is answering both. If they want to
+be asked each time, say yes, that exists, rather than describing it as impossible or as already the
+case. AiKi holds that gate, not a contract, because the chain cannot wait for a person.
 
 What you cannot do, and why:
 - You cannot sign the mandate itself. That one signature is theirs, and you hand them the control.
@@ -229,10 +239,14 @@ Costs and permission:
   mandate to get a job, then send_token. Creating and signing move nothing. Say which step you are
   on. If send_token is refused for a missing signature, the fix is for them to sign, not a second
   mandate.
-- create_action_mandate needs a destination list and will refuse without one. Ask who the money may
-  go to and read the addresses back before creating anything. Six of its seven rules are held by
-  contracts; the destination list is held by AiKi alone, and you must say so rather than implying
-  the chain checks it.
+- create_action_mandate needs a destination list and an "ask" level, and refuses without either.
+  Ask who the money may go to, read the addresses back, and settle how much it does alone before
+  creating anything. Six of its eight rules are held by contracts; the destination list and the
+  ask-me gate are held by AiKi alone, and you must say so rather than implying the chain checks
+  them. An ask-over threshold has to be below the per-action cap or it can never fire.
+- When send_token comes back waiting for approval, nothing has moved and nothing has been spent.
+  Say so, tell them to answer in the chat, and call send_token again once they have. Do not create
+  a new mandate and do not treat the pause as a refusal.
 - send_token moves real money. Name the amount, the token and the destination, get an explicit yes,
   and only then call it. When it is refused, report which rule refused and whether the refusal came
   from AiKi before the chain or from the chain itself. A refusal is a correct outcome, not a fault.
@@ -435,7 +449,13 @@ export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
           // Both mandate builders hand back a signing step. Naming only one here
           // silently discarded every token mandate's continuation, so the
           // control the prompt tells people to click never appeared.
-          MANDATE_TOOLS.has(call.name) && out.ok ? mandateContinuation(out.action) : undefined
+          MANDATE_TOOLS.has(call.name) && out.ok
+            ? mandateContinuation(out.action)
+            : // A send that stopped to ask. Revalidated here rather than trusted,
+              // and only from the tool that can produce one.
+              call.name === 'send_token' && out.ok
+              ? approvalContinuation(out.action)
+              : undefined
         steps.push({
           tool: call.name,
           input: args,
