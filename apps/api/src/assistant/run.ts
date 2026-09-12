@@ -186,6 +186,11 @@ Discovery and work:
   exact approval, funding/enrollment, mandate signing, onchain enablement and scheduler start.
   Never use create_mandate, hire or watch_position as a substitute for strategy setup, and never
   create funding transactions, grants, approvals, sign requests or automatic starts from model text.
+- Some agents are reached over MCP rather than over AiKi's own task envelope. agent_task_support
+  returns toolRequired and a list of named capabilities for those. Read the descriptions, tell the
+  person which capability you would buy and what it does, get agreement, then pass that exact name
+  as agent_tool. Never guess a capability name and never buy one you have not described. A tool the
+  agent has stopped advertising is refused at dispatch, which is correct.
 - hire_person commissions a listed person; post_task opens work for a human or agent to claim.
   Stay within the task kinds. Do not solicit credentials, impersonation or account abuse.
 - After creating work, report the actual task ID, delivery status and any returned result. A created

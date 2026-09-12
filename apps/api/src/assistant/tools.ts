@@ -404,7 +404,9 @@ export const TOOLS: Anthropic.Tool[] = [
       'brief. Different from watching a position: this asks for an answer, once. The agent is ' +
       'called at the endpoint its registration declares, and most agents on this registry do not ' +
       'answer, which is normal and is why the money comes back if it does not. Check the ' +
-      'passport first and say what was measured about it before spending.',
+      'passport first and say what was measured about it before spending. Some agents are ' +
+      'reached over MCP and advertise several named capabilities; for those, agent_task_support ' +
+      'lists them and you must name one in agent_tool.',
     input_schema: {
       type: 'object',
       properties: {
@@ -415,6 +417,14 @@ export const TOOLS: Anthropic.Tool[] = [
         price_points: { type: 'number' },
         work_hours: { type: 'number', description: 'How long it has to answer. Default 48.' },
         mandate_id: { type: 'string', description: 'A spending mandate.' },
+        agent_tool: {
+          type: 'string',
+          description:
+            'Which capability of the agent to pay for. Required whenever agent_task_support ' +
+            'returns toolRequired, and it must be one of the names in the tools it listed. Read ' +
+            'the descriptions, say which one you are buying and what it does, and get agreement ' +
+            'before buying it.',
+        },
       },
       required: ['agent_id', 'title', 'brief', 'kind', 'price_points', 'mandate_id'],
     },
@@ -862,6 +872,9 @@ export async function runTool(
           ...(args.work_hours ? { workHours: Math.trunc(Number(args.work_hours)) } : {}),
           authorizationId: args.mandate_id,
           assignAgentId: args.agent_id,
+          ...(typeof args.agent_tool === 'string' && args.agent_tool
+            ? { agentTool: args.agent_tool }
+            : {}),
         },
         { 'idempotency-key': operationKey },
       )

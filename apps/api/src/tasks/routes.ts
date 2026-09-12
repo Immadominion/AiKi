@@ -12,7 +12,13 @@ import type { JobService } from '../jobs/service.js'
 import { hashCanonicalJson } from '../marketplace/canonical-json.js'
 import type { JsonValue } from '../marketplace/model.js'
 import { PLATFORM_FEE_BPS, priceJob, SETTLEMENT } from '../settlement/pricing.js'
-import { DISPATCH_PROTOCOL, deliveryToken, dispatchToAgent, tokenMatches } from './dispatch.js'
+import {
+  DISPATCH_PROTOCOL,
+  deliveryToken,
+  dispatchOverMcp,
+  dispatchToAgent,
+  tokenMatches,
+} from './dispatch.js'
 import { isTaskKind, TASK_KINDS, type TaskKind } from './kinds.js'
 import type { PostgresSellerStore } from './sellers.js'
 import type { TaskRecord, TaskStore } from './store.js'
@@ -213,7 +219,7 @@ export function registerTaskRoutes(
 
   app.get<{ Params: { id: string } }>('/v1/agents/:id/task-support', async (request) => {
     const base = { minimumPricePoints: MIN_PRICE_POINTS, feeBasisPoints: PLATFORM_FEE_BPS }
-    if (!input.credits || !input.agentContact || !input.publicUrl || !input.deliverySecret)
+    if (!input.credits || !input.agentContact)
       return {
         ...base,
         available: false,
@@ -234,12 +240,27 @@ export function registerTaskRoutes(
         available: false,
         reason: contact.reason ?? 'This agent does not support AiKi task delivery.',
       }
+    // Only the native envelope needs somewhere to call back to.
+    if (contact.protocol !== 'mcp' && (!input.publicUrl || !input.deliverySecret))
+      return {
+        ...base,
+        available: false,
+        reason: 'Task delivery is not configured on this deployment.',
+      }
     return {
       ...base,
       available: true,
-      protocol: DISPATCH_PROTOCOL,
+      protocol: contact.protocol === 'mcp' ? 'mcp' : DISPATCH_PROTOCOL,
       ...(contact.inputHint ? { inputHint: contact.inputHint } : {}),
       ...(contact.kinds?.length ? { kinds: contact.kinds } : {}),
+      /*
+       * What an MCP agent is advertising right now, so a buyer can name the
+       * capability they are paying for. Read live rather than remembered: a
+       * tool list from last week describes an agent that may no longer exist.
+       */
+      ...(contact.protocol === 'mcp' && contact.tools?.length
+        ? { tools: contact.tools, toolRequired: true }
+        : {}),
     }
   })
 
@@ -306,6 +327,14 @@ export function registerTaskRoutes(
       authorizationId?: string
       /** Hire this one agent instead of opening the work to whoever claims it. */
       assignAgentId?: string
+      /**
+       * Which capability of an MCP agent to call, chosen by the buyer.
+       *
+       * There is no convention for which tool does the work, and guessing with
+       * somebody's money is not a convention. Required for an MCP agent and
+       * meaningless for one that speaks AiKi's own envelope.
+       */
+      agentTool?: string
       /** Or hire this one person, by address. Nothing is dispatched: they see it. */
       hirePerson?: string
     }
@@ -476,7 +505,9 @@ export function registerTaskRoutes(
        * Resolved before any money moves, because everything here can refuse and a
        * refusal after the charge is a refusal that costs somebody.
        */
-      let assigned: { agentId: string; owner: string; endpoint: string } | undefined
+      let assigned:
+        | { agentId: string; owner: string; endpoint: string; transport: string; tool?: string }
+        | undefined
       if (request.body?.assignAgentId) {
         if (!input.publicUrl || !input.deliverySecret)
           return reply.code(503).send({
@@ -530,10 +561,36 @@ export function registerTaskRoutes(
               retryable: false,
             },
           })
+        const transport = contact.protocol === 'mcp' ? 'mcp' : DISPATCH_PROTOCOL
+        let tool: string | undefined
+        if (transport === 'mcp') {
+          /*
+           * The tool has to be named, and named from what the agent is
+           * advertising right now. A buyer who cannot say which capability they
+           * are paying for has not agreed to anything specific, and a name that
+           * is no longer on the list belongs to a different agent than the one
+           * being hired.
+           */
+          tool = typeof request.body.agentTool === 'string' ? request.body.agentTool : ''
+          if (!tool || !contact.tools?.some((candidate) => candidate.name === tool))
+            return reply.code(422).send({
+              error: {
+                code: 'AGENT_TOOL_REQUIRED',
+                message: contact.tools?.length
+                  ? `Name which capability to pay for. This agent offers: ${contact.tools
+                      .map((candidate) => candidate.name)
+                      .join(', ')}.`
+                  : 'This agent advertises no capability to pay for. Nothing was charged.',
+                retryable: false,
+              },
+            })
+        }
         assigned = {
           agentId: request.body.assignAgentId,
           owner: contact.owner,
           endpoint: contact.endpoint,
+          transport,
+          ...(tool ? { tool } : {}),
         }
       }
 
@@ -688,23 +745,46 @@ export function registerTaskRoutes(
        * that being visible is the point rather than the problem.
        */
       let refundedPoints = 0
-      if (assigned && input.publicUrl && input.deliverySecret) {
-        const outcome = await dispatchToAgent({
-          endpoint: assigned.endpoint,
-          envelope: {
-            protocol: DISPATCH_PROTOCOL,
-            taskId: task.id,
-            agentId: assigned.agentId,
-            title,
-            brief,
-            pricePoints,
-            deadline: new Date(Date.now() + workHours * 3_600_000).toISOString(),
-            callback: {
-              url: `${input.publicUrl}/v1/tasks/${task.id}/deliver`,
-              token: deliveryToken(input.deliverySecret, task.id),
-            },
-          },
-        })
+      /*
+       * MCP needs no callback, so it must not be gated on callback settings.
+       * AiKi's own envelope carries a delivery URL and a derived token, and
+       * without those there is nowhere for a late answer to go; an MCP tool
+       * answers in the same call or not at all.
+       */
+      const dispatchable =
+        assigned &&
+        (assigned.transport === 'mcp' || Boolean(input.publicUrl && input.deliverySecret))
+      if (assigned && dispatchable) {
+        const outcome =
+          assigned.transport === 'mcp'
+            ? await dispatchOverMcp({
+                endpoint: assigned.endpoint,
+                tool: assigned.tool ?? '',
+                /*
+                 * The task id is the intent. It exists in the database before
+                 * this call is made and it is the same value on a retry, so a
+                 * timeout cannot buy the same work twice from a provider that
+                 * honours it. The grid agents on this registry key idempotency
+                 * on exactly this field.
+                 */
+                arguments: { intentId: task.id, brief, title },
+              })
+            : await dispatchToAgent({
+                endpoint: assigned.endpoint,
+                envelope: {
+                  protocol: DISPATCH_PROTOCOL,
+                  taskId: task.id,
+                  agentId: assigned.agentId,
+                  title,
+                  brief,
+                  pricePoints,
+                  deadline: new Date(Date.now() + workHours * 3_600_000).toISOString(),
+                  callback: {
+                    url: `${input.publicUrl ?? ''}/v1/tasks/${task.id}/deliver`,
+                    token: deliveryToken(input.deliverySecret ?? '', task.id),
+                  },
+                },
+              })
         if (outcome.declined && !outcome.delivered) {
           try {
             const refunded = await input.tasks.refundDeclinedAssignment(

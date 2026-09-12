@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
+import { connectMcp } from '../catalog/mcp.js'
 import { guardedFetch } from '../net/guard.js'
 
 /**
@@ -135,4 +136,96 @@ export async function dispatchToAgent(input: {
     }
   if (!res.ok) return { note: `Answered ${res.status}; whether it accepted work is unconfirmed.` }
   return { note: 'Answered, but with nothing this protocol recognises as work.' }
+}
+
+/**
+ * Hiring an agent that speaks MCP instead of AiKi's own envelope.
+ *
+ * `aiki.task/v1` is a protocol AiKi invented and published, and the honest
+ * result of a sweep is that zero agents on the registry implement it. Meanwhile
+ * a small number do expose real capabilities over MCP, and the task board could
+ * not reach any of them. That is not a safety boundary, it is a transport this
+ * side never learned to speak.
+ *
+ * Worth being clear about what this does and does not risk. Calling a
+ * stranger's tool over HTTP grants them nothing: no key, no session, no mandate,
+ * no access to the buyer's wallet. The money at stake is escrowed points, and
+ * the buyer still reviews before any of it is released. That is a materially
+ * smaller exposure than the read connector, which runs against the signed-in
+ * wallet's own address, and it is why this does not need the same per-tool
+ * allowlist.
+ *
+ * What it does need is to stay uncredulous about the answer, which is the same
+ * discipline the HTTP path already has: a response is work only when it is
+ * plainly work.
+ */
+
+/** MCP's own failure flag. A tool that says it failed has not delivered. */
+function mcpText(result: Record<string, unknown>): { text: string; isError: boolean } {
+  const content = Array.isArray(result.content) ? result.content : []
+  const text = content
+    .map((part) => {
+      const block = part as { type?: unknown; text?: unknown } | null
+      return block && block.type === 'text' && typeof block.text === 'string' ? block.text : ''
+    })
+    .filter(Boolean)
+    .join('\n')
+    .trim()
+  return { text: text.slice(0, MAX_DELIVERY_CHARS), isError: result.isError === true }
+}
+
+export interface McpDispatchInput {
+  endpoint: string
+  tool: string
+  /**
+   * Already complete, including any idempotency field the provider's schema
+   * declares. Built by the caller, because the caller is the side that knows
+   * what it has already recorded and must not send twice.
+   */
+  arguments: Record<string, unknown>
+  connect?: typeof connectMcp
+}
+
+export async function dispatchOverMcp(input: McpDispatchInput): Promise<DispatchOutcome> {
+  let session: Awaited<ReturnType<typeof connectMcp>>
+  try {
+    session = await (input.connect ?? connectMcp)(input.endpoint)
+  } catch (error) {
+    return { note: `Could not reach it over MCP: ${(error as Error).message ?? 'no response'}.` }
+  }
+
+  try {
+    /*
+     * The tool has to be one the provider is advertising right now. A name that
+     * was valid when the task was created and is gone at dispatch time is a
+     * different agent than the one that was hired, and calling it anyway would
+     * be guessing with somebody's money.
+     */
+    if (!session.tools.some((tool) => tool.name === input.tool))
+      return { note: `It no longer offers a tool called ${input.tool}.` }
+
+    let result: Record<string, unknown>
+    try {
+      result = await session.call(input.tool, input.arguments as never)
+    } catch (error) {
+      return { note: `Called it and the call failed: ${(error as Error).message ?? 'no answer'}.` }
+    }
+
+    const { text, isError } = mcpText(result)
+    /*
+     * A structured refusal is a refusal. These providers answer an out-of-scope
+     * request with a well-formed explanation rather than an exception, and
+     * treating that as delivered work is the marketplace paying full price for
+     * the word no.
+     */
+    if (isError)
+      return {
+        declined: true,
+        note: `Declined it: ${text || 'The tool reported an error.'}`,
+      }
+    if (!text) return { note: 'Answered, but with nothing this protocol recognises as work.' }
+    return { delivered: text, note: `Answered straight away over MCP, using ${input.tool}.` }
+  } finally {
+    session.close()
+  }
 }
