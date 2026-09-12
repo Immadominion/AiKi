@@ -65,6 +65,35 @@ async function capability(response: Response): Promise<Record<string, unknown> |
   }
 }
 
+/** An A2A agent card, or null. Shared so one fetched document is judged once. */
+function asAgentCard(
+  card: Record<string, unknown> | null,
+): { url: string; skills: { name: string; description: string }[] } | null {
+  const url = typeof card?.url === 'string' ? card.url : ''
+  if (!url || !/^https:\/\//i.test(url) || /[{}]/.test(url)) return null
+  const skills = Array.isArray(card?.skills)
+    ? card.skills
+        .map((skill) => {
+          const entry = skill as { id?: unknown; name?: unknown; description?: unknown } | null
+          const name =
+            typeof entry?.id === 'string'
+              ? entry.id
+              : typeof entry?.name === 'string'
+                ? entry.name
+                : ''
+          return {
+            name,
+            description:
+              typeof entry?.description === 'string' ? entry.description.slice(0, 300) : '',
+          }
+        })
+        .filter((skill) => skill.name)
+        .slice(0, 40)
+    : []
+  // A card with no skills describes nothing that can be bought.
+  return skills.length ? { url, skills } : null
+}
+
 /**
  * The agent card an A2A registration points at, and the url to actually call.
  *
@@ -95,37 +124,16 @@ async function resolveA2ACard(
   ]
   for (const candidate of [...new Set(candidates)]) {
     try {
-      const card = await capability(
-        await read(candidate, {
-          method: 'GET',
-          headers: { accept: 'application/json' },
-          signal: AbortSignal.timeout(6_000),
-        }),
+      const card = asAgentCard(
+        await capability(
+          await read(candidate, {
+            method: 'GET',
+            headers: { accept: 'application/json' },
+            signal: AbortSignal.timeout(6_000),
+          }),
+        ),
       )
-      const url = typeof card?.url === 'string' ? card.url : ''
-      if (!url || !/^https:\/\//i.test(url) || /[{}]/.test(url)) continue
-      const skills = Array.isArray(card?.skills)
-        ? card.skills
-            .map((skill) => {
-              const entry = skill as { id?: unknown; name?: unknown; description?: unknown } | null
-              const name =
-                typeof entry?.id === 'string'
-                  ? entry.id
-                  : typeof entry?.name === 'string'
-                    ? entry.name
-                    : ''
-              return {
-                name,
-                description:
-                  typeof entry?.description === 'string' ? entry.description.slice(0, 300) : '',
-              }
-            })
-            .filter((skill) => skill.name)
-            .slice(0, 40)
-        : []
-      // A card with no skills describes nothing that can be bought.
-      if (!skills.length) continue
-      return { url, skills }
+      if (card) return card
     } catch {
       // Try the next shape.
     }
@@ -214,7 +222,10 @@ export async function resolveTaskEndpoint(
             signal: AbortSignal.timeout(4_000),
           }),
         )
-        if (metadata?.taskProtocol !== DISPATCH_PROTOCOL) return null
+        // The body is kept whatever it turns out to be. This same GET is the
+        // only look most endpoints get, and fetching a third party twice to ask
+        // two questions about one document is waste somebody else pays for.
+        if (metadata?.taskProtocol !== DISPATCH_PROTOCOL) return { endpoint, metadata }
         const inputHint =
           typeof metadata.taskInputHint === 'string'
             ? metadata.taskInputHint.trim().slice(0, 300)
@@ -234,8 +245,19 @@ export async function resolveTaskEndpoint(
       }
     }),
   )
-  const native = answers.find((answer) => answer !== null)
+  const native = answers.find((answer) => answer !== null && 'compatible' in answer)
   if (native) return native
+
+  /*
+   * An agent card, read out of the document already fetched above. Most A2A
+   * registrations point straight at their card, so this costs nothing beyond
+   * the look every endpoint already gets.
+   */
+  for (const answer of answers) {
+    if (!answer || 'compatible' in answer) continue
+    const card = asAgentCard(answer.metadata)
+    if (card) return { endpoint: card.url, compatible: true, protocol: 'a2a', tools: card.skills }
+  }
 
   /*
    * Nothing speaks AiKi's envelope. That is the ordinary case: `aiki.task/v1`
@@ -268,7 +290,29 @@ export async function resolveTaskEndpoint(
    * A2A is the largest group that answers anything on this chain, larger than
    * MCP, so it is tried rather than written off.
    */
-  const a2aEndpoints = discoveryEndpoints(services, 'A2A')
+  /*
+   * Only a service that said A2A gets the well-known paths chased on its
+   * origin. An unlabelled endpoint has already been read once above and judged
+   * as a card there, so guessing two more URLs on somebody's domain would be
+   * three requests to answer a question one already answered.
+   */
+  const a2aEndpoints = Array.isArray(services)
+    ? [
+        ...new Set(
+          services
+            .filter(
+              (service) =>
+                serviceProtocol(service) === 'A2A' &&
+                typeof service?.endpoint === 'string' &&
+                /^https:\/\//i.test(service.endpoint) &&
+                !/[{}]/.test(service.endpoint),
+            )
+            .map((service) => service.endpoint as string),
+        ),
+      ]
+        .sort()
+        .slice(0, 2)
+    : []
 
   for (const endpoint of a2aEndpoints) {
     const card = await resolveA2ACard(endpoint, read)
