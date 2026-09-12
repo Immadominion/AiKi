@@ -403,3 +403,47 @@ it('keeps marketplace points mandates independent of execution configuration', a
     'does NOT sign',
   )
 })
+
+/*
+ * The guardian watch is the only thing here that moves money while nobody is
+ * looking, and until now it had no gate at all. Previewing keeps none: it
+ * stores nothing and its job is to show what the caps are worth.
+ */
+it('carries the ask level a person chose into the guardian mandate', async () => {
+  const h = harness({ chainId: 56 })
+  const result = await runTool(ctx, 'create_mandate', { ...limits, ask: 'over', ask_over: 0.5 })
+  expect(result.ok).toBe(true)
+  const constraints = h.posted('/v1/authorizations')?.constraints as {
+    kind: string
+    value: unknown
+    tier: string
+  }[]
+  const approval = constraints.find((constraint) => constraint.kind === 'approval')
+  expect(approval?.value).toEqual({
+    mode: 'approve_above_threshold',
+    threshold: '500000000000000000',
+  })
+  // No contract can wait for a person, so this may never arrive as T0.
+  expect(approval?.tier).toBe('T2')
+})
+
+it('asks every repayment when the model leaves the level out', async () => {
+  const h = harness({ chainId: 56 })
+  await runTool(ctx, 'create_mandate', limits)
+  const constraints = h.posted('/v1/authorizations')?.constraints as {
+    kind: string
+    value: unknown
+  }[]
+  expect(constraints.find((constraint) => constraint.kind === 'approval')?.value).toEqual({
+    mode: 'approve_every',
+    threshold: '0',
+  })
+})
+
+it('previews the caps without inventing a gate the person never chose', async () => {
+  const h = harness({ chainId: 56 })
+  await runTool(ctx, 'preview_limits', { ...limits, ask: 'every' })
+  const constraints = h.posted('/v1/mandates/preview')?.constraints as { kind: string }[]
+  expect(constraints).toHaveLength(6)
+  expect(constraints.some((constraint) => constraint.kind === 'approval')).toBe(false)
+})

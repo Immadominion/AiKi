@@ -1,3 +1,4 @@
+import { type AskLevel, approvalConstraint } from './approval.js'
 /** Canonical Venus repayment inputs. Registry and billing chains do not select these. */
 export interface GuardianConfig {
   chainId: 56 | 97
@@ -107,6 +108,17 @@ export function guardianConstraints(input: {
   perActionUsdt: number
   totalUsdt: number
   expiresInDays: number
+  /**
+   * Whether a person is asked before each repayment.
+   *
+   * Optional, and absent means no rule at all rather than a permissive one, so
+   * a mandate built without it is byte-for-byte the six it has always been.
+   * Callers that only use this to validate numbers, and every mandate signed
+   * before gates existed, keep working unchanged. The tools a person actually
+   * reaches this through require an answer.
+   */
+  ask?: AskLevel
+  askOver?: number
 }) {
   const guardian = guardianFor(input.chainId)
   const perAction = amountUnits(input.perActionUsdt, guardian.decimals)
@@ -151,6 +163,26 @@ export function guardianConstraints(input: {
       tier: 'T0',
       label: `${input.totalUsdt} USDT in total`,
     },
+    /*
+     * The watch is the one thing in this product that moves money while nobody
+     * is looking, which makes it the mandate that most needs a gate and the one
+     * that had none. Worth saying what choosing it costs: a guardian that has
+     * to ask cannot repay while the answer is outstanding, so a loan can be
+     * liquidated waiting for one. That is a real trade and it belongs to the
+     * person, not to this builder.
+     */
+    ...(input.ask === undefined
+      ? []
+      : [
+          approvalConstraint({
+            ask: input.ask,
+            ...(input.askOver === undefined ? {} : { askOver: input.askOver }),
+            perActionUnits: perAction,
+            symbol: 'USDT',
+            decimals: guardian.decimals,
+            units: amountUnits,
+          }),
+        ]),
   ]
 }
 

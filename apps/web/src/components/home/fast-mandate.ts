@@ -145,6 +145,7 @@ function venusReview(
   constraints: Map<string, unknown>,
   caps: Caps,
   network: ExecutionNetwork,
+  limits: { kind?: unknown; tier?: unknown }[],
 ): Review {
   if (
     !sameList(constraints.get('asset_scope'), network.guardian.asset) ||
@@ -157,6 +158,7 @@ function venusReview(
     totalUsdt: formatUnits(caps.total, network.guardian.decimals),
     expiresAt: new Date(caps.expiry).toISOString(),
     network,
+    ask: askReview(constraints, network.guardian.decimals, limits),
   }
 }
 
@@ -299,7 +301,8 @@ function inspectPreparation(
   const carriesApproval =
     Array.isArray(auth?.constraints) &&
     auth.constraints.some((constraint) => object(constraint)?.kind === 'approval')
-  const expectedConstraints = action.scope === 'token_transfer' ? (carriesApproval ? 8 : 7) : 6
+  const base = action.scope === 'token_transfer' ? 7 : 6
+  const expectedConstraints = carriesApproval ? base + 1 : base
   if (
     !auth ||
     auth.id !== action.authorizationId ||
@@ -369,7 +372,7 @@ function inspectPreparation(
   const review: Review =
     action.scope === 'token_transfer'
       ? tokenReview(constraints, { perAction, total, expiry }, network, limits)
-      : venusReview(constraints, { perAction, total, expiry }, network)
+      : venusReview(constraints, { perAction, total, expiry }, network, limits)
 
   if (auth.status === 'revoked')
     return {

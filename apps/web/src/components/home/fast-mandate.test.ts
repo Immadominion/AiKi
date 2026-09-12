@@ -367,3 +367,55 @@ test('malformed filing response stays unconfirmed until the same authorization i
   await h.controller.sign()
   assert.equal(h.controller.getSnapshot().phase, 'uncertain')
 })
+
+/*
+ * The watch is the one thing in this product that moves money while nobody is
+ * looking, so it is the mandate that most needed a gate and the one that had
+ * none. These check both halves: that a guardian mandate carrying one reviews
+ * and says so, and that every guardian mandate signed before gates existed
+ * still reviews unchanged and is described as what it is.
+ */
+test('reviews a guardian mandate that asks before each repayment', async () => {
+  const h = harness()
+  h.prep.authorization.constraints = guardianConstraints({
+    chainId: 56,
+    perActionUsdt: 1.000001,
+    totalUsdt: 10,
+    expiresInDays: 30,
+    ask: 'every',
+  })
+  h.prep.limits = [
+    ...h.prep.limits,
+    { kind: 'approval', label: 'asks you before every repayment', tier: 'T2', enforcedBy: null },
+  ] as typeof h.prep.limits
+  await h.controller.review()
+  const { phase, error, review } = h.controller.getSnapshot()
+  assert.equal(error, undefined)
+  assert.equal(phase, 'review')
+  assert.deepEqual(review?.ask, { mode: 'every' })
+})
+
+test('a guardian mandate with no gate reviews, and is called what it is', async () => {
+  const h = harness()
+  await h.controller.review()
+  const { error, review } = h.controller.getSnapshot()
+  assert.equal(error, undefined)
+  assert.deepEqual(review?.ask, { mode: 'never' })
+})
+
+test('a guardian gate claiming an enforcer holds it is refused', async () => {
+  const h = harness()
+  h.prep.authorization.constraints = guardianConstraints({
+    chainId: 56,
+    perActionUsdt: 1.000001,
+    totalUsdt: 10,
+    expiresInDays: 30,
+    ask: 'every',
+  })
+  h.prep.limits = [
+    ...h.prep.limits,
+    { kind: 'approval', label: 'asks you first', tier: 'T0', enforcedBy: 'ExpiryEnforcer' },
+  ] as typeof h.prep.limits
+  await h.controller.review()
+  assert.match(String(h.controller.getSnapshot().error), /approval rule is misreported/)
+})

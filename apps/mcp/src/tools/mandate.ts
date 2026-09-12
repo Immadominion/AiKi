@@ -159,14 +159,35 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
       description:
         'Create the limits an agent will work under, and sign them onto the chain. Deploys the ' +
         'account the value is spent from if there is not one already - AiKi pays that gas. ' +
-        'Returns a mandate id to hire against.',
+        'Returns a mandate id to hire against. `ask` decides whether a person is asked before ' +
+        'each repayment; note that a guardian which has to ask cannot repay while the answer is ' +
+        'outstanding, so the loan can be liquidated waiting for one.',
       inputSchema: {
         per_action_usdt: z.number().positive(),
         total_usdt: z.number().positive(),
         expires_in_days: z.number().int().min(1).max(365).default(30),
+        ask: z
+          .enum(['every', 'over', 'never'])
+          .describe(
+            'every: asks before each repayment. over: asks above ask_over. never: repays inside ' +
+              'the caps unattended, which is the only setting a watch can act on by itself.',
+          ),
+        ask_over: z.number().positive().optional().describe('Whole USDT, required by ask=over.'),
       },
     },
-    async ({ per_action_usdt, total_usdt, expires_in_days }) => {
+    async ({
+      per_action_usdt,
+      total_usdt,
+      expires_in_days,
+      ask,
+      ask_over,
+    }: {
+      per_action_usdt: number
+      total_usdt: number
+      expires_in_days: number
+      ask: AskLevel
+      ask_over?: number
+    }) => {
       const network = await executionNetwork(client)
       // Reject caps that cannot be represented on this token before deploying
       // an account or asking the local identity to sign anything.
@@ -175,6 +196,8 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
         perActionUsdt: per_action_usdt,
         totalUsdt: total_usdt,
         expiresInDays: expires_in_days,
+        ask,
+        ...(ask_over === undefined ? {} : { askOver: ask_over }),
       })
       const identity = await session.require(network.chainId)
 
@@ -207,6 +230,11 @@ export function registerMandateTools(server: Registrar, client: AikiClient, sess
         [
           `Mandate ${authorization.id} created.`,
           `  at most ${per_action_usdt} USDT per action, ${total_usdt} USDT in total, for ${expires_in_days} days`,
+          ask === 'every'
+            ? '  asks you before every repayment, so a watch cannot act on this unattended'
+            : ask === 'over'
+              ? `  asks you over ${ask_over} USDT, and repays by itself below that`
+              : '  repays without asking, inside these limits',
           `  spending from ${account.address}${deployed ? ' (just deployed for you; AiKi paid the gas)' : ''}`,
           '',
           signed

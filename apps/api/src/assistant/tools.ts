@@ -205,15 +205,29 @@ export const TOOLS: Anthropic.Tool[] = [
       'Create the limits an agent will work under. Deploys the account the value is spent from if ' +
       'there is not one. IMPORTANT: this does NOT sign the mandate - signing needs the person’s ' +
       'wallet, which you do not have. Tell them to use the Review and sign control in this chat. ' +
-      'Do not create another mandate to complete signing. No job or watch is started by signing.',
+      'Do not create another mandate to complete signing. No job or watch is started by signing. ' +
+      '`ask` decides whether a person is asked before each repayment, and is not optional. Warn ' +
+      'them what every and over cost here: a guardian that has to ask cannot repay while the ' +
+      'answer is outstanding, so the loan can be liquidated waiting for one.',
     input_schema: {
       type: 'object',
       properties: {
         per_action_usdt: { type: 'number' },
         total_usdt: { type: 'number' },
         expires_in_days: { type: 'number' },
+        ask: {
+          type: 'string',
+          enum: ['every', 'over', 'never'],
+          description:
+            'every: asks before each repayment. over: asks above ask_over. never: repays inside ' +
+            'the caps without asking, which is the only setting a watch can act on unattended.',
+        },
+        ask_over: {
+          type: 'number',
+          description: 'Whole USDT, required by ask=over and must be below per_action_usdt.',
+        },
       },
-      required: ['per_action_usdt', 'total_usdt'],
+      required: ['per_action_usdt', 'total_usdt', 'ask'],
     },
   },
   {
@@ -681,6 +695,16 @@ export async function runTool(
               : typeof args.expires_in_days === 'number'
                 ? args.expires_in_days
                 : Number.NaN,
+          /*
+           * Absent is `every`, not `never`, for the same reason as the token
+           * builder: an agent acting without being asked has to be something
+           * somebody chose. `preview_limits` is exempt because it stores
+           * nothing and its job is to show the caps.
+           */
+          ...(name === 'preview_limits'
+            ? {}
+            : { ask: args.ask === 'over' || args.ask === 'never' ? args.ask : 'every' }),
+          ...(typeof args.ask_over === 'number' ? { askOver: args.ask_over } : {}),
         })
       } catch (error) {
         // The shared parser's errors contain only fixed validation guidance.

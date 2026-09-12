@@ -116,3 +116,47 @@ it('rejects invalid or rounded caps before any account or authorization can be c
   ])
     expect(() => guardianConstraints(invalid)).toThrow()
 })
+
+/*
+ * The gate on the one mandate that acts while nobody is looking.
+ *
+ * Optional on purpose: absent means no rule at all rather than a permissive
+ * one, so every guardian mandate built before gates existed, and the callers
+ * that use this only to validate numbers, are byte-for-byte what they were.
+ */
+it('builds the guardian mandate unchanged when no gate is asked for', () => {
+  const constraints = guardianConstraints({
+    chainId: 56,
+    perActionUsdt: 1,
+    totalUsdt: 10,
+    expiresInDays: 30,
+  })
+  expect(constraints).toHaveLength(6)
+  expect(constraints.some((c) => c.kind === 'approval')).toBe(false)
+})
+
+it('adds the gate when one is asked for, and never at a tier a contract holds', () => {
+  const constraints = guardianConstraints({
+    chainId: 56,
+    perActionUsdt: 1,
+    totalUsdt: 10,
+    expiresInDays: 30,
+    ask: 'over',
+    askOver: 0.5,
+  })
+  expect(constraints).toHaveLength(7)
+  const approval = constraints.find((c) => c.kind === 'approval')
+  expect(approval?.value).toEqual({
+    mode: 'approve_above_threshold',
+    threshold: '500000000000000000',
+  })
+  expect(approval?.tier).toBe('T2')
+})
+
+it('refuses a guardian threshold the per-action cap already puts out of reach', () => {
+  const input = { chainId: 56, perActionUsdt: 1, totalUsdt: 10, expiresInDays: 30 } as const
+  expect(() => guardianConstraints({ ...input, ask: 'over', askOver: 1 })).toThrow(
+    /would never ask/,
+  )
+  expect(() => guardianConstraints({ ...input, ask: 'over' })).toThrow(/start asking over/)
+})
