@@ -136,3 +136,42 @@ it('refuses a plaintext MCP endpoint', async () => {
   expect(connect).not.toHaveBeenCalled()
   expect(contact.compatible).toBe(false)
 })
+
+/*
+ * The shape a real registration actually has.
+ *
+ * ERC-8004 files name a service with `name`, and AiKi's own resolver stores
+ * exactly {name, endpoint}. Filtering on a `protocol` key matched nothing on
+ * any real agent, so discovery never ran against a single one of them while
+ * every test passed against a fixture that used the other spelling.
+ */
+it('finds an MCP endpoint named the way registrations actually name it', async () => {
+  const s = mcpSession([{ name: 'act', description: '' }])
+  const contact = await resolveTaskEndpoint(
+    [{ name: 'MCP', endpoint: MCP }],
+    dead,
+    s.connect as never,
+  )
+  expect(contact.compatible).toBe(true)
+  expect(contact.protocol).toBe('mcp')
+})
+
+it('tries discovery on an endpoint that declares no protocol at all', async () => {
+  const s = mcpSession([{ name: 'act', description: '' }])
+  // A missing label is not evidence of a missing capability, and most
+  // registrations label nothing.
+  const contact = await resolveTaskEndpoint([{ endpoint: MCP }], dead, s.connect as never)
+  expect(contact.compatible).toBe(true)
+  expect(s.connect).toHaveBeenCalledWith(MCP)
+})
+
+it('does not open an MCP handshake against an endpoint labelled as something else', async () => {
+  const s = mcpSession([{ name: 'act', description: '' }])
+  const contact = await resolveTaskEndpoint(
+    [{ name: 'A2A', endpoint: 'https://agent.example/a2a' }],
+    dead,
+    s.connect as never,
+  )
+  expect(s.connect).not.toHaveBeenCalled()
+  expect(contact.compatible).toBe(false)
+})

@@ -133,6 +133,51 @@ async function resolveA2ACard(
   return null
 }
 
+/**
+ * Which protocol a declared service speaks.
+ *
+ * ERC-8004 registration files name a service with `name`, and the resolver that
+ * stores them keeps exactly `{name, endpoint, version?, transport?}`. Reading a
+ * `protocol` key instead found nothing on every real registration, so MCP and
+ * A2A discovery never ran against a single agent on the chain. Both spellings
+ * are read now, plus `type`, because the catalog's own projection uses that.
+ */
+function serviceProtocol(service: unknown): string {
+  const entry = service as { name?: unknown; protocol?: unknown; type?: unknown } | null
+  for (const value of [entry?.protocol, entry?.name, entry?.type])
+    if (typeof value === 'string' && value.trim()) return value.trim().toUpperCase()
+  return ''
+}
+
+/**
+ * Endpoints worth opening a handshake against for one protocol.
+ *
+ * A registration that labels its services is taken at its word. One that labels
+ * nothing, which is common, still gets tried rather than written off, because a
+ * missing label is not evidence of a missing capability. Either way the count is
+ * capped: discovery is a real conversation with a third party, not a HEAD
+ * request, and one hire must not become eight of them.
+ */
+function discoveryEndpoints(services: unknown, protocol: 'MCP' | 'A2A'): string[] {
+  if (!Array.isArray(services)) return []
+  const usable = services.filter(
+    (service) =>
+      typeof service?.endpoint === 'string' &&
+      /^https:\/\//i.test(service.endpoint) &&
+      !/[{}]/.test(service.endpoint),
+  )
+  const labelled = usable.filter((service) => serviceProtocol(service) === protocol)
+  const chosen = labelled.length
+    ? labelled
+    : usable.filter((service) => {
+        const label = serviceProtocol(service)
+        // An endpoint labelled as another protocol is not a candidate; an
+        // unlabelled one is.
+        return label === '' || label === 'SERVICE'
+      })
+  return [...new Set(chosen.map((service) => service.endpoint as string))].sort().slice(0, 2)
+}
+
 /** Read registered endpoints only; HTTP liveness by itself is not a hiring protocol. */
 export async function resolveTaskEndpoint(
   services: unknown,
@@ -199,24 +244,7 @@ export async function resolveTaskEndpoint(
    * capabilities over MCP. Refusing those was never a safety decision, it was a
    * transport this side had not learned.
    */
-  const mcpEndpoints = Array.isArray(services)
-    ? [
-        ...new Set(
-          services
-            .filter((service) => String(service?.protocol).toUpperCase() === 'MCP')
-            .map((service) => service?.endpoint)
-            .filter(
-              (endpoint): endpoint is string =>
-                typeof endpoint === 'string' && /^https:\/\//i.test(endpoint),
-            ),
-        ),
-      ]
-        .sort()
-        // Two at most. Discovery is a real protocol handshake against a third
-        // party, not a HEAD request, and a registration listing eight of them
-        // must not turn one hire into eight conversations.
-        .slice(0, 2)
-    : []
+  const mcpEndpoints = discoveryEndpoints(services, 'MCP')
 
   for (const endpoint of mcpEndpoints) {
     try {
@@ -240,21 +268,7 @@ export async function resolveTaskEndpoint(
    * A2A is the largest group that answers anything on this chain, larger than
    * MCP, so it is tried rather than written off.
    */
-  const a2aEndpoints = Array.isArray(services)
-    ? [
-        ...new Set(
-          services
-            .filter((service) => String(service?.protocol).toUpperCase() === 'A2A')
-            .map((service) => service?.endpoint)
-            .filter(
-              (endpoint): endpoint is string =>
-                typeof endpoint === 'string' && /^https:\/\//i.test(endpoint),
-            ),
-        ),
-      ]
-        .sort()
-        .slice(0, 2)
-    : []
+  const a2aEndpoints = discoveryEndpoints(services, 'A2A')
 
   for (const endpoint of a2aEndpoints) {
     const card = await resolveA2ACard(endpoint, read)
