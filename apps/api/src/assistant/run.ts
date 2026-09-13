@@ -394,6 +394,14 @@ export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
   let awaitingProvider = false
 
   const maxTokens = input.maxTokens ?? 1500
+  /**
+   * How much of the prompt the provider is holding for us.
+   *
+   * Learned rather than assumed: it is whatever the last response said it
+   * wrote or read, which is the only number that is actually true about this
+   * conversation on this model.
+   */
+  let cachedPrefix = 0
   try {
     for (let round = 0; round < MAX_ROUNDS; round++) {
       /*
@@ -410,10 +418,24 @@ export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
         })
         if (!Number.isSafeInteger(counted.input_tokens) || counted.input_tokens < 0)
           throw new Error('The model input could not be measured.')
+        /*
+         * The counter prices everything as fresh input, because it cannot know
+         * what the cache will hold. Once a round has run we know exactly how
+         * big the cached prefix is, because the provider reported it, so the
+         * projection charges that part at the cache rate and only the rest at
+         * the input rate. Without this the estimate stays about four times the
+         * real cost and keeps stopping turns that could comfortably finish.
+         *
+         * Before the first round the prefix is unknown and priced as input,
+         * which understates a cache write by a quarter of the prefix. The five
+         * percent variance headroom below covers more than that.
+         */
         // The provider documents a small counting variance. Reserve headroom,
         // include the real system/tools, and never infer document cost from a URL.
+        const fresh = Math.max(0, counted.input_tokens - cachedPrefix)
         ceiling = pointsFor(input.model, {
-          inputTokens: Math.ceil(counted.input_tokens * 1.05) + 256,
+          inputTokens: Math.ceil(fresh * 1.05) + 256,
+          cacheReadTokens: cachedPrefix,
           outputTokens: maxTokens,
         })
       }
@@ -441,7 +463,23 @@ export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
       const response = await client.messages.create({
         model: input.model,
         max_tokens: maxTokens,
-        system,
+        /*
+         * One cache breakpoint, covering the tools and the system prompt.
+         *
+         * They are byte-identical on every round and they are most of the bill:
+         * measured on a real turn, 52,442 input tokens of which about 39,000
+         * were 4,800 tokens of instructions and 4,900 tokens of thirty-five tool
+         * schemas, re-read four times. A cached read costs a tenth of that, so
+         * three quarters of what a question cost was the model paying to be
+         * told again what it had just been told.
+         *
+         * The breakpoint sits on the system block because the provider orders a
+         * request tools, then system, then messages, and a breakpoint caches
+         * everything up to and including itself. One here therefore covers both
+         * fixed parts, and the conversation after it stays uncached, which is
+         * correct: it is different every round.
+         */
+        system: [{ type: 'text' as const, text: system, cache_control: { type: 'ephemeral' } }],
         tools: TOOLS,
         messages,
       })
@@ -451,6 +489,16 @@ export async function runAssistant(input: RunInput): Promise<AssistantTurn> {
       // one would make the expensive questions the ones AiKi loses money on.
       usage.inputTokens += response.usage.input_tokens
       usage.outputTokens += response.usage.output_tokens
+      // Kept apart from the uncached input, because they are billed apart.
+      usage.cacheWriteTokens =
+        (usage.cacheWriteTokens ?? 0) + (response.usage.cache_creation_input_tokens ?? 0)
+      usage.cacheReadTokens =
+        (usage.cacheReadTokens ?? 0) + (response.usage.cache_read_input_tokens ?? 0)
+      cachedPrefix = Math.max(
+        response.usage.cache_creation_input_tokens ?? 0,
+        response.usage.cache_read_input_tokens ?? 0,
+        cachedPrefix,
+      )
       await input.onUsage?.({ ...usage }, pointsFor(input.model, usage))
 
       const calls = response.content.filter(

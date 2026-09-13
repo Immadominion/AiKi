@@ -2,6 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAssistant } from './run.js'
 import { runTool } from './tools.js'
 
+/**
+ * The system prompt as the model receives it.
+ *
+ * Sent as one cacheable text block rather than a bare string, so the tools and
+ * instructions are billed once per turn instead of once per round. What these
+ * tests are about is unchanged: the model is told exactly what was counted.
+ */
+const systemText = (call: { system?: unknown }): string => {
+  const sent = call.system
+  if (typeof sent === 'string') return sent
+  const [block] = (sent ?? []) as { text?: unknown }[]
+  return typeof block?.text === 'string' ? block.text : ''
+}
+
 const { create, countTokens } = vi.hoisted(() => ({ create: vi.fn(), countTokens: vi.fn() }))
 vi.mock('@anthropic-ai/sdk', () => ({
   default: class {
@@ -196,7 +210,7 @@ describe('Venus account liquidity is not a position or risk assessment', () => {
     })
     expect(fetch).toHaveBeenCalledOnce()
     expect(result.steps).toMatchObject([{ tool: 'read_external_agent', ok: true, mutating: false }])
-    const request = create.mock.calls[1]?.[0]
+    const request = { ...create.mock.calls[1]?.[0], system: systemText(create.mock.calls[1]?.[0]) }
     expect(request.system).toContain(
       'getAccountLiquidity is not a complete position or risk assessment',
     )

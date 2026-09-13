@@ -3,6 +3,20 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { InMemoryCreditStore } from '../credits/store.js'
 import { registerAssistantRoutes } from './routes.js'
 
+/**
+ * The system prompt as the model receives it.
+ *
+ * Sent as one cacheable text block rather than a bare string, so the tools and
+ * instructions are billed once per turn instead of once per round. What these
+ * tests are about is unchanged: the model is told exactly what was counted.
+ */
+const systemText = (call: { system?: unknown }): string => {
+  const sent = call.system
+  if (typeof sent === 'string') return sent
+  const [block] = (sent ?? []) as { text?: unknown }[]
+  return typeof block?.text === 'string' ? block.text : ''
+}
+
 const create = vi.fn()
 const countTokens = vi.fn()
 vi.mock('@anthropic-ai/sdk', () => ({
@@ -58,7 +72,7 @@ it('counts and sends the identical network-aware system prompt', async () => {
   expect(create).toHaveBeenCalledOnce()
   const system = assistantSystem(networkContext)
   expect(countTokens.mock.calls[0]?.[0].system).toBe(system)
-  expect(create.mock.calls[0]?.[0].system).toBe(system)
+  expect(systemText(create.mock.calls[0]?.[0])).toBe(system)
 })
 
 it('passes only configured chain metadata from the HTTP route to the model', async () => {
@@ -88,7 +102,7 @@ it('passes only configured chain metadata from the HTTP route to the model', asy
     payload: { messages: [{ role: 'user', content: 'Where do I buy points?' }] },
   })
   expect(response.statusCode).toBe(200)
-  const system = create.mock.calls[0]?.[0].system
+  const system = systemText(create.mock.calls[0]?.[0])
   expect(system).toContain('Execution is configured for BNB mainnet (56)')
   expect(system).toContain('USDT deposits are configured for BNB mainnet (56)')
   expect(system).not.toContain(treasury)

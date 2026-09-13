@@ -55,21 +55,49 @@ export function rateFor(model: string): ModelRate {
 export interface Usage {
   inputTokens: number
   outputTokens: number
+  /**
+   * Tokens written to and read from the provider's prompt cache.
+   *
+   * Counted apart from `inputTokens` because the provider bills them at
+   * different rates and the provider already reports them separately: a cached
+   * read is a tenth of the input price and writing the cache costs a quarter
+   * more than reading it fresh once. Folding either into `inputTokens` would
+   * overcharge somebody by roughly ten to one for text they never paid to have
+   * re-read.
+   *
+   * Optional so that every existing caller, and every turn recorded before
+   * caching existed, still prices exactly as it did.
+   */
+  cacheWriteTokens?: number
+  cacheReadTokens?: number
 }
+
+/** Anthropic's published multipliers against a model's own input rate. */
+export const CACHE_WRITE_MULTIPLIER = 1.25
+export const CACHE_READ_MULTIPLIER = 0.1
 
 /** Rounded up, so a turn is never free through rounding. */
 export function pointsFor(model: string, usage: Usage): number {
   const rate = rateFor(model)
   const usd =
-    (usage.inputTokens * rate.inputPerMTok + usage.outputTokens * rate.outputPerMTok) / 1_000_000
+    (usage.inputTokens * rate.inputPerMTok +
+      (usage.cacheWriteTokens ?? 0) * rate.inputPerMTok * CACHE_WRITE_MULTIPLIER +
+      (usage.cacheReadTokens ?? 0) * rate.inputPerMTok * CACHE_READ_MULTIPLIER +
+      usage.outputTokens * rate.outputPerMTok) /
+    1_000_000
   return Math.ceil(usd * POINTS_PER_USD * MARGIN)
 }
 
 /** The same sum in words, for anyone who wants to check it. */
 export function explainCost(model: string, usage: Usage): string {
   const rate = rateFor(model)
+  const cached = (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0)
   return (
     `${usage.inputTokens} in and ${usage.outputTokens} out on ${rate.label}, ` +
+    (cached
+      ? `plus ${usage.cacheReadTokens ?? 0} read from cache at a tenth of the input price and ` +
+        `${usage.cacheWriteTokens ?? 0} written to it at a quarter more, `
+      : '') +
     `at $${rate.inputPerMTok} and $${rate.outputPerMTok} per million, ` +
     `plus a ${Math.round((MARGIN - 1) * 100)}% margin, is ${pointsFor(model, usage)} points.`
   )

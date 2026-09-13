@@ -2,6 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAssistant } from './run.js'
 import { MUTATING, runTool } from './tools.js'
 
+/**
+ * The system prompt as the model receives it.
+ *
+ * Sent as one cacheable text block rather than a bare string, so the tools and
+ * instructions are billed once per turn instead of once per round. What these
+ * tests are about is unchanged: the model is told exactly what was counted.
+ */
+const systemText = (call: { system?: unknown }): string => {
+  const sent = call.system
+  if (typeof sent === 'string') return sent
+  const [block] = (sent ?? []) as { text?: unknown }[]
+  return typeof block?.text === 'string' ? block.text : ''
+}
+
 const { create, countTokens } = vi.hoisted(() => ({ create: vi.fn(), countTokens: vi.fn() }))
 vi.mock('@anthropic-ai/sdk', () => ({
   default: class {
@@ -244,7 +258,7 @@ describe('discovery evidence does not become a market-wide availability claim', 
       ['catalog_capabilities', false],
     ])
     expect(create).toHaveBeenCalledTimes(2)
-    const request = create.mock.calls[1]?.[0]
+    const request = { ...create.mock.calls[1]?.[0], system: systemText(create.mock.calls[1]?.[0]) }
     expect(request.system).toContain('Do not loop through the entire registry')
     expect(request.system).toContain('zero-cost registration URI says how metadata is stored')
     expect(request.system).toContain(
