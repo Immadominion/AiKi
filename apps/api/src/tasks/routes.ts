@@ -229,6 +229,7 @@ export function registerTaskRoutes(
         reason: 'Task delivery is not configured on this deployment.',
       }
     const contact = await input.agentContact(request.params.id)
+    const lastRefusal = await input.tasks.lastRefusal?.(request.params.id).catch(() => null)
     if (!contact?.owner)
       return { ...base, available: false, reason: 'This agent has no recorded owner to pay.' }
     if (!contact.live)
@@ -271,6 +272,17 @@ export function registerTaskRoutes(
       ...((contact.protocol === 'mcp' || contact.protocol === 'a2a') && contact.tools?.length
         ? { tools: contact.tools, toolRequired: true }
         : {}),
+      /*
+       * What it said last time it turned work down.
+       *
+       * Nothing on this chain publishes an input schema, so a refusal is the
+       * only documentation these agents have, and somebody already paid for
+       * this one. Showing it before the next buyer spends turns one wasted hire
+       * into the thing that stops the next four. It is the provider's own
+       * sentence, relayed, and it is history rather than a promise: an agent
+       * that has fixed its inputs will simply be hired successfully.
+       */
+      ...(lastRefusal ? { lastRefusal } : {}),
       /*
        * Said before anybody pays. An endpoint that answers its protocol without
        * having proven it belongs to this registered identity is hireable and is

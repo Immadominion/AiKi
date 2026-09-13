@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import Fastify from 'fastify'
 import postgres from 'postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { turnHold } from '../credits/pricing.js'
 import { PostgresCreditStore, RESERVE_ACCOUNT } from '../credits/store.js'
 import { applyMigrations, readMigrations } from '../db/migrate.js'
 import { type AssistantLimits, PostgresAssistantRequestStore } from './billing.js'
@@ -315,8 +316,8 @@ describe.skipIf(!databaseUrl)('durable Fast billing against PostgreSQL', () => {
       expect((await a.inject(request)).statusCode).toBe(503)
       expect((await b.inject(request)).statusCode).toBe(503)
       expect(run).toHaveBeenCalledTimes(1)
-      expect(await credits.balance(owner)).toBe(3000)
-      expect(await credits.balance(RESERVE_ACCOUNT)).toBe(1951)
+      expect(await credits.balance(owner)).toBe(5000 - turnHold(5000))
+      expect(await credits.balance(RESERVE_ACCOUNT)).toBe(turnHold(5000) - 49)
       const rows = await sql`SELECT state, usage_points FROM assistant_requests`
       expect(rows[0]?.state).toBe('UNCONFIRMED')
       expect(Number(rows[0]?.usage_points)).toBe(49)

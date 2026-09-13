@@ -178,8 +178,11 @@ export const TOOLS: Anthropic.Tool[] = [
       'fee. Each tool it lists may carry an inputSchema, which is that tool\u2019s own JSON Schema, ' +
       'or examples. READ IT. A parameterised agent refuses a brief written in prose and names the ' +
       'fields it wanted, after the buyer has paid, so fill those fields into agent_input on ' +
-      'hire_agent and ask the person for any value you do not have. This checks AiKi task ' +
-      'integration, not every capability the provider offers elsewhere.',
+      'hire_agent and ask the person for any value you do not have. `lastRefusal`, when present, ' +
+      'is what this agent said the last time it turned work down: somebody has already paid for ' +
+      'that sentence, it is usually the only input documentation that exists, and following it is ' +
+      'the difference between buying work and buying the same refusal again. This checks AiKi ' +
+      'task integration, not every capability the provider offers elsewhere.',
     input_schema: {
       type: 'object',
       properties: { agent_id: { type: 'string' } },

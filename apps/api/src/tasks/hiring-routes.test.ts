@@ -227,6 +227,17 @@ describe.skipIf(!process.env.DATABASE_URL)(
       expect(
         (await h.credits.history(h.owner)).filter((entry) => entry.reason === 'task_refund'),
       ).toHaveLength(1)
+      /*
+       * The refusal is kept and readable, because it is the only input
+       * documentation these agents have. This buyer paid for the sentence
+       * "Invalid report inputs"; the next one should not have to pay for it
+       * again. Read off the cancelled task rather than a table of its own.
+       */
+      const remembered = await h.tasks.lastRefusal?.('315943')
+      expect(remembered?.note).toMatch(/Invalid report inputs/)
+      expect(Number.isFinite(Date.parse(String(remembered?.at)))).toBe(true)
+      // Scoped to the agent that said it, not to whoever asked.
+      expect(await h.tasks.lastRefusal?.('999999')).toBeNull()
       expect((await h.request()).json()).toEqual(first.json())
       expect(fetched).toHaveBeenCalledOnce()
       expect((await h.jobs.getAuthorization(h.authorization.id)).spent).toBe(0n)

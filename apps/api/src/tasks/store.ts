@@ -138,6 +138,19 @@ export interface TaskStore {
   /** Trusted explicit provider decline: cancel, refund exact funding, and release the cap atomically. */
   refundDeclinedAssignment(id: string, agentId: string, note: string): Promise<TaskRecord | null>
   /**
+   * What this agent said the last time it turned work down.
+   *
+   * Nothing on this chain publishes an input schema, so a refusal is the only
+   * documentation these agents have, and every one measured carried it: "Send
+   * {skill, pool, stepPct}", "Add separate lines: pool, tickLower, tickUpper,
+   * spacing", "a grid needs bounds, capital, a level count, a stop and a
+   * per-trade fee". Each of those was bought and paid for by somebody, read
+   * once, and thrown away, so the next buyer paid to be told the same thing.
+   *
+   * Optional so a deployment without it simply does not show the line.
+   */
+  lastRefusal?(agentId: string): Promise<{ note: string; at: string } | null>
+  /**
    * Take back work whose claimant ran out of time.
    *
    * The only route out for a hire the agent never answered, and the reason a
@@ -643,6 +656,32 @@ export class PostgresTaskStore implements TaskStore {
     `
     const row = rows[0]
     return row ? toTask(row) : null
+  }
+
+  /**
+   * What this agent last said when it turned work down.
+   *
+   * Read off the tasks already recorded rather than kept in a table of its own:
+   * a declined hire is already a CANCELLED row carrying the agent, the note and
+   * the time, so the marketplace already knows this and was simply never asked.
+   *
+   * Newest only. An agent that changed what it wants should be described by
+   * what it wants now, and a list of everything it has ever refused would be a
+   * changelog nobody asked for on a screen about whether to spend ten points.
+   */
+  async lastRefusal(agentId: string) {
+    const rows = await this.sql<{ dispatch_note: string; dispatched_at: string }[]>`
+      SELECT dispatch_note, dispatched_at
+        FROM tasks
+       WHERE assigned_agent_id = ${agentId}
+         AND status = 'CANCELLED'
+         AND dispatch_note IS NOT NULL
+         AND dispatched_at IS NOT NULL
+       ORDER BY dispatched_at DESC
+       LIMIT 1
+    `
+    const row = rows[0]
+    return row ? { note: row.dispatch_note, at: new Date(row.dispatched_at).toISOString() } : null
   }
 
   /** Note that we called an agent, and what came of it. */
