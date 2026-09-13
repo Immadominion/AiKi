@@ -255,6 +255,21 @@ export interface AgentTaskSupport {
   feeBasisPoints: number
   inputHint?: string
   kinds?: string[]
+  /**
+   * The capabilities an MCP or A2A agent is advertising right now.
+   *
+   * The browser had none of this, so it showed such an agent as available and
+   * then could not hire it: the API refuses a task that does not name which
+   * capability is being paid for, and the form never sent one. After the task
+   * board learned those two protocols that became most of what is hireable.
+   */
+  tools?: { name: string; description: string; inputSchema?: unknown; examples?: string[] }[]
+  toolRequired?: boolean
+  /** False when the endpoint answers but has not proven it owns this identity. */
+  identityProven?: boolean
+  identityNote?: string
+  /** What this agent said last time it turned work down. Often its only documentation. */
+  lastRefusal?: { note: string; at: string }
 }
 
 export interface TaskRequest {
@@ -265,6 +280,8 @@ export interface TaskRequest {
   workHours?: number
   authorizationId?: string
   assignAgentId?: string
+  /** Which capability to pay for. Required by the API for MCP and A2A agents. */
+  agentTool?: string
   hirePerson?: string
 }
 

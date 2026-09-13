@@ -40,6 +40,15 @@ export interface AgentTaskDraft {
   pricePoints: number
   workHours: number
   walletAddress?: string
+  /**
+   * Which capability of an MCP or A2A agent is being bought.
+   *
+   * Required by the API for those two, and the form had no way to send it, so
+   * the browser could reach the point of paying and then be refused. Validated
+   * against what the agent advertises by the caller, because only the caller
+   * has that list.
+   */
+  agentTool?: string
 }
 
 export function buildAgentTask(draft: AgentTaskDraft): TaskRequest {
@@ -69,6 +78,7 @@ export function buildAgentTask(draft: AgentTaskDraft): TaskRequest {
     pricePoints: draft.pricePoints,
     workHours: draft.workHours,
     assignAgentId: draft.agentId,
+    ...(draft.agentTool ? { agentTool: draft.agentTool } : {}),
   }
 }
 

@@ -102,6 +102,17 @@ export function AgentTaskFields({
   const kinds = TASK_TYPES.filter(
     ([value]) => !support.kinds?.length || support.kinds.includes(value),
   )
+  /*
+   * Which capability is being paid for.
+   *
+   * Required by the API for MCP and A2A agents, and the form had no way to send
+   * one, so the browser showed such an agent as available and was then refused
+   * at the point of paying. Defaulted to the only tool when there is only one,
+   * because choosing from a list of one is not a decision.
+   */
+  const [agentTool, setAgentTool] = useState(
+    support.tools?.length === 1 ? (support.tools[0]?.name ?? '') : '',
+  )
   const [title, setTitle] = useState('')
   const [brief, setBrief] = useState('')
   const [kind, setKind] = useState<string>(kinds[0]?.[0] ?? 'research')
@@ -184,6 +195,10 @@ export function AgentTaskFields({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (inFlight.current || !authenticated || !support.available) return
+    if (support.toolRequired && !agentTool) {
+      setProblem('Choose which capability you are paying for.')
+      return
+    }
     setProblem(null)
     setPriceError(null)
     let sentAttempt: TaskAttempt | null = null
@@ -197,6 +212,7 @@ export function AgentTaskFields({
         pricePoints: priced.offer,
         workHours,
         ...(includeWallet ? { walletAddress } : {}),
+        ...(agentTool ? { agentTool } : {}),
       })
       const fingerprint = taskRequestFingerprint(request)
       const previous = readAttempt(storageKey, pendingAttempt)
@@ -356,13 +372,64 @@ export function AgentTaskFields({
                 className="text-muted mt-2 flex items-start justify-between gap-4 text-xs leading-relaxed"
               >
                 <span>
-                  {support.inputHint ?? 'Include the details the agent needs to do this job.'}
+                  {/*
+                    What this agent said the last time it turned work down is
+                    better guidance than anything AiKi can write, because nothing
+                    on this chain publishes an input schema and somebody already
+                    paid for that sentence.
+                  */}
+                  {support.lastRefusal?.note ??
+                    support.inputHint ??
+                    'Include the details the agent needs to do this job.'}
                 </span>
                 <span className="shrink-0 tabular-nums">
                   {brief.length}/{descriptionLimit}
                 </span>
               </div>
             </div>
+            {support.toolRequired && support.tools?.length ? (
+              <fieldset className="border-ink-app/12 rounded-xl border p-4">
+                <legend className="px-1 text-sm font-bold">What are you paying for</legend>
+                <p className="text-muted mt-0 mb-3 text-xs leading-relaxed">
+                  This agent sells more than one thing. Pick the one you want; the price and the
+                  brief apply to that one.
+                </p>
+                <div className="grid gap-2">
+                  {support.tools.map((tool) => (
+                    <label
+                      key={tool.name}
+                      className={`flex cursor-pointer gap-3 rounded-lg border p-3 text-sm ${
+                        agentTool === tool.name
+                          ? 'border-ink-app bg-surface-hover'
+                          : 'border-ink-app/12'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="agent-tool"
+                        value={tool.name}
+                        checked={agentTool === tool.name}
+                        onChange={() => setAgentTool(tool.name)}
+                        className="mt-1 shrink-0"
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-semibold">{tool.name}</span>
+                        {tool.description ? (
+                          <span className="text-muted mt-1 block text-xs leading-relaxed">
+                            {tool.description}
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ) : null}
+            {support.identityProven === false && support.identityNote ? (
+              <p className="border-ink-app/12 text-muted m-0 rounded-xl border p-4 text-xs leading-relaxed">
+                {support.identityNote}
+              </p>
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="task-kind" className="text-sm font-bold">

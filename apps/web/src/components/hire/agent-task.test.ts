@@ -6,6 +6,7 @@ import {
   taskCreationMessage,
   taskPrice,
   taskRejectedBeforeCharge,
+  taskRequestFingerprint,
 } from './agent-task'
 
 const draft = {
@@ -139,4 +140,47 @@ test('delivered and still-working requests retain their existing guidance', () =
     taskCreationMessage({ status: 'CLAIMED' }),
     'Your request is in Work. Follow its delivery there.',
   )
+})
+
+/*
+ * Naming the capability being bought.
+ *
+ * The API refuses a task for an MCP or A2A agent that does not say which
+ * capability it is paying for, with 422 AGENT_TOOL_REQUIRED. The browser had no
+ * way to send one, so it showed such an agent as available, took a brief and a
+ * price, and was refused at the point of paying. After the task board learned
+ * those two protocols that became most of what is hireable.
+ */
+test('carries the capability being bought, and omits it when there is none', () => {
+  const draft = {
+    agentId: '341554',
+    title: 'Plan a grid',
+    brief: 'Bounds and spacing.',
+    kind: 'research',
+    pricePoints: 10,
+    workHours: 24,
+  }
+  assert.equal(buildAgentTask({ ...draft, agentTool: 'grid-plan' }).agentTool, 'grid-plan')
+  // An agent speaking AiKi's own envelope sells one thing and names no tool.
+  assert.equal(buildAgentTask(draft).agentTool, undefined)
+  assert.ok(!('agentTool' in buildAgentTask(draft)))
+})
+
+test('a capability choice changes the request, so a retry is a different request', () => {
+  /*
+   * The fingerprint decides whether an uncertain earlier attempt may be
+   * replayed rather than re-charged. Buying `act` instead of `analyse` is a
+   * different purchase, and on some agents `act` places a real order.
+   */
+  const draft = {
+    agentId: '338477',
+    title: 'Grid',
+    brief: 'Do the thing.',
+    kind: 'research',
+    pricePoints: 10,
+    workHours: 24,
+  }
+  const analyse = taskRequestFingerprint(buildAgentTask({ ...draft, agentTool: 'analyse' }))
+  const act = taskRequestFingerprint(buildAgentTask({ ...draft, agentTool: 'act' }))
+  assert.notEqual(analyse, act)
 })
