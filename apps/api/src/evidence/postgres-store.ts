@@ -460,14 +460,30 @@ export class PostgresEvidenceStore implements EvidenceStore {
          * Evidence order. Watched-and-answering beats unknown, and unknown beats
          * known-broken, because "we have not checked" is a better thing to say
          * about a listing than "we checked and it is a static page".
+         *
+         * Stale evidence gets its own two rungs rather than being folded into
+         * the unknown one. A stale probe used to score exactly what UNPROBED
+         * scores, which said "we have never looked" about an agent we watched
+         * answer, and since most of the index is stale that was most of the
+         * evidence this marketplace has, collapsed into one undifferentiated
+         * bucket and then sorted by agent id.
+         *
+         * What that cost, measured: searching "grid trading" put the one agent
+         * whose tool actually places an order at position ten, behind four
+         * agents nobody has ever checked, and the assistant asks for eight. So
+         * it could not offer the thing it can genuinely do. Ranking stale above
+         * unknown stays honest because every row carries livenessFreshness and
+         * lastProbeAt, and hiring is gated separately on a current probe.
          */
-        (CASE state
-           WHEN 'LIVE' THEN CASE WHEN is_current THEN 6 ELSE 4 END
-           WHEN 'DEGRADED' THEN CASE WHEN is_current THEN 5 ELSE 4 END
-           WHEN 'UNPROBED' THEN 4
-           WHEN 'DECLARED_ONLY' THEN 3
-           WHEN 'PLACEHOLDER_URL' THEN 2
-           WHEN 'IMPOSTOR_STATIC' THEN 1
+        (CASE
+           WHEN state = 'LIVE' AND is_current THEN 8
+           WHEN state = 'DEGRADED' AND is_current THEN 7
+           WHEN state = 'LIVE' THEN 6
+           WHEN state = 'DEGRADED' THEN 5
+           WHEN state = 'UNPROBED' THEN 4
+           WHEN state = 'DECLARED_ONLY' THEN 3
+           WHEN state = 'PLACEHOLDER_URL' THEN 2
+           WHEN state = 'IMPOSTOR_STATIC' THEN 1
            ELSE 0
          END) AS rank
       FROM doc

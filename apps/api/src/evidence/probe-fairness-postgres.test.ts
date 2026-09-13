@@ -210,6 +210,23 @@ describe.skipIf(!databaseUrl)(
       expect(all.total).toBe(5)
       expect(all.byState).toEqual({ LIVE: 3, DEGRADED: 1, UNPROBED: 1 })
       expect(all.currentByState).toEqual({ LIVE: 1, DEGRADED: 1 })
+      /*
+       * Stale is its own rung, above unknown. It used to score exactly what
+       * UNPROBED scores, so an agent we watched answer in August sorted among
+       * the ones nobody has ever opened, by agent id. With most of the index
+       * stale that was most of this marketplace's evidence, thrown away at the
+       * point where it decides what somebody sees first.
+       *
+       * `future-live` carries a probe from tomorrow, which is malformed rather
+       * than fresh, so it ranks with the stale ones and not with the current.
+       */
+      expect(all.matches.map((r) => r.agentId)).toEqual([
+        'fresh-live',
+        'fresh-degraded',
+        'future-live',
+        'old-live',
+        'new',
+      ])
       const filtered = await store.searchAgents(
         { tsquery: null, states: ['LIVE', 'DEGRADED'], limit: 100 },
         now,
