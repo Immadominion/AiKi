@@ -57,6 +57,8 @@ import type { AgentTaskContact } from './support.js'
 
 /** Cheap upper bounds, so a post cannot be a novel or a denial of service. */
 const MAX_TITLE = 120
+/** Bounded like a brief: relayed to a third party, so it cannot be unbounded. */
+const MAX_AGENT_INPUT = 8_192
 const MAX_BRIEF = 2_000
 const MAX_SUBMISSION = 20_000
 /** A tenth of a cent. Below this the fee rounds to nothing and so does the work. */
@@ -356,6 +358,19 @@ export function registerTaskRoutes(
        * meaningless for one that speaks AiKi's own envelope.
        */
       agentTool?: string
+      /**
+       * What the buyer filled in for that capability, sent as data.
+       *
+       * A brief is written for a person to read. A parameterised agent is not a
+       * person: it reads a data part or a tool's arguments, and it refuses
+       * without them. Measured on a real hire, twice, including one where every
+       * named field was written into the prose.
+       *
+       * Relayed rather than validated against the provider's schema. AiKi does
+       * not own that schema, and a marketplace that silently rewrites what a
+       * buyer sent is worse than one that relays it and reports the refusal.
+       */
+      agentInput?: Record<string, unknown>
       /** Or hire this one person, by address. Nothing is dispatched: they see it. */
       hirePerson?: string
     }
@@ -455,6 +470,19 @@ export function registerTaskRoutes(
 
       const title = text(request.body?.title, MAX_TITLE)
       const brief = text(request.body?.brief, MAX_BRIEF)
+      /*
+       * A plain object or nothing. Bounded before it is relayed, because it is
+       * sent verbatim to a third party and an unbounded body from a session is
+       * an unbounded body somebody else has to parse.
+       */
+      const supplied = request.body?.agentInput
+      const agentInput =
+        supplied &&
+        typeof supplied === 'object' &&
+        !Array.isArray(supplied) &&
+        JSON.stringify(supplied).length <= MAX_AGENT_INPUT
+          ? supplied
+          : undefined
       const kind = request.body?.kind
       const pricePoints = Number(request.body?.pricePoints ?? 0)
 
@@ -792,6 +820,7 @@ export function registerTaskRoutes(
                 brief,
                 intent: task.id,
                 ...(assigned.tool ? { skill: assigned.tool } : {}),
+                ...(agentInput ? { agentInput } : {}),
               })
             : assigned.transport === 'mcp'
               ? await dispatchOverMcp({
@@ -804,7 +833,12 @@ export function registerTaskRoutes(
                    * honours it. The grid agents on this registry key idempotency
                    * on exactly this field.
                    */
-                  arguments: { intentId: task.id, brief, title },
+                  /*
+                   * The buyer's fields last, so they win over the three AiKi
+                   * adds. A provider whose schema names `title` means its own
+                   * `title`, not ours.
+                   */
+                  arguments: { intentId: task.id, brief, title, ...agentInput },
                 })
               : await dispatchToAgent({
                   endpoint: assigned.endpoint,

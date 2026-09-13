@@ -270,6 +270,14 @@ function a2aText(result: unknown): string {
   return parts.join('\n').trim().slice(0, MAX_DELIVERY_CHARS)
 }
 
+/** The task state A2A reports, when the answer is a task rather than a message. */
+function a2aState(result: unknown): string {
+  const record = result as { kind?: unknown; status?: { state?: unknown } } | null
+  if (!record || typeof record !== 'object') return ''
+  const state = record.status?.state
+  return typeof state === 'string' ? state : ''
+}
+
 export interface A2ADispatchInput {
   /** The JSON-RPC url from the card, never the card url itself. */
   url: string
@@ -279,6 +287,16 @@ export interface A2ADispatchInput {
   intent: string
   /** A skill id from the card, when the buyer named one. */
   skill?: string
+  /**
+   * What the buyer filled in, sent as structured data rather than described.
+   *
+   * The reason this exists: a real hire of a real agent came back "the task
+   * does not state lower bound, upper bound, capital, stop price, fee per
+   * trade", and resending with every one of those written into the prose got
+   * the identical refusal. A parameterised agent reads a data part. It does not
+   * parse English, and nothing in the protocol says it should.
+   */
+  agentInput?: Record<string, unknown>
   fetcher?: typeof guardedFetch
 }
 
@@ -289,7 +307,21 @@ export async function dispatchOverA2A(input: A2ADispatchInput): Promise<Dispatch
     messageId: input.intent,
     parts: [
       { kind: 'text', text: `${input.title}\n\n${input.brief}` },
-      ...(input.skill ? [{ kind: 'data', data: { skill: input.skill } }] : []),
+      /*
+       * One data part carrying both, with the skill written last so buyer input
+       * cannot overwrite which capability was bought and paid for.
+       */
+      ...(input.skill || input.agentInput
+        ? [
+            {
+              kind: 'data',
+              data: {
+                ...input.agentInput,
+                ...(input.skill ? { skill: input.skill } : {}),
+              },
+            },
+          ]
+        : []),
     ],
   }
 
@@ -329,6 +361,26 @@ export async function dispatchOverA2A(input: A2ADispatchInput): Promise<Dispatch
     const reason =
       typeof envelope.error.message === 'string' ? envelope.error.message.slice(0, 200) : ''
     return { declined: true, note: `Declined it: ${reason || 'The agent returned an error.'}` }
+  }
+
+  /*
+   * A task carries its own verdict, and the protocol names the states that are
+   * not finished work: `input-required` and `auth-required` are the agent
+   * asking for something back, `failed` and `rejected` are it saying no, and
+   * `canceled` is it stopping. Reading the text out of any of those and
+   * recording a delivery is the marketplace paying full price for the sentence
+   * "you did not tell me enough", which is exactly what a real hire returned.
+   *
+   * Only a task has a state. A bare message has none, and an absent state is
+   * not a refusal, so it is still read as an answer.
+   */
+  const state = a2aState(envelope.result)
+  if (state && state !== 'completed') {
+    const said = a2aText(envelope.result)
+    return {
+      declined: true,
+      note: `Declined it: ${said ? said.slice(0, 200) : `the agent reported ${state}.`}`,
+    }
   }
 
   const text = a2aText(envelope.result)

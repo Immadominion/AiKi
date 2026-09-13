@@ -134,7 +134,13 @@ export const TOOLS: Anthropic.Tool[] = [
   {
     name: 'agent_task_support',
     description:
-      'Check whether a specific agent currently accepts AiKi tasks before offering to hire it. Returns availability, input guidance when declared, minimum buyer offer and the platform fee. This checks AiKi task integration, not every capability the provider offers elsewhere.',
+      'Check whether a specific agent currently accepts AiKi tasks before offering to hire it. ' +
+      'Returns availability, input guidance when declared, minimum buyer offer and the platform ' +
+      'fee. Each tool it lists may carry an inputSchema, which is that tool\u2019s own JSON Schema, ' +
+      'or examples. READ IT. A parameterised agent refuses a brief written in prose and names the ' +
+      'fields it wanted, after the buyer has paid, so fill those fields into agent_input on ' +
+      'hire_agent and ask the person for any value you do not have. This checks AiKi task ' +
+      'integration, not every capability the provider offers elsewhere.',
     input_schema: {
       type: 'object',
       properties: { agent_id: { type: 'string' } },
@@ -459,6 +465,15 @@ export const TOOLS: Anthropic.Tool[] = [
             'returns toolRequired, and it must be one of the names in the tools it listed. Read ' +
             'the descriptions, say which one you are buying and what it does, and get agreement ' +
             'before buying it.',
+        },
+        agent_input: {
+          type: 'object',
+          description:
+            'The values that tool needs, as an object matching its inputSchema, or its examples ' +
+            'when it publishes no schema. The brief is prose for a person; this is what the agent ' +
+            'actually reads. Sent verbatim. Omitting it on a parameterised agent buys a refusal ' +
+            'that lists the fields you left out, and the points are already held by then, so ask ' +
+            'the person for anything missing BEFORE calling this.',
         },
       },
       required: ['agent_id', 'title', 'brief', 'kind', 'price_points', 'mandate_id'],
@@ -946,6 +961,13 @@ export async function runTool(
           assignAgentId: args.agent_id,
           ...(typeof args.agent_tool === 'string' && args.agent_tool
             ? { agentTool: args.agent_tool }
+            : {}),
+          // A plain object or nothing. The API bounds it and relays it; the
+          // model never gets to send an array or a bare string as parameters.
+          ...(args.agent_input &&
+          typeof args.agent_input === 'object' &&
+          !Array.isArray(args.agent_input)
+            ? { agentInput: args.agent_input }
             : {}),
         },
         { 'idempotency-key': operationKey },

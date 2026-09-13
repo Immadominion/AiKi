@@ -31,7 +31,27 @@ export interface AgentTaskContact {
    * guessing with somebody's money is not a convention. The buyer picks, and
    * they can only pick from what the agent is advertising right now.
    */
-  tools?: { name: string; description: string }[]
+  tools?: AgentCapability[]
+}
+
+/**
+ * One thing an agent sells, and what it needs before it can do it.
+ *
+ * The last field is the one that was missing, and its absence was not cosmetic:
+ * a buyer could find a parameterised agent, pay it, and get back "you did not
+ * tell me the bounds, the capital or the stop". AiKi knew the shape all along
+ * for MCP, threw it away at discovery, and then sent prose.
+ *
+ * `inputSchema` is the tool's own JSON Schema, relayed and never invented.
+ * `examples` is the nearest thing A2A has: its cards carry no schema, so a
+ * skill's own examples are the only machine-readable statement of what a call
+ * looks like.
+ */
+export interface AgentCapability {
+  name: string
+  description: string
+  inputSchema?: unknown
+  examples?: string[]
 }
 
 const MAX_CAPABILITY_BYTES = 16_384
@@ -68,7 +88,7 @@ async function capability(response: Response): Promise<Record<string, unknown> |
 /** An A2A agent card, or null. Shared so one fetched document is judged once. */
 function asAgentCard(
   card: Record<string, unknown> | null,
-): { url: string; skills: { name: string; description: string }[] } | null {
+): { url: string; skills: AgentCapability[] } | null {
   const url = typeof card?.url === 'string' ? card.url : ''
   if (!url || !/^https:\/\//i.test(url) || /[{}]/.test(url)) return null
   const skills = Array.isArray(card?.skills)
@@ -81,10 +101,23 @@ function asAgentCard(
               : typeof entry?.name === 'string'
                 ? entry.name
                 : ''
+          /*
+           * A2A 0.3.0 gives a skill no input schema, so examples are the only
+           * thing on a card that says what a call actually looks like. Relayed
+           * as the provider wrote them, capped, and never turned into a schema
+           * AiKi made up.
+           */
+          const examples = Array.isArray((entry as { examples?: unknown } | null)?.examples)
+            ? (entry as { examples: unknown[] }).examples
+                .filter((example): example is string => typeof example === 'string')
+                .slice(0, 4)
+                .map((example) => example.slice(0, 400))
+            : []
           return {
             name,
             description:
               typeof entry?.description === 'string' ? entry.description.slice(0, 300) : '',
+            ...(examples.length ? { examples } : {}),
           }
         })
         .filter((skill) => skill.name)
@@ -273,7 +306,20 @@ export async function resolveTaskEndpoint(
       const session = await connect(endpoint)
       try {
         const tools = session.tools
-          .map((tool) => ({ name: tool.name, description: tool.description.slice(0, 300) }))
+          .map((tool) => ({
+            name: tool.name,
+            description: tool.description.slice(0, 300),
+            /*
+             * The tool's own schema, relayed. AiKi already had this at every
+             * handshake and dropped it here, so a buyer could be sold a
+             * parameterised tool with no way to learn what it takes, and the
+             * dispatcher then sent prose. Capped the way the catalogue caps it:
+             * a schema too big to read is not a schema anybody can fill in.
+             */
+            ...(tool.inputSchema && JSON.stringify(tool.inputSchema).length <= 16_384
+              ? { inputSchema: tool.inputSchema }
+              : {}),
+          }))
           .slice(0, 40)
         if (!tools.length) continue
         return { endpoint, compatible: true, protocol: 'mcp', tools }

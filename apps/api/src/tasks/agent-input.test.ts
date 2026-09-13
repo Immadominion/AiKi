@@ -1,0 +1,231 @@
+import { expect, it, vi } from 'vitest'
+import { dispatchOverA2A, dispatchOverMcp } from './dispatch.js'
+import { resolveTaskEndpoint } from './support.js'
+
+/**
+ * Telling an agent what it needs to know.
+ *
+ * Written against a real hire that failed. Lattice (341554) was paid ten points
+ * over A2A and answered "the task does not state lower bound, upper bound,
+ * capital, stop price, fee per trade in bps". The task was resent with every
+ * one of those written into the prose and got the identical refusal, because a
+ * parameterised agent reads a data part and does not parse English.
+ *
+ * The money is the point. Every one of these failures happens AFTER the buyer
+ * has paid, so a marketplace that cannot carry parameters sells refusals.
+ */
+
+const RPC = 'https://marque.example/agents/lattice/a2a'
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+it('sends what the buyer filled in as data, not as prose', async () => {
+  const sent: RequestInit[] = []
+  const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
+    sent.push(init)
+    return json({
+      jsonrpc: '2.0',
+      result: { kind: 'message', parts: [{ kind: 'text', text: 'ok' }] },
+    })
+  })
+  await dispatchOverA2A({
+    url: RPC,
+    title: 'Plan a grid',
+    brief: 'prose for a person',
+    intent: '11111111-1111-4111-8111-111111111111',
+    skill: 'grid-plan',
+    agentInput: { lowerBound: 560, upperBound: 640, levels: 8, capital: 100 },
+    fetcher: fetcher as never,
+  })
+  const parts = JSON.parse(String(sent[0]?.body)).params.message.parts
+  expect(parts[0]).toEqual({ kind: 'text', text: 'Plan a grid\n\nprose for a person' })
+  expect(parts[1]).toEqual({
+    kind: 'data',
+    data: { lowerBound: 560, upperBound: 640, levels: 8, capital: 100, skill: 'grid-plan' },
+  })
+})
+
+it('will not let buyer input overwrite the capability that was paid for', async () => {
+  const sent: RequestInit[] = []
+  const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
+    sent.push(init)
+    return json({
+      jsonrpc: '2.0',
+      result: { kind: 'message', parts: [{ kind: 'text', text: 'ok' }] },
+    })
+  })
+  await dispatchOverA2A({
+    url: RPC,
+    title: 't',
+    brief: 'b',
+    intent: '11111111-1111-4111-8111-111111111111',
+    skill: 'grid-plan',
+    agentInput: { skill: 'act' },
+    fetcher: fetcher as never,
+  })
+  const parts = JSON.parse(String(sent[0]?.body)).params.message.parts
+  // `act` places a real order. Buying one capability and calling another is the
+  // one substitution this must never make.
+  expect(parts[1].data.skill).toBe('grid-plan')
+})
+
+it('still sends a data part for the skill alone when nothing was filled in', async () => {
+  const sent: RequestInit[] = []
+  const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
+    sent.push(init)
+    return json({
+      jsonrpc: '2.0',
+      result: { kind: 'message', parts: [{ kind: 'text', text: 'ok' }] },
+    })
+  })
+  await dispatchOverA2A({
+    url: RPC,
+    title: 't',
+    brief: 'b',
+    intent: '11111111-1111-4111-8111-111111111111',
+    skill: 'grid-plan',
+    fetcher: fetcher as never,
+  })
+  expect(JSON.parse(String(sent[0]?.body)).params.message.parts[1].data).toEqual({
+    skill: 'grid-plan',
+  })
+})
+
+it.each(['input-required', 'auth-required', 'failed', 'rejected', 'canceled'])(
+  'does not record work for a task the agent reports as %s',
+  async (state) => {
+    const fetcher = vi.fn(async () =>
+      json({
+        jsonrpc: '2.0',
+        result: {
+          kind: 'task',
+          status: {
+            state,
+            message: { parts: [{ kind: 'text', text: 'a grid needs bounds, capital and a stop' }] },
+          },
+        },
+      }),
+    )
+    const out = await dispatchOverA2A({
+      url: RPC,
+      title: 't',
+      brief: 'b',
+      intent: '11111111-1111-4111-8111-111111111111',
+      fetcher: fetcher as never,
+    })
+    expect(out.declined).toBe(true)
+    expect(out.delivered).toBeUndefined()
+    expect(out.note).toMatch(/a grid needs bounds/)
+  },
+)
+
+it('records completed work, and a bare message that states no task state', async () => {
+  const completed = vi.fn(async () =>
+    json({
+      jsonrpc: '2.0',
+      result: {
+        kind: 'task',
+        status: { state: 'completed' },
+        artifacts: [{ parts: [{ kind: 'text', text: 'four levels' }] }],
+      },
+    }),
+  )
+  const done = await dispatchOverA2A({
+    url: RPC,
+    title: 't',
+    brief: 'b',
+    intent: '11111111-1111-4111-8111-111111111111',
+    fetcher: completed as never,
+  })
+  expect(done.delivered).toBe('four levels')
+
+  // A message has no state at all, and an absent state is not a refusal.
+  const message = vi.fn(async () =>
+    json({ jsonrpc: '2.0', result: { kind: 'message', parts: [{ kind: 'text', text: 'plan' }] } }),
+  )
+  const bare = await dispatchOverA2A({
+    url: RPC,
+    title: 't',
+    brief: 'b',
+    intent: '11111111-1111-4111-8111-111111111111',
+    fetcher: message as never,
+  })
+  expect(bare.delivered).toBe('plan')
+  expect(bare.declined).toBeUndefined()
+})
+
+it('relays an MCP tool schema instead of dropping it at discovery', async () => {
+  const schema = {
+    type: 'object',
+    properties: { pool: { type: 'string' }, levels: { type: 'number' } },
+    required: ['pool'],
+  }
+  const connect = vi.fn(async () => ({
+    version: '2025-06-18',
+    tools: [{ name: 'act', description: 'Places one order.', inputSchema: schema }],
+    truncated: false,
+    call: async () => ({}),
+    close: vi.fn(),
+  }))
+  const contact = await resolveTaskEndpoint(
+    [{ name: 'MCP', endpoint: 'https://provider.example/mcp' }],
+    vi.fn(async () => {
+      throw new Error('no route')
+    }) as never,
+    connect as never,
+  )
+  // Without this a buyer is sold a tool with no way to learn what it takes.
+  expect(contact.tools?.[0]?.inputSchema).toEqual(schema)
+})
+
+it('drops a schema too large for anybody to read, and keeps the tool', async () => {
+  const connect = vi.fn(async () => ({
+    version: '2025-06-18',
+    tools: [
+      {
+        name: 'act',
+        description: 'Places one order.',
+        inputSchema: { type: 'object', note: 'x'.repeat(20_000) },
+      },
+    ],
+    truncated: false,
+    call: async () => ({}),
+    close: vi.fn(),
+  }))
+  const contact = await resolveTaskEndpoint(
+    [{ name: 'MCP', endpoint: 'https://provider.example/mcp' }],
+    vi.fn(async () => {
+      throw new Error('no route')
+    }) as never,
+    connect as never,
+  )
+  expect(contact.compatible).toBe(true)
+  expect(contact.tools?.[0]?.name).toBe('act')
+  expect(contact.tools?.[0]?.inputSchema).toBeUndefined()
+})
+
+it('passes the buyer arguments to the MCP tool, over AiKi’s own three', async () => {
+  const called: unknown[] = []
+  const connect = vi.fn(async () => ({
+    version: '2025-06-18',
+    tools: [{ name: 'act', description: '', inputSchema: {} }],
+    truncated: false,
+    call: async (_name: string, args: unknown) => {
+      called.push(args)
+      return { content: [{ type: 'text', text: 'placed' }] }
+    },
+    close: vi.fn(),
+  }))
+  await dispatchOverMcp({
+    endpoint: 'https://provider.example/mcp',
+    tool: 'act',
+    arguments: { intentId: 'task-1', brief: 'prose', title: 'ours', pool: '0xabc' },
+    connect: connect as never,
+  })
+  expect(called[0]).toEqual({
+    intentId: 'task-1',
+    brief: 'prose',
+    title: 'ours',
+    pool: '0xabc',
+  })
+})
