@@ -300,13 +300,41 @@ export interface A2ADispatchInput {
   fetcher?: typeof guardedFetch
 }
 
+/**
+ * The buyer's fields as lines, for the agents that read the text.
+ *
+ * Measured rather than assumed. Lattice reported a value missing when it was
+ * sent as data and present when the same value sat in the prose, so it parses
+ * the text part; SMEAI delivered from a data part. The ecosystem is split down
+ * the middle and a marketplace does not get to pick which half its buyers reach,
+ * so the fields go in both and each agent takes the one it understands.
+ *
+ * `key: value` on its own line, because that is the shape the agents that do
+ * read text asked for in their own refusals: "Add separate lines: pool:
+ * YOUR_POOL_ADDRESS; tickLower: -100".
+ */
+function inputLines(agentInput: Record<string, unknown> | undefined): string {
+  if (!agentInput) return ''
+  const lines = Object.entries(agentInput)
+    .filter(([key]) => key !== 'skill')
+    .slice(0, 40)
+    .map(([key, value]) => {
+      const rendered =
+        typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+          ? String(value)
+          : JSON.stringify(value)
+      return `${key}: ${(rendered ?? '').slice(0, 400)}`
+    })
+  return lines.length ? `\n\n${lines.join('\n')}` : ''
+}
+
 export async function dispatchOverA2A(input: A2ADispatchInput): Promise<DispatchOutcome> {
   const message = {
     role: 'user',
     kind: 'message',
     messageId: input.intent,
     parts: [
-      { kind: 'text', text: `${input.title}\n\n${input.brief}` },
+      { kind: 'text', text: `${input.title}\n\n${input.brief}${inputLines(input.agentInput)}` },
       /*
        * One data part carrying both, with the skill written last so buyer input
        * cannot overwrite which capability was bought and paid for.

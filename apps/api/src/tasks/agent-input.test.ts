@@ -19,7 +19,7 @@ const RPC = 'https://marque.example/agents/lattice/a2a'
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
-it('sends what the buyer filled in as data, not as prose', async () => {
+it('sends what the buyer filled in as data AND as lines, because the ecosystem is split', async () => {
   const sent: RequestInit[] = []
   const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
     sent.push(init)
@@ -38,11 +38,67 @@ it('sends what the buyer filled in as data, not as prose', async () => {
     fetcher: fetcher as never,
   })
   const parts = JSON.parse(String(sent[0]?.body)).params.message.parts
-  expect(parts[0]).toEqual({ kind: 'text', text: 'Plan a grid\n\nprose for a person' })
+  /*
+   * Measured, not guessed. Lattice reported a value missing when it was sent as
+   * data and present when the same value sat in the prose, so it reads the text
+   * part. SMEAI delivered from a data part. A marketplace does not get to pick
+   * which half of the ecosystem its buyers reach.
+   */
+  expect(parts[0].text).toBe(
+    'Plan a grid\n\nprose for a person\n\nlowerBound: 560\nupperBound: 640\nlevels: 8\ncapital: 100',
+  )
   expect(parts[1]).toEqual({
     kind: 'data',
     data: { lowerBound: 560, upperBound: 640, levels: 8, capital: 100, skill: 'grid-plan' },
   })
+})
+
+it('leaves the text alone when the buyer filled in nothing', async () => {
+  const sent: RequestInit[] = []
+  const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
+    sent.push(init)
+    return json({
+      jsonrpc: '2.0',
+      result: { kind: 'message', parts: [{ kind: 'text', text: 'ok' }] },
+    })
+  })
+  await dispatchOverA2A({
+    url: RPC,
+    title: 'Plan a grid',
+    brief: 'prose for a person',
+    intent: '11111111-1111-4111-8111-111111111111',
+    skill: 'grid-plan',
+    fetcher: fetcher as never,
+  })
+  expect(JSON.parse(String(sent[0]?.body)).params.message.parts[0].text).toBe(
+    'Plan a grid\n\nprose for a person',
+  )
+})
+
+it('does not repeat the skill in the lines, and renders a value that is not a scalar', async () => {
+  const sent: RequestInit[] = []
+  const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
+    sent.push(init)
+    return json({
+      jsonrpc: '2.0',
+      result: { kind: 'message', parts: [{ kind: 'text', text: 'ok' }] },
+    })
+  })
+  await dispatchOverA2A({
+    url: RPC,
+    title: 't',
+    brief: 'b',
+    intent: '11111111-1111-4111-8111-111111111111',
+    skill: 'grid-plan',
+    // `skill` names the purchase and is already its own field in the data part;
+    // repeating it as prose invites an agent to read it as a parameter.
+    agentInput: { skill: 'act', pools: ['0xaa', '0xbb'], live: true },
+    fetcher: fetcher as never,
+  })
+  const text = JSON.parse(String(sent[0]?.body)).params.message.parts[0].text
+  expect(text).not.toMatch(/skill:/)
+  expect(text).toMatch(/pools: \["0xaa","0xbb"\]/)
+  expect(text).toMatch(/live: true/)
 })
 
 it('will not let buyer input overwrite the capability that was paid for', async () => {
