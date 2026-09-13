@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import Fastify from 'fastify'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { TURN_HOLD_POINTS } from '../credits/pricing.js'
+import { turnHold } from '../credits/pricing.js'
 import { InMemoryCreditStore, RESERVE_ACCOUNT, REVENUE_ACCOUNT } from '../credits/store.js'
 import { ClientError } from '../http/errors.js'
 import { InMemoryConversationStore } from './conversations.js'
@@ -154,12 +154,12 @@ it('uncertain provider outcomes keep their original hold and cannot be restarted
   expect((await h.ask('uncertain')).json().error.code).toBe('ASSISTANT_USAGE_UNCONFIRMED')
   expect((await h.load()).json().messages[1]).toMatchObject({
     status: 'failed',
-    cost: { points: 49, pendingPoints: TURN_HOLD_POINTS - 49 },
+    cost: { points: 49, pendingPoints: turnHold(5000) - 49 },
   })
   expect((await h.ask('uncertain')).statusCode).toBe(503)
   expect((await h.ask('different-key')).json().error.code).toBe('ASSISTANT_WALLET_BUSY')
-  expect(await h.credits.balance(owner)).toBe(5000 - TURN_HOLD_POINTS)
-  expect(await h.credits.balance(RESERVE_ACCOUNT)).toBe(TURN_HOLD_POINTS - 49)
+  expect(await h.credits.balance(owner)).toBe(5000 - turnHold(5000))
+  expect(await h.credits.balance(RESERVE_ACCOUNT)).toBe(turnHold(5000) - 49)
   expect(run).toHaveBeenCalledTimes(1)
 })
 
@@ -186,7 +186,7 @@ it.each(['completed', 'budget stopped', 'known failed', 'uncertain failed'] as c
       reply: turn.reply,
       steps: [mandateStep],
       truncated: turn.truncated,
-      cost: { points: 49, held: TURN_HOLD_POINTS },
+      cost: { points: 49, held: turnHold(5000) },
     })
     if (outcome === 'budget stopped') expect(first.json().stoppedBy).toBe('budget')
     if (failed)
@@ -211,8 +211,8 @@ it.each(['completed', 'budget stopped', 'known failed', 'uncertain failed'] as c
     expect(replay.headers['idempotency-replayed']).toBe('true')
     expect(replay.json()).toEqual(first.json())
     expect((await h.load()).json().messages).toEqual(saved.messages)
-    expect(await h.credits.balance(owner)).toBe(uncertain ? 5000 - TURN_HOLD_POINTS : 4951)
-    expect(await h.credits.balance(RESERVE_ACCOUNT)).toBe(uncertain ? TURN_HOLD_POINTS - 49 : 0)
+    expect(await h.credits.balance(owner)).toBe(uncertain ? 5000 - turnHold(5000) : 4951)
+    expect(await h.credits.balance(RESERVE_ACCOUNT)).toBe(uncertain ? turnHold(5000) - 49 : 0)
     expect(transfer).toHaveBeenCalledTimes(uncertain ? 2 : 3)
     expect(run).toHaveBeenCalledTimes(1)
   },
@@ -247,7 +247,7 @@ it.each(['spend', 'release'] as const)(
       reply: turn.reply,
       steps: [mandateStep],
       truncated: true,
-      cost: { points: 49, balance: 5000 - TURN_HOLD_POINTS, held: TURN_HOLD_POINTS },
+      cost: { points: 49, balance: 5000 - turnHold(5000), held: turnHold(5000) },
       error: { code: 'ASSISTANT_SETTLEMENT_UNCONFIRMED', retryable: false },
     })
     expect(transfer).toHaveBeenNthCalledWith(
@@ -255,7 +255,7 @@ it.each(['spend', 'release'] as const)(
       expect.objectContaining({
         from: owner,
         to: RESERVE_ACCOUNT,
-        points: TURN_HOLD_POINTS,
+        points: turnHold(5000),
         reason: 'fast_mode_hold',
         reference: `turn:${first.json().turnId}:hold`,
       }),
@@ -278,9 +278,9 @@ it.each(['spend', 'release'] as const)(
     expect(replay.json()).toEqual(first.json())
     expect((await h.load()).json().messages).toEqual(saved.messages)
     expect((await h.ask('new-settlement-key')).json().error.code).toBe('ASSISTANT_WALLET_BUSY')
-    expect(await h.credits.balance(owner)).toBe(5000 - TURN_HOLD_POINTS)
+    expect(await h.credits.balance(owner)).toBe(5000 - turnHold(5000))
     expect(await h.credits.balance(RESERVE_ACCOUNT)).toBe(
-      failedMovement === 'spend' ? TURN_HOLD_POINTS : TURN_HOLD_POINTS - 49,
+      failedMovement === 'spend' ? turnHold(5000) : turnHold(5000) - 49,
     )
     expect(await h.credits.balance(REVENUE_ACCOUNT)).toBe(failedMovement === 'spend' ? 0 : 49)
     expect(transfer).toHaveBeenCalledTimes(failedMovement === 'spend' ? 2 : 3)

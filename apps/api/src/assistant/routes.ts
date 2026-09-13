@@ -10,6 +10,7 @@ import {
   MODELS,
   POINTS_PER_USD,
   TURN_HOLD_POINTS,
+  turnHold,
   WELCOME_GRANT_POINTS,
   WELCOME_GRANTS_PER_DAY,
 } from '../credits/pricing.js'
@@ -226,7 +227,12 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
 
       await withWelcomeGrant(session.address)
       const balance = await config.credits.balance(session.address)
-      const hold = Math.min(TURN_HOLD_POINTS, balance)
+      /*
+       * Never the whole balance. A turn that reserves everything can arrange a
+       * purchase it cannot afford to make, which is not a smaller failure than
+       * running out of budget, it is the same failure one step later.
+       */
+      const hold = turnHold(balance)
       const requestHash = hashCanonicalJson({
         messages: messages.map(({ role, content }) => ({ role, content })),
         ...(conversationId ? { conversationId } : {}),

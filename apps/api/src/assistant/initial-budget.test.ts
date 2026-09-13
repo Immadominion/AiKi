@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import Fastify from 'fastify'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { pointsFor, TURN_HOLD_POINTS, WELCOME_GRANT_POINTS } from '../credits/pricing.js'
+import { pointsFor, TURN_HOLD_POINTS, turnHold, WELCOME_GRANT_POINTS } from '../credits/pricing.js'
 import { InMemoryCreditStore, RESERVE_ACCOUNT } from '../credits/store.js'
 import { InMemoryConversationStore } from './conversations.js'
 import { registerAssistantRoutes } from './routes.js'
@@ -91,11 +91,11 @@ it.each([
       error: {
         code: 'ASSISTANT_BUDGET_TOO_SMALL',
         requiredPoints,
-        availablePoints: Math.min(balance, TURN_HOLD_POINTS),
+        availablePoints: turnHold(balance),
         retryable: false,
       },
       steps: [],
-      cost: { points: 0, balance, held: Math.min(balance, TURN_HOLD_POINTS) },
+      cost: { points: 0, balance, held: turnHold(balance) },
     })
     expect(first.json().reply).toContain('No points were charged and no tools ran.')
     expect(first.json().reply).not.toMatch(/shorten|new conversation/i)
@@ -153,8 +153,8 @@ it.each([
     expect(response.statusCode).toBe(402)
     expect(response.json()).toMatchObject({
       reply: `This turn needs 644 points available; you have ${balance}. No points were charged and no tools ran. ${next}`,
-      cost: { points: 0, held: 525, balance },
-      error: { requiredPoints: 644, availablePoints: 525 },
+      cost: { points: 0, held: turnHold(525), balance },
+      error: { requiredPoints: 644, availablePoints: turnHold(525) },
     })
     expect(await h.credits.balance(RESERVE_ACCOUNT)).toBe(0)
     expect(create).not.toHaveBeenCalled()

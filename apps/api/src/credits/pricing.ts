@@ -85,6 +85,29 @@ export function explainCost(model: string, usage: Usage): string {
 export const MINIMUM_BALANCE_POINTS = 200
 
 /**
+ * The share of a balance a single turn may reserve for itself.
+ *
+ * A turn used to reserve everything, and that made Fast unable to do the thing
+ * it exists for. Measured: a person asked for an agent to price their grid and
+ * hire it, Fast found the right one, read its input requirements, converted the
+ * step size to ticks, took the answer, opened a work budget, and then
+ * hire_agent came back "This task costs 10 points and the balance is 0",
+ * because the 2,624 points it was holding to think about the purchase were the
+ * same 2,624 points it needed to make it.
+ *
+ * So a turn is capped at three quarters of what somebody has, and the last
+ * quarter stays spendable on the work being arranged. The hold returns at the
+ * end of the turn either way; what this changes is whether the purchase can
+ * happen while the turn is still running, which is the only time it ever can.
+ */
+export const TURN_HOLD_SHARE = 0.75
+
+/** What one turn may reserve from this balance. The only place the rule lives. */
+export function turnHold(balance: number): number {
+  return Math.min(TURN_HOLD_POINTS, Math.floor(Math.max(0, balance) * TURN_HOLD_SHARE))
+}
+
+/**
  * What is held before a turn runs, and the hard ceiling on what it may cost.
  *
  * A turn cannot be priced until it is over. The old arrangement checked a

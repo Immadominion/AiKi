@@ -3,7 +3,7 @@ import { bsc } from 'viem/chains'
 import { afterEach, expect, it, vi } from 'vitest'
 import { InMemoryNonceStore } from '../auth/nonce-store.js'
 import { SessionSigner } from '../auth/session.js'
-import { TURN_HOLD_POINTS, WELCOME_GRANT_POINTS } from '../credits/pricing.js'
+import { turnHold, WELCOME_GRANT_POINTS } from '../credits/pricing.js'
 import { InMemoryCreditStore, RESERVE_ACCOUNT } from '../credits/store.js'
 import { createApiServer } from '../http/server.js'
 
@@ -179,11 +179,12 @@ it('never charges a turn more than was held for it', async () => {
   await credits.deposit({ owner: OWNER, points: 300, reason: 'deposit', reference: '0x4' })
   const { app } = harness({ credits })
 
+  const held = turnHold(300 + WELCOME_GRANT_POINTS)
   const body = (await ask(app)).json()
-  expect(body.cost.points).toBe(TURN_HOLD_POINTS)
-  expect(body.cost.held).toBe(TURN_HOLD_POINTS)
+  expect(body.cost.points).toBe(held)
+  expect(body.cost.held).toBe(held)
   // The rest of the money is untouched, where before the account was emptied.
-  expect(await credits.balance(OWNER)).toBe(300 + WELCOME_GRANT_POINTS - TURN_HOLD_POINTS)
+  expect(await credits.balance(OWNER)).toBe(300 + WELCOME_GRANT_POINTS - held)
   // And nothing is left sitting in the reserve.
   expect(await credits.balance(RESERVE_ACCOUNT)).toBe(0)
 })
