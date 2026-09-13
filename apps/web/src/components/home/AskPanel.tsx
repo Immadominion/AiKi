@@ -4,6 +4,7 @@ import { ScanIcon, XIcon } from '@animateicons/react/lucide'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { FirstRun } from '@/components/onboarding/FirstRun'
+import { WhatChanged } from '@/components/onboarding/WhatChanged'
 import { useAccount } from '@/components/shell/prefs'
 import { IconButton } from '@/components/ui/AnimatedIcon'
 import { useToast } from '@/components/ui/Toast'
@@ -159,6 +160,9 @@ export function AskPanel() {
       </div>
 
       <FirstRun />
+      {/* Mutually exclusive with the tour above by construction: one runs only
+          while the walkthrough is unseen, the other only once it is done. */}
+      <WhatChanged />
     </div>
   )
 }

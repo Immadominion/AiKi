@@ -136,10 +136,48 @@ export function useTour(mode: 'fast' | 'manual' = 'fast') {
   const key = mode === 'fast' ? 'aiki.tour.fast' : 'aiki.tour.manual'
   const [state, setState, ready] = usePersisted<'pending' | 'done'>(key, 'pending', TOUR)
   return {
+    /** Do not show the tour. True while the answer is unknown, so nothing flashes. */
     seen: !ready || state === 'done',
+    /*
+     * Whether this person has actually been through it, which `seen` cannot
+     * answer: `seen` folds "not read yet" into "yes" so the tour never flashes,
+     * and something that needs to tell a returning account apart from a new one
+     * would read that as "returning" for every first paint.
+     */
+    done: ready && state === 'done',
+    ready,
     finish: () => setState('done'),
     replay: () => setState('pending'),
   }
+}
+
+const RELEASE = ['pending', 'done'] as const
+
+/**
+ * Something that changed, mentioned once to the people it changed for.
+ *
+ * Separate from the tour because they answer different questions. A tour
+ * explains the product to somebody who has not used it. This is for somebody
+ * who has, and who therefore holds a belief about what AiKi can do that was
+ * true when they formed it and is not any more. A new account has no such
+ * belief and should be told nothing: what it gets is the product as it is.
+ *
+ * Kept per release name, so a later change is a separate telling rather than a
+ * banner that gets rewritten and re-shown to people who already read it.
+ */
+export function useRelease(name: string) {
+  const [state, setState, ready] = usePersisted<'pending' | 'done'>(
+    `aiki.release.${name}`,
+    'pending',
+    RELEASE,
+  )
+  /*
+   * Stable, because the component that reads this marks a release read from an
+   * effect. A fresh function on every render would put a changing dependency on
+   * that effect and run it on every render forever.
+   */
+  const acknowledge = useCallback(() => setState('done'), [setState])
+  return { pending: ready && state === 'pending', ready, acknowledge }
 }
 
 const SIDEBAR = ['open', 'closed'] as const

@@ -81,7 +81,9 @@ export function AgentAccountPanel() {
       <h2 className="mb-[3px] text-[15px] font-bold">Agent account</h2>
       <p className="text-muted mt-0 mb-[12px] max-w-[660px] text-[12.5px] leading-[1.55] text-pretty">
         Separate from your own wallet. You own it, AiKi paid to create it, and an agent can only
-        ever spend what is inside it, within the limits you sign.
+        ever spend what is inside it, within the limits you sign. Each mandate also says whether the
+        agent asks you before an action or acts on its own, and you answer that when you make it.
+        Nothing here can be spent until a mandate is signed.
       </p>
       <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)]">
         <div className="flex flex-wrap items-start gap-[12px] px-4 py-[14px]">

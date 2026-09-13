@@ -90,6 +90,10 @@ export function HistoryRail({
         aria-expanded={open}
         onClick={() => setOpen(true)}
         title="History (⌘ /)"
+        // The onboarding tour names this target. Without it the beat about
+        // history had nothing to point at and rendered floating over a blurred
+        // screen, which is the one thing Spotlight's comment says it never does.
+        data-tour="history"
         className={`${inline ? '' : 'absolute bottom-4 left-4 z-40'} flex min-h-10 items-center gap-2 rounded-full border border-[rgb(26_26_25_/_0.12)] bg-white px-4 text-[12px] font-semibold text-ink-app hover:bg-surface-sunk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-app`}
       >
         <History size={16} strokeWidth={1.8} aria-hidden="true" /> History
