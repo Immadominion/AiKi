@@ -439,9 +439,9 @@ export const TOOLS: Anthropic.Tool[] = [
       'brief. Different from watching a position: this asks for an answer, once. The agent is ' +
       'called at the endpoint its registration declares, and most agents on this registry do not ' +
       'answer, which is normal and is why the money comes back if it does not. Check the ' +
-      'passport first and say what was measured about it before spending. Some agents are ' +
-      'reached over MCP and advertise several named capabilities; for those, agent_task_support ' +
-      'lists them and you must name one in agent_tool.',
+      'passport first and say what was measured about it before spending. Many agents are reached ' +
+      'over MCP or A2A and advertise several named capabilities, including ones that place real ' +
+      'orders; for those, agent_task_support lists them and you must name one in agent_tool.',
     input_schema: {
       type: 'object',
       properties: {
