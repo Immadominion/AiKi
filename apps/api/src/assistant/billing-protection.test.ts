@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import Fastify from 'fastify'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { TURN_HOLD_POINTS } from '../credits/pricing.js'
 import { InMemoryCreditStore, RESERVE_ACCOUNT } from '../credits/store.js'
 import { type AssistantLimits, InMemoryAssistantRequestStore } from './billing.js'
 import type { ConversationStore, RecordedConversationTurn } from './conversations.js'
@@ -180,9 +181,9 @@ it('keeps an uncertain provider remainder held and prevents automatic re-executi
   const h = harness()
   const response = (await h.ask('uncertain')).json()
   expect(response.error.code).toBe('ASSISTANT_USAGE_UNCONFIRMED')
-  expect(response.cost.pendingPoints).toBe(1951)
-  expect(await h.credits.balance(owner)).toBe(3000)
-  expect(await h.credits.balance(RESERVE_ACCOUNT)).toBe(1951)
+  expect(response.cost.pendingPoints).toBe(TURN_HOLD_POINTS - 49)
+  expect(await h.credits.balance(owner)).toBe(5000 - TURN_HOLD_POINTS)
+  expect(await h.credits.balance(RESERVE_ACCOUNT)).toBe(TURN_HOLD_POINTS - 49)
   expect((await h.ask('uncertain')).statusCode).toBe(503)
   expect((await h.ask('new-key')).json().error.code).toBe('ASSISTANT_WALLET_BUSY')
   expect(run).toHaveBeenCalledTimes(1)
@@ -210,12 +211,12 @@ it('rejects image, document, tool, extra-field and invalid-role inputs before pr
 
 it('reserves global pending budgets and uses actual cost only after confirmed completion', async () => {
   const store = new InMemoryAssistantRequestStore()
-  const configured = { ...limits, globalDailyPoints: 3000 }
+  const configured = { ...limits, globalDailyPoints: TURN_HOLD_POINTS + 1000 }
   const first = await store.begin({
     owner,
     key: 'a',
     requestHash: 'a',
-    reservedPoints: 2000,
+    reservedPoints: TURN_HOLD_POINTS,
     limits: configured,
   })
   expect(first.kind).toBe('started')
@@ -224,7 +225,7 @@ it('reserves global pending budgets and uses actual cost only after confirmed co
       owner: other,
       key: 'b',
       requestHash: 'b',
-      reservedPoints: 2000,
+      reservedPoints: TURN_HOLD_POINTS,
       limits: configured,
     }),
   ).toMatchObject({ kind: 'refused', code: 'ASSISTANT_DAILY_LIMIT' })
@@ -236,7 +237,7 @@ it('reserves global pending budgets and uses actual cost only after confirmed co
         owner: other,
         key: 'b',
         requestHash: 'b',
-        reservedPoints: 2000,
+        reservedPoints: TURN_HOLD_POINTS,
         limits: configured,
       })
     ).kind,
@@ -251,7 +252,7 @@ it('enforces per-wallet rates and fails closed on expired uncertain requests', a
       owner,
       key: String(index),
       requestHash: 'h',
-      reservedPoints: 2000,
+      reservedPoints: TURN_HOLD_POINTS,
       limits: { ...limits, walletPerMinute: 2 },
     })
     if (claim.kind !== 'started') throw new Error('Expected claim')
@@ -262,11 +263,17 @@ it('enforces per-wallet rates and fails closed on expired uncertain requests', a
       owner,
       key: 'third',
       requestHash: 'h',
-      reservedPoints: 2000,
+      reservedPoints: TURN_HOLD_POINTS,
       limits: { ...limits, walletPerMinute: 2 },
     }),
   ).toMatchObject({ kind: 'refused', code: 'ASSISTANT_RATE_LIMIT' })
-  const request = { owner: other, key: 'pending', requestHash: 'h', reservedPoints: 2000, limits }
+  const request = {
+    owner: other,
+    key: 'pending',
+    requestHash: 'h',
+    reservedPoints: TURN_HOLD_POINTS,
+    limits,
+  }
   expect((await store.begin(request)).kind).toBe('started')
   vi.advanceTimersByTime(901000)
   expect(await store.begin(request)).toMatchObject({

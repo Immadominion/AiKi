@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import Fastify from 'fastify'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { pointsFor, WELCOME_GRANT_POINTS } from '../credits/pricing.js'
+import { pointsFor, TURN_HOLD_POINTS, WELCOME_GRANT_POINTS } from '../credits/pricing.js'
 import { InMemoryCreditStore, RESERVE_ACCOUNT } from '../credits/store.js'
 import { InMemoryConversationStore } from './conversations.js'
 import { registerAssistantRoutes } from './routes.js'
@@ -91,16 +91,16 @@ it.each([
       error: {
         code: 'ASSISTANT_BUDGET_TOO_SMALL',
         requiredPoints,
-        availablePoints: Math.min(balance, 2000),
+        availablePoints: Math.min(balance, TURN_HOLD_POINTS),
         retryable: false,
       },
       steps: [],
-      cost: { points: 0, balance, held: Math.min(balance, 2000) },
+      cost: { points: 0, balance, held: Math.min(balance, TURN_HOLD_POINTS) },
     })
     expect(first.json().reply).toContain('No points were charged and no tools ran.')
     expect(first.json().reply).not.toMatch(/shorten|new conversation/i)
-    if (requiredPoints > 2000) {
-      expect(first.json().reply).toContain('exceeds the 2000 point limit')
+    if (requiredPoints > TURN_HOLD_POINTS) {
+      expect(first.json().reply).toContain(`exceeds the ${TURN_HOLD_POINTS} point limit`)
       expect(first.json().reply).not.toContain('Add points')
       expect(first.json().reply).toContain('More points will not raise this limit.')
     } else {

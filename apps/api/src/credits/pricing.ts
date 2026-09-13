@@ -93,13 +93,29 @@ export const MINIMUM_BALANCE_POINTS = 200
  * 263 and 711 points, each shortfall forgiven silently, and two tabs could both
  * pass the check on the same 200 points.
  *
- * Now the money is taken up front and the loop is told what it has. 2,000
- * points is twenty cents, comfortably above every turn this has ever run, and
- * a turn that would exceed it stops and says so instead of running up a bill
- * against money that was never there. Whatever is not spent goes back the
- * moment the turn ends.
+ * Now the money is taken up front and the loop is told what it has, and a turn
+ * that would exceed it stops and says so instead of running up a bill against
+ * money that was never there. Whatever is not spent goes back the moment the
+ * turn ends, so this is a reservation and not a price: a turn that uses 500
+ * points costs 500 whatever this number says.
+ *
+ * It was 2,000, described as comfortably above every turn this had ever run.
+ * That stopped being true. Asked in plain English to find an agent that could
+ * price a grid and hire it, Fast searched twice, spent 572 points and stopped,
+ * because the check is made against the projected cost of the NEXT round and
+ * every round carries about 9,700 input tokens before the conversation starts:
+ * 4,800 for the system prompt and 4,900 for thirty-five tool schemas, resent
+ * each time. Hiring genuinely needs four or five rounds, so the ceiling test
+ * could never pass on the third.
+ *
+ * 4,000 is forty cents of reservation for a turn that does real multi-step
+ * work, and nothing for a turn that answers a question, because the difference
+ * comes back. It is deliberately below the welcome grant: at 6,000 a new
+ * account reserved its entire balance on its first question, which reads as
+ * being charged everything even though the remainder returns seconds later.
+ * Somebody holding less than this simply reserves what they have.
  */
-export const TURN_HOLD_POINTS = 2_000
+export const TURN_HOLD_POINTS = 4_000
 
 /**
  * What a new account is given, once, so that trying Fast mode costs nothing.
