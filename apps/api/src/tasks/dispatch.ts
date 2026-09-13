@@ -375,6 +375,20 @@ export async function dispatchOverA2A(input: A2ADispatchInput): Promise<Dispatch
    * not a refusal, so it is still read as an answer.
    */
   const state = a2aState(envelope.result)
+  if (state === 'submitted' || state === 'working') {
+    /*
+     * Accepted, and still going. Not a refusal, and not something AiKi can
+     * collect: finishing an asynchronous A2A task means polling tasks/get or
+     * registering a push, and this side does neither yet. So the points go back
+     * and the buyer is told why, rather than being charged for a result nobody
+     * is coming to fetch. Calling this a decline would blame the agent for
+     * something missing here.
+     */
+    return {
+      declined: true,
+      note: `It accepted the work and is still running it. AiKi cannot collect an answer that arrives later yet, so your points were returned.`,
+    }
+  }
   if (state && state !== 'completed') {
     const said = a2aText(envelope.result)
     return {

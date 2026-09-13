@@ -314,3 +314,26 @@ it.each([
   expect(out.declined).toBeUndefined()
   expect(out.delivered).toBeTruthy()
 })
+
+it.each(['submitted', 'working'])(
+  'returns the points for a task still %s, without calling it a refusal',
+  async (state) => {
+    // Finishing one means polling or a push, and this side does neither yet.
+    // Charging for an answer nobody is coming to fetch is the failure; blaming
+    // the agent for something missing here is a different one.
+    const fetcher = vi.fn(async () =>
+      json({ jsonrpc: '2.0', result: { kind: 'task', status: { state } } }),
+    )
+    const out = await dispatchOverA2A({
+      url: RPC,
+      title: 't',
+      brief: 'b',
+      intent: '11111111-1111-4111-8111-111111111111',
+      fetcher: fetcher as never,
+    })
+    expect(out.declined).toBe(true)
+    expect(out.delivered).toBeUndefined()
+    expect(out.note).toMatch(/still running it/)
+    expect(out.note).not.toMatch(/Declined/)
+  },
+)

@@ -856,7 +856,26 @@ export function registerTaskRoutes(
                     },
                   },
                 })
-        if (outcome.declined && !outcome.delivered) {
+        /*
+         * Nothing came back, and nothing is coming.
+         *
+         * MCP and A2A are request and response: the answer arrives inside this
+         * call or it does not arrive. So an outcome carrying neither work nor a
+         * refusal, an endpoint that could not be reached, a call that failed, a
+         * reply with no part this protocol recognises, is the end of the story,
+         * and holding the buyer's points against it loses them quietly. Measured
+         * across seven real hires: four refused and refunded correctly, three
+         * came back like this and stranded thirty points in tasks that were
+         * neither delivered nor refunded and never would be.
+         *
+         * The native envelope is the opposite and must keep holding. It is
+         * fire and forget by design: the agent calls back later on the delivery
+         * url, so work really is in flight and a refund here would pay for it
+         * twice.
+         */
+        const synchronous = assigned.transport === 'mcp' || assigned.transport === 'a2a'
+        const nothingCameBack = synchronous && !outcome.delivered && !outcome.declined
+        if ((outcome.declined || nothingCameBack) && !outcome.delivered) {
           try {
             const refunded = await input.tasks.refundDeclinedAssignment(
               task.id,
