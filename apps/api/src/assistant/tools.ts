@@ -54,6 +54,45 @@ export interface ToolCallResult {
   action?: AssistantContinuation
 }
 
+/**
+ * A search result, cut down to what picking an agent actually needs.
+ *
+ * A passport is built for a page somebody reads. Eight of them is 19,000
+ * characters, which is the whole per-result cap, and a turn that searched, read
+ * the catalogue and checked one agent cost 1,588 points and then stopped
+ * against a 2,000 point ceiling before it could hire anything. The model was
+ * paying to carry predicate counts, an icon url and a component breakdown of
+ * four nulls.
+ *
+ * What survives is what a buying decision and an honest citation are made of:
+ * who it is, whether AiKi has watched it answer, how recently, how often it
+ * worked, and who gets paid. The full passport is one tool call away and the
+ * page is a link away, so nothing is hidden, it is just not carried by default.
+ */
+function forChoosing<T extends { ok: boolean; body: unknown }>(result: T): T {
+  const body = result.body as { results?: unknown } | null
+  if (!body || typeof body !== 'object' || !Array.isArray(body.results)) return result
+  const results = body.results.map((entry) => {
+    const row = entry as Record<string, unknown>
+    const score = row.proofScore as { value?: unknown; sampleSize?: unknown } | null
+    const fresh = row.livenessFreshness as { state?: unknown; checkedAt?: unknown } | null
+    const identity = row.identity as { owner?: unknown } | null
+    return {
+      agentId: row.agentId,
+      name: row.name,
+      description: row.description,
+      liveness: row.liveness,
+      ...(row.livenessDetail ? { livenessDetail: row.livenessDetail } : {}),
+      ...(fresh?.state ? { freshness: fresh.state, checkedAt: fresh.checkedAt } : {}),
+      ...(score && typeof score.value === 'number'
+        ? { proofScore: score.value, trials: score.sampleSize }
+        : {}),
+      ...(identity?.owner ? { owner: identity.owner } : {}),
+    }
+  })
+  return { ...result, body: { ...body, results } }
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const refused = (code: string, message: string): ToolCallResult => ({
   ok: false,
@@ -680,10 +719,12 @@ export async function runTool(
     case 'search_agents':
       return withDiscoveryEvidence(
         name,
-        await post('/v1/search', {
-          ...(args.query ? { query: args.query } : {}),
-          limit: Math.min(Number(args.limit ?? 8), 25),
-        }),
+        forChoosing(
+          await post('/v1/search', {
+            ...(args.query ? { query: args.query } : {}),
+            limit: Math.min(Number(args.limit ?? 8), 25),
+          }),
+        ),
       )
     case 'agent_passport':
       return withDiscoveryEvidence(
