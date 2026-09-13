@@ -229,3 +229,88 @@ it('passes the buyer arguments to the MCP tool, over AiKi’s own three', async 
     pool: '0xabc',
   })
 })
+
+/*
+ * The exact payload a real agent sent, three times, after being paid.
+ *
+ * A2A offers three ways to decline and this one uses none of them: an ordinary
+ * message whose text is an error object. Recorded as delivered, it charged ten
+ * points for a list of what the buyer had failed to say. A decline refunds.
+ */
+it('refunds when the whole answer is an error object, and relays what it needs', async () => {
+  const fetcher = vi.fn(async () =>
+    json({
+      jsonrpc: '2.0',
+      result: {
+        kind: 'message',
+        parts: [
+          {
+            kind: 'text',
+            text: JSON.stringify({
+              error: 'the task does not state lower bound, upper bound, capital',
+              need: 'a grid needs bounds, capital, a level count, a stop and a per-trade fee',
+            }),
+          },
+        ],
+      },
+    }),
+  )
+  const out = await dispatchOverA2A({
+    url: RPC,
+    title: 't',
+    brief: 'b',
+    intent: '11111111-1111-4111-8111-111111111111',
+    fetcher: fetcher as never,
+  })
+  expect(out.declined).toBe(true)
+  expect(out.delivered).toBeUndefined()
+  expect(out.note).toMatch(/does not state lower bound/)
+  expect(out.note).toMatch(/It needs: a grid needs bounds/)
+})
+
+it('does not call real work a refusal for mentioning an error', async () => {
+  // The rule is the whole body being an error object, not the word appearing.
+  // A plan that reports a failed level is a plan, and it was paid for.
+  const delivered = JSON.stringify({
+    levels: [560, 570, 580],
+    spacing: 'geometric',
+    notes: 'one level failed an error check and was skipped',
+  })
+  const fetcher = vi.fn(async () =>
+    json({
+      jsonrpc: '2.0',
+      result: { kind: 'message', parts: [{ kind: 'text', text: delivered }] },
+    }),
+  )
+  const out = await dispatchOverA2A({
+    url: RPC,
+    title: 't',
+    brief: 'b',
+    intent: '11111111-1111-4111-8111-111111111111',
+    fetcher: fetcher as never,
+  })
+  expect(out.delivered).toBe(delivered)
+  expect(out.declined).toBeUndefined()
+})
+
+it.each([
+  ['an empty error', { error: '   ' }],
+  ['an error that is not a string', { error: { code: 7 } }],
+  ['no error at all', { levels: 4 }],
+])('treats %s as work rather than a refusal', async (_label, payload) => {
+  const fetcher = vi.fn(async () =>
+    json({
+      jsonrpc: '2.0',
+      result: { kind: 'message', parts: [{ kind: 'text', text: JSON.stringify(payload) }] },
+    }),
+  )
+  const out = await dispatchOverA2A({
+    url: RPC,
+    title: 't',
+    brief: 'b',
+    intent: '11111111-1111-4111-8111-111111111111',
+    fetcher: fetcher as never,
+  })
+  expect(out.declined).toBeUndefined()
+  expect(out.delivered).toBeTruthy()
+})

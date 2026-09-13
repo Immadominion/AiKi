@@ -385,5 +385,41 @@ export async function dispatchOverA2A(input: A2ADispatchInput): Promise<Dispatch
 
   const text = a2aText(envelope.result)
   if (!text) return { note: 'Answered, but with nothing this protocol recognises as work.' }
+
+  /*
+   * An answer whose entire body is an error object.
+   *
+   * A2A gives an agent three ways to say no, and a real one on this chain uses
+   * none of them: it returns an ordinary message whose text is
+   * `{"error":"the task does not state lower bound, upper bound, capital..."}`.
+   * Recorded as a delivery, that charged the buyer ten points for a list of
+   * what they had failed to say, three times in a row while this was measured.
+   *
+   * Narrow on purpose. Not a search for the word anywhere in a payload, which
+   * would refuse real work that happens to mention one: the whole delivery has
+   * to parse as a JSON object carrying a non-empty string `error`. An agent
+   * that reports an error alongside its results is still reporting an error.
+   */
+  const said = statedError(text)
+  if (said) return { declined: true, note: `Declined it: ${said}` }
+
   return { delivered: text, note: 'Answered straight away over A2A.' }
+}
+
+/** The message from a delivery that is nothing but an error object, if it is one. */
+function statedError(text: string): string {
+  let body: unknown
+  try {
+    body = JSON.parse(text)
+  } catch {
+    return ''
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return ''
+  const stated = (body as { error?: unknown; need?: unknown }).error
+  if (typeof stated !== 'string' || !stated.trim()) return ''
+  // `need` is not a convention, it is what the agent that prompted this sends.
+  // Relayed when present because it is the useful half: what to supply next.
+  const need = (body as { need?: unknown }).need
+  const detail = typeof need === 'string' && need.trim() ? ` It needs: ${need.trim()}` : ''
+  return `${stated.trim()}.${detail}`.slice(0, 400)
 }
