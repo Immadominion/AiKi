@@ -1,4 +1,5 @@
 import {
+  accountTokensFor,
   actionMandateConstraints,
   amountUnits,
   type ExecutionNetwork,
@@ -14,6 +15,7 @@ import { SETTLEMENT } from '../settlement/pricing.js'
 import {
   type AssistantContinuation,
   approvalContinuation,
+  fundingContinuation,
   mandateContinuation,
 } from './continuation.js'
 import { withDiscoveryEvidence } from './discovery-evidence.js'
@@ -937,8 +939,42 @@ export async function runTool(
           : undefined
       return { ...sent, ...(action ? { action } : {}) }
     }
-    case 'my_account':
-      return call('/v1/account')
+    case 'my_account': {
+      const account = await call('/v1/account')
+      /*
+       * A copyable address, in the turn where funding is the question.
+       *
+       * This address was reachable and somebody still could not find it,
+       * because it arrived as the fortieth word of a paragraph about what
+       * native BNB is. An address is a thing you copy, not prose, and the only
+       * way to get it wrong is to retype it.
+       *
+       * Attached only when the account exists and holds nothing an agent could
+       * spend, which is exactly when somebody needs to send something and never
+       * once they have.
+       */
+      const body = account.body as {
+        address?: unknown
+        chainId?: unknown
+        balances?: { tokens?: { symbol?: unknown; amount?: unknown }[] } | null
+      } | null
+      const spendable = (body?.balances?.tokens ?? []).some(
+        (token: { amount?: unknown }) =>
+          typeof token?.amount === 'string' && /[1-9]/.test(token.amount),
+      )
+      const chainId = body?.chainId
+      const fundable = chainId === 56 || chainId === 97
+      const action =
+        account.ok && !spendable && fundable && typeof body?.address === 'string'
+          ? fundingContinuation({
+              kind: 'fund_account',
+              address: body.address,
+              chainId,
+              symbols: accountTokensFor(chainId).map((token) => token.symbol),
+            })
+          : undefined
+      return { ...account, ...(action ? { action } : {}) }
+    }
     case 'hire':
       return post(
         '/v1/jobs',

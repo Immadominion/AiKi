@@ -55,7 +55,7 @@ export function WhatChanged() {
     {
       target: 'field',
       title: 'An agent can spend now',
-      body: 'It used to be able to do everything except touch money. Now it can hold its own account and move tokens out of it, inside limits you sign once, and you choose whether it asks you before each action. Ask here and it will set one up with you.',
+      body: 'It can hold its own account and spend from it, inside limits you sign once. You choose whether it asks you first. Ask here to set one up.',
       place: 'below',
     },
   ]

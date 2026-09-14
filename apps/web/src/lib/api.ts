@@ -202,7 +202,22 @@ export interface ApprovalContinuation {
   chainId: 56 | 97
 }
 
-export type AssistantContinuation = MandateContinuation | ApprovalContinuation
+/**
+ * Where to send money so an agent has something to spend.
+ *
+ * An address is a thing you copy, not prose. This one was reachable and
+ * somebody still could not find it, because it arrived as the fortieth word of
+ * a paragraph. Carries no balance: it is the funding control, shown in the turn
+ * where funding is the question, not a readout parked on the screen.
+ */
+export interface FundingContinuation {
+  kind: 'fund_account'
+  address: string
+  chainId: 56 | 97
+  symbols: string[]
+}
+
+export type AssistantContinuation = MandateContinuation | ApprovalContinuation | FundingContinuation
 
 export interface DelegationReview {
   id: string

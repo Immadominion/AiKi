@@ -22,7 +22,15 @@ const ctx = { baseUrl: 'https://api.example', cookie: 'local-test-session', sess
 
 const ERC20 = parseAbi(['function transfer(address to, uint256 amount) returns (bool)'])
 
-function harness(options: { chainId?: 56 | 97; actionStatus?: number; action?: unknown } = {}) {
+function harness(
+  options: {
+    chainId?: 56 | 97
+    actionStatus?: number
+    action?: unknown
+    account?: { address: string | null; chainId: number }
+    balances?: unknown
+  } = {},
+) {
   const chainId = options.chainId ?? 56
   const requests: { path: string; method: string; body: Record<string, unknown> | undefined }[] = []
   const metadata = {
@@ -49,7 +57,11 @@ function harness(options: { chainId?: 56 | 97; actionStatus?: number; action?: u
     requests.push({ path, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
     const respond = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
     if (path === '/v1/execution/network') return respond(metadata)
-    if (path === '/v1/account') return respond({ address: accountAddress, chainId })
+    if (path === '/v1/account')
+      return respond({
+        ...(options.account ?? { address: accountAddress, chainId }),
+        ...(options.balances === undefined ? {} : { balances: options.balances }),
+      })
     if (path === '/v1/authorizations' && method === 'POST')
       return respond({
         id: authorizationId,
@@ -294,4 +306,46 @@ it('relays a refusal rather than dressing it as a success', async () => {
   // refusal, and the model is expected to read and report it.
   expect(result.ok).toBe(true)
   expect(JSON.stringify(result.body)).toMatch(/recipient_allowlist/)
+})
+
+/*
+ * The address, handed over as a control rather than typed into a paragraph.
+ *
+ * Somebody asked an agent to trade a dollar, was correctly told native BNB
+ * cannot be spent and the account needed funding, and did not find the address
+ * in the reply. They opened a different screen and made a second wallet.
+ */
+it('hands back a funding control when the account holds nothing an agent can spend', async () => {
+  harness()
+  const result = await runTool(ctx, 'my_account', {})
+  expect(result.ok).toBe(true)
+  expect(result.action).toEqual({
+    kind: 'fund_account',
+    address: accountAddress.toLowerCase(),
+    chainId: 56,
+    symbols: ['USDT', 'WBNB'],
+  })
+})
+
+it('offers no funding control once there is something to spend', async () => {
+  // Nothing to fix, so nothing on screen. This is the whole reason it is not a
+  // permanent widget.
+  harness({
+    balances: { native: '0', tokens: [{ symbol: 'USDT', amount: '2500000000000000000' }] },
+  })
+  expect((await runTool(ctx, 'my_account', {})).action).toBeUndefined()
+})
+
+it('offers no funding control for an account that does not exist yet', async () => {
+  harness({ account: { address: null, chainId: 56 } })
+  expect((await runTool(ctx, 'my_account', {})).action).toBeUndefined()
+})
+
+it('treats a balance of zero tokens as nothing to spend, not as unknown', async () => {
+  harness({
+    balances: { native: '9000000000000000000', tokens: [{ symbol: 'USDT', amount: '0' }] },
+  })
+  // Native BNB is not spendable by any mandate, so an account holding only BNB
+  // still needs funding, which is exactly the case that prompted this.
+  expect((await runTool(ctx, 'my_account', {})).action).toMatchObject({ kind: 'fund_account' })
 })

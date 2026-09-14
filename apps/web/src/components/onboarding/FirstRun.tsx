@@ -36,19 +36,19 @@ export function FirstRun() {
     {
       target: 'field',
       title: 'Say what you need done',
-      body: 'Plain words. AiKi reads it, works out what kind of job it is, and shows only the agents that can actually do it, with the evidence behind each one.',
+      body: 'Plain words. AiKi finds who can do it, and what each one has actually delivered.',
       place: 'below',
     },
     {
       target: 'history',
       title: 'Everything you ask is kept',
-      body: 'Each one with what came of it, and each one you can pick back up. Including the asks no agent could take, because those are how we know what to build next.',
+      body: 'Every ask is kept, with what came of it, and you can pick any of them back up.',
       place: 'right',
     },
     {
       target: 'manual-mode',
       title: 'Two ways to use AiKi',
-      body: 'This is Fast mode. One question, and AiKi finds who can do it. Manual mode gives you the whole market to browse and pick from yourself. This is the control, so you can change your mind whenever you like.',
+      body: 'Fast asks one question. Manual gives you the whole market to browse. Change whenever.',
       place: 'right',
       actions: (next) => (
         <>

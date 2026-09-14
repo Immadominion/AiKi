@@ -66,7 +66,7 @@ export interface ApprovalContinuation {
   chainId: 56 | 97
 }
 
-export type AssistantContinuation = MandateContinuation | ApprovalContinuation
+export type AssistantContinuation = MandateContinuation | ApprovalContinuation | FundingContinuation
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -87,5 +87,48 @@ export function approvalContinuation(value: unknown): ApprovalContinuation | und
     jobId: action.jobId.toLowerCase(),
     approvalId: action.approvalId.toLowerCase(),
     chainId: action.chainId,
+  }
+}
+
+/**
+ * Where to send money so an agent has something to spend.
+ *
+ * The address existed and was reachable, and somebody still could not find it,
+ * because it arrived as the fortieth word of a paragraph explaining what native
+ * BNB is. An address is not prose. It is a thing you copy, and the only way to
+ * get it wrong is to retype it.
+ *
+ * Carries no balance: this is the control for funding, not a readout, and a
+ * permanent balance on the surface somebody works on is chrome nobody asked
+ * for. It renders in the turn where funding is the question and nowhere else.
+ */
+export interface FundingContinuation {
+  kind: 'fund_account'
+  address: string
+  chainId: 56 | 97
+  /** What the account can actually be given. Native BNB is never one of these. */
+  symbols: string[]
+}
+
+export function fundingContinuation(value: unknown): FundingContinuation | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return
+  const action = value as Record<string, unknown>
+  const symbols = Array.isArray(action.symbols)
+    ? action.symbols.filter((entry): entry is string => typeof entry === 'string').slice(0, 4)
+    : []
+  if (
+    action.kind !== 'fund_account' ||
+    typeof action.address !== 'string' ||
+    !/^0x[0-9a-f]{40}$/i.test(action.address) ||
+    /^0x0{40}$/i.test(action.address) ||
+    (action.chainId !== 56 && action.chainId !== 97) ||
+    symbols.length === 0
+  )
+    return
+  return {
+    kind: 'fund_account',
+    address: action.address.toLowerCase(),
+    chainId: action.chainId,
+    symbols,
   }
 }

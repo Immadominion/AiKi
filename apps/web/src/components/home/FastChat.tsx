@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { AiKiActivity } from '@/components/ui/AiKiActivity'
 import { type AssistantStep, api, type CreditBalance } from '@/lib/api'
 import { FastApprovalAction } from './FastApprovalAction'
+import { FastFundingAction } from './FastFundingAction'
 import { FastMandateAction } from './FastMandateAction'
 import { FastMessage } from './FastMessage'
 import {
@@ -15,6 +16,7 @@ import {
 } from './FastPoints'
 import { approvalContinuations } from './fast-approval'
 import { FastConversationController } from './fast-conversation'
+import { fundingContinuations } from './fast-funding'
 import { fastToolAgentHref } from './fast-links'
 import { mandateContinuations } from './fast-mandate'
 
@@ -215,6 +217,9 @@ export function FastChat({
                   ))}
                   {approvalContinuations(m.steps).map((action) => (
                     <FastApprovalAction key={action.approvalId} action={action} />
+                  ))}
+                  {fundingContinuations(m.steps).map((action) => (
+                    <FastFundingAction key={action.address} action={action} />
                   ))}
                   {m.steps?.some(
                     (step) =>
