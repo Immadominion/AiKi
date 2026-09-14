@@ -229,7 +229,17 @@ export function registerTaskRoutes(
         reason: 'Task delivery is not configured on this deployment.',
       }
     const contact = await input.agentContact(request.params.id)
-    const lastRefusal = await input.tasks.lastRefusal?.(request.params.id).catch(() => null)
+    const refusal = await input.tasks.lastRefusal?.(request.params.id).catch(() => null)
+    /*
+     * "Declined it:" is how a dispatch note reads in an event log, where the
+     * subject is AiKi. This is shown under "What should the agent deliver?" as
+     * guidance, where the subject is the buyer, and the prefix made a
+     * requirement read like a complaint about something they had already done.
+     * Seen on the rendered screen, not in a test.
+     */
+    const lastRefusal = refusal
+      ? { ...refusal, note: refusal.note.replace(/^Declined it:\s*/i, '') }
+      : null
     if (!contact?.owner)
       return { ...base, available: false, reason: 'This agent has no recorded owner to pay.' }
     if (!contact.live)

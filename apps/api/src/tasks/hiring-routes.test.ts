@@ -235,6 +235,13 @@ describe.skipIf(!process.env.DATABASE_URL)(
        */
       const remembered = await h.tasks.lastRefusal?.('315943')
       expect(remembered?.note).toMatch(/Invalid report inputs/)
+      /*
+       * The stored note keeps the log wording; the route strips it. Shown under
+       * "What should the agent deliver?" the subject is the buyer, and
+       * "Declined it:" made a requirement read as a complaint about something
+       * they had already done.
+       */
+      expect(remembered?.note).toMatch(/^Declined it:/)
       expect(Number.isFinite(Date.parse(String(remembered?.at)))).toBe(true)
       // Scoped to the agent that said it, not to whoever asked.
       expect(await h.tasks.lastRefusal?.('999999')).toBeNull()

@@ -393,3 +393,14 @@ it.each(['submitted', 'working'])(
     expect(out.note).not.toMatch(/Declined/)
   },
 )
+
+it('hands the requirement to a buyer without the log wording in front of it', () => {
+  // The route's own transform, asserted where it is cheap to read. A dispatch
+  // note is written for an event log where the subject is AiKi; the hire screen
+  // shows it under "What should the agent deliver?" where the subject is the
+  // person, and the prefix made a requirement read like a complaint.
+  const stored = 'Declined it: This agent needs a PancakeSwap V3 pool address.'
+  expect(stored.replace(/^Declined it:\s*/i, '')).toBe(
+    'This agent needs a PancakeSwap V3 pool address.',
+  )
+})
