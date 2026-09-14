@@ -349,3 +349,57 @@ it('treats a balance of zero tokens as nothing to spend, not as unknown', async 
   // still needs funding, which is exactly the case that prompted this.
   expect((await runTool(ctx, 'my_account', {})).action).toMatchObject({ kind: 'fund_account' })
 })
+
+/*
+ * The composer's setting beats the model's.
+ *
+ * "I can't control the amount of control the agent had from the text field."
+ * A default the model is free to talk itself out of would not answer that, so
+ * the person's choice is applied by the server and the model's argument is the
+ * fallback, not the other way round.
+ */
+it('applies the power the person set, over whatever the model passed', async () => {
+  const h = harness()
+  await runTool({ ...ctx, agentPower: 'never' }, 'create_action_mandate', {
+    ...mandateArgs,
+    ask: 'every',
+  })
+  const constraints = h.posted('/v1/authorizations')?.constraints as {
+    kind: string
+    value: unknown
+  }[]
+  expect(constraints.find((constraint) => constraint.kind === 'approval')?.value).toEqual({
+    mode: 'automatic',
+    threshold: '0',
+  })
+})
+
+it('falls back to the model, then to asking, when nothing was set', async () => {
+  const h = harness()
+  await runTool(ctx, 'create_action_mandate', { ...mandateArgs, ask: 'never' })
+  const constraints = h.posted('/v1/authorizations')?.constraints as {
+    kind: string
+    value: unknown
+  }[]
+  expect(constraints.find((constraint) => constraint.kind === 'approval')?.value).toEqual({
+    mode: 'automatic',
+    threshold: '0',
+  })
+})
+
+it('applies it to the guardian mandate too, which is the one that acts unattended', async () => {
+  const h = harness()
+  await runTool({ ...ctx, agentPower: 'every' }, 'create_mandate', {
+    per_action_usdt: 1,
+    total_usdt: 10,
+    ask: 'never',
+  })
+  const constraints = h.posted('/v1/authorizations')?.constraints as {
+    kind: string
+    value: unknown
+  }[]
+  expect(constraints.find((constraint) => constraint.kind === 'approval')?.value).toEqual({
+    mode: 'approve_every',
+    threshold: '0',
+  })
+})

@@ -1,8 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useAgentPower } from '@/components/shell/prefs'
 import { AiKiActivity } from '@/components/ui/AiKiActivity'
 import { type AssistantStep, api, type CreditBalance } from '@/lib/api'
+import { AgentPowerControl } from './AgentPower'
 import { FastApprovalAction } from './FastApprovalAction'
 import { FastFundingAction } from './FastFundingAction'
 import { FastMandateAction } from './FastMandateAction'
@@ -86,6 +88,14 @@ export function FastChat({
   onClose?: () => void
   onChanged?: () => void
 }) {
+  /*
+   * The setting as it is when Send is pressed, not as it was when this chat
+   * opened. Held in a ref so changing it does not rebuild the conversation
+   * controller and lose a half-typed message.
+   */
+  const { power } = useAgentPower()
+  const powerRef = useRef(power)
+  powerRef.current = power
   const controller = useMemo(() => {
     let storage: Storage | undefined
     try {
@@ -102,6 +112,8 @@ export function FastChat({
         ask: api.assistant,
       },
       storage,
+      undefined,
+      () => powerRef.current,
     )
   }, [id, owner])
   const { messages, draft, busy, loading, error, errorCode, pending } = useSyncExternalStore(
@@ -303,6 +315,15 @@ export function FastChat({
           >
             {busy ? 'Working' : pending ? 'Check reply' : 'Ask'}
           </button>
+        </div>
+        {/*
+          Beside the thing you type, the way a mode control is. This decides
+          whether money moves without being asked about, and it was previously
+          reachable only by talking the assistant into it.
+        */}
+        <div className="mt-[8px] flex items-center gap-[8px]">
+          <AgentPowerControl />
+          <span className="text-faint text-[11.5px]">applies to mandates you make</span>
         </div>
       </form>
     </div>

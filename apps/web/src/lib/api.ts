@@ -594,6 +594,8 @@ export const api = {
   assistant: (
     messages: { role: 'user' | 'assistant'; content: string }[],
     options?: { conversationId: string; idempotencyKey: string },
+    /** The composer's setting. Decides how much an agent may do on its own. */
+    agentPower?: 'every' | 'over' | 'never',
   ) =>
     req<AssistantTurn>('/v1/assistant/messages', {
       method: 'POST',
@@ -601,6 +603,7 @@ export const api = {
       body: JSON.stringify({
         messages,
         ...(options ? { conversationId: options.conversationId } : {}),
+        ...(agentPower ? { agentPower } : {}),
       }),
     }),
   authorize: (constraints: unknown[], idempotencyKey?: string) =>

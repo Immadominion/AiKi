@@ -94,6 +94,14 @@ function prepare(saved = conversation()) {
         setItem: (key: string, value: string) => storage.set(key, value),
         removeItem: (key: string) => storage.delete(key),
       },
+      /*
+       * A window without these is not a window. Anything reading a stored
+       * preference subscribes to changes in the same effect that reads it, so a
+       * shim missing them throws where a browser would not, and the component
+       * under test fails for a reason that does not exist in the product.
+       */
+      addEventListener: () => {},
+      removeEventListener: () => {},
     },
   })
   api.credits = async () => balance

@@ -180,6 +180,32 @@ export function useRelease(name: string) {
   return { pending: ready && state === 'pending', ready, acknowledge }
 }
 
+const POWER = ['every', 'over', 'never'] as const
+export type AgentPower = (typeof POWER)[number]
+
+/**
+ * How much an agent may do on its own, chosen once and applied to what you make.
+ *
+ * A mandate carries this and the chain never holds it, so it is a real decision
+ * with a real consequence, and it was only reachable by talking the assistant
+ * into it. "I can't control the amount of control the agent had from the text
+ * field" is the whole reason this exists: the setting belongs next to the thing
+ * you type, the way a mode does.
+ *
+ * `every` is the default and is deliberately the strict end. Somebody who has
+ * not thought about it yet gets asked.
+ */
+export function useAgentPower() {
+  const [power, setPower, ready] = usePersisted<AgentPower>('aiki.agent.power', 'every', POWER)
+  return {
+    power,
+    ready,
+    /** One control, so pressing it moves to the next level rather than opening a menu. */
+    cycle: () => setPower(POWER[(POWER.indexOf(power) + 1) % POWER.length] ?? 'every'),
+    set: setPower,
+  }
+}
+
 const SIDEBAR = ['open', 'closed'] as const
 
 /**

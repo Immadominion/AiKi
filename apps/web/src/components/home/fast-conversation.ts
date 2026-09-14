@@ -16,6 +16,8 @@ export interface ConversationTransport {
   ask(
     messages: WireMessage[],
     options: { conversationId: string; idempotencyKey: string },
+    /** The composer's setting, read at send time rather than when the controller was made. */
+    agentPower?: 'every' | 'over' | 'never',
   ): Promise<AssistantTurn>
 }
 export interface FastConversationState {
@@ -62,6 +64,8 @@ export class FastConversationController {
     private transport: ConversationTransport,
     private storage: DraftStore | undefined,
     private newKey = () => crypto.randomUUID(),
+    /** Reads the composer's current setting at send time. Absent in tests and older callers. */
+    private agentPower?: () => 'every' | 'over' | 'never' | undefined,
   ) {
     this.storageKey = conversationStorageKey(owner, id)
   }
@@ -188,10 +192,17 @@ export class FastConversationController {
     })
     this.save()
     try {
-      await this.transport.ask(pending.messages, {
-        conversationId: this.id,
-        idempotencyKey: pending.idempotencyKey,
-      })
+      await this.transport.ask(
+        pending.messages,
+        { conversationId: this.id, idempotencyKey: pending.idempotencyKey },
+        /*
+         * Read now, not when this controller was built. Somebody who changes
+         * the setting and then sends means the setting they can see, and a
+         * value captured at construction would be the one they changed away
+         * from.
+         */
+        this.agentPower?.(),
+      )
       if (generation !== this.generation) return
       // Always restore the authoritative thread, including partial tool failures.
       const conversation = await this.transport.load(this.id)

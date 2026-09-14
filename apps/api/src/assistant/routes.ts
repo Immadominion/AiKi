@@ -193,7 +193,7 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
     }
   })
 
-  app.post<{ Body: { messages?: unknown; conversationId?: unknown } }>(
+  app.post<{ Body: { messages?: unknown; conversationId?: unknown; agentPower?: unknown } }>(
     '/v1/assistant/messages',
     async (request, reply) => {
       const session = requireSession(request, reply)
@@ -205,6 +205,15 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
         )
 
       const messages = assistantMessages(request.body?.messages)
+      /*
+       * What the person set in the composer, and the only thing that decides
+       * how much an agent may do alone. Read here rather than from the model's
+       * arguments, and validated against the three levels that exist: anything
+       * else is simply absent, which leaves the strict default in place.
+       */
+      const supplied = request.body?.agentPower
+      const agentPower =
+        supplied === 'every' || supplied === 'over' || supplied === 'never' ? supplied : undefined
       const conversationId = request.body?.conversationId
       if (
         conversationId !== undefined &&
@@ -383,7 +392,13 @@ export function registerAssistantRoutes(app: FastifyInstance, config: AssistantC
         turn = await runAssistant({
           apiKey: config.apiKey,
           model,
-          ctx: { baseUrl: config.selfUrl, cookie, turnId, sessionAddress: session.address },
+          ctx: {
+            baseUrl: config.selfUrl,
+            cookie,
+            turnId,
+            sessionAddress: session.address,
+            ...(agentPower ? { agentPower } : {}),
+          },
           messages,
           budgetPoints: hold,
           networkContext: {

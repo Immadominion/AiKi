@@ -1,4 +1,5 @@
 import {
+  type AskLevel,
   accountTokensFor,
   actionMandateConstraints,
   amountUnits,
@@ -46,6 +47,20 @@ export interface ToolContext {
   cookie: string
   /** Accepted SIWE address from the route, never model-supplied. */
   sessionAddress?: string
+  /**
+   * How much the person has decided an agent may do on its own.
+   *
+   * A setting they chose in the composer, not something the model inferred from
+   * the conversation, so it WINS over whatever the model passed. That is what a
+   * mode control means: "I can't control the amount of control the agent had
+   * from the text field" was the complaint, and a default the model is free to
+   * talk itself out of would not answer it.
+   *
+   * Deliberately not in the system prompt. That block is cached, and a line
+   * that varies per person would miss the cache on every request and put the
+   * cost of a turn back where it was.
+   */
+  agentPower?: AskLevel
   turnId?: string
   toolCallId?: string
 }
@@ -764,7 +779,11 @@ export async function runTool(
            */
           ...(name === 'preview_limits'
             ? {}
-            : { ask: args.ask === 'over' || args.ask === 'never' ? args.ask : 'every' }),
+            : {
+                ask:
+                  ctx.agentPower ??
+                  (args.ask === 'over' || args.ask === 'never' ? args.ask : 'every'),
+              }),
           ...(typeof args.ask_over === 'number' ? { askOver: args.ask_over } : {}),
         })
       } catch (error) {
@@ -827,13 +846,12 @@ export async function runTool(
                 ? args.expires_in_days
                 : Number.NaN,
           /*
-           * Absent is not automatic. The schema requires this, and a model can
-           * still omit a required field, so the fallback is the strict end
-           * rather than the convenient one: an agent spending without asking
-           * must be something somebody chose, never something that happened
-           * because a field went missing.
+           * The person's own setting first, then the model's, then the strict
+           * end. A model can omit a required field, and an agent spending
+           * without asking must be something somebody chose rather than
+           * something that happened because a field went missing.
            */
-          ask: args.ask === 'over' || args.ask === 'never' ? args.ask : 'every',
+          ask: ctx.agentPower ?? (args.ask === 'over' || args.ask === 'never' ? args.ask : 'every'),
           ...(typeof args.ask_over === 'number' ? { askOver: args.ask_over } : {}),
         })
       } catch (error) {
