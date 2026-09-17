@@ -1,5 +1,5 @@
 import { type AskLevel, approvalConstraint } from './approval.js'
-import { type AccountToken, accountTokensFor, amountUnits } from './guardian.js'
+import { type AccountToken, accountTokensFor, amountUnits, swapVenueFor } from './guardian.js'
 import type { ConstraintKind } from './types.js'
 
 /**
@@ -24,17 +24,26 @@ import type { ConstraintKind } from './types.js'
  * having and must never be drawn as though the chain were holding it.
  */
 
-export type TokenAction = 'send' | 'approve'
+export type TokenAction = 'send' | 'approve' | 'swap'
 
 /** The selector each named action permits, so nothing infers one from a string. */
 const SELECTOR: Record<TokenAction, `0x${string}`> = {
   send: '0xa9059cbb', // transfer(address,uint256)
   approve: '0x095ea7b3', // approve(address,uint256)
+  /*
+   * exactInputSingle on the reviewed router. A swap is the one action here
+   * whose target is not the token: the account approves the router on the
+   * token, then calls the router. Both halves are in the mandate or neither
+   * works, which is why `swap` expands into two selectors and two targets
+   * rather than one of each.
+   */
+  swap: '0x04e45aaf',
 }
 
 const VERB: Record<TokenAction, string> = {
   send: 'send it',
   approve: 'let a contract take it',
+  swap: 'swap it',
 }
 
 /** Matches Constants.MAX_ALLOWLIST in Types.sol. Above this the enforcer reverts. */
@@ -50,6 +59,14 @@ export interface ActionMandateInput {
    * the entire risk this builder exists to bound.
    */
   recipients: string[]
+  /**
+   * The spending account, required when `can` includes `swap`.
+   *
+   * A swap's proceeds have to land somewhere, and the only safe somewhere is
+   * the account the mandate spends from. Passed in rather than derived because
+   * this package does not know whose account it is.
+   */
+  account?: string
   can: TokenAction[]
   perAction: number
   total: number
@@ -115,7 +132,35 @@ export function actionMandateConstraints(input: ActionMandateInput): Authorizati
     if (!Object.hasOwn(SELECTOR, action))
       throw new Error(`${action} is not something a mandate can permit.`)
 
-  const recipients = [...new Set(input.recipients.map(address))]
+  /*
+   * A swap needs the router in the contract allowlist, and the account itself
+   * as the only permitted recipient.
+   *
+   * Both halves matter. Without the router in `contract_allowlist` the call is
+   * refused by the chain. Without the account pinned as the recipient, an agent
+   * allowed to swap could send the proceeds anywhere, and no cap would notice:
+   * the caps measure the token going OUT, and the token coming back is an asset
+   * they say nothing about.
+   */
+  const swapping = actions.includes('swap')
+  const venue = swapping ? swapVenueFor(input.chainId) : null
+  if (swapping && !venue) throw new Error('This network has no reviewed venue to swap through.')
+  if (swapping && !input.account)
+    throw new Error('A swap mandate needs the account the bought tokens return to.')
+
+  /*
+   * Both legs, or neither works. A router moves the token with transferFrom, so
+   * the account has to approve it first: a mandate permitting only the swap
+   * selector describes a call that always reverts. So `swap` carries `approve`
+   * with it, and the router joins the destinations because an approval's
+   * destination IS its spender.
+   */
+  const recipients = [
+    ...new Set([
+      ...input.recipients.map(address),
+      ...(venue && input.account ? [address(input.account), address(venue.router)] : []),
+    ]),
+  ]
   if (recipients.length === 0)
     throw new Error(
       'Name at least one address the agent may send to. A mandate with none is unbounded.',
@@ -146,15 +191,23 @@ export function actionMandateConstraints(input: ActionMandateInput): Authorizati
     },
     {
       kind: 'contract_allowlist',
-      // The token contract is the only thing called: both `transfer` and
-      // `approve` are calls on the token itself, not on whoever receives.
-      value: [token.address],
+      // `transfer` and `approve` are calls on the token itself. A swap is the
+      // exception: it is a call on the router, so the router joins the list and
+      // nothing else ever does.
+      value: venue ? [token.address, venue.router] : [token.address],
       tier: 'T0',
-      label: `only the ${token.symbol} contract`,
+      label: venue
+        ? `only the ${token.symbol} contract and ${venue.label}`
+        : `only the ${token.symbol} contract`,
     },
     {
       kind: 'selector_allowlist',
-      value: actions.map((action) => SELECTOR[action]),
+      value: [
+        ...new Set([
+          ...actions.map((action) => SELECTOR[action]),
+          ...(swapping ? [SELECTOR.approve] : []),
+        ]),
+      ],
       tier: 'T0',
       label: `only ${permitted}`,
     },

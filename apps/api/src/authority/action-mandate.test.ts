@@ -1,4 +1,4 @@
-import { actionMandateConstraints, tokenFor } from '@aiki/contracts'
+import { actionMandateConstraints, swapVenueFor, tokenFor } from '@aiki/contracts'
 import { expect, it } from 'vitest'
 import { AIKI_ENFORCERS_BSC_TESTNET } from '../config/enforcers.js'
 import { compileCaveats } from './caveats.js'
@@ -172,4 +172,63 @@ it('labels what it permits in words a person can check', () => {
   expect(labels).toContain('0.5 USDT per action')
   expect(labels).toContain('1 USDT in total')
   expect(labels).toContain(`only to ${TO}`)
+})
+
+/*
+ * A swap, capped on chain.
+ *
+ * AiKi told people for weeks that it "genuinely cannot" trade, because "the cap
+ * enforcers cannot read an amount out of a swap". Both halves were false.
+ * PerActionCapEnforcer takes max(declared, realised), and realised is a
+ * balanceOf delta its own comment calls "decode-free, so it survives proxies,
+ * multicall wrappers and an ABI nobody anticipated". A swap is exactly that.
+ * The declared half needed one table entry, verified against a real encoding.
+ */
+const swapBuild = () =>
+  build({
+    can: ['swap'],
+    account: `0x${'dd'.repeat(20)}`,
+  }) as Constraint[]
+
+it('permits the router as well as the token, and nothing else', () => {
+  const targets = byKind(swapBuild(), 'contract_allowlist')?.value as string[]
+  expect(targets).toEqual([tokenFor(56, 'USDT').address, swapVenueFor(56)?.router])
+})
+
+it('carries the approve leg, because a router moves tokens with transferFrom', () => {
+  // A mandate permitting only the swap selector describes a call that always
+  // reverts: the account has to approve the router first.
+  const selectors = byKind(swapBuild(), 'selector_allowlist')?.value as string[]
+  expect(selectors).toContain('0x04e45aaf')
+  expect(selectors).toContain('0x095ea7b3')
+})
+
+it('sends the proceeds back to the account and lets the router be approved', () => {
+  /*
+   * The caps measure the token going OUT. What comes back is a different asset
+   * they say nothing about, so without this an agent allowed to swap could keep
+   * the proceeds anywhere it liked and no limit would notice.
+   */
+  const recipients = byKind(swapBuild(), 'recipient_allowlist')?.value as string[]
+  expect(recipients).toContain(`0x${'dd'.repeat(20)}`)
+  expect(recipients).toContain(swapVenueFor(56)?.router)
+})
+
+it('refuses a swap mandate with nowhere for the proceeds to land', () => {
+  expect(() => build({ can: ['swap'] })).toThrow(/bought tokens return to/)
+})
+
+it('compiles the swap caps onto the chain, not into a promise', () => {
+  /*
+   * The point of the whole exercise. If the amount site were missing the cap
+   * would compile soft, and AiKi would be claiming a limit the chain does not
+   * hold, which is the one thing this product must never do.
+   */
+  const { caveats, outcomes } = compileCaveats(swapBuild(), AIKI_ENFORCERS_BSC_TESTNET)
+  expect(caveats).toHaveLength(6)
+  const caps = outcomes.filter(
+    (o) => o.constraint.kind === 'per_action_cap' || o.constraint.kind === 'session_total_cap',
+  )
+  expect(caps).toHaveLength(2)
+  expect(caps.every((o) => o.tier === 'T0')).toBe(true)
 })

@@ -31,6 +31,16 @@ const RECIPIENT_ARG_INDEX: Record<string, number> = {
    * it open.
    */
   '0x095ea7b3': 0,
+  /*
+   * exactInputSingle: the struct's `recipient` is where the bought token
+   * lands. Word 3, verified against a real encoding.
+   *
+   * This is the field that makes a swap mandate safe to sign. Without it an
+   * agent permitted to swap could send the proceeds anywhere, and the caps
+   * would not notice: they measure the token going OUT, and the token coming
+   * back is a different asset they say nothing about.
+   */
+  '0x04e45aaf': 3,
 }
 
 const WORD = 64

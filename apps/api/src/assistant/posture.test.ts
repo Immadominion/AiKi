@@ -31,13 +31,26 @@ it('names the thing a reply must not end with', () => {
   expect(SYSTEM).toMatch(/would you like me to\s*\n?\s*look\?" is not one/i)
 })
 
-it('offers hiring a trader rather than only refusing to trade', () => {
-  const refusal = SYSTEM.indexOf('Trading is the one people ask for most')
-  const offer = SYSTEM.indexOf('hire somebody who already does it')
-  expect(refusal).toBeGreaterThan(-1)
-  // The offer follows the refusal, in the same breath, so the accurate half is
-  // never the whole answer.
-  expect(offer).toBeGreaterThan(refusal)
+it('says AiKi can swap, and does not carry the old reason it could not', () => {
+  /*
+   * The prompt used to explain in detail that trading was impossible: "no
+   * exchange router is allowlistable, and the cap enforcers cannot read an
+   * amount out of a swap". Both halves were false. A router is an ordinary
+   * address, and PerActionCapEnforcer charges max(declared, realised) where
+   * realised is a balanceOf delta its own comment calls decode-free. The claim
+   * survived for weeks because nobody read the enforcer.
+   */
+  expect(SYSTEM).toMatch(/You CAN swap/)
+  for (const lie of [
+    'genuinely cannot do it',
+    'no exchange router is allowlistable',
+    'cannot read an amount out of a swap',
+  ])
+    expect(SYSTEM, lie).not.toContain(lie)
+})
+
+it('still offers hiring somebody who trades, which is a different thing', () => {
+  expect(SYSTEM).toContain('hire somebody who already does it')
 })
 
 it('still forbids the sentence this all started with', () => {

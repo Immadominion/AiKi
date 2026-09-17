@@ -67,6 +67,21 @@ const AMOUNT_ARG_INDEX: Record<string, number> = {
    * is anyway; the standing authority an agent holds is this call alone.
    */
   '0x0e752702': 0, // repayBorrow(uint256)
+  /*
+   * exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))
+   * on a SwapRouter02-style router, which PancakeSwap's SmartRouter is.
+   *
+   * The struct is all static types, so it is encoded inline rather than behind
+   * a pointer and `amountIn` lands at a fixed word. Verified by encoding a real
+   * call: word 4. The selector is 0x04e45aaf; the older router that also takes
+   * a deadline is 0x414bf389 and a different shape, so it is deliberately NOT
+   * here rather than assumed compatible.
+   *
+   * This entry is the whole reason a swap can be capped at T0. Without it
+   * `sitesFor` yields nothing, the cap compiles soft, and AiKi would be
+   * claiming a limit the chain does not hold.
+   */
+  '0x04e45aaf': 4,
 }
 
 const AMOUNT_SITE_TUPLE = {

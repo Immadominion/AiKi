@@ -210,6 +210,43 @@ export interface AccountToken {
  * so wrapped is the only form of BNB an agent can ever act on. Showing it beside
  * the native balance is how somebody learns that without reading Solidity.
  */
+/**
+ * The one venue a mandate may swap through, per chain.
+ *
+ * Reviewed rather than discovered. A router is an address a signed mandate lets
+ * an agent hand tokens to, so it is the last place to accept whatever a model
+ * found in a search result. This is PancakeSwap's V3 SmartRouter, checked on
+ * chain: its WETH9 is the same WBNB this file already names, its factory is the
+ * PancakeSwap V3 factory, and its bytecode carries the selector below.
+ *
+ * `0x04e45aaf` is exactInputSingle in its SwapRouter02 shape, which encodes the
+ * amount at a fixed word. The older deadline-carrying router is a different
+ * selector and a different layout, and is deliberately not supported rather
+ * than assumed equivalent.
+ */
+export interface SwapVenue {
+  router: `0x${string}`
+  selector: `0x${string}`
+  label: string
+}
+
+const SWAP_VENUES: Record<number, SwapVenue> = {
+  56: {
+    router: '0x13f4ea83d0bd40e75c8222255bc855a974568dd4',
+    selector: '0x04e45aaf',
+    label: 'PancakeSwap v3',
+  },
+  97: {
+    router: '0x1b81d678ffb9c0263b24a97847620c99d213eb14',
+    selector: '0x04e45aaf',
+    label: 'PancakeSwap v3',
+  },
+}
+
+export function swapVenueFor(chainId: number): SwapVenue | null {
+  return SWAP_VENUES[chainId] ?? null
+}
+
 export function accountTokensFor(chainId: number): AccountToken[] {
   const guardian = guardianFor(chainId)
   const usdt: AccountToken = {
