@@ -43,6 +43,22 @@ export interface ChainReader {
    * opposite things to somebody who has just sent money.
    */
   balances?(account: `0x${string}`, tokens: AccountToken[]): Promise<AccountBalances>
+
+  /**
+   * What an arbitrary ERC-20 calls itself, so a mandate can name a token AiKi
+   * has never heard of.
+   *
+   * The reviewed list is two tokens. An account can receive anything, and it
+   * usually does: somebody who has been sent a token they want to use could not
+   * write a mandate for it at all, which made their own money unreachable
+   * through their own account.
+   *
+   * Read from the token rather than from a list, because there is no list that
+   * could contain every token somebody might hold. Returns null when the
+   * address does not answer like an ERC-20, which is the honest outcome for an
+   * address that is not one.
+   */
+  token?(address: `0x${string}`): Promise<AccountToken | null>
 }
 
 /** Base units as decimal strings. A balance is money; it never becomes a float. */
@@ -65,6 +81,11 @@ const ACCOUNT_ABI = parseAbi([
 ])
 
 const ERC20_ABI = parseAbi(['function balanceOf(address owner) view returns (uint256)'])
+
+const ERC20_META_ABI = parseAbi([
+  'function symbol() view returns (string)',
+  'function decimals() view returns (uint8)',
+])
 
 /** ERC-1271's accept value. Anything else, including a revert, is a refusal. */
 const MAGIC = '0x1626ba7e'
@@ -98,6 +119,29 @@ export function viemChainReader(rpcUrl: string): ChainReader {
         // AiKiMandateAccount returns 0xffffffff rather than reverting, but a
         // different account may revert, and a revert is a no.
         return false
+      }
+    },
+    /*
+     * Asked of the token itself, because no list could hold every token
+     * somebody might be sent. A token that does not answer both calls is not
+     * one a mandate can be denominated in: the caps are an amount of it, and an
+     * amount needs decimals that came from somewhere real.
+     */
+    async token(address) {
+      try {
+        const [symbol, decimals] = await Promise.all([
+          client.readContract({ address, abi: ERC20_META_ABI, functionName: 'symbol' }),
+          client.readContract({ address, abi: ERC20_META_ABI, functionName: 'decimals' }),
+        ])
+        if (typeof decimals !== 'number' || decimals < 0 || decimals > 36) return null
+        // Its own name, trimmed to something a screen can hold. A token is free
+        // to call itself anything, including a sentence.
+        const named = String(symbol ?? '')
+          .trim()
+          .slice(0, 16)
+        return named ? { address, symbol: named, decimals } : null
+      } catch {
+        return null
       }
     },
     /*

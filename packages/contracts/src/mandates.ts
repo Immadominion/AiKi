@@ -51,8 +51,21 @@ const MAX_ALLOWLIST = 32
 
 export interface ActionMandateInput {
   chainId: number
-  /** Which token. Must be one this chain's reviewed list names. */
+  /** Which token, by symbol, when it is one this chain's reviewed list names. */
   symbol: string
+  /**
+   * A token resolved from the chain instead, for anything the list does not
+   * name.
+   *
+   * The reviewed list is two tokens. An account receives whatever anybody sends
+   * it, so somebody holding a token they actually want to use could not write a
+   * mandate for it at all: their own money was unreachable through their own
+   * account. When this is supplied it IS the token, and `symbol` is ignored.
+   *
+   * Resolved by reading the contract, never by trusting a name typed into a
+   * chat. Whoever supplies it is stating that they read it off chain.
+   */
+  token?: AccountToken
   /**
    * Where value may land. Required and non-empty on purpose: a token mandate
    * with no destination rule permits sending the full cap anywhere, which is
@@ -106,6 +119,25 @@ const address = (value: string): string => {
   return normalised
 }
 
+/**
+ * A token that came from outside this package, checked before it becomes a cap.
+ *
+ * The caps are an amount of this token and the allowlists are its address, so a
+ * malformed one does not produce a weaker mandate, it produces a nonsensical
+ * one. Decimals bound at 36 because every real ERC-20 is far below it and the
+ * amount maths is exponential in this number.
+ */
+function checkedToken(token: AccountToken): AccountToken {
+  const resolved = address(token.address)
+  const symbol = String(token.symbol ?? '')
+    .trim()
+    .slice(0, 16)
+  if (!symbol) throw new Error('That token does not say what it is called.')
+  if (!Number.isSafeInteger(token.decimals) || token.decimals < 0 || token.decimals > 36)
+    throw new Error('That token does not report usable decimals.')
+  return { address: resolved as `0x${string}`, symbol, decimals: token.decimals }
+}
+
 export function tokenFor(chainId: number, symbol: string): AccountToken {
   const token = accountTokensFor(chainId).find(
     (candidate) => candidate.symbol.toLowerCase() === symbol.toLowerCase(),
@@ -122,7 +154,7 @@ export function tokenFor(chainId: number, symbol: string): AccountToken {
 }
 
 export function actionMandateConstraints(input: ActionMandateInput): AuthorizationConstraint[] {
-  const token = tokenFor(input.chainId, input.symbol)
+  const token = input.token ? checkedToken(input.token) : tokenFor(input.chainId, input.symbol)
 
   const actions = [...new Set(input.can)]
   if (actions.length === 0) throw new Error('Say what the agent may do with the token.')

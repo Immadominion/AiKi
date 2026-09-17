@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
 import {
+  accountTokensFor,
   DELEGATION_TYPES,
   delegationDomain,
   guardianFor,
@@ -896,6 +897,51 @@ export function createApiServer(input: {
       }
     },
   )
+  /**
+   * What a token calls itself, so a mandate can name one AiKi never reviewed.
+   *
+   * The reviewed list is two tokens and an account receives whatever anybody
+   * sends it. Somebody holding a token they actually wanted to use could not
+   * write a mandate for it: their own money was unreachable through their own
+   * account. Read off the contract, because no list could hold every token.
+   *
+   * Says plainly that it is unreviewed. AiKi is reporting what the token claims
+   * about itself, which is not the same as vouching for it.
+   */
+  app.get<{ Params: { address: string } }>('/v1/tokens/:address', async (request, reply) => {
+    const session = requireSession(request, reply)
+    if (!session) return reply
+    const address = request.params.address.toLowerCase()
+    if (!/^0x[0-9a-f]{40}$/.test(address) || /^0x0+$/.test(address))
+      throw new ClientError('That is not a token address.', { code: 'TOKEN_ADDRESS_INVALID' })
+    if (!input.chain?.token || !input.enforcers)
+      return reply.code(503).send({
+        error: {
+          code: 'TOKEN_LOOKUP_UNAVAILABLE',
+          message: 'This deployment cannot read a token right now.',
+          retryable: true,
+        },
+      })
+    const token = await input.chain.token(address as `0x${string}`)
+    if (!token)
+      throw new ClientError(
+        'That address does not answer like a token, so no mandate can be denominated in it.',
+        { code: 'TOKEN_NOT_READABLE' },
+      )
+    const reviewed = accountTokensFor(input.enforcers.chainId).some(
+      (candidate: { address: string }) => candidate.address.toLowerCase() === address,
+    )
+    return {
+      ...token,
+      reviewed,
+      ...(reviewed
+        ? {}
+        : {
+            note: 'AiKi has not reviewed this token. These are the token’s own answers about itself.',
+          }),
+    }
+  })
+
   app.post<{ Body: { constraints: Constraint[] } }>(
     '/v1/authorizations',
     async (request, reply) => {

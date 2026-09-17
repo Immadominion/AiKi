@@ -312,7 +312,10 @@ export const TOOLS: Anthropic.Tool[] = [
       properties: {
         token: {
           type: 'string',
-          description: 'Symbol, for example USDT. Ask my_account for what this network holds.',
+          description:
+            'A reviewed symbol like USDT, OR any token contract address. An address is read off ' +
+            'chain for its symbol and decimals, so a mandate can name a token AiKi has never ' +
+            'reviewed. Somebody who was sent a token and wants to use it holds exactly that.',
         },
         to: {
           type: 'array',
@@ -321,8 +324,11 @@ export const TOOLS: Anthropic.Tool[] = [
         },
         can: {
           type: 'array',
-          items: { type: 'string', enum: ['send', 'approve'] },
-          description: 'send permits transfer. approve permits letting a contract take the token.',
+          items: { type: 'string', enum: ['send', 'approve', 'swap'] },
+          description:
+            'send permits transfer. approve permits letting a contract take the token. swap ' +
+            'permits trading it through the one reviewed venue, with the proceeds returning to ' +
+            'the account, capped on chain like any other spend.',
         },
         per_action: {
           type: 'number',
@@ -827,15 +833,61 @@ export async function runTool(
       const execution = await executionNetwork()
       if ('error' in execution) return execution.error
       const { chainId } = execution.network
+      /*
+       * An address means a token nobody reviewed, so it is read off chain
+       * rather than guessed from a name in a chat. The reviewed list is two
+       * tokens and an account receives whatever it is sent.
+       */
+      const named = typeof args.token === 'string' ? args.token.trim() : ''
+      let resolved: { address: `0x${string}`; symbol: string; decimals: number } | undefined
+      if (/^0x[0-9a-fA-F]{40}$/.test(named)) {
+        const lookup = await call(`/v1/tokens/${named.toLowerCase()}`)
+        if (!lookup.ok) return lookup
+        const body = lookup.body as { address?: unknown; symbol?: unknown; decimals?: unknown }
+        if (
+          typeof body?.address !== 'string' ||
+          typeof body.symbol !== 'string' ||
+          typeof body.decimals !== 'number'
+        )
+          return refused('TOKEN_NOT_READABLE', 'That token could not be read.')
+        resolved = {
+          address: body.address as `0x${string}`,
+          symbol: body.symbol,
+          decimals: body.decimals,
+        }
+      }
+
+      /*
+       * The account is fetched BEFORE the constraints, not after, because a
+       * swap mandate names it: the bought token has to land somewhere, and the
+       * only safe somewhere is the account the mandate spends from. Deploying
+       * it first also means a person is never told their limits are invalid
+       * when what is actually missing is an account.
+       */
+      const account = await accountRequest()
+      if (!account.ok) return account
+      const held = mandateAccount(account.body, chainId)
+      if (!held) return unverifiedAccount()
+      let accountAddress = held.address
+      if (accountAddress === null) {
+        const deployment = await accountRequest(true)
+        if (!deployment.ok) return deployment
+        accountAddress = mandateAccount(deployment.body, chainId)?.address ?? null
+        if (!accountAddress) return unverifiedAccount()
+      }
+
       let constraints: ReturnType<typeof actionMandateConstraints>
       try {
         constraints = actionMandateConstraints({
           chainId,
-          symbol: typeof args.token === 'string' ? args.token : '',
+          symbol: resolved ? resolved.symbol : named,
+          ...(resolved ? { token: resolved } : {}),
+          account: accountAddress,
           recipients: Array.isArray(args.to) ? args.to.map((entry) => String(entry)) : [],
           can: (Array.isArray(args.can) ? args.can : []).map((entry) => String(entry)) as (
             | 'send'
             | 'approve'
+            | 'swap'
           )[],
           perAction: typeof args.per_action === 'number' ? args.per_action : Number.NaN,
           total: typeof args.total === 'number' ? args.total : Number.NaN,
@@ -862,17 +914,6 @@ export async function runTool(
             ? error.message
             : 'Choose a reviewed token, a destination and valid limits.',
         )
-      }
-      const account = await accountRequest()
-      if (!account.ok) return account
-      const held = mandateAccount(account.body, chainId)
-      if (!held) return unverifiedAccount()
-      let accountAddress = held.address
-      if (accountAddress === null) {
-        const deployment = await accountRequest(true)
-        if (!deployment.ok) return deployment
-        accountAddress = mandateAccount(deployment.body, chainId)?.address ?? null
-        if (!accountAddress) return unverifiedAccount()
       }
       const created = await post('/v1/authorizations', { constraints })
       const authorization = created.body as { id?: unknown; owner?: unknown } | null

@@ -28,8 +28,10 @@ const base = {
 const build = (over: Partial<Parameters<typeof actionMandateConstraints>[0]> = {}) =>
   actionMandateConstraints({ ...base, can: [...base.can], ...over })
 
-const byKind = (constraints: { kind: string; value: unknown; tier: string }[], kind: string) =>
-  constraints.find((constraint) => constraint.kind === kind)
+const byKind = (
+  constraints: { kind: string; value: unknown; tier: string; label?: string }[],
+  kind: string,
+) => constraints.find((constraint) => constraint.kind === kind)
 
 it('scopes a send to one token, one selector and one destination', () => {
   const constraints = build()
@@ -231,4 +233,45 @@ it('compiles the swap caps onto the chain, not into a promise', () => {
   )
   expect(caps).toHaveLength(2)
   expect(caps.every((o) => o.tier === 'T0')).toBe(true)
+})
+
+/*
+ * A token AiKi has never heard of.
+ *
+ * The reviewed list is two tokens. An account receives whatever anybody sends
+ * it, so somebody holding a meme token they actually wanted to use could not
+ * write a mandate for it at all: their own money was unreachable through their
+ * own account, and the only answer AiKi had was "that is not a token I know".
+ */
+const MEME = `0x${'fe'.repeat(20)}`
+
+it('builds a mandate for a token resolved from the chain', () => {
+  const constraints = build({
+    token: { address: MEME as `0x${string}`, symbol: 'PEPE', decimals: 9 },
+    perAction: 1,
+    total: 2,
+  })
+  expect(byKind(constraints, 'asset_scope')?.value).toEqual([MEME])
+  // Its own decimals, not the guardian's eighteen. At nine, one token is 1e9.
+  expect(byKind(constraints, 'per_action_cap')?.value).toBe('1000000000')
+  expect(byKind(constraints, 'session_total_cap')?.label).toContain('PEPE')
+})
+
+it('swaps a token nobody reviewed, through the venue somebody did', () => {
+  // The whole point: the meme token is what they have, so it is what they swap.
+  const constraints = build({
+    token: { address: MEME as `0x${string}`, symbol: 'PEPE', decimals: 9 },
+    can: ['swap'],
+    account: `0x${'dd'.repeat(20)}`,
+  })
+  expect(byKind(constraints, 'contract_allowlist')?.value).toEqual([MEME, swapVenueFor(56)?.router])
+})
+
+it('refuses a token that does not say what it is or how it counts', () => {
+  const base = { address: MEME as `0x${string}`, symbol: 'PEPE', decimals: 9 }
+  expect(() => build({ token: { ...base, symbol: '  ' } })).toThrow(/what it is called/)
+  expect(() => build({ token: { ...base, decimals: 999 } })).toThrow(/usable decimals/)
+  expect(() => build({ token: { ...base, address: '0xnope' as `0x${string}` } })).toThrow(
+    /not an address/,
+  )
 })
