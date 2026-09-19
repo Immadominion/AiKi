@@ -74,6 +74,21 @@ function address(value: unknown): Address {
   return value as Address
 }
 
+/**
+ * A failure the buyer caused and can fix, as opposed to one they cannot.
+ *
+ * The distinction is the whole point: a reader that cannot reach the chain and
+ * a reader handed an address that is not what it claims to be are different
+ * events, and telling somebody the second is the first sends them to wait for
+ * an outage that is not happening.
+ */
+export class ReportInputError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ReportInputError'
+  }
+}
+
 export const reportInputs = {
   rebalancer(brief: unknown): string {
     const { tokenId } = fields(brief, ['tokenId'])
@@ -178,8 +193,27 @@ export function registerReportTask<Input, Assessment extends ReportAssessment>(
       if (JSON.stringify(delivery).length > 19_000)
         throw new Error('Report exceeds delivery limit.')
       return delivery
-    } catch {
-      // RPC URLs, credentials and database details must not reach public task responses.
+    } catch (error) {
+      /*
+       * Say which input was wrong when the input was wrong.
+       *
+       * This used to return one sentence for everything, and it blamed
+       * infrastructure: "the on-chain read or evidence record was
+       * unavailable". Measured on a real hire. Somebody supplied three Venus
+       * markets, one was a valid address that is not a Venus market, and they
+       * were told the chain was unavailable. It reads as an outage on our side.
+       * It was one wrong address out of three, and nothing in the answer named
+       * it, so the only move left was to try again and get the same sentence.
+       *
+       * A reader that knows which input it could not read says so. Everything
+       * else keeps the generic message, because RPC urls, credentials and
+       * database details must not reach a public task response.
+       */
+      if (error instanceof ReportInputError)
+        return { error: `${error.message} No transaction was submitted.` }
+      // The operator gets the real reason even when the buyer cannot. Without
+      // this, a support report is a screenshot of a sentence that names nothing.
+      request.log?.error({ err: error, kind: options.kind }, 'reference report failed')
       return {
         error:
           'I could not complete this report. The on-chain read or evidence record was unavailable. No transaction was submitted.',

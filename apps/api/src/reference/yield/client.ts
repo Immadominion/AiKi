@@ -1,5 +1,6 @@
 import { type Address, createPublicClient, http, type PublicClient, parseAbi } from 'viem'
 import { bsc } from 'viem/chains'
+import { ReportInputError } from '../report-task.js'
 
 const marketAbi = parseAbi([
   'function supplyRatePerBlock() view returns (uint256)',
@@ -49,6 +50,25 @@ export function assessYield(
 export interface YieldReader {
   assess(markets: `0x${string}`[], rateOnly: boolean): Promise<YieldAssessment>
 }
+/**
+ * Named, so an answer can say WHICH market rather than that something failed.
+ *
+ * A Venus market answers supplyRatePerBlock and symbol. An address that does
+ * not is either not a market or not a contract, and either way the person who
+ * supplied it is the only one who can fix it. They cannot fix what they are not
+ * told.
+ */
+export class UnreadableMarkets extends ReportInputError {
+  constructor(readonly markets: `0x${string}`[]) {
+    super(
+      markets.length === 1
+        ? `${markets[0]} does not answer as a Venus market, so it has no supply rate to report.`
+        : `These do not answer as Venus markets, so they have no supply rate to report: ${markets.join(', ')}.`,
+    )
+    this.name = 'UnreadableMarkets'
+  }
+}
+
 export class VenusYieldClient implements YieldReader {
   private readonly client: PublicClient
   constructor(rpcUrl: string, client?: PublicClient) {
@@ -56,7 +76,19 @@ export class VenusYieldClient implements YieldReader {
   }
   async assess(markets: `0x${string}`[], rateOnly: boolean) {
     if (!markets.length) throw new Error('At least one Venus market is required.')
-    const routes = await Promise.all(
+    /*
+     * Which market failed, by name.
+     *
+     * Promise.all rejects with whichever read lost first, and the caller turned
+     * that into "the on-chain read was unavailable". Measured: a buyer supplied
+     * three markets, one was a valid address that is not a Venus market, and
+     * the report came back blaming infrastructure. It read as an outage. It was
+     * one wrong address out of three, and nothing in the answer said which.
+     *
+     * settled rather than all, so every market is tried and the ones that do
+     * not answer are named together instead of one at a time.
+     */
+    const settled = await Promise.allSettled(
       markets.map(async (market) => {
         const [rateRaw, symbolRaw] = await Promise.all([
           this.client.readContract({
@@ -79,6 +111,9 @@ export class VenusYieldClient implements YieldReader {
         }
       }),
     )
+    const unreadable = markets.filter((_market, index) => settled[index]?.status === 'rejected')
+    if (unreadable.length) throw new UnreadableMarkets(unreadable)
+    const routes = settled.flatMap((entry) => (entry.status === 'fulfilled' ? [entry.value] : []))
     return assessYield(routes, rateOnly)
   }
 }
