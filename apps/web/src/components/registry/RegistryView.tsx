@@ -101,7 +101,12 @@ export function RegistryView() {
                   sub={`token ${p.identity.tokenId}`}
                   bg="linear-gradient(135deg,#3D3D3A,#6B6B66)"
                 />,
-                <LivenessBadge key="b" state={p.liveness} lastProbeAt={p.lastProbeAt} />,
+                <LivenessBadge
+                  key="b"
+                  state={p.liveness}
+                  lastProbeAt={p.lastProbeAt}
+                  conclusive={p.livenessConclusive}
+                />,
                 <Cell key="c" color="var(--color-body)">
                   {p.checks.successes} of {p.checks.trials}
                 </Cell>,

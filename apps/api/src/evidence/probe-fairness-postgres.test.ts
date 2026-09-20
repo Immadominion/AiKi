@@ -45,7 +45,13 @@ describe.skipIf(!databaseUrl)(
     async function seed(
       id: string,
       state?: string,
-      opts: { chainId?: number; registry?: string; block?: number; age?: number } = {},
+      opts: {
+        chainId?: number
+        registry?: string
+        block?: number
+        age?: number
+        agentUri?: string
+      } = {},
     ) {
       const registeredAt = new Date(Date.now() - 10 * 86_400_000).toISOString()
       const subject = {
@@ -59,7 +65,7 @@ describe.skipIf(!databaseUrl)(
       await store.append({
         ...base,
         predicate: 'erc8004.agent_registered',
-        value: { agentURI: `https://example.test/${id}`, owner: '0x1' },
+        value: { agentURI: opts.agentUri ?? `https://example.test/${id}`, owner: '0x1' },
         observedAt: registeredAt,
         validAt: registeredAt,
         recordedAt: registeredAt,
@@ -88,6 +94,16 @@ describe.skipIf(!databaseUrl)(
         })
       }
     }
+
+    it('leaves out registrations whose agentURI is empty rather than queueing them forever', async () => {
+      // An empty URI resolves to nothing, so the probe fails on identity and
+      // records no verdict. Never probed is the front of the discovery lane, so
+      // these agents come back at the front of every pass and hold the quota
+      // open against agents that can actually be reached.
+      for (let i = 0; i < 30; i++) await seed(`blank${i}`, undefined, { agentUri: '' })
+      await seed('real')
+      expect((await store.dueForProbe(40, 24)).map((r) => r.agent_id)).toEqual(['real'])
+    })
 
     it('reserves 10 LIVE, 10 other rechecks and 20 discoveries despite a persistent new backlog', async () => {
       for (let i = 0; i < 50; i++) {

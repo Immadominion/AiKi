@@ -17,6 +17,12 @@ import { useProbeExpiry } from '@/lib/use-probe-expiry'
 import { AskField } from './AskField'
 import { FastChat } from './FastChat'
 import { FastChatHeader } from './FastChatHeader'
+import {
+  chatToResume,
+  LAST_CHAT_KEY,
+  parseRememberedChat,
+  serializeRememberedChat,
+} from './fast-session'
 import { HistoryRail } from './HistoryRail'
 import { liveShards } from './live-shards'
 import { ShardField } from './ShardField'
@@ -70,22 +76,58 @@ export function FastCore({
   const router = useRouter()
   useEffect(() => {
     const restore = () => {
-      const id = new URL(window.location.href).searchParams.get('conversation')
-      setChat(
-        account.authenticated && account.address && id && /^[0-9a-f-]{36}$/i.test(id)
-          ? { id }
-          : null,
-      )
+      if (!account.authenticated || !account.address) return setChat(null)
+      const url = new URL(window.location.href)
+      const fromUrl = url.searchParams.get('conversation')
+      if (fromUrl && /^[0-9a-f-]{36}$/i.test(fromUrl)) return setChat({ id: fromUrl })
+      /*
+       * No conversation on the URL does not mean a new conversation. Leaving
+       * for another page and coming back arrives here with a bare /app, and
+       * the thread that was open a moment ago is still the one being had.
+       */
+      let resumed: string | null = null
+      try {
+        resumed = chatToResume(
+          parseRememberedChat(localStorage.getItem(LAST_CHAT_KEY)),
+          account.address,
+        )
+      } catch {
+        resumed = null
+      }
+      if (!resumed) return setChat(null)
+      url.searchParams.set('conversation', resumed)
+      window.history.replaceState(null, '', url)
+      setChat({ id: resumed })
     }
     restore()
     window.addEventListener('popstate', restore)
     return () => window.removeEventListener('popstate', restore)
   }, [account.authenticated, account.address])
+  /*
+   * Re-stamped whenever the thread is actually used, not only when it opens, so
+   * a long afternoon in one conversation never ages past the cutoff while it is
+   * being had.
+   */
+  const remember = (id: string | null) => {
+    try {
+      if (id && account.address)
+        localStorage.setItem(
+          LAST_CHAT_KEY,
+          serializeRememberedChat({ id, owner: account.address, at: Date.now() }),
+        )
+      else if (!id) localStorage.removeItem(LAST_CHAT_KEY)
+    } catch {
+      // A browser that refuses storage still gets the conversation it is in.
+    }
+  }
   const openChat = (next: { id: string; opening?: string; create?: boolean } | null) => {
     const url = new URL(window.location.href)
     if (next) url.searchParams.set('conversation', next.id)
     else url.searchParams.delete('conversation')
     window.history.replaceState(null, '', url)
+    // Closing a thread is a decision to be done with it, so it is not the one
+    // waiting on the way back.
+    remember(next ? next.id : null)
     setChat(next)
   }
   useEffect(() => {
@@ -211,6 +253,7 @@ export function FastCore({
           owner={account.address}
           {...(chat.opening ? { opening: chat.opening } : {})}
           create={chat.create ?? false}
+          onChanged={() => remember(chat.id)}
           onClose={() => openChat(null)}
         />
       </div>

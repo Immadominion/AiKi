@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowUpRight, MousePointer2, Rotate3D, ScanLine, X } from 'lucide-react'
+import { ArrowUpRight, BookOpen, MousePointer2, Rotate3D, ScanLine, X } from 'lucide-react'
 import {
   type MotionValue,
   motion,
@@ -245,6 +245,7 @@ export function LandingExperience() {
   const exitMagnet = useMagnetic<HTMLButtonElement>()
   const mapMagnet = useMagnetic<HTMLButtonElement>()
   const registryMagnet = useMagnetic<HTMLAnchorElement>()
+  const docsMagnet = useMagnetic<HTMLAnchorElement>()
   const hold = useHoldAction(() => {
     exploreScrollPosition.current = window.scrollY
     setSelectedAgent(null)
@@ -750,6 +751,19 @@ export function LandingExperience() {
           onPointerLeave={registryMagnet.onPointerLeave}
         >
           <ScanLine size={18} aria-hidden="true" />
+        </Link>
+        {/* Docs belong to the people deciding whether to use AiKi, which is
+            here. Inside the app they were a permanent row in the sidebar,
+            competing with the work, for a page almost nobody re-reads. */}
+        <Link
+          ref={docsMagnet.ref}
+          href="/docs"
+          className={`${styles.dockCircle} ${styles.magnetic}`}
+          aria-label="Read the documentation"
+          onPointerMove={docsMagnet.onPointerMove}
+          onPointerLeave={docsMagnet.onPointerLeave}
+        >
+          <BookOpen size={18} aria-hidden="true" />
         </Link>
       </motion.div>
 

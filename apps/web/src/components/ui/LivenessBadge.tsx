@@ -46,11 +46,30 @@ const TONE: Record<LivenessState, Tone> = {
   UNPROBED: 'idle',
 }
 
+/**
+ * What to say when the check never ran.
+ *
+ * "Requires review" reads as a finding about the provider, and for the most
+ * common cause it is not one: an MCP server published at one fixed URL gives
+ * AiKi no identifier to vary, so the identity check cannot execute. The agent
+ * answered. We could not prove the answer was specifically its own. Saying
+ * that is the difference between reporting a limit of our test and accusing
+ * somebody of running a broken service.
+ */
+const UNVERIFIABLE = {
+  label: 'Not verifiable here',
+  tone: 'idle' as Tone,
+  detail:
+    'The service answered, but its address carries nothing AiKi can vary, so we cannot prove the response belongs to this agent rather than to the server it shares. That is a limit of our check, not a fault we found. It can still be hired.',
+}
+
 export function livenessPresentation(
   state: LivenessState,
   lastProbeAt: string | null | undefined,
   nowMs = Date.now(),
+  conclusive = true,
 ): { label: string; tone: Tone } {
+  if (!conclusive) return { label: UNVERIFIABLE.label, tone: UNVERIFIABLE.tone }
   if (state === 'UNPROBED') return { label: LIVENESS_LABEL.UNPROBED, tone: 'idle' }
   const freshness = probeFreshness(lastProbeAt ?? null, nowMs)
   if (freshness.state === 'NO_DATA' || freshness.ageMs === null)
@@ -60,13 +79,18 @@ export function livenessPresentation(
   return { label: LIVENESS_LABEL[state], tone: TONE[state] }
 }
 
+export const livenessExplanation = (state: LivenessState, conclusive = true) =>
+  conclusive ? LIVENESS_DETAIL[state] : UNVERIFIABLE.detail
+
 export function LivenessBadge({
   state,
   lastProbeAt,
+  conclusive = true,
 }: {
   state: LivenessState
   lastProbeAt: string | null
+  conclusive?: boolean
 }) {
-  const presentation = livenessPresentation(state, lastProbeAt)
+  const presentation = livenessPresentation(state, lastProbeAt, Date.now(), conclusive)
   return <StatusPill {...presentation} wrap />
 }

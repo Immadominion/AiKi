@@ -497,3 +497,34 @@ for (const code of [
         : null,
     )
   })
+
+test('the composer empties the moment a question is sent, and fills again only if it is refused', async () => {
+  const h = harness()
+  const controller = h.controller()
+  await controller.initialize()
+  controller.setDraft('Find me a yield agent')
+  let seen: { draft: string; question: string | undefined } | null = null
+  h.transport.ask = async () => {
+    // While the turn is in flight the question belongs to the thread, not the box.
+    seen = {
+      draft: controller.getSnapshot().draft,
+      question: controller.getSnapshot().pending?.messages.at(-1)?.content,
+    }
+    return reply
+  }
+  await controller.send()
+  assert.deepEqual(seen, { draft: '', question: 'Find me a yield agent' })
+  assert.equal(controller.getSnapshot().draft, '')
+
+  // A refusal before any charge takes the bubble away, so the box takes it back.
+  controller.setDraft('Find me a yield agent')
+  h.transport.ask = async () => {
+    throw Object.assign(new Error('Add points first.'), {
+      status: 402,
+      code: 'ASSISTANT_NO_CREDIT',
+    })
+  }
+  await controller.send()
+  assert.equal(controller.getSnapshot().pending, null)
+  assert.equal(controller.getSnapshot().draft, 'Find me a yield agent')
+})

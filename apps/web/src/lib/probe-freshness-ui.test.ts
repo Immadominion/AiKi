@@ -29,6 +29,7 @@ function passport(lastProbeAt: string | null): ProjectedPassport {
     description: 'Checks a Venus position.',
     liveness: 'LIVE',
     livenessDetail: 'Answered the checks.',
+    livenessConclusive: true,
     lastProbeAt,
     p95LatencyMs: 100,
     checks: { trials: 20, successes: 20 },

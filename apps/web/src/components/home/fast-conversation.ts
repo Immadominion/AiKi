@@ -145,9 +145,7 @@ export class FastConversationController {
       error: null,
       busy: false,
       pending: existingPending,
-      draft:
-        existingPending?.messages.at(-1)?.content ??
-        (create && opening ? opening : (saved.draft ?? this.state.draft)),
+      draft: existingPending ? '' : create && opening ? opening : (saved.draft ?? this.state.draft),
     })
     this.save()
     try {
@@ -161,7 +159,7 @@ export class FastConversationController {
       const pending = this.state.pending ?? latest.pending
       this.update({
         messages: conversation.messages,
-        draft: pending?.messages.at(-1)?.content ?? latest.draft ?? this.state.draft,
+        draft: pending ? '' : (latest.draft ?? this.state.draft),
         pending,
         loading: false,
         error: pending
@@ -184,12 +182,19 @@ export class FastConversationController {
       idempotencyKey: this.newKey(),
       messages: conversationContext(this.state.messages, question),
     }
-    this.update({
-      pending,
-      draft: pending.messages.at(-1)?.content ?? question,
-      busy: true,
-      error: null,
-    })
+    /*
+     * The box empties on send, the way every message box does.
+     *
+     * It used to keep the question, so the same sentence sat in the composer
+     * and in the thread at once and the send looked like it had not happened.
+     * The text was kept for the retry path, and the retry path never needed it:
+     * `send` re-uses `pending.messages` whenever a pending turn exists and
+     * ignores the draft entirely. A pending turn draws the question as its own
+     * bubble, so the composer would only be showing it twice, and a turn that
+     * is refused before any charge puts the question back below, where the
+     * bubble it had is now gone and the person has a correction to make.
+     */
+    this.update({ pending, draft: '', busy: true, error: null })
     this.save()
     try {
       await this.transport.ask(
@@ -267,7 +272,10 @@ export class FastConversationController {
         busy: false,
         error: failure.message,
         errorCode: failure.code,
-        ...(refused ? { pending: null } : {}),
+        // Nothing was charged and the pending bubble goes with it, so the
+        // question returns to the composer rather than leaving the person to
+        // retype what they had just written.
+        ...(refused ? { pending: null, draft: pending.messages.at(-1)?.content ?? '' } : {}),
       })
       this.save()
     }

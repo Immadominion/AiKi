@@ -1,11 +1,7 @@
-import type { Metadata } from 'next'
-import { SettingsView } from '@/components/shell/SettingsView'
+import { redirect } from 'next/navigation'
+import { route } from '@/lib/routes'
 
-export const metadata: Metadata = {
-  title: 'Settings',
-  description: 'What AiKi is connected to, what it tells you about, and what it keeps.',
-}
-
+/** Settings has no front page of its own; the wallet is what people come for. */
 export default function Page() {
-  return <SettingsView />
+  redirect(route('/settings/wallet'))
 }

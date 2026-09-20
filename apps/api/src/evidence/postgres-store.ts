@@ -129,7 +129,13 @@ export class PostgresEvidenceStore implements EvidenceStore {
           ON p.chain_id = r.chain_id
          AND p.registry_address = r.registry_address
          AND p.agent_id = r.agent_id
-        WHERE r.agent_uri IS NOT NULL
+        -- An empty agentURI is not a missing one: it is on chain, it resolves to
+        -- nothing, and the probe throws the same identity error on it every pass
+        -- while never recording a verdict. That keeps it permanently unprobed,
+        -- which is the top of the new-registration lane, so several hundred of
+        -- them were holding that lane's whole quota open forever and the agents
+        -- that could be probed waited weeks behind them.
+        WHERE r.agent_uri IS NOT NULL AND r.agent_uri <> ''
           AND (p.last_probed_at IS NULL
             OR p.last_probed_at < now() - ${`${staleAfterHours} hours`}::interval
             OR p.last_probed_at > now())

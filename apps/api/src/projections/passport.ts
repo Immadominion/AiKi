@@ -31,6 +31,17 @@ const LIVENESS_STATES = new Set<string>([
 ])
 export const asLiveness = (value: unknown): LivenessState =>
   typeof value === 'string' && LIVENESS_STATES.has(value) ? (value as LivenessState) : 'UNPROBED'
+
+/**
+ * Rules that report on AiKi's reach, not on the agent.
+ *
+ * The rule is already stored, as the second half of the observation's method,
+ * so this reads correctly over evidence recorded long before it existed and no
+ * agent has to be probed again to stop being blamed for it.
+ */
+const INCONCLUSIVE_RULES = new Set(['D1-inapplicable', 'registration-resolution-unknown'])
+export const isInconclusive = (o: Observation): boolean =>
+  INCONCLUSIVE_RULES.has(o.method.slice(o.method.indexOf('/') + 1))
 const latestOf = (rows: Observation[]): Observation | undefined =>
   [...rows].sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0]
 
@@ -133,8 +144,22 @@ export function projectPassport(
   const verdicts = own.filter((o) => o.predicate === 'agent.liveness_verdict')
   const latestVerdict = latestOf(verdicts)
   const state = asLiveness(latestVerdict?.value.state)
-  const successes = verdicts.filter((o) => o.value.state === 'LIVE').length
-  const score = wilson(successes, verdicts.length)
+  /*
+   * A check AiKi could not run is not a check the agent failed.
+   *
+   * Two rules say nothing at all about a provider. `D1-inapplicable` fires when
+   * the endpoint URL carries no identifier to vary, which is true of every MCP
+   * server published at one fixed path - the normal way to publish one. And
+   * `registration-resolution-unknown` fires when no endpoint was contacted.
+   * Both were landing in the denominator, so an agent that had done nothing
+   * wrong scored a hard zero, and a zero reads as a measurement rather than as
+   * the silence it was. This file already promises that an absence stays null
+   * rather than becoming a zero; these two were the exception, and the reader
+   * could not tell them apart from an endpoint that had actually failed.
+   */
+  const conclusive = verdicts.filter((o) => !isInconclusive(o))
+  const successes = conclusive.filter((o) => o.value.state === 'LIVE').length
+  const score = wilson(successes, conclusive.length)
 
   const probes = own.filter((o) => o.predicate === 'agent.capability_probe')
   const latencies = probes
@@ -198,6 +223,7 @@ export function projectPassport(
     description: typeof manifest?.description === 'string' ? manifest.description : null,
     liveness: state,
     livenessDetail,
+    livenessConclusive: latestVerdict ? !isInconclusive(latestVerdict) : false,
     lastProbeAt: latestVerdict?.observedAt ?? null,
     livenessFreshness: probeFreshness(latestVerdict?.observedAt, nowMs),
     p95LatencyMs,
@@ -205,12 +231,13 @@ export function projectPassport(
       value: score.lower,
       confidence: score.confidence,
       interval: [score.lower, score.upper],
-      sampleSize: verdicts.length,
+      sampleSize: conclusive.length,
       method: SCORING_VERSION,
     },
-    checks: { successes, trials: verdicts.length },
+    checks: { successes, trials: conclusive.length },
     components: {
-      liveness: { successes, trials: verdicts.length },
+      // Nothing conclusive was ever recorded, so there is no rate to report.
+      liveness: conclusive.length ? { successes, trials: conclusive.length } : null,
       executionReliability: null,
       outcomeQuality: null,
       reputation: null,

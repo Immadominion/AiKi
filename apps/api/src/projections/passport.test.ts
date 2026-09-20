@@ -258,3 +258,49 @@ it('says so when the index is only part of the registry', () => {
   // backfilled index would still have reported itself partial forever.
   expect(projectStats([registered(79_027_268)]).indexed?.complete).toBe(false)
 })
+
+it('does not score an agent on a check AiKi was unable to run', () => {
+  // An MCP server published at one fixed path. D1 cannot vary an identifier in
+  // that URL, so it never runs, and the agent has not failed anything.
+  const inapplicable = obs(
+    '11',
+    'agent.liveness_verdict',
+    { state: 'DEGRADED', detail: 'agent-specificity is unproven' },
+    '2026-01-03T00:00:00Z',
+    { method: 'capability-probe/D1-inapplicable' },
+  )
+  const passport = projectPassport('11', [inapplicable])
+  expect(passport.liveness).toBe('DEGRADED')
+  // Zero of zero, not zero of one: the interval spans everything it could be.
+  expect(passport.checks).toEqual({ successes: 0, trials: 0 })
+  expect(passport.components.liveness).toBeNull()
+  expect(passport.proofScore.sampleSize).toBe(0)
+  expect(passport.proofScore.interval).toEqual([0, 1])
+  expect(passport.proofScore.confidence).toBe(0)
+
+  // An endpoint that was reached and failed still counts against it.
+  const unreachable = obs(
+    '12',
+    'agent.liveness_verdict',
+    { state: 'UNREACHABLE', detail: 'Endpoint returned HTTP 500.' },
+    '2026-01-03T00:00:00Z',
+    { method: 'capability-probe/D0' },
+  )
+  const failed = projectPassport('12', [unreachable])
+  expect(failed.checks).toEqual({ successes: 0, trials: 1 })
+  expect(failed.proofScore.interval[1]).toBeLessThan(1)
+})
+
+it('keeps a conclusive verdict scoreable alongside one it could not run', () => {
+  const rows = [
+    obs('13', 'agent.liveness_verdict', { state: 'LIVE' }, '2026-01-01T00:00:00Z', {
+      method: 'capability-probe/D5',
+    }),
+    obs('13', 'agent.liveness_verdict', { state: 'UNPROBED' }, '2026-01-02T00:00:00Z', {
+      method: 'capability-probe/registration-resolution-unknown',
+    }),
+  ]
+  const passport = projectPassport('13', rows)
+  expect(passport.liveness).toBe('UNPROBED')
+  expect(passport.checks).toEqual({ successes: 1, trials: 1 })
+})

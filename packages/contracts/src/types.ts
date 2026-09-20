@@ -702,6 +702,15 @@ export interface ProjectedPassport {
   description: string | null
   liveness: LivenessState
   livenessDetail: string | null
+  /**
+   * Whether the last check was one AiKi could actually run.
+   *
+   * False means the probe stopped before it could reach a conclusion - most
+   * often because the endpoint is one fixed URL with no identifier to vary,
+   * which is how a normal MCP server is published. Presenting that as a
+   * finding about the provider is an accusation the evidence does not support.
+   */
+  livenessConclusive: boolean
   lastProbeAt: Timestamp | null
   /** Separate from the historical verdict; older APIs may omit this metadata. */
   livenessFreshness?: import('./probe-freshness.js').ProbeFreshness
@@ -716,7 +725,8 @@ export interface ProjectedPassport {
   /** Overall: did it answer as an agent, across every probe we ran. */
   checks: ProjectedCounts
   components: {
-    liveness: ProjectedCounts
+    /** Null until a check that could actually run has run. A zero would be a claim. */
+    liveness: ProjectedCounts | null
     executionReliability: ProjectedCounts | null
     outcomeQuality: ProjectedCounts | null
     reputation: ProjectedCounts | null

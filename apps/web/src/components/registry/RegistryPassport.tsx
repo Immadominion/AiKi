@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { OwnerListing } from '@/components/registry/OwnerListing'
 import { PageCard } from '@/components/shell/PageCard'
 import { AgentAvatar } from '@/components/ui/Avatar'
-import { LIVENESS_DETAIL, LivenessBadge } from '@/components/ui/LivenessBadge'
+import { LivenessBadge, livenessExplanation } from '@/components/ui/LivenessBadge'
 import { api } from '@/lib/api'
 import { briefText } from '@/lib/identity'
 import { route } from '@/lib/routes'
@@ -139,10 +139,14 @@ export function RegistryPassport({ agentId }: { agentId: string }) {
         <div className="rounded-[18px] border border-[rgb(26_26_25_/_0.08)] px-[18px] py-[15px]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-[14px] font-bold">What we measured</span>
-            <LivenessBadge state={p.liveness} lastProbeAt={p.lastProbeAt} />
+            <LivenessBadge
+              state={p.liveness}
+              lastProbeAt={p.lastProbeAt}
+              conclusive={p.livenessConclusive}
+            />
           </div>
           <p className="text-muted mt-[8px] mb-0 text-[12.5px] leading-[1.55] text-pretty">
-            {p.livenessDetail ?? LIVENESS_DETAIL[p.liveness]}
+            {livenessExplanation(p.liveness, p.livenessConclusive)}
           </p>
           <div className="mt-[12px]">
             <Fact label="Probes answered" value={`${p.checks.successes} of ${p.checks.trials}`} />

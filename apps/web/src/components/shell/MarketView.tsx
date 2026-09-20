@@ -60,7 +60,7 @@ function toRow(p: ProjectedPassport): AgentRow {
     bars: answering ? Math.min(5, Math.max(1, Math.round(trials / 6))) : 1,
     evidence: answering
       ? `Answering · ${trials} ${trials === 1 ? 'check' : 'checks'}`
-      : `${livenessPresentation(p.liveness, p.lastProbeAt).label} · ${trials} ${trials === 1 ? 'check' : 'checks'}`,
+      : `${livenessPresentation(p.liveness, p.lastProbeAt, Date.now(), p.livenessConclusive).label} · ${trials} ${trials === 1 ? 'check' : 'checks'}`,
     evidenceTone: answering ? (trials >= 20 ? 'strong' : 'fair') : 'thin',
     // Almost nothing in this registry publishes a price, and a blank that reads
     // as free is worse than saying so.

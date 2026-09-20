@@ -84,7 +84,14 @@ function stateOf(passport: ProjectedPassport): {
 
   if (probeFreshness(passport.lastProbeAt).state !== 'LIVE')
     return {
-      state: `${livenessPresentation(passport.liveness, passport.lastProbeAt).label} · ${probes}`,
+      state: `${
+        livenessPresentation(
+          passport.liveness,
+          passport.lastProbeAt,
+          Date.now(),
+          passport.livenessConclusive,
+        ).label
+      } · ${probes}`,
       stateDot: 'var(--color-muted)',
       stateColor: 'var(--color-muted)',
     }

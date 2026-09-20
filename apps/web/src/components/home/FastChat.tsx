@@ -16,6 +16,7 @@ import {
   fastCostSummary,
   messageNeedsPoints,
 } from './FastPoints'
+import { FastWallet } from './FastWallet'
 import { approvalContinuations } from './fast-approval'
 import { FastConversationController } from './fast-conversation'
 import { fundingContinuations } from './fast-funding'
@@ -159,20 +160,26 @@ export function FastChat({
             you every one it touches.
           </p>
         </div>
-        {credits ? (
-          <div className="text-right">
-            <div className="text-[13px] font-bold tabular-nums">
-              {credits.balance.toLocaleString()} points
-            </div>
-            <div className="text-faint text-[11.5px]">{credits.model}</div>
+        <div className="flex flex-col items-end gap-[1px]">
+          {credits ? (
+            <>
+              <div className="text-[13px] font-bold tabular-nums">
+                {credits.balance.toLocaleString()} points
+              </div>
+              <div className="text-faint text-[11.5px]">{credits.model}</div>
+            </>
+          ) : null}
+          {/* What AiKi bills you, and what it has to spend, read together. */}
+          <FastWallet />
+          {credits ? (
             <a
               href={addPointsHref(id)}
               className="inline-flex min-h-10 items-center text-[11.5px] text-muted underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-orange-app"
             >
               Points and limits
             </a>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </header>
 
       {error && !refusalInHistory ? (

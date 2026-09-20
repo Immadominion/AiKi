@@ -3,7 +3,6 @@
 import {
   ActivityIcon,
   BellIcon,
-  BookOpenIcon,
   ClipboardIcon,
   CodeIcon,
   CompassIcon,
@@ -18,7 +17,7 @@ import {
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { usePalette } from '@/components/shell/CommandPalette'
 import { useHoverIcon } from '@/components/ui/AnimatedIcon'
 import { UserAvatar } from '@/components/ui/Avatar'
@@ -33,6 +32,24 @@ interface Item {
   href?: string
   count?: number
   tag?: string
+  /** Extra path prefixes this row owns, for detail pages under a section. */
+  owns?: string[]
+}
+
+/**
+ * Which row the person is standing on.
+ *
+ * This used to be one expression inside the row, and it excluded every href
+ * containing a '#'. Wallet, Notifications and Evidence API were all anchors
+ * into the settings page, so the three of them could never light up: you could
+ * click Wallet, land on it, and the sidebar would still show nothing selected.
+ * They address a settings tab by query now, which is a real destination and can
+ * be matched, shared and returned to.
+ */
+export function navMatches(item: Item, path: string): boolean {
+  if (!item.href) return false
+  if (path === item.href) return true
+  return (item.owns ?? []).some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
 }
 
 type NavIconComponent = React.ForwardRefExoticComponent<
@@ -53,10 +70,10 @@ const GROUPS: { label: string; items: Item[] }[] = [
     label: 'General',
     items: [
       { label: 'Home', icon: HouseIcon },
-      { label: 'Explore', icon: CompassIcon, href: '/explore' },
+      { label: 'Explore', icon: CompassIcon, href: '/explore', owns: ['/catalog'] },
       // The registry is the only surface built entirely from measurement, and it
       // was reachable only from a link inside a search result.
-      { label: 'Registry', icon: LayersIcon, href: '/registry' },
+      { label: 'Registry', icon: LayersIcon, href: '/registry', owns: ['/agent', '/compare'] },
       // The other side of the marketplace: work nobody has listed, that a person
       // can do and be paid for.
       { label: 'Work', icon: ClipboardIcon, href: '/work' },
@@ -68,7 +85,7 @@ const GROUPS: { label: string; items: Item[] }[] = [
   {
     label: 'Oversight',
     items: [
-      { label: 'Activity', icon: ActivityIcon, href: '/activity' },
+      { label: 'Activity', icon: ActivityIcon, href: '/activity', owns: ['/jobs', '/receipts'] },
       { label: 'Limits', icon: ShieldCheckIcon, href: '/limits' },
       { label: 'Saved', icon: HeartIcon, href: '/saved' },
     ],
@@ -76,38 +93,32 @@ const GROUPS: { label: string; items: Item[] }[] = [
   {
     label: 'Settings',
     items: [
-      { label: 'Docs', icon: BookOpenIcon, href: '/docs/getting-started' },
-      { label: 'Wallet', icon: WalletIcon, href: '/settings#wallet' },
+      { label: 'Wallet', icon: WalletIcon, href: '/settings/wallet' },
       { label: 'Points', icon: WalletIcon, href: '/credits' },
-      { label: 'Notifications', icon: BellIcon, href: '/settings#notifications' },
-      { label: 'Evidence API', icon: CodeIcon, href: '/settings#api', tag: 'Beta' },
+      { label: 'Notifications', icon: BellIcon, href: '/settings/notifications' },
+      { label: 'Evidence API', icon: CodeIcon, href: '/settings/api', tag: 'Beta' },
     ],
   },
 ]
 
 function NavRow({
   item,
-  path,
+  on,
   collapsed,
   connected,
   onNavigate,
   onUnbuilt,
+  measure,
 }: {
   item: Item
-  path: string
+  on: boolean
   collapsed: boolean
   connected: boolean
   onNavigate: () => void
   onUnbuilt: (msg: string) => void
+  measure: (node: HTMLElement | null) => void
 }) {
   const { ref, hoverProps } = useHoverIcon()
-  const on = Boolean(
-    item.href &&
-      !item.href.includes('#') &&
-      (item.href === path ||
-        (item.href === '/explore' && path.startsWith('/catalog/')) ||
-        (item.href === '/registry' && path.startsWith('/registry/'))),
-  )
   const Icon = item.icon
 
   const inner = (
@@ -149,18 +160,24 @@ function NavRow({
     </>
   )
 
-  const cls = `relative flex h-[42px] w-full items-center gap-3 rounded-[13px] border-0 text-left transition-colors ${
+  /*
+   * The selected row paints nothing. One pill behind the whole list is the
+   * selection, and it travels to whichever row this is, so moving between
+   * pages reads as the same object moving rather than one box blinking out
+   * and another blinking in somewhere else.
+   */
+  const cls = `relative z-[1] flex h-[42px] w-full items-center gap-3 rounded-[13px] border-0 bg-transparent text-left transition-colors ${
     collapsed ? 'justify-center px-0' : 'px-[11px]'
-  }`
-  const style = on ? { background: '#fff', boxShadow: '0 1px 2px rgb(26 26 25 / 0.09)' } : undefined
+  } ${on ? '' : 'hover:bg-[rgb(26_26_25_/_0.055)]'}`
 
   return item.href ? (
     <Link
+      ref={on ? measure : undefined}
       href={route(item.href)}
       onClick={onNavigate}
       title={collapsed ? item.label : undefined}
-      className={`${cls} ${on ? '' : 'hover:bg-[rgb(26_26_25_/_0.055)]'}`}
-      style={style}
+      aria-current={on ? 'page' : undefined}
+      className={cls}
       {...hoverProps}
     >
       {inner}
@@ -170,12 +187,47 @@ function NavRow({
       type="button"
       title={collapsed ? item.label : undefined}
       onClick={() => onUnbuilt(`${item.label} comes later in the journey.`)}
-      className={`${cls} bg-transparent hover:bg-[rgb(26_26_25_/_0.055)]`}
+      className={cls}
       {...hoverProps}
     >
       {inner}
     </button>
   )
+}
+
+/**
+ * The pill that follows you.
+ *
+ * It is positioned from the active row's own box rather than from a hard-coded
+ * row height, so group headings, badges and the collapsed rail all stay correct
+ * without a second set of numbers to keep in sync. The first placement has no
+ * transition: arriving on a page should show the selection already in place,
+ * and only a click the person makes should be worth animating.
+ */
+function useTravellingPill(path: string, collapsed: boolean) {
+  const frame = useRef<HTMLDivElement | null>(null)
+  const [box, setBox] = useState<{ top: number; height: number } | null>(null)
+  const [armed, setArmed] = useState(false)
+
+  const measure = useCallback((node: HTMLElement | null) => {
+    if (!node || !frame.current) return
+    setBox({ top: node.offsetTop, height: node.offsetHeight })
+  }, [])
+
+  // Re-read after the rows have laid out for this path and rail state. Neither
+  // value is read in the body: they are the reason to measure again, because
+  // both move the row the pill has to be on, and the new position can only be
+  // taken from the DOM once React has committed it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the deps are the trigger, not an input
+  useLayoutEffect(() => {
+    const active = frame.current?.querySelector<HTMLElement>('[aria-current="page"]')
+    if (active) setBox({ top: active.offsetTop, height: active.offsetHeight })
+    else setBox(null)
+    const id = requestAnimationFrame(() => setArmed(true))
+    return () => cancelAnimationFrame(id)
+  }, [path, collapsed])
+
+  return { frame, box, armed, measure }
 }
 
 export function Sidebar({
@@ -211,6 +263,7 @@ export function Sidebar({
   // The collapse preference belongs to the desktop column. In the drawer the
   // sidebar is always full width, so the rail never appears on touch.
   const collapsed = collapsedPref && !onPhone
+  const { frame, box, armed, measure } = useTravellingPill(path, collapsed)
 
   return (
     <div className="flex h-full min-h-0 flex-col px-1 pt-[6px] pb-1">
@@ -274,7 +327,20 @@ export function Sidebar({
         )}
       </button>
 
-      <div className="mt-5 flex-1 overflow-y-auto overflow-x-hidden pr-[2px]">
+      <div ref={frame} className="relative mt-5 flex-1 overflow-y-auto overflow-x-hidden pr-[2px]">
+        {box ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute right-[2px] left-0 z-0 rounded-[13px] bg-white shadow-[0_1px_2px_rgb(26_26_25_/_0.09)]"
+            style={{
+              height: box.height,
+              transform: `translateY(${box.top}px)`,
+              transition: armed
+                ? 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1), height 320ms cubic-bezier(0.22, 1, 0.36, 1)'
+                : undefined,
+            }}
+          />
+        ) : null}
         {GROUPS.map((g) => (
           <div
             key={g.label}
@@ -287,21 +353,28 @@ export function Sidebar({
               <div className="text-muted-3 px-2 pb-2 text-[12px] font-semibold">{g.label}</div>
             )}
             <div className="flex flex-col gap-[2px]">
-              {g.items.map((raw) => (
-                <NavRow
-                  key={raw.label}
-                  item={
-                    raw.label === 'Home'
-                      ? { ...raw, href: layout === 'fast' ? FAST_HOME : '/market' }
-                      : raw
-                  }
-                  path={path}
-                  collapsed={collapsed}
-                  connected={connected}
-                  onNavigate={onNavigate}
-                  onUnbuilt={say}
-                />
-              ))}
+              {g.items.map((raw) => {
+                const item: Item =
+                  raw.label === 'Home'
+                    ? {
+                        ...raw,
+                        href: layout === 'fast' ? FAST_HOME : '/market',
+                        owns: layout === 'fast' ? [] : ['/market'],
+                      }
+                    : raw
+                return (
+                  <NavRow
+                    key={item.label}
+                    item={item}
+                    on={navMatches(item, path)}
+                    collapsed={collapsed}
+                    connected={connected}
+                    onNavigate={onNavigate}
+                    onUnbuilt={say}
+                    measure={measure}
+                  />
+                )
+              })}
             </div>
           </div>
         ))}

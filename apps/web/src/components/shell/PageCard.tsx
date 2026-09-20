@@ -29,6 +29,8 @@ export function PageCard({
   tabHint,
   banner,
   panels,
+  activeTab,
+  onTab,
   contentRef,
   children,
 }: {
@@ -45,10 +47,20 @@ export function PageCard({
   banner?: Banner | undefined
   /** One node per tab. When given, tabs switch panels instead of announcing. */
   panels?: React.ReactNode[] | undefined
+  /*
+   * A page whose tabs are real destinations drives them from its own URL, so
+   * the sidebar can link straight to one and light up when you are on it.
+   * Pages whose tabs are only a local filter leave both out and keep the
+   * internal state below.
+   */
+  activeTab?: number | undefined
+  onTab?: ((index: number) => void) | undefined
   contentRef?: React.Ref<HTMLDivElement> | undefined
   children?: React.ReactNode
 }) {
-  const [tab, setTab] = useState(0)
+  const [ownTab, setOwnTab] = useState(0)
+  const tab = activeTab ?? ownTab
+  const setTab = onTab ?? setOwnTab
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[22px] bg-white shadow-[0_1px_2px_rgb(26_26_25_/_0.06)]">
