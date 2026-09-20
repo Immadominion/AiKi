@@ -81,6 +81,6 @@ const TONE: Record<PostureState, string> = {
 const FIX_LABEL: Record<AccountPosture['fix'] extends null ? never : string, string> = {
   create: 'Create it',
   fund: 'Add funds',
-  convert: 'Convert it',
+  convert: 'Unstick it',
   top_up: 'Top up',
 }

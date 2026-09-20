@@ -36,7 +36,7 @@ export type PostureFix =
   | { kind: 'create' }
   | { kind: 'fund'; symbols: string[] }
   /** Owner-signed. The agent cannot do this one and saying otherwise is a lie. */
-  | { kind: 'convert'; from: string; to: string; ownerSigned: true }
+  | { kind: 'convert'; from: 'BNB'; to: 'WBNB'; ownerSigned: true }
   | { kind: 'top_up'; symbols: string[] }
 
 export interface AccountPosture {
@@ -174,8 +174,15 @@ export function accountPosture(input: PostureInput): AccountPosture {
       strandedUsd,
       state: 'stranded',
       headline: `${money(strandedUsd)} stuck in BNB`,
-      detail: `${stranded[0]?.amount} BNB is in the account, worth ${money(strandedUsd)}. ${NATIVE_STRANDED} Convert it to USDT, or send ${symbols.join(' or ')} instead.`,
-      fix: { kind: 'convert', from: 'BNB', to: 'USDT', ownerSigned: true },
+      /*
+       * WBNB rather than USDT, because that is what the button does and the
+       * two must not disagree. Wrapping is one for one and carries no price;
+       * turning it into USDT afterwards is a swap, with a rate and a limit,
+       * and that is a mandate to write rather than a step to bury in a
+       * sentence about unsticking your own money.
+       */
+      detail: `${stranded[0]?.amount} BNB is in the account, worth ${money(strandedUsd)}. ${NATIVE_STRANDED} Convert it to WBNB, which agents can spend and swap, or send ${symbols.join(' or ')} instead.`,
+      fix: { kind: 'convert', from: 'BNB', to: 'WBNB', ownerSigned: true },
     }
 
   if (spendableUsd !== null && spendableUsd < DUST_USD)

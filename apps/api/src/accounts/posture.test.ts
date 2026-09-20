@@ -23,7 +23,7 @@ describe('accountPosture', () => {
     expect(posture.spendable).toEqual([])
     expect(posture.stranded[0]?.amount).toBe('0.0014')
     // The state that looks like poverty must carry the way out of it.
-    expect(posture.fix).toEqual({ kind: 'convert', from: 'BNB', to: 'USDT', ownerSigned: true })
+    expect(posture.fix).toEqual({ kind: 'convert', from: 'BNB', to: 'WBNB', ownerSigned: true })
     expect(posture.detail).toContain('No mandate can move native BNB')
   })
 
