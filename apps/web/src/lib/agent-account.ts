@@ -1,3 +1,4 @@
+import { accountTokensFor } from '@aiki/contracts'
 import type { AccountBalances } from './api'
 import { formatUnits, isZeroAmount } from './format'
 
@@ -130,4 +131,20 @@ export function explorerAccountUrl(chainId: number, address: string): string | n
   if (chainId === 56) return `https://bscscan.com/address/${address}`
   if (chainId === 97) return `https://testnet.bscscan.com/address/${address}`
   return null
+}
+
+/**
+ * The address of a token this deployment reviewed, by symbol.
+ *
+ * A withdrawal names the token contract, and the symbol on a balance row is a
+ * label rather than an address. Resolved from the same reviewed list the
+ * balances were read with, so a symbol that was never read cannot become an
+ * address that was never checked.
+ */
+export function accountTokenAddress(chainId: number, symbol: string): string | null {
+  try {
+    return accountTokensFor(chainId).find((token) => token.symbol === symbol)?.address ?? null
+  } catch {
+    return null
+  }
 }

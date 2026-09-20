@@ -1,6 +1,8 @@
 'use client'
 
+import type { AccountPosture } from '@aiki/contracts'
 import { useCallback, useEffect, useState } from 'react'
+import { AgentWithdrawPanel } from '@/components/shell/AgentWithdrawPanel'
 import { useAccount } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
 import {
@@ -28,6 +30,7 @@ export function AgentAccountPanel() {
   const say = useToast()
   const { authenticated } = useAccount()
   const [state, setState] = useState<AgentAccount>({ kind: 'signed_out' })
+  const [posture, setPosture] = useState<AccountPosture | null>(null)
   const [creating, setCreating] = useState(false)
 
   const load = useCallback(async () => {
@@ -35,6 +38,7 @@ export function AgentAccountPanel() {
     setState((current) => (current.kind === 'ready' ? current : { kind: 'loading' }))
     try {
       const account = await api.account()
+      setPosture(account.posture ?? null)
       setState(
         account.address
           ? {
@@ -134,6 +138,40 @@ export function AgentAccountPanel() {
           ) : null}
         </div>
 
+        {/*
+          The state, before the numbers.
+          
+          A row of balances answers "how much" and leaves "so why can nothing
+          happen" to the reader, who then has to know that native value cannot
+          move under a mandate in order to work it out. Somebody holding a
+          dollar of BNB read the zeros beside it and concluded the account was
+          empty.
+        */}
+        {posture && posture.state !== 'ready' && posture.state !== 'no_account' ? (
+          <div
+            className="border-t border-[rgb(26_26_25_/_0.06)] px-4 py-[14px]"
+            style={
+              posture.state === 'stranded' || posture.state === 'dust'
+                ? { background: '#FFF7ED' }
+                : undefined
+            }
+          >
+            <span
+              className="block text-[13.5px] font-bold"
+              style={
+                posture.state === 'stranded' || posture.state === 'dust'
+                  ? { color: '#C2410C' }
+                  : undefined
+              }
+            >
+              {posture.headline}
+            </span>
+            <span className="text-muted mt-[3px] block text-[12.5px] leading-[1.5] text-pretty">
+              {posture.detail}
+            </span>
+          </div>
+        ) : null}
+
         {view && !view.unknown ? (
           <div className="border-t border-[rgb(26_26_25_/_0.06)] px-4 py-[14px]">
             <ul className="m-0 flex list-none flex-wrap gap-x-[28px] gap-y-[10px] p-0">
@@ -150,6 +188,17 @@ export function AgentAccountPanel() {
                 </li>
               ))}
             </ul>
+          </div>
+        ) : null}
+
+        {address && posture ? (
+          <div className="border-t border-[rgb(26_26_25_/_0.06)]">
+            <AgentWithdrawPanel
+              account={address}
+              posture={posture}
+              chainId={state.kind === 'ready' ? state.chainId : 56}
+              onDone={() => void load()}
+            />
           </div>
         ) : null}
 

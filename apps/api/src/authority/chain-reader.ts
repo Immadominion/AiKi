@@ -1,4 +1,4 @@
-import type { AccountToken } from '@aiki/contracts'
+import { type AccountToken, priceFeedsFor } from '@aiki/contracts'
 import { createPublicClient, http, parseAbi } from 'viem'
 
 /**
@@ -45,6 +45,17 @@ export interface ChainReader {
   balances?(account: `0x${string}`, tokens: AccountToken[]): Promise<AccountBalances>
 
   /**
+   * Dollar prices for the assets an account can hold.
+   *
+   * A balance sits next to a decision about money, so the number beside it
+   * comes from the same chain the balance does rather than from a price API.
+   * A feed that cannot be read, or whose answer is older than its heartbeat,
+   * is absent from the result: the caller then says "unpriced", which is true,
+   * instead of a stale number, which is indistinguishable from a current one.
+   */
+  prices?(chainId: number): Promise<Record<string, number>>
+
+  /**
    * What an arbitrary ERC-20 calls itself, so a mandate can name a token AiKi
    * has never heard of.
    *
@@ -80,6 +91,10 @@ const ACCOUNT_ABI = parseAbi([
   'function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)',
 ])
 
+const AGGREGATOR_ABI = parseAbi([
+  'function decimals() view returns (uint8)',
+  'function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)',
+])
 const ERC20_ABI = parseAbi(['function balanceOf(address owner) view returns (uint256)'])
 
 const ERC20_META_ABI = parseAbi([
@@ -168,6 +183,37 @@ export function viemChainReader(rpcUrl: string): ChainReader {
         ),
       ])
       return { native: native.toString(), tokens: held }
+    },
+    async prices(chainId) {
+      const feeds = priceFeedsFor(chainId)
+      const quotes = await Promise.all(
+        feeds.map(async (feed) => {
+          try {
+            const [decimals, round] = await Promise.all([
+              client.readContract({
+                address: feed.address,
+                abi: AGGREGATOR_ABI,
+                functionName: 'decimals',
+              }),
+              client.readContract({
+                address: feed.address,
+                abi: AGGREGATOR_ABI,
+                functionName: 'latestRoundData',
+              }),
+            ])
+            const [, answer, , updatedAt] = round
+            // A negative or zero answer is not a price, and an old one is not
+            // this price. Either way the honest report is no report.
+            if (answer <= 0n) return null
+            const ageSeconds = Math.floor(Date.now() / 1000) - Number(updatedAt)
+            if (ageSeconds < 0 || ageSeconds > feed.staleAfterSeconds) return null
+            return [feed.symbol, Number(answer) / 10 ** Number(decimals)] as const
+          } catch {
+            return null
+          }
+        }),
+      )
+      return Object.fromEntries(quotes.filter((quote) => quote !== null))
     },
   }
 }

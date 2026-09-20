@@ -257,11 +257,23 @@ export const TOOLS: Anthropic.Tool[] = [
     name: 'my_account',
     description:
       'The account this person’s mandates spend from, if they have one, and what it holds. ' +
+      'Lead with `posture`: it carries `state`, a `headline` and a `detail` that already say ' +
+      'what the account can do and what to do about it. Use its words rather than deciding for ' +
+      'yourself whether a balance counts. ' +
+      'The states are: no_account, unreadable, empty, stranded, dust, ready. ' +
+      'NEVER call a stranded account empty. Stranded means it holds real money, priced in ' +
+      '`strandedUsd`, in a form no agent can spend; say the amount and the dollar value, then ' +
+      'the way out. ' +
       '`balances` gives native BNB in wei and each token in base units; read `decimals` before ' +
       'stating any amount. `balances: null` means the chain could not be read, which is NOT the ' +
-      'same as empty, so say it is unknown rather than reporting zero. An agent can only ever ' +
-      'spend tokens from this account, never native BNB, so an account holding only BNB has ' +
-      'nothing an agent can use and needs USDT sent to its address.',
+      'same as empty, so say it is unknown rather than reporting zero. ' +
+      'An agent can only ever spend tokens from this account, never native BNB: the account ' +
+      'reverts on any transfer carrying native value, so this is not a limit of their mandate ' +
+      'and writing a different mandate cannot change it. ' +
+      'Native BNB already in the account has exactly two exits and both are the owner signing ' +
+      'from their own wallet on the wallet page: convert it to USDT, or withdraw it to any ' +
+      'address. Offer whichever fits. Do not send anybody to an external exchange to swap it; ' +
+      'an exchange is connected to their personal wallet and cannot touch this account.',
     input_schema: { type: 'object', properties: {} },
   },
   {

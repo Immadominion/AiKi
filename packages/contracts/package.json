@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./account-posture": "./src/account-posture.ts",
     "./approval": "./src/approval.ts",
     "./delegation": "./src/delegation.ts",
     "./guardian": "./src/guardian.ts",

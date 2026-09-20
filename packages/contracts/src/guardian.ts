@@ -264,3 +264,37 @@ export function accountTokensFor(chainId: number): AccountToken[] {
     },
   ]
 }
+
+/**
+ * The price feeds AiKi reads, and only these.
+ *
+ * Chainlink aggregators on the execution chain rather than a price API,
+ * because a balance is shown next to a decision about money and the number
+ * beside it should come from the same place the balance does. No key, no
+ * vendor, and the staleness of the answer is on chain where it can be checked.
+ *
+ * `staleAfterSeconds` is each feed's own heartbeat with headroom. A price older
+ * than that is reported as unpriced rather than as a number, because a stale
+ * quote and a current one look identical once rendered.
+ */
+export interface PriceFeed {
+  symbol: 'BNB' | 'USDT'
+  address: `0x${string}`
+  staleAfterSeconds: number
+}
+
+export function priceFeedsFor(chainId: number): PriceFeed[] {
+  if (chainId !== 56) return []
+  return [
+    {
+      symbol: 'BNB',
+      address: '0x0567f2323251f0aab15c8dfb1967e4e8a7d42aee',
+      staleAfterSeconds: 3 * 60 * 60,
+    },
+    {
+      symbol: 'USDT',
+      address: '0xb97ad0e74fa7d920791e90258a6e2085088b4320',
+      staleAfterSeconds: 3 * 60 * 60,
+    },
+  ]
+}

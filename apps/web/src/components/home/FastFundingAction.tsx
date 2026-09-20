@@ -1,9 +1,11 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import type { FundingContinuation } from '@/lib/api'
-import { acceptedTokens, swapUrl } from './fast-funding'
+import { route } from '@/lib/routes'
+import { acceptedTokens } from './fast-funding'
 
 /**
  * The address, as a button.
@@ -41,21 +43,23 @@ export function FastFundingAction({ action }: { action: FundingContinuation }) {
           {copied ? 'Copied' : 'Copy address'}
         </button>
         {/*
-          BNB cannot be spent by any mandate, and somebody holding only BNB is
-          otherwise stuck with no way forward from this screen. The swap is
-          their own wallet transaction; this is just the door to it.
+          This used to open PancakeSwap, which is connected to the reader's own
+          wallet and cannot see the account named directly above it. Somebody
+          whose BNB is stuck IN this account pressed it and arrived at a swap
+          screen for a different balance entirely. What moves this account's
+          own money is owner-signed and lives on the wallet page.
         */}
-        <a
-          href={swapUrl(action.chainId, action.symbols)}
-          target="_blank"
-          rel="noreferrer"
+        <Link
+          href={route('/settings/wallet')}
           className="min-h-10 rounded-[10px] border border-[rgb(26_26_25_/_0.16)] bg-white px-3 leading-10 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-app"
         >
-          Swap BNB for {action.symbols.includes('USDT') ? 'USDT' : action.symbols[0]}
-        </a>
+          What is in it
+        </Link>
       </div>
       <p className="text-muted mt-2 mb-0">
-        Not BNB. No mandate can move it, so an account holding only BNB cannot do anything.
+        Not BNB. No mandate can move native BNB, so an agent cannot spend it whatever limits you
+        sign. If this account already holds some, you can convert or withdraw it yourself from the
+        wallet page.
       </p>
     </section>
   )

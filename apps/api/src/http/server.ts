@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { SignedDelegation } from '@aiki/contracts'
 import {
+  accountPosture,
   accountTokensFor,
   DELEGATION_TYPES,
   delegationDomain,
@@ -1010,19 +1011,36 @@ export function createApiServer(input: {
      * actionable. `null` means the chain could not be read, which is not the
      * same as holding nothing, and the two must not render alike.
      */
-    const balances = account
-      ? await readAccountBalances({
-          ...(input.chain ? { chain: input.chain } : {}),
-          chainId: input.enforcers.chainId,
-          account: account.address as `0x${string}`,
-        })
-      : null
+    const [balances, prices] = account
+      ? await Promise.all([
+          readAccountBalances({
+            ...(input.chain ? { chain: input.chain } : {}),
+            chainId: input.enforcers.chainId,
+            account: account.address as `0x${string}`,
+          }),
+          /*
+           * Prices read alongside, never instead. A failed feed must not cost
+           * somebody their balance, so this resolves to no prices and the
+           * posture reports the holding as unpriced rather than as absent.
+           */
+          input.chain
+            ?.prices?.(input.enforcers.chainId)
+            .catch((): Record<string, number> => ({})) ?? ({} as Record<string, number>),
+        ])
+      : [null, {} as Record<string, number>]
+    const posture = accountPosture({
+      address: account?.address ?? null,
+      balances,
+      prices: { bnbUsd: prices.BNB ?? null, usdtUsd: prices.USDT ?? null },
+    })
     return {
       address: account?.address ?? null,
       chainId: input.enforcers.chainId,
       network: input.enforcers.network,
       ...(account ? { deployedTx: account.deployedTx, createdAt: account.createdAt } : {}),
       ...(account ? { balances } : {}),
+      // What the account can do, rather than a number somebody has to interpret.
+      posture,
     }
   })
   app.post('/v1/account', async (request, reply) => {

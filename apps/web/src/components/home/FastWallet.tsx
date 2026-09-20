@@ -1,89 +1,86 @@
 'use client'
 
+import type { AccountPosture, PostureState } from '@aiki/contracts'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { type AgentAccount, balanceView } from '@/lib/agent-account'
 import { api } from '@/lib/api'
 import { route } from '@/lib/routes'
 
 /**
  * What the agent can actually spend, on the screen where you ask it to spend.
  *
- * The balance was on the wallet page only, so the one question Fast mode
- * exists to answer - can this be done with what I have - could not be answered
- * without leaving Fast mode. Deciding whether to swap, hire or top up while
- * looking at a number on another page is not a decision anybody makes well.
+ * Two things were wrong with the first version of this. It only counted
+ * spendable tokens, so an account holding a dollar of BNB read "empty" and its
+ * owner went looking for money they already had. And when the balance was
+ * unusable it said so without saying what to do, so the only way to reach the
+ * fix was to doubt the readout and ask the assistant about it in words.
  *
- * It is one line beside the points that were already there, not a panel. A
- * balance readout that occupies the focused surface would be the same mistake
- * in the other direction: this says the amount and gets out of the way, and
- * the full account with its addresses and its unspendable native balance stays
- * one click behind it.
+ * Now it reports the state, the money, and the way out of the state, in that
+ * order, and the way out is the thing you press. Still one line: a running
+ * readout on the surface somebody works on is chrome, and this has one job.
  */
 export function FastWallet() {
-  const [state, setState] = useState<AgentAccount>({ kind: 'loading' })
+  const [posture, setPosture] = useState<AccountPosture | null>(null)
 
   useEffect(() => {
     let live = true
     api
       .account()
       .then((account) => {
-        if (!live) return
-        setState(
-          account.address
-            ? {
-                kind: 'ready',
-                address: account.address,
-                chainId: account.chainId,
-                network: account.network,
-                balances: account.balances ?? null,
-              }
-            : { kind: 'none' },
-        )
+        if (live) setPosture(account.posture ?? null)
       })
       .catch(() => {
-        if (live) setState({ kind: 'failed', message: 'Wallet unreadable' })
+        if (live) setPosture(null)
       })
     return () => {
       live = false
     }
   }, [])
 
-  if (state.kind === 'loading') return null
+  if (!posture) return null
 
-  const label = walletLabel(state)
+  const tone = TONE[posture.state]
   return (
     <Link
       href={route('/settings/wallet')}
-      className="text-muted hover:text-ink-app inline-flex min-h-10 items-center gap-[5px] text-[11.5px] transition-colors focus-visible:outline-2 focus-visible:outline-orange-app"
+      title={posture.detail}
+      className="hover:text-ink-app inline-flex min-h-10 items-center gap-[5px] text-[11.5px] transition-colors focus-visible:outline-2 focus-visible:outline-orange-app"
     >
       <span className="text-faint">Agent wallet</span>
-      <span className="text-ink-app font-bold tabular-nums">{label}</span>
+      <span className="font-bold tabular-nums" style={{ color: tone }}>
+        {posture.headline}
+      </span>
+      {/* The fix rides with the problem. Naming a dead end without the way out
+          is half an answer, and it is the half nobody can act on. */}
+      {posture.fix ? (
+        <span className="text-muted underline underline-offset-[3px]">
+          {FIX_LABEL[posture.fix.kind]}
+        </span>
+      ) : null}
     </Link>
   )
 }
 
 /**
- * The spendable total, or the reason there is not one.
+ * Money in the wrong form is not a neutral fact, so it is not drawn as one.
  *
- * An unreadable balance is never drawn as a zero. The two look identical and
- * mean opposite things to somebody who has just deposited, and the wrong one
- * of them says the deposit failed.
+ * `stranded` and `dust` are warnings: there is value in the account and it
+ * cannot do the thing somebody is on this screen to do. `empty` is plain,
+ * because nothing is wrong with a new account, and `unreadable` is plain
+ * because it is a statement about us and not about them.
  */
-export function walletLabel(state: AgentAccount): string {
-  if (state.kind === 'none') return 'not created'
-  if (state.kind === 'failed' || state.kind === 'signed_out' || state.kind === 'loading')
-    return 'unreadable'
-  const view = balanceView(state.balances)
-  if (view.unknown) return 'unreadable'
-  const spendable = view.rows.filter((row) => row.spendable && Number(row.amount) > 0)
-  if (spendable.length === 0) return 'empty'
-  return spendable.map((row) => `${trim(row.amount)} ${row.symbol}`).join(' · ')
+const TONE: Record<PostureState, string> = {
+  no_account: 'var(--color-muted)',
+  unreadable: 'var(--color-muted)',
+  empty: 'var(--color-muted)',
+  stranded: '#C2410C',
+  dust: '#C2410C',
+  ready: 'var(--color-ink-app)',
 }
 
-/** Eighteen decimals of dust is noise beside a question. */
-const trim = (amount: string) => {
-  const value = Number(amount)
-  if (!Number.isFinite(value)) return amount
-  return value >= 1 ? value.toFixed(2).replace(/\.00$/, '') : value.toPrecision(2)
+const FIX_LABEL: Record<AccountPosture['fix'] extends null ? never : string, string> = {
+  create: 'Create it',
+  fund: 'Add funds',
+  convert: 'Convert it',
+  top_up: 'Top up',
 }

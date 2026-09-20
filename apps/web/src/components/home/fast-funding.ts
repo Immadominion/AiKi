@@ -59,8 +59,18 @@ export function acceptedTokens(symbols: string[]): string {
   return `${symbols.slice(0, -1).join(', ')} or ${symbols.at(-1)}`
 }
 
-/** Where somebody turns BNB into something an agent can actually spend. */
-export function swapUrl(chainId: 56 | 97, symbols: string[]): string {
-  const want = symbols.includes('USDT') ? 'USDT' : (symbols[0] ?? 'USDT')
-  return `https://pancakeswap.finance/swap?chain=${chainId === 56 ? 'bsc' : 'bscTestnet'}&outputCurrency=${want}`
-}
+/*
+ * There was a "Swap BNB for USDT" button here that opened PancakeSwap.
+ *
+ * It is gone because it could not do the thing its position on the card
+ * implied. It opens an exchange connected to the reader's OWN wallet, and the
+ * BNB the card is talking about is in the agent account, which that exchange
+ * cannot see, touch or spend. Somebody holding a dollar of stranded BNB and
+ * pressing it arrived at a swap screen for a different balance entirely.
+ *
+ * The account's own BNB moves one of two ways, both owner-signed, because
+ * `executeFromExecutor` reverts on any non-zero value and so no agent under
+ * any mandate can move it: convert it in place through the account's `execute`,
+ * or take it out with `withdrawNative`. Both are transactions from this app,
+ * against the account on the card, and neither is a link somewhere else.
+ */

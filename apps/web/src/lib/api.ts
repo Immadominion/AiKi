@@ -7,6 +7,7 @@
  */
 
 import type {
+  AccountPosture,
   EcosystemStats,
   ProjectedPassport,
   ProjectedSearchResponse,
@@ -479,6 +480,8 @@ export const api = {
       chainId: number
       network: string | null
       balances?: AccountBalances | null
+      /** What the account can do, decided once on the server. */
+      posture?: AccountPosture | null
     }>('/v1/account'),
   /** Deploys one. AiKi pays the gas; the account belongs to the caller. */
   createAccount: () =>

@@ -1,11 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import {
-  acceptedTokens,
-  fundingContinuations,
-  parseFundingContinuation,
-  swapUrl,
-} from './fast-funding'
+import { acceptedTokens, fundingContinuations, parseFundingContinuation } from './fast-funding'
 
 /**
  * The address, as something you press.
@@ -51,10 +46,4 @@ test('refuses anything that is not an address somebody could send to', () => {
 test('names what may be sent without turning it into a sentence', () => {
   assert.equal(acceptedTokens(['USDT']), 'USDT')
   assert.equal(acceptedTokens(['USDT', 'WBNB']), 'USDT or WBNB')
-})
-
-test('points a stuck BNB holder at the swap, on their own chain', () => {
-  // The one thing somebody holding only BNB can do, and they cannot do it here.
-  assert.match(swapUrl(56, ['USDT', 'WBNB']), /chain=bsc&outputCurrency=USDT/)
-  assert.match(swapUrl(97, ['USDT']), /chain=bscTestnet/)
 })
