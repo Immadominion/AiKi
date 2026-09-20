@@ -7,6 +7,7 @@ import { useAccount } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
 import { accountTokenAddress } from '@/lib/agent-account'
 import { toBaseUnits, WithdrawInputError, withdrawTransaction } from '@/lib/agent-withdraw'
+import { api } from '@/lib/api'
 import { sendWalletTransaction, WalletTransactionError } from '@/lib/wallet'
 
 /**
@@ -46,6 +47,26 @@ export function AgentWithdrawPanel({
   const holding = holdings.find((h) => h.symbol === symbol)
   if (!authenticated || holdings.length === 0) return null
 
+  /**
+   * A typed destination, resolved if it is a name.
+   *
+   * Nobody reads a hex address before pressing send, so a .bnb name is the
+   * safer thing to type as well as the easier one. It is resolved here rather
+   * than as you type, so the address that goes into the transaction is the one
+   * the name pointed at a second ago and not one cached from earlier.
+   */
+  const destination = async (typed: string): Promise<string> => {
+    const trimmed = typed.trim()
+    if (!trimmed.toLowerCase().endsWith('.bnb')) return trimmed
+    const resolved = await api.resolveName(trimmed).catch(() => ({ address: null }))
+    if (!resolved.address)
+      throw new WithdrawInputError(
+        `${trimmed} does not point at an address. Check the name, or paste the address instead.`,
+      )
+    say(`${trimmed} resolves to ${resolved.address}.`)
+    return resolved.address
+  }
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     if (busy || !holding) return
@@ -58,7 +79,7 @@ export function AgentWithdrawPanel({
       const request = {
         owner,
         account,
-        to: to.trim(),
+        to: await destination(to),
         amount: toBaseUnits(amount, holding.decimals),
         ...(token ? { token } : {}),
       }
@@ -113,7 +134,7 @@ export function AgentWithdrawPanel({
         <input
           value={to}
           onChange={(event) => setTo(event.target.value)}
-          placeholder="0x… destination"
+          placeholder="0x… or a .bnb name"
           aria-label="Destination address"
           spellCheck={false}
           className="h-10 min-w-[220px] flex-1 rounded-[11px] border border-[rgb(26_26_25_/_0.16)] px-3 font-mono text-[12px]"

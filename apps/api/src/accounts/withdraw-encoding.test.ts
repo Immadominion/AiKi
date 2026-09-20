@@ -1,14 +1,16 @@
-import { toFunctionSelector } from 'viem'
+import { encodeFunctionData, parseAbi, toFunctionSelector } from 'viem'
 import { describe, expect, it } from 'vitest'
 import {
   toBaseUnits,
   WithdrawInputError,
   withdrawTransaction,
+  wrapNativeTransaction,
 } from '../../../../apps/web/src/lib/agent-withdraw.js'
 
 const OWNER = '0x0dCad2aBf180246D6bA155009F8817431bFb3239'
 const ACCOUNT = '0x418ccdab06164b8b7fb8801d95e22d71aa9824bb'
 const USDT = '0x55d398326f99059ff775485246999027b3197955'
+const WBNB = '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c'
 
 describe('withdrawing from a mandate account', () => {
   it('uses the selectors the account actually exposes', () => {
@@ -68,5 +70,35 @@ describe('withdrawing from a mandate account', () => {
     expect(toBaseUnits('0.3', 18)).toBe(300_000_000_000_000_000n)
     expect(() => toBaseUnits('0.0000000000000000001', 18)).toThrow(/18 decimal places/)
     expect(() => toBaseUnits('one', 18)).toThrow(WithdrawInputError)
+  })
+})
+
+describe('converting the account’s own BNB into something an agent can spend', () => {
+  it('encodes byte for byte the same call viem would, and simulated on a live account', () => {
+    // The dynamic `bytes` argument is hand-encoded, which is exactly the kind
+    // of thing that is subtly wrong and still signs, so it is pinned against
+    // an independent encoder rather than against itself.
+    const tx = wrapNativeTransaction({
+      owner: OWNER,
+      account: ACCOUNT,
+      wbnb: WBNB,
+      amount: 1_400_000_000_000_000n,
+    })
+    expect(tx.data).toBe(
+      encodeFunctionData({
+        abi: parseAbi(['function execute(address,uint256,bytes) returns (bytes)']),
+        functionName: 'execute',
+        args: [WBNB, 1_400_000_000_000_000n, '0xd0e30db0'],
+      }),
+    )
+    expect(tx.to).toBe(ACCOUNT)
+    // The BNB comes out of the account, not out of the wallet signing this.
+    expect(tx.value).toBe('0')
+  })
+
+  it('will not offer to convert nothing', () => {
+    expect(() =>
+      wrapNativeTransaction({ owner: OWNER, account: ACCOUNT, wbnb: WBNB, amount: 0n }),
+    ).toThrow(/no BNB/)
   })
 })

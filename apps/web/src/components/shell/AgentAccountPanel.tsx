@@ -2,6 +2,7 @@
 
 import type { AccountPosture } from '@aiki/contracts'
 import { useCallback, useEffect, useState } from 'react'
+import { AgentConvertAction } from '@/components/shell/AgentConvertAction'
 import { AgentWithdrawPanel } from '@/components/shell/AgentWithdrawPanel'
 import { useAccount } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
@@ -169,6 +170,14 @@ export function AgentAccountPanel() {
             <span className="text-muted mt-[3px] block text-[12.5px] leading-[1.5] text-pretty">
               {posture.detail}
             </span>
+            {address ? (
+              <AgentConvertAction
+                account={address}
+                posture={posture}
+                chainId={state.kind === 'ready' ? state.chainId : 56}
+                onDone={() => void load()}
+              />
+            ) : null}
           </div>
         ) : null}
 

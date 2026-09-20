@@ -1,5 +1,5 @@
 import { type AccountToken, priceFeedsFor } from '@aiki/contracts'
-import { createPublicClient, http, parseAbi } from 'viem'
+import { createPublicClient, http, namehash, parseAbi } from 'viem'
 
 /**
  * The two things the API must ask a chain before it will store a delegation.
@@ -56,6 +56,17 @@ export interface ChainReader {
   prices?(chainId: number): Promise<Record<string, number>>
 
   /**
+   * A .bnb name to the address it points at, or null.
+   *
+   * Space ID's registry on BSC is ENS-shaped: namehash the name, ask the
+   * registry which resolver owns that node, ask the resolver for the address.
+   * Null covers every way this can not-answer - unregistered, registered with
+   * no address set, an unreachable node - because all of them mean the same
+   * thing to somebody about to send money, which is "do not send it yet".
+   */
+  resolveName?(name: string): Promise<`0x${string}` | null>
+
+  /**
    * What an arbitrary ERC-20 calls itself, so a mandate can name a token AiKi
    * has never heard of.
    *
@@ -91,6 +102,12 @@ const ACCOUNT_ABI = parseAbi([
   'function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)',
 ])
 
+/** Space ID's .bnb registry on BNB Smart Chain. ENS-shaped, verified resolving live names. */
+const SID_REGISTRY = '0x08ced32a7f3eec915ba84415e9c07a7286977956' as const
+const SID_ABI = parseAbi([
+  'function resolver(bytes32 node) view returns (address)',
+  'function addr(bytes32 node) view returns (address)',
+])
 const AGGREGATOR_ABI = parseAbi([
   'function decimals() view returns (uint8)',
   'function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)',
@@ -214,6 +231,34 @@ export function viemChainReader(rpcUrl: string): ChainReader {
         }),
       )
       return Object.fromEntries(quotes.filter((quote) => quote !== null))
+    },
+    async resolveName(name) {
+      const lower = name.trim().toLowerCase()
+      // Only .bnb, and only a shape that is a name. Anything else is either
+      // already an address or something this cannot speak for.
+      if (!/^[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})*\.bnb$/.test(lower)) return null
+      try {
+        const node = namehash(lower)
+        const resolver = await client.readContract({
+          address: SID_REGISTRY,
+          abi: SID_ABI,
+          functionName: 'resolver',
+          args: [node],
+        })
+        if (!resolver || /^0x0{40}$/i.test(resolver)) return null
+        const address = await client.readContract({
+          address: resolver,
+          abi: SID_ABI,
+          functionName: 'addr',
+          args: [node],
+        })
+        // A registered name with no address set resolves to zero. Sending
+        // there destroys the money, so it is not an answer.
+        if (!address || /^0x0{40}$/i.test(address)) return null
+        return address.toLowerCase() as `0x${string}`
+      } catch {
+        return null
+      }
     },
   }
 }

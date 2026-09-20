@@ -483,6 +483,15 @@ export const api = {
       /** What the account can do, decided once on the server. */
       posture?: AccountPosture | null
     }>('/v1/account'),
+  /**
+   * A .bnb name to the address it points at, or null.
+   *
+   * Null for every kind of not-found, including a registered name with no
+   * address behind it, because sending to the zero address destroys money and
+   * an empty answer is the only safe way to report that.
+   */
+  resolveName: (name: string) =>
+    req<{ name: string; address: string | null }>(`/v1/names/${encodeURIComponent(name)}`),
   /** Deploys one. AiKi pays the gas; the account belongs to the caller. */
   createAccount: () =>
     req<{ address: string; chainId: number; created: boolean }>('/v1/account', {

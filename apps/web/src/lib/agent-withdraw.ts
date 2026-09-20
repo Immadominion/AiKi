@@ -102,3 +102,66 @@ export function toBaseUnits(input: string, decimals: number): bigint {
     throw new WithdrawInputError(`This token has ${decimals} decimal places, no more.`)
   return BigInt(`${whole || '0'}${fraction.padEnd(decimals, '0')}`)
 }
+
+/**
+ * Turning the account's stranded BNB into something an agent can spend.
+ *
+ * Asked for as "please let this thing be able to swap it". The answer is
+ * better than a swap and it is one transaction.
+ *
+ * WBNB is an ordinary ERC-20 and it is on the reviewed token list, so a
+ * mandate can name it, a cap can measure it, and an agent can spend or swap it
+ * like any other token. Wrapping is `deposit()` on the WBNB contract with the
+ * BNB attached, and the BNB comes from the ACCOUNT's own balance rather than
+ * from the owner's, because `execute(target, value, callData)` forwards the
+ * value out of the account it lives on. So the owner's transaction carries no
+ * value at all, and the exchange rate is exactly one.
+ *
+ * What this avoids is worth saying. Routing the same BNB through a swap would
+ * need a quote, a slippage bound, an approval and a router, and would put a
+ * price on a conversion that does not have one. Wrapping is 1:1 and cannot
+ * come back with less than went in. Once it is WBNB, whether to swap it, for
+ * what, and at what limit, is a mandate the owner writes and an agent carries
+ * out, which is where that decision belonged in the first place.
+ *
+ * The owner signs because `executeFromExecutor` reverts on any non-zero value,
+ * so no agent under any mandate can perform this step for them. Simulated
+ * against a live account before it shipped: accepted from the owner, reverted
+ * with NotOwner for everybody else.
+ */
+const EXECUTE = '0xb61d27f6'
+/** deposit() on WBNB. */
+const DEPOSIT = 'd0e30db0'
+
+export function wrapNativeTransaction(request: {
+  owner: string
+  account: string
+  wbnb: string
+  amount: bigint
+}): ReviewedWalletTransaction {
+  if (!ADDRESS.test(request.owner)) throw new WithdrawInputError('Connect a wallet first.')
+  if (!ADDRESS.test(request.account))
+    throw new WithdrawInputError('This account has not been created yet.')
+  if (request.amount <= 0n)
+    throw new WithdrawInputError('There is no BNB in the account to convert.')
+
+  // execute(address,uint256,bytes): the bytes argument is dynamic, so it is a
+  // head offset followed by its length and its body, padded to a word.
+  const data =
+    EXECUTE +
+    addressWord(request.wbnb, 'The WBNB contract') +
+    word(request.amount) +
+    word(96n) +
+    word(4n) +
+    DEPOSIT.padEnd(64, '0')
+
+  return {
+    chainId: 56,
+    from: request.owner,
+    to: request.account,
+    data: data as `0x${string}`,
+    // The account sends its own BNB. This transaction carries none of the
+    // owner's, which is what makes it safe to sign from a wallet holding more.
+    value: '0',
+  }
+}

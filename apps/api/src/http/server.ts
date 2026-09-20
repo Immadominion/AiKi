@@ -1043,6 +1043,22 @@ export function createApiServer(input: {
       posture,
     }
   })
+  /**
+   * A .bnb name to the address it points at.
+   *
+   * Sits behind a session because it is a chain read on AiKi's RPC budget, and
+   * it answers null rather than an error for every kind of not-found: an
+   * unregistered name, one with no address set, and an unreachable resolver
+   * are one answer to somebody about to send money, which is "not this".
+   */
+  app.get<{ Params: { name: string } }>('/v1/names/:name', async (request, reply) => {
+    const session = requireSession(request, reply)
+    if (!session) return reply
+    const name = String(request.params.name ?? '')
+    if (name.length > 255) return { name, address: null }
+    const address = (await input.chain?.resolveName?.(name).catch(() => null)) ?? null
+    return { name: name.toLowerCase(), address }
+  })
   app.post('/v1/account', async (request, reply) => {
     const session = requireSession(request, reply)
     if (!session) return reply
