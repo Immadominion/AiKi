@@ -1,14 +1,10 @@
 'use client'
 
-import type { Route } from 'next'
 import { useRouter } from 'next/navigation'
-import { AgentAccountPanel } from '@/components/shell/AgentAccountPanel'
 import { PageCard } from '@/components/shell/PageCard'
-import { useAccount, useModeNavigation } from '@/components/shell/prefs'
+import { useModeNavigation } from '@/components/shell/prefs'
 import { useToast } from '@/components/ui/Toast'
 import { route } from '@/lib/routes'
-import { CONNECT_TOAST } from '@/lib/wallet'
-import { type SettingsTab, TAB_KEYS } from './settings-tabs'
 
 const Row = ({
   title,
@@ -58,221 +54,103 @@ const Section = ({
   </section>
 )
 
-/**
- * Six unrelated subjects, one scroll.
- *
- * Wallet, points, notifications, mode, the API and what we keep were stacked in
- * a single column, and the sidebar linked into the middle of it by anchor. That
- * made three sidebar rows point at one page, so none of them could show as the
- * page you were on, and finding the wallet meant scrolling past four subjects
- * that had nothing to do with it. Each is its own tab now, named in the URL, so
- * a link goes to one thing and comes back to the same thing.
- */
-const TABS = ['Wallet', 'Points', 'Notifications', 'Mode', 'Evidence API', 'Data'] as const
-const TAB_HINTS = [
-  'Reading only. Never spending.',
-  'Used inside AiKi.',
-  'Nothing leaves the app.',
-  'Sets your home screen.',
-  'Not open yet.',
-  'Yours to clear.',
-]
-
-export function SettingsView({ tab }: { tab: SettingsTab }) {
+export function SettingsView() {
   const say = useToast()
   const router = useRouter()
-  const active = Math.max(0, TAB_KEYS.indexOf(tab))
-  // Each tab is its own address, so the sidebar can link straight to one, the
-  // back button works, and a link to the wallet settings opens the wallet
-  // settings rather than the top of a six-subject scroll.
-  const openTab = (i: number) => router.push(`/settings/${TAB_KEYS[i]}` as Route)
   const { layout, switchMode } = useModeNavigation()
-  const { connected, authenticated, connect, disconnect, address, walletKind } = useAccount()
 
   const header = (
     <div className="flex flex-wrap items-start gap-[14px]">
       <div className="min-w-0 flex-1 basis-[240px]">
         <span className="block text-[19px] font-extrabold tracking-[-0.02em]">Settings</span>
         <p className="text-muted mt-[3px] mb-0 max-w-[620px] text-[13px] leading-[1.45] text-pretty">
-          What AiKi is connected to, what it tells you about, and what it keeps. Anything that could
-          move money lives on the agent it belongs to, not here.
+          How AiKi behaves and what it keeps. Money lives in Wallet.
         </p>
       </div>
     </div>
   )
 
   return (
-    <PageCard
-      title="Settings"
-      count=""
-      headerSlot={header}
-      tabs={[...TABS]}
-      tabHint={TAB_HINTS}
-      activeTab={active}
-      onTab={openTab}
-      panels={[
-        <div key="wallet" className="max-w-[860px]">
-          <AgentAccountPanel />
-          <Section
-            title="Wallet"
-            note="Connecting lets AiKi read. It never grants the ability to move anything. That only comes from an authority you sign per agent, with limits you set."
-          >
-            <Row
-              title={connected ? 'Connected wallet' : 'No wallet connected'}
-              body={
-                connected
-                  ? walletKind === 'simulated'
-                    ? `${address} · a simulated wallet, not a real connection`
-                    : address
-                  : 'AiKi cannot see any balances or positions right now.'
-              }
-              action={connected ? 'Copy' : ''}
-              onAction={() => {
-                navigator.clipboard
-                  ?.writeText(address)
-                  .then(() => say('Address copied.'))
-                  .catch(() => say('Your browser would not let us copy.'))
-              }}
-            />
-            {connected && walletKind === 'injected' && !authenticated ? (
-              <Row
-                title="Sign-in required"
-                body="Sign a message with this wallet to use Fast mode and hire agents. This does not move funds."
-                action="Sign in"
-                onAction={() => void connect().then((outcome) => say(CONNECT_TOAST[outcome]))}
-              />
-            ) : null}
-            <Row
-              title="Network"
-              body="BNB Smart Chain · chain 56. Agents are ERC-8004 identities on this chain and nowhere else."
-            />
-            <Row
-              title={connected ? 'Disconnect' : 'Connect'}
-              body={
-                connected
-                  ? 'Stops AiKi reading your balances. Authorities already signed stay on the chain until you revoke them. Disconnecting is not revoking, and pretending otherwise would be dangerous.'
-                  : 'Lets AiKi read your balances and positions so it can suggest work worth doing. It grants nothing on its own.'
-              }
-              action={connected ? 'Disconnect' : 'Connect'}
-              onAction={() => {
-                if (connected) {
-                  disconnect()
-                  say('Disconnected. Revoke each authority from Limits, which is a separate thing.')
-                } else {
-                  void connect().then((outcome) => say(CONNECT_TOAST[outcome]))
-                }
-              }}
-            />
-          </Section>
-        </div>,
-        <div key="points" className="max-w-[860px]">
-          <Section
-            title="Points and Fast mode"
-            note="Your balance, usage, and the payment options available on this deployment."
-          >
-            <Row
-              title="Your points"
-              body="See recent point activity, check supported networks, and verify a payment. Points are used inside AiKi and cannot currently be withdrawn."
-              action="View points"
-              onAction={() => router.push(route('/credits'))}
-            />
-          </Section>
-        </div>,
-        <div key="notifications" className="max-w-[860px]">
-          <Section
-            title="What reaches you, and where"
-            note="AiKi does not send you anything yet: no email, no push, no phone. Everything below appears in the app, and this section says where, so nothing here reads as a promise to reach you somewhere else."
-          >
-            <Row
-              title="Actions waiting for you"
-              body="When your mandate says to ask first, the agent stops and the request appears on that job's page. It stays there until you answer, and the agent will not act until you do. Nothing expires and nothing is lost, but nothing chases you either."
-            />
-            <Row
-              title="Blocked actions"
-              body="An agent tried something outside your limits and was refused. It appears in the job's event stream, which is append-only, so a refusal cannot be quietly dropped later."
-            />
-            <Row
-              title="Routine activity"
-              body="Checks that found nothing to do, and actions well inside your limits. Same stream, same page, no interruption."
-            />
-          </Section>
-        </div>,
-        <div key="mode" className="max-w-[860px]">
-          <Section
-            title="Mode"
-            note="Choose the active home. Switching opens it now and keeps it as the default next time."
-          >
-            <div className="flex flex-wrap items-center gap-[12px] px-4 py-[14px]">
-              <span className="min-w-0 flex-1 basis-[260px]">
-                <span className="block text-[13.5px] font-bold">Current mode</span>
-                <span className="text-muted mt-[3px] block text-[12.5px] leading-[1.5]">
-                  {layout === 'fast'
-                    ? 'Fast. One question fills the screen.'
-                    : 'Manual. You browse the market and pick.'}
-                </span>
+    <PageCard title="Settings" count="" headerSlot={header} tabs={[]} tabHint="">
+      <div className="max-w-[720px] pb-6">
+        <Section title="Mode" note="Your home screen.">
+          <div className="flex flex-wrap items-center gap-[12px] px-4 py-[14px]">
+            <span className="min-w-0 flex-1 basis-[260px]">
+              <span className="block text-[13.5px] font-bold">Current mode</span>
+              <span className="text-muted mt-[3px] block text-[12.5px] leading-[1.5]">
+                {layout === 'fast'
+                  ? 'Fast. One question fills the screen.'
+                  : 'Manual. You browse the market and pick.'}
               </span>
-              <div className="flex flex-none gap-[3px] rounded-[12px] bg-[rgb(26_26_25_/_0.05)] p-[3px]">
-                {(['fast', 'manual'] as const).map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => switchMode(k)}
-                    className="h-[31px] rounded-[9px] border-0 px-[14px] text-[12.5px]"
-                    style={
-                      layout === k
-                        ? { background: '#fff', color: 'var(--color-ink-app)', fontWeight: 700 }
-                        : {
-                            background: 'transparent',
-                            color: 'var(--color-muted-2)',
-                            fontWeight: 600,
-                          }
-                    }
-                  >
-                    {k === 'fast' ? 'Fast' : 'Manual'}
-                  </button>
-                ))}
-              </div>
+            </span>
+            <div className="flex flex-none gap-[3px] rounded-[12px] bg-[rgb(26_26_25_/_0.05)] p-[3px]">
+              {(['fast', 'manual'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => switchMode(k)}
+                  className="h-[31px] rounded-[9px] border-0 px-[14px] text-[12.5px]"
+                  style={
+                    layout === k
+                      ? { background: '#fff', color: 'var(--color-ink-app)', fontWeight: 700 }
+                      : {
+                          background: 'transparent',
+                          color: 'var(--color-muted-2)',
+                          fontWeight: 600,
+                        }
+                  }
+                >
+                  {k === 'fast' ? 'Fast' : 'Manual'}
+                </button>
+              ))}
             </div>
-          </Section>
-        </div>,
-        <div key="api" className="max-w-[860px]">
-          <Section
-            title="Evidence API"
-            note="The measurements behind every number on this site, served raw. Not a summary of our opinion, but the probe results, counts and intervals themselves, so anyone can recompute a score and disagree with us in public."
-          >
-            <Row
-              title="Not open yet"
-              body="It goes out once the numbers it would serve are stable enough that changing them would be a breaking change rather than a bug fix."
-              action="How we test"
-              onAction={() => router.push(route('/docs/how-we-test'))}
-            />
-          </Section>
-        </div>,
-        <div key="data" className="max-w-[860px]">
-          <Section
-            title="What we keep"
-            note="Written down because a settings page that never mentions this is hiding it."
-          >
-            <Row
-              title="In this browser"
-              body="Your mode, whether the sidebar is collapsed, and which agents you saved. None of it leaves the device."
-              action="Clear"
-              onAction={() => {
-                try {
-                  localStorage.clear()
-                  say('Cleared. Reload to see the defaults.')
-                } catch {
-                  say('Your browser would not let us clear it.')
-                }
-              }}
-            />
-            <Row
-              title="Kept by AiKi"
-              body="Every ask, including ones no agent could take, because those are how we know what to build next. And every action an agent took for you, because a receipt nobody kept is not a receipt."
-            />
-          </Section>
-        </div>,
-      ]}
-    />
+          </div>
+        </Section>
+
+        <Section
+          title="What reaches you, and where"
+          note="No email, no push, no phone. Everything appears in the app. Here is where."
+        >
+          <Row
+            title="Actions waiting for you"
+            body="On the job’s page. It waits for you, and nothing expires."
+          />
+          <Row title="Blocked actions" body="In the job’s event stream, which cannot be edited." />
+          <Row title="Routine activity" body="Same stream. No interruption." />
+        </Section>
+
+        <Section
+          title="Evidence API"
+          note="Every measurement behind every number here, raw, so anyone can recompute a score and disagree in public."
+        >
+          <Row
+            title="Not open yet"
+            body="Opens when the numbers stop moving."
+            action="How we test"
+            onAction={() => router.push(route('/docs/how-we-test'))}
+          />
+        </Section>
+
+        <Section
+          title="What we keep"
+          note="Written down, because not saying it would be hiding it."
+        >
+          <Row
+            title="In this browser"
+            body="Mode, sidebar, saved agents. Never leaves this device."
+            action="Clear"
+            onAction={() => {
+              try {
+                localStorage.clear()
+                say('Cleared. Reload to see the defaults.')
+              } catch {
+                say('Your browser would not let us clear it.')
+              }
+            }}
+          />
+          <Row title="Kept by AiKi" body="Every ask, and every action an agent took for you." />
+        </Section>
+      </div>
+    </PageCard>
   )
 }

@@ -2,14 +2,13 @@
 
 import {
   ActivityIcon,
-  BellIcon,
   ClipboardIcon,
-  CodeIcon,
   CompassIcon,
   HeartIcon,
   HouseIcon,
   LayersIcon,
   LayoutGridIcon,
+  SettingsIcon,
   ShieldCheckIcon,
   UserIcon,
   WalletIcon,
@@ -90,13 +89,20 @@ const GROUPS: { label: string; items: Item[] }[] = [
       { label: 'Saved', icon: HeartIcon, href: '/saved' },
     ],
   },
+  /*
+   * Two rows, where there were four pointing at six tabs.
+   *
+   * "Points" was in this group linking to /credits while a Points TAB sat
+   * inside the settings page linking somewhere else, so the same word meant
+   * two destinations and neither was where the money was. Money is one place
+   * now and it is called Wallet, which is what it is. Everything else that was
+   * in here is a preference, and preferences are one short page.
+   */
   {
-    label: 'Settings',
+    label: 'You',
     items: [
-      { label: 'Wallet', icon: WalletIcon, href: '/settings/wallet' },
-      { label: 'Points', icon: WalletIcon, href: '/credits' },
-      { label: 'Notifications', icon: BellIcon, href: '/settings/notifications' },
-      { label: 'Evidence API', icon: CodeIcon, href: '/settings/api', tag: 'Beta' },
+      { label: 'Wallet', icon: WalletIcon, href: '/wallet', owns: ['/credits'] },
+      { label: 'Settings', icon: SettingsIcon, href: '/settings' },
     ],
   },
 ]

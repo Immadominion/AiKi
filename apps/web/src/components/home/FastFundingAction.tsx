@@ -50,7 +50,7 @@ export function FastFundingAction({ action }: { action: FundingContinuation }) {
           own money is owner-signed and lives on the wallet page.
         */}
         <Link
-          href={route('/settings/wallet')}
+          href={route('/wallet')}
           className="min-h-10 rounded-[10px] border border-[rgb(26_26_25_/_0.16)] bg-white px-3 leading-10 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-app"
         >
           What is in it

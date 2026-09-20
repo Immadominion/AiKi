@@ -165,3 +165,102 @@ export function wrapNativeTransaction(request: {
     value: '0',
   }
 }
+
+/**
+ * Swapping one of the account's tokens for another.
+ *
+ * This is the thing that was asked for plainly and that I talked around: "wym
+ * no mandate can swap?" A mandate can swap. `TokenAction` has included 'swap'
+ * since the venue was reviewed, the cap enforcer measures the realised balance
+ * delta so it holds across a router, and any ERC-20 can be named - a memecoin
+ * somebody was sent included. The one asset that cannot be swapped by anybody
+ * acting under a mandate is native BNB, because the account rejects value, and
+ * leading with that exception made the capability sound absent.
+ *
+ * Two calls, both through the account's owner `execute`, because the account
+ * holds the tokens and the router must be allowed to take them:
+ *
+ *   1. approve(router, amount) on the token, skipped when the allowance is
+ *      already enough, so the common case is one signature rather than two.
+ *   2. exactInputSingle on the reviewed venue, with the account as recipient
+ *      so the proceeds land back where they came from rather than in a wallet.
+ *
+ * `amountOutMinimum` is never zero. A swap sent without a floor is an
+ * instruction to accept any amount at all, including whatever is left after
+ * somebody else has traded against it first.
+ */
+const SWAP_SELECTOR = '04e45aaf'
+const APPROVE_SELECTOR = '095ea7b3'
+
+export interface SwapRequest {
+  owner: string
+  account: string
+  chainId: number
+  tokenIn: string
+  tokenOut: string
+  amount: bigint
+  /** What the router may already move, so a needless approval is skipped. */
+  allowance: bigint
+  router: string
+  minOut: bigint
+  fee: number
+}
+
+export function swapSteps(request: SwapRequest): ReviewedWalletTransaction[] {
+  if (!ADDRESS.test(request.owner)) throw new WithdrawInputError('Connect a wallet first.')
+  if (!ADDRESS.test(request.account))
+    throw new WithdrawInputError('This account has not been created yet.')
+  if (request.amount <= 0n) throw new WithdrawInputError('Enter an amount above zero.')
+  if (request.minOut <= 0n)
+    throw new WithdrawInputError('That swap has no price right now. Try again in a moment.')
+  if (request.tokenIn.toLowerCase() === request.tokenOut.toLowerCase())
+    throw new WithdrawInputError('Pick a different token to swap into.')
+
+  const tokenIn = addressWord(request.tokenIn, 'The token')
+  const tokenOut = addressWord(request.tokenOut, 'The token to swap into')
+  const router = addressWord(request.router, 'The exchange')
+  const account = addressWord(request.account, 'The account')
+
+  const steps: ReviewedWalletTransaction[] = []
+  if (request.allowance < request.amount)
+    steps.push(
+      through(request, request.tokenIn, 0n, APPROVE_SELECTOR + router + word(request.amount)),
+    )
+
+  // exactInputSingle's struct is all static types, so it encodes inline.
+  const params =
+    tokenIn +
+    tokenOut +
+    word(BigInt(request.fee)) +
+    account +
+    word(request.amount) +
+    word(request.minOut) +
+    word(0n)
+  steps.push(through(request, request.router, 0n, SWAP_SELECTOR + params))
+  return steps
+}
+
+/** One owner `execute` against the account, carrying no value of the owner's. */
+function through(
+  request: { owner: string; account: string },
+  target: string,
+  value: bigint,
+  inner: string,
+): ReviewedWalletTransaction {
+  const body =
+    inner.length % 64 === 0 ? inner : inner.padEnd(inner.length + (64 - (inner.length % 64)), '0')
+  const data =
+    EXECUTE +
+    addressWord(target, 'The target') +
+    word(value) +
+    word(96n) +
+    word(BigInt(inner.length / 2)) +
+    body
+  return {
+    chainId: 56,
+    from: request.owner,
+    to: request.account,
+    data: data as `0x${string}`,
+    value: '0',
+  }
+}

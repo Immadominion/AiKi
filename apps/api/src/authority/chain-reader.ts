@@ -66,6 +66,23 @@ export interface ChainReader {
    */
   resolveName?(name: string): Promise<`0x${string}` | null>
 
+  /** What `spender` may already move of `owner`'s `token`, in base units. */
+  allowance?(token: `0x${string}`, owner: `0x${string}`, spender: `0x${string}`): Promise<string>
+
+  /**
+   * The best price the reviewed venue will give, across its fee tiers.
+   *
+   * Quoted rather than assumed, and quoted for every tier because the cheapest
+   * fee is not always the best fill: a thin pool at 0.01% can pay less than a
+   * deep one at 0.25%. A tier with no pool reverts, which is an answer and not
+   * an error.
+   */
+  quoteSwap?(input: {
+    tokenIn: `0x${string}`
+    tokenOut: `0x${string}`
+    amountIn: bigint
+  }): Promise<{ amountOut: string; fee: number } | null>
+
   /**
    * What an arbitrary ERC-20 calls itself, so a mandate can name a token AiKi
    * has never heard of.
@@ -108,11 +125,20 @@ const SID_ABI = parseAbi([
   'function resolver(bytes32 node) view returns (address)',
   'function addr(bytes32 node) view returns (address)',
 ])
+/** PancakeSwap V3's QuoterV2 on BSC, and the fee tiers its factory enables. */
+const PANCAKE_QUOTER = '0xb048bbc1ee6b733fffcfb9e9cef7375518e25997' as const
+const PANCAKE_FEE_TIERS = [100, 500, 2500, 10_000] as const
+const QUOTER_ABI = parseAbi([
+  'function quoteExactInputSingle((address tokenIn,address tokenOut,uint256 amountIn,uint24 fee,uint160 sqrtPriceLimitX96)) returns (uint256 amountOut,uint160 sqrtPriceX96After,uint32 initializedTicksCrossed,uint256 gasEstimate)',
+])
 const AGGREGATOR_ABI = parseAbi([
   'function decimals() view returns (uint8)',
   'function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)',
 ])
-const ERC20_ABI = parseAbi(['function balanceOf(address owner) view returns (uint256)'])
+const ERC20_ABI = parseAbi([
+  'function balanceOf(address owner) view returns (uint256)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+])
 
 const ERC20_META_ABI = parseAbi([
   'function symbol() view returns (string)',
@@ -231,6 +257,41 @@ export function viemChainReader(rpcUrl: string): ChainReader {
         }),
       )
       return Object.fromEntries(quotes.filter((quote) => quote !== null))
+    },
+    async allowance(token, owner, spender) {
+      return (
+        await client.readContract({
+          address: token,
+          abi: ERC20_ABI,
+          functionName: 'allowance',
+          args: [owner, spender],
+        })
+      ).toString()
+    },
+    async quoteSwap({ tokenIn, tokenOut, amountIn }) {
+      if (amountIn <= 0n || tokenIn.toLowerCase() === tokenOut.toLowerCase()) return null
+      const quotes = await Promise.all(
+        PANCAKE_FEE_TIERS.map(async (fee) => {
+          try {
+            const [amountOut] = await client
+              .simulateContract({
+                address: PANCAKE_QUOTER,
+                abi: QUOTER_ABI,
+                functionName: 'quoteExactInputSingle',
+                args: [{ tokenIn, tokenOut, amountIn, fee, sqrtPriceLimitX96: 0n }],
+              })
+              .then((result) => result.result as readonly [bigint, bigint, number, bigint])
+            return amountOut > 0n ? { amountOut, fee } : null
+          } catch {
+            // No pool at this tier. Not a failure, just not a route.
+            return null
+          }
+        }),
+      )
+      const best = quotes
+        .filter((quote) => quote !== null)
+        .sort((a, b) => (b.amountOut > a.amountOut ? 1 : -1))[0]
+      return best ? { amountOut: best.amountOut.toString(), fee: best.fee } : null
     },
     async resolveName(name) {
       const lower = name.trim().toLowerCase()

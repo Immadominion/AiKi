@@ -9,6 +9,7 @@ import {
   hasCurrentLiveness,
   parseExecutionNetwork,
   ROOT_AUTHORITY,
+  swapVenueFor,
 } from '@aiki/contracts'
 import Fastify from 'fastify'
 import { readAccountBalances } from '../accounts/balances.js'
@@ -1059,6 +1060,85 @@ export function createApiServer(input: {
     const address = (await input.chain?.resolveName?.(name).catch(() => null)) ?? null
     return { name: name.toLowerCase(), address }
   })
+  const HEX40 = /^0x[0-9a-fA-F]{40}$/
+
+  /** What the swap venue may already move of this account's token. */
+  app.get<{ Querystring: { token?: string; owner?: string } }>(
+    '/v1/allowance',
+    async (request, reply) => {
+      const session = requireSession(request, reply)
+      if (!session) return reply
+      const { token, owner } = request.query
+      if (!token || !owner || !HEX40.test(token) || !HEX40.test(owner)) return { allowance: '0' }
+      const spender = swapVenueFor(input.enforcers?.chainId ?? 56)?.router
+      if (!spender) return { allowance: '0' }
+      const allowance = await input.chain
+        ?.allowance?.(token as `0x${string}`, owner as `0x${string}`, spender)
+        .catch(() => '0')
+      return { allowance: allowance ?? '0' }
+    },
+  )
+
+  /**
+   * What this swap would actually return, and the floor to send with it.
+   *
+   * Quoted on chain rather than derived from a price feed, because the feed
+   * says what the asset is worth and the pool says what this trade gets, and
+   * on a thin pool those are different numbers. The floor is what stops a
+   * transaction that sat in the mempool from filling at whatever the price
+   * became; without it a swap is an open instruction to take any amount.
+   */
+  app.post<{ Body: { tokenIn?: string; tokenOut?: string; amount?: string } }>(
+    '/v1/swap/quote',
+    async (request, reply) => {
+      const session = requireSession(request, reply)
+      if (!session) return reply
+      const { tokenIn, tokenOut, amount } = request.body ?? {}
+      if (!tokenIn || !tokenOut || !HEX40.test(tokenIn) || !HEX40.test(tokenOut) || !amount)
+        return reply.code(400).send({
+          error: {
+            code: 'SWAP_QUOTE_INVALID',
+            message: 'A quote needs two token addresses and an amount.',
+            retryable: false,
+            requestId: request.headers['x-request-id'],
+          },
+        })
+      let amountIn: bigint
+      try {
+        amountIn = BigInt(amount)
+      } catch {
+        return reply.code(400).send({
+          error: {
+            code: 'SWAP_QUOTE_INVALID',
+            message: 'The amount must be base units.',
+            retryable: false,
+            requestId: request.headers['x-request-id'],
+          },
+        })
+      }
+      const quote = await input.chain
+        ?.quoteSwap?.({
+          tokenIn: tokenIn as `0x${string}`,
+          tokenOut: tokenOut as `0x${string}`,
+          amountIn,
+        })
+        .catch(() => null)
+      if (!quote)
+        return reply.code(422).send({
+          error: {
+            code: 'SWAP_NO_ROUTE',
+            message: 'No pool on the reviewed venue trades this pair at this size.',
+            retryable: false,
+            requestId: request.headers['x-request-id'],
+          },
+        })
+      // Half a percent. Enough that an ordinary block does not fail the trade,
+      // tight enough that nobody loses a meaningful share of a small one.
+      const minOut = (BigInt(quote.amountOut) * 995n) / 1000n
+      return { ...quote, minOut: minOut.toString(), slippageBps: 50 }
+    },
+  )
+
   app.post('/v1/account', async (request, reply) => {
     const session = requireSession(request, reply)
     if (!session) return reply

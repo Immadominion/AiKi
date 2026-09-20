@@ -492,6 +492,22 @@ export const api = {
    */
   resolveName: (name: string) =>
     req<{ name: string; address: string | null }>(`/v1/names/${encodeURIComponent(name)}`),
+  /** What the reviewed swap venue may already move of this token. */
+  allowance: (token: string, owner: string) =>
+    req<{ allowance: string }>(
+      `/v1/allowance?token=${encodeURIComponent(token)}&owner=${encodeURIComponent(owner)}`,
+    ),
+  /**
+   * What a swap would return, and the floor to send with it.
+   *
+   * Quoted on chain against the pool rather than derived from a price feed:
+   * the feed says what the asset is worth, the pool says what this trade gets.
+   */
+  swapQuote: (tokenIn: string, tokenOut: string, amount: string) =>
+    req<{ amountOut: string; minOut: string; fee: number; slippageBps: number }>('/v1/swap/quote', {
+      method: 'POST',
+      body: JSON.stringify({ tokenIn, tokenOut, amount }),
+    }),
   /** Deploys one. AiKi pays the gas; the account belongs to the caller. */
   createAccount: () =>
     req<{ address: string; chainId: number; created: boolean }>('/v1/account', {

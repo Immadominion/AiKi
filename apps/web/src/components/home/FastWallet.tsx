@@ -42,7 +42,7 @@ export function FastWallet() {
   const tone = TONE[posture.state]
   return (
     <Link
-      href={route('/settings/wallet')}
+      href={route('/wallet')}
       title={posture.detail}
       className="hover:text-ink-app inline-flex min-h-10 items-center gap-[5px] text-[11.5px] transition-colors focus-visible:outline-2 focus-visible:outline-orange-app"
     >
