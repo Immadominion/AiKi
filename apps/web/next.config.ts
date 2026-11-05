@@ -79,9 +79,11 @@ const config: NextConfig = {
    * production, so this traffic never leaves their backbone.
    */
   async rewrites() {
+    const publicPages = [{ source: '/foreguild', destination: '/foreguild/2026-11-05/plan.html' }]
     const target = process.env.API_PROXY_TARGET
-    if (!target) return []
+    if (!target) return publicPages
     return [
+      ...publicPages,
       { source: '/v1/:path*', destination: `${target}/v1/:path*` },
       { source: '/v2/:path*', destination: `${target}/v2/:path*` },
       { source: '/healthz', destination: `${target}/healthz` },

@@ -1,0 +1,21 @@
+assumption,value,status
+price_usdc,100,unvalidated planning assumption
+executor_usdc,60,unvalidated planning assumption
+evaluator_usdc,15,unvalidated planning assumption
+fee_usdc,25,unvalidated planning assumption
+operator_hours_per_month,80,unvalidated planning assumption
+operator_hourly_cost_usdc,25,unvalidated planning assumption
+infrastructure_per_month_usdc,150,unvalidated planning assumption
+acquisition_per_month_usdc,"[150, 300, 450]",unvalidated planning assumption
+governance_expense_per_month_usdc,"[0, 75, 125]",unvalidated planning assumption
+setup_and_review_cap_usdc,6000,unvalidated planning assumption
+opening_funding_usdc,15000,unvalidated planning assumption
+market_collateral_reserve_usdc,500,unvalidated planning assumption
+contingency_reserved_usdc,1000,unvalidated planning assumption
+base_support_per_job_usdc,3,unvalidated planning assumption
+base_loss_provision_per_job_usdc,1,unvalidated planning assumption
+base_payout_per_job_usdc,0.25,unvalidated planning assumption
+base_orchestration_per_job_usdc,0.75,unvalidated planning assumption
+downside,"{""accepted_jobs"": [4, 8, 12], ""variable_cost_per_accepted_job"": 12}",unvalidated scenario
+base,"{""accepted_jobs"": [10, 25, 40], ""variable_cost_per_accepted_job"": 5}",unvalidated scenario
+upside,"{""accepted_jobs"": [15, 40, 80], ""variable_cost_per_accepted_job"": 4}",unvalidated scenario

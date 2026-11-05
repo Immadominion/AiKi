@@ -1,0 +1,570 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Foreguild revenue operating plan | AiKi</title><meta name="description" content="An AiKi proposal for a revenue-focused agent marketplace and bounded futarchy governance."><style>
+*{box-sizing:border-box}html{font-size:14px}body{margin:0;background:#eae8e3;color:#242720;font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.downloads{max-width:210mm;margin:18px auto 0;display:flex;gap:18px;align-items:center;padding:12px 16px;font-size:13px}.downloads a{color:#613c22}.downloads .brand{font-weight:700;margin-right:auto}
+.page{position:relative;width:210mm;height:297mm;margin:28px auto;padding:15mm 16mm 18mm;background:#fffefb;box-shadow:0 2px 18px #25251c1a;break-after:page;page-break-after:always}
+.page:last-child{break-after:auto;page-break-after:auto}.content{height:100%;font-size:10.2pt;line-height:1.38}.eyebrow{font-size:8pt;letter-spacing:1.5px;font-weight:700;text-transform:uppercase;color:#a33f13;margin:0 0 13px}
+h1{font-family:Georgia,'Times New Roman',serif;font-size:26pt;line-height:1.12;font-weight:400;letter-spacing:-.65px;margin:0 0 16px;color:#20251f}
+.page:first-of-type h1{font-size:35pt;max-width:600px;margin:0 0 18px}.lead{font-size:15pt;line-height:1.3;margin:0 0 18px;font-weight:500;color:#4a5145}
+h2{font-size:11.5pt;line-height:1.2;margin:17px 0 8px;color:#20251f}p{margin:0 0 9px}strong{font-weight:700}ul,ol{padding-left:20px;margin:8px 0 11px}li{padding-left:2px;margin:5px 0}a{color:#93400f;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
+table{width:100%;border-collapse:collapse;font-size:9.25pt;line-height:1.3;margin:10px 0 13px}th{text-align:left;background:#e9ede3;color:#283322;font-weight:700;padding:8px 9px;border-bottom:1px solid #c1cbb8}td{vertical-align:top;padding:7px 9px;border-bottom:1px solid #dde1d5}tr{break-inside:avoid}tbody tr:last-child td{border-bottom:1px solid #bbc6b2}th[align=right],td[align=right]{text-align:right;font-variant-numeric:tabular-nums}td:first-child{font-weight:500}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;background:#f0f2e9;padding:18px 17px;margin:18px 0 7px}.metrics b{display:block;font-family:Georgia,serif;font-size:21pt;font-weight:400;letter-spacing:-.5px;margin-bottom:6px}.metrics span{display:block;font-size:9pt;line-height:1.35}.caption{font-size:8.1pt;color:#5f6659;margin-bottom:16px}
+.flow{display:flex;align-items:center;justify-content:space-between;background:#f0f2e9;padding:12px;margin:12px 0 17px;font-size:9pt;font-weight:700}.flow i{font-style:normal;color:#a33f13}.formula{font-family:monospace;font-size:10pt;padding:13px 12px;background:#f0f2e9;margin:15px 0;line-height:1.4}
+.sources{font-size:8.7pt;line-height:1.32}.sources li{margin:6px 0}.footer{position:absolute;bottom:8mm;left:16mm;right:16mm;display:flex;justify-content:space-between;color:#69715f;font-size:7.7pt;letter-spacing:.25px}.footer b{font-weight:700;color:#394231}.note{background:#f5eee4;padding:12px}
+@page{size:A4;margin:0}@media print{body{background:white}.downloads{display:none}.page{margin:0;box-shadow:none}.content{overflow:visible}a{color:#593c24}}@media screen and (max-width:820px){.downloads{margin:0;gap:12px;font-size:12px;flex-wrap:wrap}.page{width:100%;height:auto;min-height:297mm;margin:0 0 18px;padding:28px 22px 55px}.content{height:auto}h1{font-size:24pt}.page:first-of-type h1{font-size:30pt}.footer{left:22px;right:22px}.metrics{gap:10px}.metrics b{font-size:18pt}table{font-size:9pt}th,td{padding:7px 6px}}
+</style></head><body><nav class="downloads" aria-label="Proposal downloads"><a class="brand" href="https://www.useaiki.xyz">AiKi</a><a href="https://www.useaiki.xyz/foreguild/2026-11-05/plan.pdf">Download PDF</a><a href="https://www.useaiki.xyz/foreguild/2026-11-05/financial-model.csv">Financial model</a></nav><section class="page" aria-label="Page 1"><main class="content"><div class="eyebrow">AiKi proposal · 5 November 2026</div>
+
+<h1>Foreguild revenue operating plan</h1>
+<p class="lead">Start with paid SDK and API checks. Let prediction markets choose business decisions within strict limits.</p>
+
+<p>Foreguild&#39;s first buyer is a crypto developer-tool maintainer. An agent team replays a quickstart, checks agreed behaviours, and returns evidence the buyer can reproduce. Each release creates a reason to order again. Independent evaluation checks the work before crypto payment.</p>
+<p>AiKi already implements tasks, assignment, delivery, review, budgets, fee accounting and refunds. Foreguild would add stablecoin payments, service operations and binding futarchy. Page 11 separates existing code from proposed additions. [1, 2]</p>
+<div class="metrics"><div><b>100 USDC</b><span>Proposed price per accepted pack</span></div><div><b>20 USDC</b><span>Base contribution per pack</span></div><div><b>75 packs</b><span>Base first 90 operating days</span></div></div>
+
+<p class="caption">Planning assumptions. These prices, margins and customer targets are unproven.</p>
+
+<h2>How it works</h2>
+<p>Start with qualified providers and a fixed acceptance template. Workers earn for meeting the contract, including documenting defects in the buyer&#39;s software. Agents handle intake, routing, testing, evaluation and accounting. Humans handle initial sales, exceptions and emergencies.</p>
+<p>Maximize earned fees within fixed budgets, positive contribution and service standards. Once deployment and market checks pass, the executor must follow the market&#39;s eligible choice. The team cannot override it with a business vote.</p>
+<h2>Pilot targets</h2>
+<ul>
+<li><strong>Customers:</strong> ten independent paying teams, five repeat buyers and 40 accepted packs in month three.</li>
+<li><strong>Economics:</strong> positive contribution after failed work and support costs; a credible path to 137 accepted packs per month.</li>
+<li><strong>Autonomy:</strong> one small binding decision, if liquidity and execution checks pass. Otherwise, disclose the limitation and retain named human operators.</li>
+</ul>
+<p>The proposed funding cap is <strong>15,000 USDC</strong> for setup, labor and reserves. Neither Seer nor AiKi has committed it. The base case loses <strong>6,050 USDC in operations</strong>, plus a <strong>6,000-USDC setup and review allowance</strong>. Release funds in stages. Stop when the evidence fails the next gate.</p>
+</main><footer class="footer"><span><b>AiKi</b> · Foreguild operating plan</span><span>5 November 2026 · 1 / 12</span></footer></section>
+<section class="page" aria-label="Page 2"><main class="content"><div class="eyebrow">01 · Buyer and offer</div>
+
+<h1>Sell a release acceptance pack</h1>
+<p>Target engineering or developer-relations leads at crypto developer-tool teams with regular releases. They spend time finding broken quickstarts and reproducing problems across docs, dependencies and examples.</p>
+<h2>The service contract</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Proposed offer</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Scope</td>
+<td>One quickstart, pinned version, supported runtime and sandbox; up to ten agreed checks</td>
+</tr>
+<tr>
+<td>Deliverable</td>
+<td>Runnable cases, expected and observed results, redacted logs, failure reproductions and a blocked/untested list</td>
+</tr>
+<tr>
+<td>Timing</td>
+<td>First delivery within 48 hours of complete scope and access; one retest requested within seven days</td>
+</tr>
+<tr>
+<td>Price</td>
+<td>100 USDC per accepted pack</td>
+</tr>
+<tr>
+<td>Exclusions</td>
+<td>Security audits, penetration tests, production transactions, private customer data and open-ended engineering</td>
+</tr>
+<tr>
+<td>Acceptance</td>
+<td>The evidence meets the contract, even if the product fails a check</td>
+</tr>
+</tbody></table>
+<p>Validate the price with provider quotes and buyer commitments. Execution and evaluation must fit their budgets.</p>
+<h2>Evidence for the offer</h2>
+<p>Upwork lists QA packages from roughly $90–$100. Historical Superteam listings advertise 2,000 USDC for Okto documentation and 2,500 USDC for a SendAI toolkit bounty with tests and docs. These show adjacent budgets, not proven demand for our pack or verified payouts. [3–5]</p>
+<h2>Alternatives</h2>
+<table>
+<thead>
+<tr>
+<th>Alternative</th>
+<th>Existing offer</th>
+<th>What Foreguild must improve</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Virtuals ACP</td>
+<td>Agent services, USDC escrow and evaluation</td>
+<td>Scoping, evidence and remedies</td>
+</tr>
+<tr>
+<td>Freelance QA</td>
+<td>Human judgment and familiar purchasing</td>
+<td>Repeat ordering and reproducibility</td>
+</tr>
+<tr>
+<td>Checkly or CI</td>
+<td>Low-cost scripted checks; a free Checkly tier</td>
+<td>Test creation and diagnosis</td>
+</tr>
+<tr>
+<td>Engineer with an assistant</td>
+<td>Flexible work in existing tools</td>
+<td>Enough saved time to earn a reorder</td>
+</tr>
+</tbody></table>
+<p>ACP documents a 5% protocol allocation and an optional evaluator allocation. Foreguild must justify its proposed 25% fee through scoping, coordination and remedies. Payment infrastructure alone will not earn that premium. [6, 7]</p>
+</main><footer class="footer"><span><b>AiKi</b> · Foreguild operating plan</span><span>5 November 2026 · 2 / 12</span></footer></section>
+<section class="page" aria-label="Page 3"><main class="content"><div class="eyebrow">02 · Work and agent responsibilities</div>
+
+<h1>Run a complete work cycle</h1>
+<div class="flow"><span>Scope</span><i>→</i><span>Fund</span><i>→</i><span>Assign</span><i>→</i><span>Execute</span><i>→</i><span>Verify</span><i>→</i><span>Pay</span></div>
+
+<h2>Example brief</h2>
+<p>“Replay version 1.4&#39;s Node quickstart in a clean environment. Check installation, test-credential authentication, a successful request, an invalid-input response and the retry example. Return commands, pinned dependencies, outputs and a reproduction for each discrepancy. Use the sandbox only.”</p>
+<p>This example is not a completed AiKi job. Before funding, the buyer approves the cases and limits. Store immutable hashes of the brief, quote, deadlines, allowed endpoints and acceptance rule. Agent buyers follow the same flow under their owner&#39;s mandate.</p>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Work</th>
+<th>Authority limit</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Intake agent</td>
+<td>Fill the template; find missing access or unclear checks</td>
+<td>Cannot expand scope or charge without approval</td>
+</tr>
+<tr>
+<td>Dispatcher</td>
+<td>Match coverage, reliability, cost and capacity</td>
+<td>Uses a qualified shortlist; registration alone is insufficient</td>
+</tr>
+<tr>
+<td>Execution agent</td>
+<td>Run isolated, time-limited tests; sign evidence; list blocked cases</td>
+<td>No production keys, unrestricted network access or publishing authority</td>
+</tr>
+<tr>
+<td>Evaluation agent</td>
+<td>Reproduce failures, sample passes, check artifacts and versions</td>
+<td>Separate operator; cannot change the brief</td>
+</tr>
+<tr>
+<td>Treasury agent</td>
+<td>Reconcile escrow, quotes, fees, payouts and reserves</td>
+<td>Only contract-permitted payments</td>
+</tr>
+<tr>
+<td>Growth/reporting agents</td>
+<td>Research prospects, total costs and publish revenue evidence</td>
+<td>Human operator controls initial outreach and promises</td>
+</tr>
+</tbody></table>
+<h2>Assign and assess work</h2>
+<p>Recruit three execution providers and two independent evaluators. Require the same calibration tests. Match supported runtimes and available capacity; show the buyer the worker and quote. Reliability matters alongside price.</p>
+<p>Evaluators check the environment, full case table, runnable reproductions and evidence integrity. A documented product defect can pass. Fabricated runs, missing cases and unexplained version changes require correction or rejection. Accept a blocked dependency only if the brief permits it; otherwise resolve the scope first.</p>
+<p>Include one correction cycle. Quote extensions separately. Subcontracting must stay within the original authority and budget. Each child task names its payer. Allow only approved task templates and enforce the parent spending cap.</p>
+<p>Keep payloads private. Publish hashes and settlement evidence for governance. Publish reports only with buyer permission.</p>
+</main><footer class="footer"><span><b>AiKi</b> · Foreguild operating plan</span><span>5 November 2026 · 3 / 12</span></footer></section>
+<section class="page" aria-label="Page 4"><main class="content"><div class="eyebrow">03 · Settlement and remedies</div>
+
+<h1>Pay workers in crypto</h1>
+<p>Propose <strong>Base USDC</strong>, with ETH for gas. This requires a new integration. AiKi&#39;s Points cannot be redeemed. BSC token transfers and Points purchases do not prove worker cash-out. [2]</p>
+<h2>Money movements</h2>
+<p>Quotes name three charges: <strong>60 USDC for execution</strong>, <strong>15 for evaluation</strong>, and <strong>25 for Foreguild coordination</strong>. Earned platform fees are the model&#39;s revenue metric. Provider pay covers their execution and model costs. Foreguild separately budgets orchestration, support, payouts and losses.</p>
+<p>Release 40 to the worker and 10 to the evaluator after initial acceptance. Hold 20/5/25 until the retest passes or its seven-day request window expires. A timely request extends completion by at most 48 hours. Earn the fee only at final closure. Every modelled accepted pack is a finally closed pack. Missed retests follow the remedy process.</p>
+<p>Separate customer escrow, earned fees, operating funds and governance collateral. Never lend, invest or trade customer principal, or count it as revenue. Before funding, bind addresses, job IDs, quotes and settlement terms.</p>
+<p>Verify an established settlement component before using it. The adapter must handle confirmations, duplicate requests, refunds, token decimals and reconciliation. After a crash, read the transaction receipt before retrying. Real payments require independent review and failure tests.</p>
+<h2>Payment stages</h2>
+<div class="metrics"><div><b>100 USDC</b><span>Buyer funds the scoped job</span></div><div><b>50 USDC</b><span>40 worker + 10 evaluator after initial acceptance</span></div><div><b>50 USDC</b><span>20 worker + 5 evaluator + 25 fee held until closure</span></div></div>
+
+<p>Receipts link the task, quote, parties, payment stage and transaction hash. A timely dispute blocks the affected release. Replacing a provider uses the original holdback and any approved remedy reserve.</p>
+<p>Reconcile token balances with customer obligations after each settlement. Any mismatch pauses new funding and treasury spending. Report pending and earned fees separately.</p>
+</main><footer class="footer"><span><b>AiKi</b> · Foreguild operating plan</span><span>5 November 2026 · 4 / 12</span></footer></section>
+<section class="page" aria-label="Page 5"><main class="content"><div class="eyebrow">04 · Quality and remedies</div>
+
+<h1>Close disputes within a defined budget</h1>
+<p>Independent evaluation protects buyers and workers. Valid evidence earns payment even when the product fails. Agree on review, correction and appeal rules before work starts.</p>
+<h2>Remedy rules</h2>
+<table>
+<thead>
+<tr>
+<th>Trigger</th>
+<th>Proposed remedy</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Unclaimed job or failure before work starts</td>
+<td>Cancel; return full escrow</td>
+</tr>
+<tr>
+<td>Timely valid delivery</td>
+<td>Buyer has 24 hours after evaluation to accept or identify a contract defect</td>
+</tr>
+<tr>
+<td>Silent buyer</td>
+<td>Release the first payment only with evaluator approval; retain the retest holdback; freeze disputed funds</td>
+</tr>
+<tr>
+<td>Invalid or missing work</td>
+<td>Allow one correction within 24 hours, then an independent appeal</td>
+</tr>
+<tr>
+<td>Disputed completion</td>
+<td>Independent human reviewer applies the original brief within 72 hours; freeze affected escrow</td>
+</tr>
+<tr>
+<td>Appeal misses its deadline</td>
+<td>Refund the buyer; pay documented worker/evaluator effort from the remedy reserve within its cap; suspend orders until resolved</td>
+</tr>
+</tbody></table>
+<p>Agree on partial refunds and compensation in advance. Cap pilot remedy liability at <strong>100 USDC per disputed pack</strong>, covering defined worker, evaluator and appeal costs. AiKi&#39;s current dispute route does not supply this policy. Reserve coverage before accepting jobs. Stop intake when coverage runs short.</p>
+<p>Kleros arbitration requires verification of the court, fees, appeals and deployment. Its proposed Agentic Courts were still under vote on the research date. Keep work evaluation, job appeals and the revenue-market oracle separate. [8]</p>
+<h2>Operating limits</h2>
+<p>Start with five concurrent packs. Use expiring sandbox credentials, restrict network access and retain evidence. Check for common ownership between workers and evaluators. Humans can stop unsafe work or resolve appeals, but cannot rewrite acceptance terms after delivery.</p>
+<p>Name an operator and backup reviewer before taking orders. Record response times, rejection reasons, rework and compensation. Humans review evaluator disagreement and suspected self-dealing. Agents cannot approve their own evidence.</p>
+<p>The 1-USDC loss provision is an estimate, not an obligation cap. If losses rise, revise the offer and model. Contingency covers early variation; depleted reserves require an intake pause.</p>
+</main><footer class="footer"><span><b>AiKi</b> · Foreguild operating plan</span><span>5 November 2026 · 5 / 12</span></footer></section>
+<section class="page" aria-label="Page 6"><main class="content"><div class="eyebrow">05 · Economics</div>
+
+<h1>Earn fees on accepted work</h1>
+<p>These are <strong>USDC planning assumptions</strong>, with USD costs at a 1:1 peg. They exclude taxes, financing and token income. The operating clock starts after technical readiness. Setup costs are separate.</p>
+<table>
+<thead>
+<tr>
+<th>Per accepted pack</th>
+<th align="right">USDC</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Buyer payment / GMV</td>
+<td align="right">100.00</td>
+</tr>
+<tr>
+<td>Execution provider</td>
+<td align="right">60.00</td>
+</tr>
+<tr>
+<td>Independent evaluator</td>
+<td align="right">15.00</td>
+</tr>
+<tr>
+<td>Gross Foreguild fee revenue</td>
+<td align="right"><strong>25.00</strong></td>
+</tr>
+<tr>
+<td>Support / loss provision / payout / orchestration</td>
+<td align="right">3.00 / 1.00 / 0.25 / 0.75</td>
+</tr>
+<tr>
+<td>Contribution before fixed costs</td>
+<td align="right"><strong>20.00</strong></td>
+</tr>
+</tbody></table>
+<h2>First 90 operating days</h2>
+<table>
+<thead>
+<tr>
+<th>Measure</th>
+<th align="right">Month 1</th>
+<th align="right">Month 2</th>
+<th align="right">Month 3</th>
+<th align="right">Total</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Accepted packs</td>
+<td align="right">10</td>
+<td align="right">25</td>
+<td align="right">40</td>
+<td align="right"><strong>75</strong></td>
+</tr>
+<tr>
+<td>GMV</td>
+<td align="right">1,000</td>
+<td align="right">2,500</td>
+<td align="right">4,000</td>
+<td align="right"><strong>7,500</strong></td>
+</tr>
+<tr>
+<td>Fee revenue</td>
+<td align="right">250</td>
+<td align="right">625</td>
+<td align="right">1,000</td>
+<td align="right"><strong>1,875</strong></td>
+</tr>
+<tr>
+<td>Platform variable cost</td>
+<td align="right">50</td>
+<td align="right">125</td>
+<td align="right">200</td>
+<td align="right">375</td>
+</tr>
+<tr>
+<td>Contribution</td>
+<td align="right">200</td>
+<td align="right">500</td>
+<td align="right">800</td>
+<td align="right"><strong>1,500</strong></td>
+</tr>
+<tr>
+<td>Labor + infrastructure</td>
+<td align="right">2,150</td>
+<td align="right">2,150</td>
+<td align="right">2,150</td>
+<td align="right">6,450</td>
+</tr>
+<tr>
+<td>Acquisition + governance</td>
+<td align="right">150</td>
+<td align="right">375</td>
+<td align="right">575</td>
+<td align="right">1,100</td>
+</tr>
+<tr>
+<td>Operating result</td>
+<td align="right"><strong>−2,100</strong></td>
+<td align="right"><strong>−2,025</strong></td>
+<td align="right"><strong>−1,925</strong></td>
+<td align="right"><strong>−6,050</strong></td>
+</tr>
+</tbody></table>
+<p>Monthly labor assumes 80 operator hours at 25 USDC/hour; infrastructure costs 150. Acquisition costs 150/300/450; governance costs 0/75/125. Validate these with quotes and time logs. The separate <strong>6,000-USDC setup and review cap</strong> may require a smaller scope or later launch.</p>
+<table>
+<thead>
+<tr>
+<th>90-day scenario</th>
+<th align="right">Packs</th>
+<th align="right">Fee revenue</th>
+<th align="right">Contribution/pack</th>
+<th align="right">Operating result</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Downside</td>
+<td align="right">24</td>
+<td align="right">600</td>
+<td align="right">13</td>
+<td align="right">−7,238</td>
+</tr>
+<tr>
+<td>Base</td>
+<td align="right">75</td>
+<td align="right">1,875</td>
+<td align="right">20</td>
+<td align="right">−6,050</td>
+</tr>
+<tr>
+<td>Upside</td>
+<td align="right">135</td>
+<td align="right">3,375</td>
+<td align="right">21</td>
+<td align="right">−4,715</td>
+</tr>
+</tbody></table>
+</main><footer class="footer"><span><b>AiKi</b> · Foreguild operating plan</span><span>5 November 2026 · 6 / 12</span></footer></section>
+<section class="page" aria-label="Page 7"><main class="content"><div class="eyebrow">06 · Capital and sensitivity</div>
+
+<h1>Fund the pilot in stages</h1>
+<p>Funding depends on buyer commitments, an implementation quote and a reviewed payment path. Do not assume contest winnings will fund it.</p>
+<h2>Proposed funding</h2>
+<table>
+<thead>
+<tr>
+<th>Use</th>
+<th align="right">Base allocation in USDC</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Setup, implementation and independent review</td>
+<td align="right">6,000</td>
+</tr>
+<tr>
+<td>Net operating loss, including labor</td>
+<td align="right">6,050</td>
+</tr>
+<tr>
+<td>Market collateral at risk</td>
+<td align="right">500</td>
+</tr>
+<tr>
+<td>Remedies and cost overruns</td>
+<td align="right">1,000</td>
+</tr>
+<tr>
+<td>Unallocated within the 15,000 cap</td>
+<td align="right"><strong>1,450</strong></td>
+</tr>
+</tbody></table>
+<p>The 500 market reserve is capital at risk. It is neither an operating expense nor guaranteed recoverable cash. The model&#39;s 200 governance expense covers execution, oracle and market operations. Market-authorized channel spend sits within the acquisition budget, capped at 300. It earns no separate revenue.</p>
+<p>Release at most 500 for samples and scoping. Release the remaining setup allowance only against buyer commitments and a credible quote. If the quote exceeds the cap, reduce scope or obtain a revised budget.</p>
+<h2>Break-even and failure costs</h2>
+<p>At month-three overhead of 2,725 and contribution of 20 per pack, break-even needs <strong>137 accepted packs/month</strong>. That is roughly <strong>35 teams buying four packs</strong>. Fifty such teams would produce 1,275/month before setup recovery and tax, if costs stayed constant. Costs may rise with volume.</p>
+<p>If 10% of attempts fail at an unrecovered cost of 45, losses equal 5 per accepted pack. Replacing the base loss provision with that amount reduces contribution to 16. Break-even rises to <strong>171 packs</strong>. The broader downside assumes variable cost of 12 and needs 210 packs. Measure failure costs before scaling.</p>
+</main><footer class="footer"><span><b>AiKi</b> · Foreguild operating plan</span><span>5 November 2026 · 7 / 12</span></footer></section>
+<section class="page" aria-label="Page 8"><main class="content"><div class="eyebrow">07 · Distribution and capital</div>
+
+<h1>Reach the first repeat buyers</h1>
+<p>The founder sells first. Agents research public releases and draft briefs; humans review and send outreach. No prospects, introductions or partnerships are assumed.</p>
+<h2>Acquisition experiment</h2>
+<p>Find <strong>60 developer-tool teams</strong> with maintained SDK/API docs, recent releases and a budget owner. Produce five sample packs on public or authorized examples. Show clean results as well as defects.</p>
+<p>Target <strong>20 buyer conversations and ten paid pilots</strong>. These are experiment targets, not conversion benchmarks. Ask about broken quickstarts, review effort, release frequency, buying authority and the 100-USDC price. Get three purchase commitments before the main implementation spend. Take funds only after payment and remedy checks pass.</p>
+<p>Offer the next release check after each accepted pack. Buyer-owned triggers or agents may reorder within an agreed cap. Exclude samples, internal work, grants and prizes from paid-customer cohorts. Acquisition cost includes channel spend and founder sales time from the labor allowance. Measure payback against actual contribution.</p>
+<h2>Funding gates</h2>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Evidence required</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Prelaunch</td>
+<td>Five samples, ten budget-owner interviews, three price commitments, agreed funding and integration scope</td>
+</tr>
+<tr>
+<td>Days 1–30</td>
+<td>Ten accepted paid packs; at least three unrelated buyers; target ≥90% acceptance and buyer review under 15 minutes</td>
+</tr>
+<tr>
+<td>Days 31–60</td>
+<td>Six paying teams, three repeat buyers; positive contribution after support and failed work</td>
+</tr>
+<tr>
+<td>Days 61–90</td>
+<td>Ten paying teams, five reorders within 30 days, 40 month-three packs; target payback within three months</td>
+</tr>
+</tbody></table>
+<p>If ten qualified interviews yield no willingness to pay, revise the offer. Pause acquisition if the latest ten packs show acceptance below 85% or median human handling above 45 minutes. Pause intake for unpaid remedies or inadequate reserves. Small samples guide spending; they do not prove demand.</p>
+</main><footer class="footer"><span><b>AiKi</b> · Foreguild operating plan</span><span>5 November 2026 · 8 / 12</span></footer></section>
+<section class="page" aria-label="Page 9"><main class="content"><div class="eyebrow">08 · Futarchy mechanism</div>
+
+<h1>Let markets choose a bounded policy</h1>
+<p>Founders and treasury stewards set the charter: maximize earned fees while protecting customer funds, limiting spend, maintaining positive expected contribution and meeting service standards. Once binding operation starts, eligible market decisions need no further business vote.</p>
+<h2>Define revenue before trading</h2>
+<p><strong>R30</strong> measures platform fees received on eligible jobs finally closed in the 30 days from T0. Subtract their refunds, credits and disputed fees as of day 44. Count unresolved disputes as zero. Calculate in USDC micro-units.</p>
+<p>Exclude customer principal, provider/evaluator payouts, Points purchases, donations, token proceeds, treasury transfers, subsidized internal work and disclosed related-party purchases. Verify customer independence through records and disclosures; wallet counts cannot prove it. Record later reversals in the accounts without reopening finalized markets.</p>
+<h2>The first choice</h2>
+<p>Compare incumbent acquisition policy <strong>A</strong> with alternative <strong>B</strong> for the 100-USDC offer. Establish A during the human-run pilot. Before trading, freeze audiences, creative, destinations, schedules and equal spending caps. Keep pricing, providers and acceptance standards fixed.</p>
+<p>Set deadlines before trading. Price observations end at D. The executor can commit until D + 1 hour; service starts at T0 = D + 2 hours. No timely commitment means NO-ACTION. Reject late authorizations. Measure revenue from T0 and adjust it through day 44.</p>
+<p>Create a Seer categorical parent for the executor&#39;s timely choice: A, B or NO-ACTION, plus the protocol&#39;s invalid result. Each policy gets a conditional scalar child measuring R30 from 0 to 5,000 USDC. Seer documents these components. Foreguild still needs a price adapter and executor. [9, 10]</p>
+<div class="formula">Conditional forecast = 5,000 × price(HIGH) ÷ [price(HIGH) + price(LOW)]</div>
+
+<p>Price both tokens in the same branch collateral. Check valid mass and invalid risk. Raw base-currency prices also reflect selection probability. Compare time-weighted executable quotes.</p>
+<p>For the selected valid branch, HIGH pays the scalar share of parent collateral; LOW pays the rest. Values outside the bounds clip. Invalid resolution pays the invalid token. <strong>Unchosen branches lose base-collateral value; they receive no automatic refund.</strong> Do not invent an unobserved outcome. Explain positions and hedging to traders. [10, 11]</p>
+<h2>Resolve against evidence</h2>
+<p>Publish final fee/refund events, job and acceptance hashes, exclusions and calculations. Two independent reporters check them. Bonded Reality.eth answers and the configured arbitration path settle the market; reporter agreement alone does not. Challenges delay redemption. [12]</p>
+<p>Conditional forecasts do not prove causation. Use holdouts and stable conditions to improve later evidence. Prohibit concurrent policy changes and show forecast uncertainty.</p>
+</main><footer class="footer"><span><b>AiKi</b> · Foreguild operating plan</span><span>5 November 2026 · 9 / 12</span></footer></section>
+<section class="page" aria-label="Page 10"><main class="content"><div class="eyebrow">09 · Governance execution and limits</div>
+
+<h1>Make the decision binding within its limits</h1>
+<p>Build and independently review the executor and price adapter. MetaDAO offers a precedent for time-weighted conditional decisions, but uses a different chain, objective and liquidity. Its parameters do not establish Foreguild&#39;s security. [13]</p>
+<h2>Activation checks</h2>
+<p>Allow 24 hours for discovery, then observe prices for 24 hours. Require quotes less than five minutes old, executable depth on both valid legs in base-collateral/USDC terms, and configured spread limits. Invalid-token value must stay at or below 1% of the complete child set. B must beat A by the greater of 10% or 25 USDC in forecast revenue. Replay tests must verify adapter rules and complete observation intervals.</p>
+<p>Start with <strong>25 USDC of binding spend authority</strong>, within a <strong>300-USDC channel-policy ceiling</strong>. A 500-USDC market reserve does not prove resistance to manipulation. Test strategies that move the normalized, time-weighted decision across its threshold, including price spikes, liquidity removal and unwinding. Require net unrecoverable attacker cost above five times authorized spend. Volume and temporary collateral do not count. This is a minimum check, not a security proof; outside incentives and collusion remain risks.</p>
+<p>If it fails, reduce authority or add independent liquidity. Exclude wash volume and wallet counts. Governance may cost more than the initial 25-USDC decision. Scale only when expected benefits exceed governance costs.</p>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Executor action</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>All checks pass; B clears the threshold</td>
+<td>Commit B; unlock its capped authority</td>
+</tr>
+<tr>
+<td>All checks pass; B misses the threshold</td>
+<td>Commit A with the same cap</td>
+</tr>
+<tr>
+<td>Missing data, insufficient depth, invalid conditions, expiry or reserve failure</td>
+<td>Commit NO-ACTION; authorize no added spend</td>
+</tr>
+<tr>
+<td>Exploit or reserve loss</td>
+<td>Security council may pause with a recorded reason; it cannot choose another policy</td>
+</tr>
+</tbody></table>
+<p>Any keeper may finalize. The executor records the policy hash and allowance. Agents receive approved destinations and asset, daily/total caps, expiry, job/policy IDs and replay protection. They cannot raise budgets, borrow customer funds, change the offer or upgrade contracts.</p>
+<h2>Three stages</h2>
+<ol>
+<li><strong>Observed operation:</strong> named humans run jobs and shadow forecasts. This is not autonomous futarchy.</li>
+<li><strong>Binding pilot:</strong> after market, payment and failure tests pass, an eligible 25-USDC decision binds agents to the charter.</li>
+<li><strong>Expansion:</strong> approach the 300 ceiling only with stronger liquidity, evidence and economics. Amendments affect future cycles.</li>
+</ol>
+<p>Seer lists Base infrastructure. Before funding, verify the selected factory&#39;s bytecode, collateral and arbitrator. Jobs and markets may use different assets; conversions use the governance reserve. The design assumes no automatic cross-chain execution and needs no new governance token. [14]</p>
+</main><footer class="footer"><span><b>AiKi</b> · Foreguild operating plan</span><span>5 November 2026 · 10 / 12</span></footer></section>
+<section class="page" aria-label="Page 11"><main class="content"><div class="eyebrow">10 · Implementation and proof</div>
+
+<h1>Build from AiKi with explicit boundaries</h1>
+<p>We inspected production-branch source at <strong>2d56632</strong>, dated 20 September 2026. “Implemented” means code inspected, not production retested in November. Historical test hires and welcome-point payments are not customer revenue. [1, 2]</p>
+<table>
+<thead>
+<tr>
+<th>Existing implementation</th>
+<th>Foreguild work</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Human/agent tasks, claims, delivery, acceptance and cancellation</td>
+<td>Add the release template and qualified worker/evaluator clients</td>
+</tr>
+<tr>
+<td>Atomic internal settlement and refunds</td>
+<td>Add USDC escrow/payouts, confirmations and reconciliation</td>
+</tr>
+<tr>
+<td>Review deadlines, funding checks and replay evidence</td>
+<td>Add independent evaluation, timed appeals and funded default remedies</td>
+</tr>
+<tr>
+<td>Budget and action permissions</td>
+<td>Review and port enforcement to Base and the executor</td>
+</tr>
+<tr>
+<td>Fast tools, API, profiles and Work</td>
+<td>Verify supported paid client paths; no universal MCP claim</td>
+</tr>
+<tr>
+<td>2.5% fee accounting</td>
+<td>Quote and implement the proposed 25% Foreguild policy</td>
+</tr>
+</tbody></table>
+<h2>Before taking customer funds</h2>
+<ul>
+<li>Prove provider payout and buyer refund, including duplicates, timeouts and uncertain receipts.</li>
+<li>Independently review payment and permission code. Do not imply an audit exists.</li>
+<li>Fund remedies, assign an appeal reviewer and test absent buyers, failed workers and stalled appeals.</li>
+<li>Qualify providers, calibrate acceptance, protect evidence and separate customer funds from fees.</li>
+</ul>
+<p>Allow <strong>4–8 engineer-weeks as an initial estimate</strong> using established payment components. This excludes unscoped BSC-to-Base payment and permission work, which may exceed the setup cap. Obtain a specific quote before funding. Bespoke escrow and arbitrary provider protocols add scope. The 90-day clock starts after readiness. Governance needs a further gate and may start later.</p>
+<h2>Responsibilities</h2>
+<p>Foreguild&#39;s operator owns support, treasury reporting, supplier contracts and the charter. AiKi is a proposed implementation contributor. No partnership, license, ownership transfer or maintenance obligation is agreed. Set prices and support duties before deployment.</p>
+<p>Report accepted jobs, independent buyers, reorders, fees, provider costs, failed-work losses, human time, open remedies and contribution. Report market-price coverage, depth, permissions, spend and oracle finality separately. Release funding only while the gates hold.</p>
+</main><footer class="footer"><span><b>AiKi</b> · Foreguild operating plan</span><span>5 November 2026 · 11 / 12</span></footer></section>
+<section class="page" aria-label="Page 12"><main class="content"><div class="eyebrow">11 · Sources and model notes</div>
+
+<h1>Evidence and reproducibility</h1>
+<p>Research checked <strong>5 November 2026</strong>. Docs describe capabilities; pinned source shows code. Neither proves current deployment health. Historical listing budgets are not Foreguild sales. Prices, targets, costs and governance thresholds remain assumptions.</p>
+<div class="sources">
+
+<ol>
+<li><strong>AiKi public product and code:</strong> <a href="https://github.com/Immadominion/AiKi">repository</a>, <a href="https://github.com/Immadominion/AiKi/tree/2d56632ef841c76b695ba1f30847ccfc0d567874">pinned source</a>.</li>
+<li><strong>AiKi implementation evidence:</strong> <a href="https://github.com/Immadominion/AiKi/blob/2d56632ef841c76b695ba1f30847ccfc0d567874/apps/api/src/tasks/routes.ts">task routes</a>, <a href="https://github.com/Immadominion/AiKi/blob/2d56632ef841c76b695ba1f30847ccfc0d567874/apps/api/src/tasks/store.ts">atomic payment implementation</a>, <a href="https://github.com/Immadominion/AiKi/blob/2d56632ef841c76b695ba1f30847ccfc0d567874/apps/api/src/tasks/payment-atomic.test.ts">payment tests</a>, <a href="https://github.com/Immadominion/AiKi/blob/2d56632ef841c76b695ba1f30847ccfc0d567874/apps/api/src/assistant/routes.ts">nonredeemable account response</a>, <a href="https://github.com/Immadominion/AiKi/blob/2d56632ef841c76b695ba1f30847ccfc0d567874/apps/api/src/authority/policy.ts">budget policy</a>.</li>
+<li><strong>Upwork:</strong> <a href="https://www.upwork.com/services/qa">QA Testing projects</a>. Indexed starting prices vary by provider and scope.</li>
+<li><strong>Okto:</strong> <a href="https://superteam.fun/earn/listing/create-web3-developer-documentation-for-okto">developer documentation project</a>. Historical advertised 2,000-USDC engagement.</li>
+<li><strong>SendAI:</strong> <a href="https://superteam.fun/earn/listing/contribute-to-the-solana-ai-agent-toolkit/">Solana AI Agent Toolkit bounty</a>. Historical advertised 2,500-USDC prize pool.</li>
+<li><strong>Virtuals:</strong> <a href="https://os.virtuals.io/acp/concepts">ACP Core Concepts</a>, <a href="https://os.virtuals.io/acp/cli/client-workflow">client workflow</a>. Product and fee documentation, not an independent execution audit.</li>
+<li><strong>Checkly:</strong> <a href="https://www.checklyhq.com/pricing/">pricing</a>. Monitoring execution is an adjacent alternative, not equivalent managed work.</li>
+<li><strong>Kleros:</strong> <a href="https://blog.kleros.io/november-2026-scout-incentives-devcon-india-agentic-court-proposal/">November 2026 update</a>, <a href="https://blog.kleros.io/kleros-development-update-september-2026/">September development update</a>. Recheck court availability before integration.</li>
+<li><strong>Seer:</strong> <a href="https://seer-3.gitbook.io/seer-documentation/developers/interact-with-seer/create-a-market">market creation</a>, <a href="https://seer-3.gitbook.io/seer-documentation/developers/contracts/futarchy-test/futarchyfactory">FutarchyFactory</a>. The named factory is token-price oriented; this plan uses scalar fee revenue.</li>
+<li><strong>Seer:</strong> <a href="https://seer-3.gitbook.io/seer-documentation/developers/interact-with-seer/conditional-market">conditional market mechanics</a>, <a href="https://seer-3.gitbook.io/seer-documentation/getting-started/navigate-our-site/conditional-markets">conditional markets guide</a>.</li>
+<li><strong>Seer:</strong> <a href="https://github.com/seer-pm/demo/blob/main/contracts/src/RealityProxy.sol">RealityProxy source</a>. Scalar payout and invalid-result handling; verify deployment before use.</li>
+<li><strong>Seer:</strong> <a href="https://seer-3.gitbook.io/seer-documentation/developers/interact-with-seer/resolve-a-market">resolution guide</a>.</li>
+<li><strong>MetaDAO:</strong> <a href="https://docs.metadao.fi/governance/twaps">TWAP and finalization</a>, <a href="https://docs.metadao.fi/governance/markets">conditional markets</a>. Design precedent with different settlement and market conditions.</li>
+<li><strong>Seer:</strong> <a href="https://github.com/seer-pm/demo/tree/main/contracts">published contract deployments</a>. Listings require current bytecode/configuration verification.</li>
+<li><strong>Contest:</strong> <a href="https://poidh.xyz/base/bounty/1531">Foreguild operating-plan brief</a>, <a href="https://poidh.xyz/base/bounty/1531/data">public structured record</a>, <a href="https://poidh.xyz/terms">Poidh terms</a>.</li>
+</ol>
+</div>
+
+<h2>Implementation evidence</h2>
+<p>Show pinned task, payment and budget code, a dated internal-points job, and a labelled walkthrough. Show scope, provider, evidence, review and accounting. Label crypto payouts, appeals and market execution as proposed. A proposal or edited film is not transaction proof.</p>
+<h2>Reproduce the model</h2>
+<p>The model includes editable inputs, scenario CSVs and a Python generator. Revenue = accepted packs × 25. Contribution = revenue − platform variable costs. Operating result subtracts labor, infrastructure, acquisition and governance. Setup is separate. Reserve collateral and contingency without counting them again as expenses. Exclude escrow and refund liabilities from spendable treasury.</p>
+<p>Even the upside loses money during the pilot. No token gains, investment yield, market volume, unverified users or contest prizes fund the forecast. Validate prices, provider costs, delivery, repeat purchases, payments and governance before scaling.</p>
+</main><footer class="footer"><span><b>AiKi</b> · Foreguild operating plan</span><span>5 November 2026 · 12 / 12</span></footer></section></body></html>

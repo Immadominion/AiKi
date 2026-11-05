@@ -1,0 +1,10 @@
+scenario,month,accepted_jobs,gmv_usdc,executor_payments_usdc,evaluator_payments_usdc,fee_revenue_usdc,platform_variable_cost_usdc,contribution_usdc,operator_labor_usdc,infrastructure_usdc,acquisition_usdc,governance_expense_usdc,operating_result_usdc,treasury_including_market_capital_usdc,market_capital_reserved_usdc,contingency_reserved_usdc,unallocated_cash_usdc
+downside,1,4,400,240,60,100,48,52,2000,150,150,0,-2248,6752,0,1000,5752
+downside,2,8,800,480,120,200,96,104,2000,150,300,75,-2421,4331,500,1000,2831
+downside,3,12,1200,720,180,300,144,156,2000,150,450,125,-2569,1762,500,1000,262
+base,1,10,1000,600,150,250,50,200,2000,150,150,0,-2100,6900,0,1000,5900
+base,2,25,2500,1500,375,625,125,500,2000,150,300,75,-2025,4875,500,1000,3375
+base,3,40,4000,2400,600,1000,200,800,2000,150,450,125,-1925,2950,500,1000,1450
+upside,1,15,1500,900,225,375,60,315,2000,150,150,0,-1985,7015,0,1000,6015
+upside,2,40,4000,2400,600,1000,160,840,2000,150,300,75,-1685,5330,500,1000,3830
+upside,3,80,8000,4800,1200,2000,320,1680,2000,150,450,125,-1045,4285,500,1000,2785

@@ -1,0 +1,11 @@
+{
+  "date": "2026-11-05",
+  "files": {
+    "plan.html": "e1c7b155897e1e897b77ea53eba4c24eec51b049c668695e3574ceff4ace269f",
+    "plan.pdf": "2c506ed0860fba781ff2db82f28752b8557e15432831a6089f8cd13d5fcc48b1",
+    "cover.png": "ad3bcf56cc2a14ed4fd60bfead98f2e3161eb25c448b0b4722bb74c5b2267102",
+    "financial-model.csv": "ab2039aacd55a9f1dc2f8c699f2979679f46e443e58b920a5c207fe45ba3bfc4",
+    "model-inputs.csv": "b89f8af696d466b3ef1e9b77b30833c1f5d25672c15c687b167db06a8351ffc2",
+    "financial-model.json": "d1fb5351645850b969cf83b58f1aabdfd8f73141684c6a5d438766a2d8f6ce7a"
+  }
+}
